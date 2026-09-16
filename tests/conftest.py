@@ -116,6 +116,27 @@ def database():
     runtime_url = make_conninfo(**params)
     with pytest.raises(RuntimeError, match="run pg-agmemory migrate"):
         asyncio.run(validate_runtime(runtime_url))
+    with psycopg.connect(url) as admin:
+        admin.execute(
+            files("pg_agmemory").joinpath("storage/002_assertion_revisions.sql").read_text()
+        )
+        admin.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (2)")
+        record = legacy[0]
+        admin.execute(
+            """INSERT INTO memory.assertion_revision
+               (tenant_id,assertion_id,scope_id,revision,value,valid_time,
+                explicit_intent,correction_reason)
+               VALUES (%s,%s,%s,2,'Gold corrected','[2026-09-05,)',true,'v2 upgrade fixture')""",
+            (record["tenant"], record["assertion"], record["scope"]),
+        )
+        admin.execute(
+            """INSERT INTO memory.provenance_edge
+               (tenant_id,child_id,child_revision,parent_id,scope_id,quote)
+               VALUES (%s,%s,2,%s,%s,'Gold')""",
+            (record["tenant"], record["assertion"], record["source"], record["scope"]),
+        )
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))

@@ -7,7 +7,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 Connection = psycopg.AsyncConnection[dict[str, Any]]
-MIGRATIONS = ("001_initial.sql", "002_assertion_revisions.sql")
+MIGRATIONS = ("001_initial.sql", "002_assertion_revisions.sql", "003_checkpoints.sql")
 SCHEMA_VERSION = len(MIGRATIONS)
 
 

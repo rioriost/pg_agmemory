@@ -86,6 +86,8 @@ class MemoryService:
         result: dict[str, Any] = row["result"]
         if "memory_id" in result:
             await self.object(UUID(result["memory_id"]), "write")
+        if "checkpoint_id" in result:
+            await self.object(UUID(result["checkpoint_id"]), "write")
         if "deletion_id" in result:
             for scope in result["scope_ids"]:
                 await self.scope(UUID(scope), "delete")
@@ -398,19 +400,46 @@ class MemoryService:
         for object_id in data.memory_ids:
             obj = await self.object(object_id, "delete")
             scopes.add(str(obj["scope_id"]))
-        dependents = await (
+        closure_limit = 10000 + len(data.memory_ids)
+        closure = await (
             await self.conn.execute(
-                """SELECT DISTINCT child_id FROM memory.provenance_edge
-                   WHERE tenant_id = %s AND parent_id = ANY(%s) LIMIT 10001""",
-                (self.tenant, data.memory_ids),
+                """WITH RECURSIVE edges(parent, child) AS (
+                    SELECT parent_id, child_id FROM memory.provenance_edge
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT source_id, checkpoint_id FROM memory.checkpoint_reference
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT parent_id, id FROM memory.checkpoint
+                    WHERE tenant_id = %(tenant)s AND parent_id IS NOT NULL
+                ), closure(id) AS (
+                    SELECT unnest(%(ids)s::uuid[])
+                    UNION
+                    SELECT e.child FROM closure c JOIN edges e ON e.parent = c.id
+                ) SELECT id FROM closure LIMIT %(limit)s""",
+                {"tenant": self.tenant, "ids": data.memory_ids, "limit": closure_limit + 1},
             )
         ).fetchall()
-        if len(dependents) > 10000:
+        if len(closure) > closure_limit:
             raise MemoryError("deletion_limit_exceeded", 422)
-        targets = list(set(data.memory_ids) | {row["child_id"] for row in dependents})
+        targets = [row["id"] for row in closure]
         if data.mode == "preview":
             return {"mode": "preview", "object_count": len(targets), "changed": False}
         if data.mode == "purge":
+            await self.conn.execute(
+                """UPDATE memory.checkpoint_branch SET invalidated = true
+                   WHERE tenant_id = %s AND head_id = ANY(%s) AND NOT invalidated""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.checkpoint_reference
+                   WHERE tenant_id = %s AND checkpoint_id = ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.checkpoint WHERE tenant_id = %s AND id = ANY(%s)",
+                (self.tenant, targets),
+            )
             await self.conn.execute(
                 """DELETE FROM memory.provenance_edge
                    WHERE tenant_id = %s AND child_id = ANY(%s)""",

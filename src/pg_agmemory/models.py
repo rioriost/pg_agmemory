@@ -244,3 +244,98 @@ class DeletionPreview(BaseModel):
     mode: Literal["preview"]
     object_count: int
     changed: Literal[False]
+
+
+class MemoryReference(Contract):
+    memory_id: UUID
+    revision: Revision = 1
+
+
+class PendingEffect(Contract):
+    operation_id: UUID
+    description: ShortText
+    status: Literal["planned", "dispatched", "unknown"]
+
+
+StateText = Annotated[str, Field(min_length=1, max_length=4096)]
+
+
+class CheckpointState(Contract):
+    goal: StateText
+    constraints: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    completed_actions: Annotated[list[StateText], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+    decisions: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    unresolved_questions: Annotated[list[StateText], Field(max_length=64)] = Field(
+        default_factory=list
+    )
+    next_actions: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    pending_effects: Annotated[list[PendingEffect], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+
+    @model_validator(mode="after")
+    def unique_effects(self) -> "CheckpointState":
+        if len({effect.operation_id for effect in self.pending_effects}) != len(
+            self.pending_effects
+        ):
+            raise ValueError("operation IDs must be unique")
+        return self
+
+
+class CreateCheckpoint(Contract):
+    scope_id: UUID
+    run_id: UUID
+    branch_id: UUID
+    expected_head: UUID | None
+    harness_id: ShortText
+    harness_version: ShortText
+    state_schema_version: Literal[1] = 1
+    event_watermark: Annotated[int, Field(ge=0, le=9223372036854775807, strict=True)]
+    state: CheckpointState
+    memory_refs: Annotated[list[MemoryReference], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+
+    @model_validator(mode="after")
+    def unique_references(self) -> "CreateCheckpoint":
+        refs = {(ref.memory_id, ref.revision) for ref in self.memory_refs}
+        if len(refs) != len(self.memory_refs):
+            raise ValueError("memory references must be unique")
+        return self
+
+
+class RestoreCheckpoint(Contract):
+    checkpoint_id: UUID
+    target_branch_id: UUID
+    harness_id: ShortText
+    harness_version: ShortText
+    state_schema_version: Literal[1] = 1
+
+
+class CheckpointReceipt(BaseModel):
+    checkpoint_id: UUID
+    run_id: UUID
+    branch_id: UUID
+    sequence: int
+    parent_checkpoint: UUID | None
+    checksum: str
+    checksum_algorithm: Literal["hmac-sha256-v1"] = "hmac-sha256-v1"
+
+
+class CheckpointEnvelope(CheckpointReceipt):
+    scope_id: UUID
+    harness_id: str
+    harness_version: str
+    state_schema_version: Literal[1]
+    event_watermark: int
+    state: CheckpointState
+    memory_refs: list[MemoryReference]
+    saved_access_epoch: int
+    saved_deletion_epoch: int
+    current_access_epoch: int
+    current_deletion_epoch: int
+    requires_reconciliation: list[UUID]
+    resume_allowed: bool
+    automatic_reexecution: Literal[False] = False

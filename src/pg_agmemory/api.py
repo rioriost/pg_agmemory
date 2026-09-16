@@ -15,9 +15,13 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pg_agmemory import __version__
+from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, Settings, connect, validate_runtime
 from pg_agmemory.models import (
     AssertionExplanation,
+    CheckpointEnvelope,
+    CheckpointReceipt,
+    CreateCheckpoint,
     DeletionPreview,
     DeletionProgress,
     DeletionResult,
@@ -32,6 +36,7 @@ from pg_agmemory.models import (
     RecallResult,
     Remember,
     RememberResult,
+    RestoreCheckpoint,
     ReviseAssertion,
     RevisionResult,
 )
@@ -76,7 +81,8 @@ class TransactionBoundary:
                     if message["type"] == "http.disconnect":
                         return
                     body.extend(message.get("body", b""))
-                    if len(body) > 256 * 1024:
+                    limit = 1024 * 1024 if scope["path"] == "/v1/checkpoints" else 256 * 1024
+                    if len(body) > limit:
                         raise MemoryError("body_too_large", 413)
                     if not message.get("more_body", False):
                         break
@@ -219,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m1-revisions",
+            "stage": "m1-checkpoints",
             "features": [
                 "observe",
                 "structured_remember",
@@ -227,10 +233,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "fts_recall",
                 "explain",
                 "forget",
+                "checkpoints",
+                "checkpoint_restore",
             ],
             "graph_backend": None,
             "auto_synthesis": False,
-            "checkpoints": False,
+            "checkpoints": True,
+            "tool_effect_ledger": False,
             "temporal_revisions": True,
             "vector_search": False,
             "tokenizer": "utf8-bytes-v1",
@@ -241,6 +250,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "max_items": 100,
                 "deletion_dependents": 10000,
                 "assertion_revisions": 1000,
+                "checkpoint_body_bytes": 1048576,
+                "checkpoint_references": 100,
             },
         }
 
@@ -259,6 +270,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         memory_id: UUID, data: ReviseAssertion, request: Request, idempotency_key: IdempotencyKey
     ) -> Any:
         return await service(request).revise_assertion(memory_id, data, idempotency_key)
+
+    @app.post("/v1/checkpoints", status_code=201, response_model=CheckpointReceipt)
+    async def checkpoint(
+        data: CreateCheckpoint, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Checkpoints(service(request)).create(data, idempotency_key)
+
+    @app.post("/v1/checkpoints/restore", status_code=201, response_model=CheckpointEnvelope)
+    async def restore_checkpoint(
+        data: RestoreCheckpoint, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Checkpoints(service(request)).restore(data, idempotency_key)
+
+    @app.get("/v1/checkpoints/{checkpoint_id}", response_model=CheckpointEnvelope)
+    async def get_checkpoint(checkpoint_id: UUID, request: Request) -> Any:
+        return await Checkpoints(service(request)).envelope(checkpoint_id)
 
     @app.post("/v1/recall", response_model=RecallResult)
     async def recall(data: Recall, request: Request) -> Any:
