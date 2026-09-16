@@ -1,8 +1,10 @@
 # pg_agmemory 実装プラン
 
+[English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
+
 - 文書版: 0.1 / 設計レビュー反映版
-- 作成日・外部仕様の確認日: 2026-09-16
-- 状態: 実装前の提案。以下の性能値・品質値は受入目標であり、測定結果ではない。
+- 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
+- 状態: 実装着手段階。実装前にGit repositoryを初期化し、原案を初期commit済み。以下の工程は完了済み機能を示すものではなく、性能値・品質値は受入目標であり、測定結果ではない。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -579,7 +581,7 @@ transport sessionをMemory run/sessionと同一視しない。MCP応答はstruct
 
 pg_agmemory coreはpostgresemのpackage、schema、LSQに依存しない。独立Native SDK/MCP clientで全core機能を使えることをCIで検証する。postgresem側にMemory API clientを持たせれば、Agentには一つのgatewayとして見せられる。
 
-既存のpostgresem計画では、semantic queryのread-only経路と認証・RLS境界が重視され、後続mutationも別capabilityとして分離されている。この境界を維持し、memoryへのwrite権限を業務query接続へ付与しない。確認したローカル資料は`/Users/rifujita/Git_Managed/postgresem/docs/POSTGRESQL_SEMANTIC_GATEWAY_IMPLEMENTATION_PLAN.md`（2026-09-16参照）。連携実装済みという意味ではない。
+既存のpostgresem計画では、semantic queryのread-only経路と認証・RLS境界が重視され、後続mutationも別capabilityとして分離されている。この境界を維持し、memoryへのwrite権限を業務query接続へ付与しない。原案で参照した資料はpostgresemプロジェクトの`docs/POSTGRESQL_SEMANTIC_GATEWAY_IMPLEMENTATION_PLAN.md`（2026-09-16参照。本repositoryには同梱しない）。連携実装済みという意味ではない。
 
 ### 14.1 統合契約
 
@@ -628,12 +630,17 @@ schema変更はexpand -> backfill -> read切替 -> contractの順とし、破壊
 
 ## 16. OSSモジュール構成と成果物
 
-将来プロジェクトを新規作成する場合の既定パスは`/Users/rifujita/Git_Managed/pg_agmemory`とする。本計画の納品はMarkdownのみであり、この時点で実装repositoryの作成・公開は行わない。
+実際のプロジェクトディレクトリおよび公開GitHub repository名は`pgag_memory`、Python packageおよびサービス名は`pg_agmemory`とする。実装前にGitを初期化し、原案を初期commit済みである。MIT licenseの公開GitHub repositoryとして実装を進め、README・本計画・利用手順を日本語と英語で提供する。公開完了や下記の全moduleの実装完了を示すものではない。
 
 ```text
-pg_agmemory/
+pgag_memory/
+  README.md                      # English
+  README-jp.md                   # 日本語
+  LICENSE                        # MIT
+  .github/workflows/             # Docker: linux/amd64, linux/arm64
   docs/
     PG_AGMEMORY_IMPLEMENTATION_PLAN.md
+    PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md
     adr/                         # 技術選択と不変条件
     api/                         # OpenAPI / JSON Schema / error catalog
     operations/                  # backup, restore, deletion, migration
@@ -660,7 +667,7 @@ pg_agmemory/
 
 domainはHTTP、MCP、model providerを知らない。DB repositoryはcallerからSQL文字列を受け付けない。adapterはapplication use caseを呼び、認可や時間処理を独自に再実装しない。
 
-成果物はAPI contract、migration、実行profile、seed data、SDK例、脅威モデル、削除runbook、再現可能eval harness、license/SBOMとする。licenseはApache-2.0を候補とし、依存・dataset・モデルの再配布条件をM0で確認する。特定商用modelのAPI keyなしで基本contract testを再現できるfake providerと小型ローカルprovider例を用意する。
+成果物はAPI contract、migration、実行profile、seed data、SDK例、脅威モデル、削除runbook、再現可能eval harness、license/SBOMとする。プロジェクトのlicenseはMITとする（従来のApache-2.0候補に優先）。依存・dataset・モデルのlicenseおよび再配布条件は別途M0で確認する。特定商用modelのAPI keyなしで基本contract testを再現できるfake providerと小型ローカルprovider例を用意する。
 
 ## 17. 段階的MVPとroadmap
 
@@ -689,7 +696,7 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 
 ### 17.2 最初の実装backlog
 
-1. repository作成時に本計画を`docs/`へ置き、設計・ADRの初期commitを作る。
+1. 実装前のGit初期化と原案の初期commitは完了。本計画の日本語版・英語版を`docs/`で管理し、MIT license・二言語README・利用手順を整備して公開GitHub repositoryで開発を進める。ADRはM0で追加する。
 2. 2 tenants、同名entity、異なるscope、遡及訂正、削除対象を含むgolden fixtureを作る。
 3. object/scope/episode/assertion revisionとRLS migrationを実装する。
 4. 認証contextから短いDB transactionを作る共通application wrapperを実装する。
@@ -701,6 +708,8 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 10. pgvector、synthesis、MCP、implicit hookを順次追加し、baselineとの差分を測る。
 
 ## 18. テスト戦略
+
+ローカルのcontainer統合試験にはmacOS上のApple Containerを使用する。GitHub ActionsではDockerを使用し、`linux/amd64`と`linux/arm64`の両方でimageのbuildとcontainer内のテストを実行する。各architectureの実行方式（native runnerまたはemulation）、固定image/extension版、実行したsuiteと未対応項目を記録し、imageのbuild成功だけをテスト合格としない。ローカル・CIで同じfixtureと判定条件を使い、下記の性能profileとは結果を区別する。これらは整備・検証対象であり、現時点のテスト合格を表すものではない。
 
 ### 18.1 正しさ・認可・障害試験
 
@@ -816,5 +825,9 @@ M profileの達成を前提に実装を複雑化しない。まずSで正しさ�
 | 論理分離・物理分離 | 3、6、15 / M0で方針固定 |
 | 段階的MVP/roadmap | 17 |
 | テスト・評価指標 | 18 |
+| MIT license | 16、17.2 / repository基盤整備 |
+| ローカルテストはApple Container | 18 / M0〜M1で実行環境整備 |
+| GitHub ActionsはDocker、linux/amd64・linux/arm64 | 16、18 / M0〜M1でCI整備、以後各段階で検証 |
+| 公開GitHub repository・日英ドキュメント・実装前のGit初期化 | 16、17.2 / Git初期化・原案commit済み、公開・二言語化を整備 |
 
-本計画の完了と実装の完了は区別する。今回の成果物は設計書であり、DDL migrationの実行、extension互換性、RLS、API、性能・品質gateは未検証である。最初の着手単位はM0のADRとgolden fixture、続いてM1の安全な縦断実装とする。
+本計画の完了と実装の完了は区別する。Git初期化と原案commitを終えた実装着手段階であり、DDL migrationの実行、extension互換性、RLS、API、性能・品質gateは、本計画で検証済みとは主張しない。最初の着手単位はM0のADRとgolden fixture、続いてM1の安全な縦断実装とする。公開repository・二言語ドキュメント・MIT license・Apple Container/Dockerのテスト基盤整備も並行して進める。
