@@ -4,11 +4,16 @@ import hmac
 import json
 import os
 import secrets
+import socket
+import subprocess
+import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.resources import files
 from uuid import UUID, uuid4
 
+import httpx
 import jwt
 import psycopg
 import pytest
@@ -135,6 +140,9 @@ def database():
                VALUES (%s,%s,2,%s,%s,'Gold')""",
             (record["tenant"], record["assertion"], record["source"], record["scope"]),
         )
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    seed_v3_checkpoint(url, legacy[0])
     with pytest.raises(RuntimeError, match="schema version mismatch"):
         asyncio.run(validate_runtime(runtime_url))
     migrate(url)
@@ -296,3 +304,144 @@ def seed_legacy_database(url):
                 }
             )
     return records
+
+
+def seed_v3_checkpoint(url, record):
+    checkpoint, run, branch, operation = [uuid4() for _ in range(4)]
+    state = {
+        "goal": "Legacy v3 checkpoint",
+        "constraints": [],
+        "completed_actions": [],
+        "decisions": [],
+        "unresolved_questions": [],
+        "next_actions": [],
+        "pending_effects": [
+            {
+                "operation_id": str(operation),
+                "description": "Legacy planned hint",
+                "status": "planned",
+            }
+        ],
+    }
+    payload = {
+        "checkpoint_id": str(checkpoint),
+        "scope_id": str(record["scope"]),
+        "run_id": str(run),
+        "branch_id": str(branch),
+        "sequence": 1,
+        "parent_checkpoint": None,
+        "harness_id": "legacy-harness",
+        "harness_version": "1.0",
+        "state_schema_version": 1,
+        "event_watermark": 10,
+        "state": state,
+        "memory_refs": [{"memory_id": str(record["assertion"]), "revision": 1}],
+        "saved_access_epoch": 1,
+        "saved_deletion_epoch": 1,
+    }
+    with psycopg.connect(url) as conn:
+        conn.execute(files("pg_agmemory").joinpath("storage/003_checkpoints.sql").read_text())
+        conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (3)")
+        secret = conn.execute(
+            "SELECT dedup_secret FROM memory.tenant WHERE id = %s", (record["tenant"],)
+        ).fetchone()[0]
+        checksum = hmac.new(
+            secret,
+            (
+                "checkpoint-envelope-v1:"
+                + json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            ).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        conn.execute(
+            """INSERT INTO memory.checkpoint_run
+               (tenant_id,scope_id,run_id,harness_id,harness_version,state_schema_version)
+               VALUES (%s,%s,%s,'legacy-harness','1.0',1)""",
+            (record["tenant"], record["scope"], run),
+        )
+        conn.execute(
+            """INSERT INTO memory.checkpoint_branch(tenant_id,scope_id,run_id,branch_id)
+               VALUES (%s,%s,%s,%s)""",
+            (record["tenant"], record["scope"], run, branch),
+        )
+        conn.execute(
+            """INSERT INTO memory.object(tenant_id,id,scope_id,kind)
+               VALUES (%s,%s,%s,'checkpoint')""",
+            (record["tenant"], checkpoint, record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory.checkpoint
+               (tenant_id,id,scope_id,run_id,branch_id,sequence,state,event_watermark,
+                reference_count,access_epoch,deletion_epoch,checksum)
+               VALUES (%s,%s,%s,%s,%s,1,%s,10,1,1,1,%s)""",
+            (record["tenant"], checkpoint, record["scope"], run, branch, Jsonb(state), checksum),
+        )
+        conn.execute(
+            """INSERT INTO memory.checkpoint_reference
+               (tenant_id,checkpoint_id,scope_id,source_id,source_revision,source_kind)
+               VALUES (%s,%s,%s,%s,1,'assertion')""",
+            (record["tenant"], checkpoint, record["scope"], record["assertion"]),
+        )
+    record["checkpoint"] = payload
+    record["checksum"] = checksum
+
+
+@pytest.fixture
+def api_process(env, tmp_path):
+    @contextmanager
+    def start(name):
+        log_path = tmp_path / name
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            port = reservation.getsockname()[1]
+        settings = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in ("PGAG_TEST_DATABASE_URL", "PGAG_ADMIN_DATABASE_URL")
+        } | {
+            "PGAG_DATABASE_URL": env.settings.database_url,
+            "PGAG_JWT_PUBLIC_KEY": env.settings.jwt_public_key,
+            "PGAG_JWT_ISSUER": env.settings.jwt_issuer,
+            "PGAG_JWT_AUDIENCE": env.settings.jwt_audience,
+        }
+        with log_path.open("w+") as log:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "pg_agmemory.api:create_app",
+                    "--factory",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                ],
+                env=settings,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+            try:
+                with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as client:
+                    for _ in range(100):
+                        if process.poll() is not None:
+                            pytest.fail("API startup failed: " + log_path.read_text())
+                        try:
+                            if client.get("/healthz").status_code == 200:
+                                break
+                        except httpx.TransportError:
+                            pass
+                        time.sleep(0.05)
+                    else:
+                        pytest.fail("API did not become ready: " + log_path.read_text())
+                    yield client, process
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
+
+    return start

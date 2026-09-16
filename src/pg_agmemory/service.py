@@ -13,6 +13,7 @@ from pg_agmemory.models import (
     Forget,
     Identity,
     MemoryItem,
+    MemoryReference,
     Observe,
     Recall,
     Remember,
@@ -118,6 +119,41 @@ class MemoryService:
             (self.tenant, object_id, scope, kind),
         )
         return object_id
+
+    async def validate_refs(
+        self,
+        scope_id: UUID,
+        refs: list[MemoryReference],
+        error_code: str = "invalid_checkpoint_reference",
+    ) -> list[dict[str, Any]]:
+        result = []
+        for ref in sorted(refs, key=lambda ref: (str(ref.memory_id), ref.revision)):
+            obj = await self.object(ref.memory_id)
+            if obj["scope_id"] != scope_id or obj["kind"] not in ("episode", "assertion"):
+                raise MemoryError(error_code, 422)
+            if obj["kind"] == "episode":
+                exists = ref.revision == 1
+            else:
+                exists = (
+                    await (
+                        await self.conn.execute(
+                            """SELECT 1 FROM memory.assertion_revision
+                           WHERE tenant_id = %s AND assertion_id = %s AND revision = %s""",
+                            (self.tenant, ref.memory_id, ref.revision),
+                        )
+                    ).fetchone()
+                    is not None
+                )
+            if not exists:
+                raise MemoryError(error_code, 422)
+            result.append(
+                {
+                    "memory_id": str(ref.memory_id),
+                    "revision": ref.revision,
+                    "kind": obj["kind"],
+                }
+            )
+        return result
 
     async def observe(self, data: Observe, key: str) -> dict[str, Any]:
         await self.scope(data.scope_id, "write")
@@ -412,6 +448,13 @@ class MemoryService:
                     UNION
                     SELECT parent_id, id FROM memory.checkpoint
                     WHERE tenant_id = %(tenant)s AND parent_id IS NOT NULL
+                    UNION
+                    SELECT source_id, effect_id FROM memory.tool_effect_reference
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT e.id, c.id FROM memory.tool_effect e JOIN memory.checkpoint c
+                      USING (tenant_id, scope_id, run_id)
+                    WHERE e.tenant_id = %(tenant)s
                 ), closure(id) AS (
                     SELECT unnest(%(ids)s::uuid[])
                     UNION
@@ -427,6 +470,15 @@ class MemoryService:
             return {"mode": "preview", "object_count": len(targets), "changed": False}
         if data.mode == "purge":
             await self.conn.execute(
+                """UPDATE memory.checkpoint_run r SET effects_invalidated = true
+                   WHERE r.tenant_id = %s AND NOT r.effects_invalidated AND EXISTS (
+                       SELECT 1 FROM memory.tool_effect e
+                       WHERE e.tenant_id = r.tenant_id AND e.scope_id = r.scope_id
+                         AND e.run_id = r.run_id AND e.id = ANY(%s)
+                   )""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
                 """UPDATE memory.checkpoint_branch SET invalidated = true
                    WHERE tenant_id = %s AND head_id = ANY(%s) AND NOT invalidated""",
                 (self.tenant, targets),
@@ -438,6 +490,20 @@ class MemoryService:
             )
             await self.conn.execute(
                 "DELETE FROM memory.checkpoint WHERE tenant_id = %s AND id = ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.tool_effect_reference
+                   WHERE tenant_id = %s AND effect_id = ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.tool_effect_revision
+                   WHERE tenant_id = %s AND effect_id = ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.tool_effect WHERE tenant_id = %s AND id = ANY(%s)",
                 (self.tenant, targets),
             )
             await self.conn.execute(

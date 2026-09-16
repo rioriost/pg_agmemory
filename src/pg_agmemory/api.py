@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pg_agmemory import __version__
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, Settings, connect, validate_runtime
+from pg_agmemory.effects import ToolEffects
 from pg_agmemory.models import (
     AssertionExplanation,
     CheckpointEnvelope,
@@ -32,6 +33,7 @@ from pg_agmemory.models import (
     Identity,
     Observe,
     ObserveResult,
+    PlanToolEffect,
     Recall,
     RecallResult,
     Remember,
@@ -39,6 +41,9 @@ from pg_agmemory.models import (
     RestoreCheckpoint,
     ReviseAssertion,
     RevisionResult,
+    ToolEffectDetail,
+    ToolEffectReceipt,
+    TransitionToolEffect,
 )
 from pg_agmemory.service import MemoryError, MemoryService
 
@@ -225,7 +230,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m1-checkpoints",
+            "stage": "m1-effect-ledger",
             "features": [
                 "observe",
                 "structured_remember",
@@ -235,11 +240,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "forget",
                 "checkpoints",
                 "checkpoint_restore",
+                "tool_effect_ledger",
             ],
             "graph_backend": None,
             "auto_synthesis": False,
             "checkpoints": True,
-            "tool_effect_ledger": False,
+            "tool_effect_ledger": True,
             "temporal_revisions": True,
             "vector_search": False,
             "tokenizer": "utf8-bytes-v1",
@@ -252,6 +258,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "assertion_revisions": 1000,
                 "checkpoint_body_bytes": 1048576,
                 "checkpoint_references": 100,
+                "tool_effects_per_run": 100,
+                "tool_effect_references": 100,
             },
         }
 
@@ -286,6 +294,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/checkpoints/{checkpoint_id}", response_model=CheckpointEnvelope)
     async def get_checkpoint(checkpoint_id: UUID, request: Request) -> Any:
         return await Checkpoints(service(request)).envelope(checkpoint_id)
+
+    @app.post("/v1/tool-effects", status_code=201, response_model=ToolEffectReceipt)
+    async def plan_tool_effect(
+        data: PlanToolEffect, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await ToolEffects(service(request)).plan(data, idempotency_key)
+
+    @app.post(
+        "/v1/tool-effects/{memory_id}/transitions",
+        status_code=201,
+        response_model=ToolEffectReceipt,
+    )
+    async def transition_tool_effect(
+        memory_id: UUID,
+        data: TransitionToolEffect,
+        request: Request,
+        idempotency_key: IdempotencyKey,
+    ) -> Any:
+        return await ToolEffects(service(request)).transition(memory_id, data, idempotency_key)
+
+    @app.get("/v1/tool-effects/{memory_id}", response_model=ToolEffectDetail)
+    async def get_tool_effect(memory_id: UUID, request: Request) -> Any:
+        return await ToolEffects(service(request)).get(memory_id)
 
     @app.post("/v1/recall", response_model=RecallResult)
     async def recall(data: Recall, request: Request) -> Any:

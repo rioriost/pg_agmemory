@@ -6,10 +6,10 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from pg_agmemory.effects import ToolEffects
 from pg_agmemory.models import (
     CheckpointState,
     CreateCheckpoint,
-    MemoryReference,
     RestoreCheckpoint,
 )
 from pg_agmemory.service import MemoryError, MemoryService
@@ -32,38 +32,6 @@ class Checkpoints:
             raise MemoryError("not_found", 404)
         return row
 
-    async def validate_refs(
-        self, scope_id: UUID, refs: list[MemoryReference]
-    ) -> list[dict[str, Any]]:
-        result = []
-        for ref in sorted(refs, key=lambda ref: (str(ref.memory_id), ref.revision)):
-            obj = await self.memory.object(ref.memory_id)
-            if obj["scope_id"] != scope_id or obj["kind"] not in ("episode", "assertion"):
-                raise MemoryError("invalid_checkpoint_reference", 422)
-            if obj["kind"] == "episode":
-                exists = ref.revision == 1
-            else:
-                exists = (
-                    await (
-                        await self.conn.execute(
-                            """SELECT 1 FROM memory.assertion_revision
-                           WHERE tenant_id = %s AND assertion_id = %s AND revision = %s""",
-                            (self.tenant, ref.memory_id, ref.revision),
-                        )
-                    ).fetchone()
-                    is not None
-                )
-            if not exists:
-                raise MemoryError("invalid_checkpoint_reference", 422)
-            result.append(
-                {
-                    "memory_id": str(ref.memory_id),
-                    "revision": ref.revision,
-                    "kind": obj["kind"],
-                }
-            )
-        return result
-
     async def checksum(self, payload: dict[str, Any]) -> str:
         return await self.memory.digest(
             "checkpoint-envelope-v1:"
@@ -76,14 +44,15 @@ class Checkpoints:
             raise MemoryError("not_found", 404)
         row = await (
             await self.conn.execute(
-                """SELECT c.*, r.harness_id, r.harness_version, r.state_schema_version
+                """SELECT c.*, r.harness_id, r.harness_version, r.state_schema_version,
+                          r.effects_invalidated
                    FROM memory.checkpoint c JOIN memory.checkpoint_run r
                      USING (tenant_id, scope_id, run_id)
                    WHERE c.tenant_id = %s AND c.id = %s""",
                 (self.tenant, checkpoint_id),
             )
         ).fetchone()
-        if row is None:
+        if row is None or row["effects_invalidated"]:
             raise MemoryError("checkpoint_invalidated", 409)
         refs = await (
             await self.conn.execute(
@@ -125,17 +94,33 @@ class Checkpoints:
     async def envelope(self, checkpoint_id: UUID) -> dict[str, Any]:
         saved = await self.load(checkpoint_id)
         epochs = await self.epochs()
-        unresolved = [
-            effect["operation_id"]
-            for effect in saved["state"]["pending_effects"]
-            if effect["status"] in ("dispatched", "unknown")
-        ]
+        effects = await ToolEffects(self.memory).list_run(
+            UUID(saved["scope_id"]), UUID(saved["run_id"])
+        )
+        tracked = {str(effect["operation_id"]): effect["status"] for effect in effects}
+        unresolved = {
+            operation
+            for operation, status in tracked.items()
+            if status in ("dispatched", "unknown")
+        }
+        untracked = set()
+        for hint in saved["state"]["pending_effects"]:
+            operation = hint["operation_id"]
+            if operation not in tracked:
+                untracked.add(operation)
+            if hint["status"] in ("dispatched", "unknown") and tracked.get(operation) not in (
+                "confirmed",
+                "failed",
+            ):
+                unresolved.add(operation)
         return {
             **saved,
             "current_access_epoch": epochs["access_epoch"],
             "current_deletion_epoch": epochs["deletion_epoch"],
-            "requires_reconciliation": unresolved,
-            "resume_allowed": not unresolved,
+            "requires_reconciliation": sorted(unresolved | untracked),
+            "untracked_effects": sorted(untracked),
+            "tool_effects": effects,
+            "resume_allowed": not (unresolved or untracked),
             "automatic_reexecution": False,
         }
 
@@ -156,12 +141,17 @@ class Checkpoints:
         )
         run = await (
             await self.conn.execute(
-                """SELECT harness_id,harness_version,state_schema_version FROM memory.checkpoint_run
+                """SELECT harness_id,harness_version,state_schema_version,effects_invalidated
+                   FROM memory.checkpoint_run
                    WHERE tenant_id = %s AND scope_id = %s AND run_id = %s""",
                 run_key,
             )
         ).fetchone()
-        if not run or run != {
+        if run and run["effects_invalidated"]:
+            raise MemoryError("checkpoint_invalidated", 409)
+        if not run or {
+            name: run[name] for name in ("harness_id", "harness_version", "state_schema_version")
+        } != {
             "harness_id": data.harness_id,
             "harness_version": data.harness_version,
             "state_schema_version": data.state_schema_version,
@@ -197,7 +187,7 @@ class Checkpoints:
     async def insert(
         self, data: CreateCheckpoint, sequence: int, parent_id: UUID | None
     ) -> dict[str, Any]:
-        refs = await self.validate_refs(data.scope_id, data.memory_refs)
+        refs = await self.memory.validate_refs(data.scope_id, data.memory_refs)
         epochs = await self.epochs()
         checkpoint_id = await self.memory.new_object(data.scope_id, "checkpoint")
         payload = {
@@ -282,6 +272,7 @@ class Checkpoints:
         ).fetchone()
         if inserted is None:
             raise MemoryError("checkpoint_branch_conflict", 409)
+        await ToolEffects(self.memory).fence_restore(UUID(saved["scope_id"]), UUID(saved["run_id"]))
         state = CheckpointState.model_validate(saved["state"])
         for effect in state.pending_effects:
             if effect.status == "dispatched":

@@ -324,6 +324,78 @@ class CheckpointReceipt(BaseModel):
     checksum_algorithm: Literal["hmac-sha256-v1"] = "hmac-sha256-v1"
 
 
+EffectStatus = Literal["planned", "dispatched", "unknown", "confirmed", "failed"]
+EffectRevision = Annotated[int, Field(ge=1, le=4, strict=True)]
+Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class PlanToolEffect(Contract):
+    scope_id: UUID
+    run_id: UUID
+    operation_id: UUID
+    tool_name: ShortText
+    action_hash: Digest
+    memory_refs: Annotated[list[MemoryReference], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+
+    @model_validator(mode="after")
+    def unique_references(self) -> "PlanToolEffect":
+        if len({(ref.memory_id, ref.revision) for ref in self.memory_refs}) != len(
+            self.memory_refs
+        ):
+            raise ValueError("memory references must be unique")
+        return self
+
+
+class TransitionToolEffect(Contract):
+    expected_revision: EffectRevision
+    status: Literal["dispatched", "unknown", "confirmed", "failed"]
+    reason: ShortText
+    receipt_reference: ShortText | None = None
+    receipt_source: Literal["provider_receipt", "operator_review"] | None = None
+
+    @model_validator(mode="after")
+    def terminal_receipt(self) -> "TransitionToolEffect":
+        if self.status in ("confirmed", "failed"):
+            if self.receipt_reference is None or self.receipt_source is None:
+                raise ValueError("terminal outcomes require a receipt reference and source")
+        elif self.receipt_reference is not None or self.receipt_source is not None:
+            raise ValueError("receipts belong to terminal outcomes")
+        return self
+
+
+class ToolEffectReceipt(BaseModel):
+    memory_id: UUID
+    revision: EffectRevision
+    status: EffectStatus
+
+
+class ToolEffectSummary(ToolEffectReceipt):
+    operation_id: UUID
+
+
+class ToolEffectEvent(BaseModel):
+    revision: EffectRevision
+    status: EffectStatus
+    recorded_at: datetime
+    reason: str
+    receipt_reference: str | None
+    receipt_source: Literal["provider_receipt", "operator_review"] | None
+    origin: Literal["api", "checkpoint_restore"]
+
+
+class ToolEffectDetail(ToolEffectSummary):
+    scope_id: UUID
+    run_id: UUID
+    tool_name: str
+    action_fingerprint: Digest
+    external_idempotency_key: Digest
+    run_invalidated: bool
+    memory_refs: list[MemoryReference]
+    history: list[ToolEffectEvent]
+
+
 class CheckpointEnvelope(CheckpointReceipt):
     scope_id: UUID
     harness_id: str
@@ -337,5 +409,7 @@ class CheckpointEnvelope(CheckpointReceipt):
     current_access_epoch: int
     current_deletion_epoch: int
     requires_reconciliation: list[UUID]
+    untracked_effects: list[UUID] = Field(default_factory=list)
+    tool_effects: list[ToolEffectSummary] = Field(default_factory=list)
     resume_allowed: bool
     automatic_reexecution: Literal[False] = False

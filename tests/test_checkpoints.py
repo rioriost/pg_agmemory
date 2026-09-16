@@ -1,15 +1,8 @@
 import asyncio
 import json
-import os
-import socket
-import subprocess
-import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from uuid import uuid4
 
-import httpx
 import psycopg
 import pytest
 
@@ -391,8 +384,8 @@ def test_runtime_cannot_edit_checkpoint_payload_or_rewind_branch(env):
 
 def test_checkpoint_routes_publish_typed_contracts_and_capabilities(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["checkpoints"] is True and capabilities["tool_effect_ledger"] is False
-    assert capabilities["schema_version"] == 3
+    assert capabilities["checkpoints"] is True and capabilities["tool_effect_ledger"] is True
+    assert capabilities["schema_version"] == 4
     schema = env.client.get("/openapi.json").json()
     for path, verb, status in [
         ("/v1/checkpoints", "post", "201"),
@@ -500,72 +493,16 @@ def test_parallel_restore_idempotency_creates_one_fork(env):
     assert len({result.json()["checkpoint_id"] for result in results}) == 1
 
 
-@contextmanager
-def live_api(env, log_path):
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        port = reservation.getsockname()[1]
-    settings = {
-        key: value
-        for key, value in os.environ.items()
-        if key not in ("PGAG_TEST_DATABASE_URL", "PGAG_ADMIN_DATABASE_URL")
-    } | {
-        "PGAG_DATABASE_URL": env.settings.database_url,
-        "PGAG_JWT_PUBLIC_KEY": env.settings.jwt_public_key,
-        "PGAG_JWT_ISSUER": env.settings.jwt_issuer,
-        "PGAG_JWT_AUDIENCE": env.settings.jwt_audience,
-    }
-    with log_path.open("w+") as log:
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "pg_agmemory.api:create_app",
-                "--factory",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
-            env=settings,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as client:
-                for _ in range(100):
-                    if process.poll() is not None:
-                        pytest.fail("API startup failed: " + log_path.read_text())
-                    try:
-                        if client.get("/healthz").status_code == 200:
-                            break
-                    except httpx.TransportError:
-                        pass
-                    time.sleep(0.05)
-                else:
-                    pytest.fail("API did not become ready: " + log_path.read_text())
-                yield client, process
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=10)
-
-
-def test_checkpoint_survives_actual_api_process_crash(env, tmp_path):
+def test_checkpoint_survives_actual_api_process_crash(env, api_process):
     body = payload(env)
     headers = env.headers()
-    with live_api(env, tmp_path / "first-api.log") as (client, process):
+    with api_process("first-api.log") as (client, process):
         saved = client.post("/v1/checkpoints", json=body, headers=headers)
         assert saved.status_code == 201, saved.text
         receipt = saved.json()
         process.kill()
         process.wait(timeout=10)
-    with live_api(env, tmp_path / "restarted-api.log") as (client, _):
+    with api_process("restarted-api.log") as (client, _):
         replayed = client.post("/v1/checkpoints", json=body, headers=headers)
         assert replayed.status_code == 201
         assert replayed.json() == receipt
