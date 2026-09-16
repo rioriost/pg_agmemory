@@ -1,0 +1,216 @@
+from datetime import datetime
+from typing import Annotated, Literal
+from uuid import UUID
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+ShortText = Annotated[str, Field(min_length=1, max_length=256)]
+Content = Annotated[str, Field(min_length=1, max_length=65536)]
+
+
+class Contract(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class Observe(Contract):
+    scope_id: UUID
+    source_namespace: ShortText
+    source_event_id: ShortText
+    occurred_at: AwareDatetime
+    content: Content
+    consent_reference: ShortText
+
+
+class Evidence(Contract):
+    memory_id: UUID
+    quote: Annotated[str, Field(min_length=1, max_length=4096)]
+
+
+class Remember(Contract):
+    scope_id: UUID
+    subject: ShortText
+    predicate: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+    value: Content
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
+    explicit_intent: Literal[True]
+    valid_from: AwareDatetime | None = None
+    valid_to: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def valid_interval(self) -> "Remember":
+        if self.valid_from and self.valid_to and self.valid_from >= self.valid_to:
+            raise ValueError("valid_from must precede valid_to")
+        if len({item.memory_id for item in self.evidence}) != len(self.evidence):
+            raise ValueError("evidence IDs must be unique")
+        return self
+
+
+class Recall(Contract):
+    query: Annotated[str, Field(max_length=4096)] = ""
+    scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
+    purpose: ShortText
+    as_of: AwareDatetime | None = None
+    known_at: AwareDatetime | None = None
+    mode: Literal["implicit", "explicit"] = "explicit"
+    token_budget: Annotated[int, Field(ge=64, le=8000)] = 2000
+    max_items: Annotated[int, Field(ge=1, le=100)] = 20
+    tokenizer_id: Literal["utf8-bytes-v1"] = "utf8-bytes-v1"
+
+    @model_validator(mode="after")
+    def implicit_budget(self) -> "Recall":
+        if self.mode == "implicit" and self.token_budget > 2000:
+            raise ValueError("implicit recall is limited to 2000 budget units")
+        return self
+
+
+class Explain(Contract):
+    memory_id: UUID
+    revision: Literal[1] = 1
+
+
+class Forget(Contract):
+    memory_ids: Annotated[list[UUID], Field(min_length=1, max_length=100)]
+    mode: Literal["preview", "purge"] = "purge"
+    reason: ShortText
+
+    @model_validator(mode="after")
+    def unique_ids(self) -> "Forget":
+        if len(set(self.memory_ids)) != len(self.memory_ids):
+            raise ValueError("memory IDs must be unique")
+        return self
+
+
+class Identity(BaseModel):
+    tenant_id: UUID
+    principal_id: UUID
+
+
+class MemoryItem(BaseModel):
+    memory_id: UUID
+    revision: int = 1
+    type: Literal["episode", "assertion"]
+    content: str
+    recorded_at: datetime
+    occurred_at: datetime | None = None
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    epistemic_status: Literal["reported"] = "reported"
+    confidence: dict[str, str | None] = Field(
+        default_factory=lambda: {"score": None, "method": "uncalibrated"}
+    )
+    source: list[UUID] = Field(default_factory=list)
+    requires_refresh: bool = True
+
+
+class ErrorBody(BaseModel):
+    code: str
+    request_id: str
+    retryable: bool
+    details: dict[str, str] = Field(default_factory=dict)
+
+
+class ObserveResult(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    synthesis_job_id: None = None
+
+
+class RememberResult(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    epistemic_status: Literal["reported"]
+
+
+class ContextPack(BaseModel):
+    format: Literal["memory-context-v1"]
+    text: str
+    tokenizer_id: Literal["utf8-bytes-v1"]
+    token_count: None = None
+    budget_unit: Literal["utf8_bytes"]
+    byte_count: int
+    exact_token_count: Literal[False]
+
+
+class Coverage(BaseModel):
+    retrieval_complete: bool
+    synthesis_pending: Literal[False]
+    graph_used: Literal[False]
+    truncated: bool
+
+
+class Consistency(BaseModel):
+    access_epoch: int
+    deletion_epoch: int
+
+
+class RecallResult(BaseModel):
+    items: list[MemoryItem]
+    context_pack: ContextPack
+    coverage: Coverage
+    consistency: Consistency
+    empty_reason: Literal["budget_exhausted", "not_found"] | None
+
+
+class ExplainedSource(BaseModel):
+    content: str
+    occurred_at: datetime
+    consent_reference: str
+
+
+class EpisodeExplanation(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    type: Literal["episode"]
+    source: ExplainedSource
+
+
+class ExplainedAssertion(BaseModel):
+    subject: str
+    predicate: str
+    value: str
+    valid_from: datetime | None
+    valid_to: datetime | None
+    recorded_at: datetime
+
+
+class ExplainedEvidence(BaseModel):
+    memory_id: UUID
+    quote: str
+    occurred_at: datetime
+
+
+class AssertionExplanation(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    type: Literal["assertion"]
+    assertion: ExplainedAssertion
+    evidence: list[ExplainedEvidence]
+    epistemic_status: Literal["reported"]
+    confidence: dict[str, str | None]
+
+
+class DeletionResult(BaseModel):
+    deletion_id: UUID
+    state: Literal["active_store_purged"]
+    object_count: int
+    deletion_epoch: int
+    scope_ids: list[UUID]
+    backup_status: Literal["operator_managed"]
+    backup_retention_deadline: None = None
+
+
+class DeletionProgress(BaseModel):
+    deletion_id: UUID
+    mode: Literal["purge"]
+    state: Literal["active_store_purged"]
+    object_count: int
+    deletion_epoch: int
+    created_at: datetime
+    backup_status: Literal["operator_managed"]
+    backup_retention_deadline: None = None
+
+
+class DeletionPreview(BaseModel):
+    mode: Literal["preview"]
+    object_count: int
+    changed: Literal[False]
