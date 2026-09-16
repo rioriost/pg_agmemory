@@ -7,6 +7,10 @@
 - 置換対象: [ADR 0003](0003-checkpoints-jp.md)のledger延期とsnapshot-onlyの再開規則
 - 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
 
+過去の範囲: 以下のschema 4要件と証拠はv4時点のものです。
+[ADR 0005](0005-relational-graph-jp.md)がentity参照とschema 5を追加します。
+更新には本ADRの過去schema要件ではなく、現在の運用手順を使ってください。
+
 ## 決定と範囲
 
 上限付きのdurableな外部tool-effect intent/outcome台帳をPostgreSQLへ保存します。

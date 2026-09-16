@@ -6,16 +6,18 @@
 remains `rioriost/pgag_memory`; the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.4/schema 4 tool-effect ledger implemented; local and native Docker checks passed.
-Not a completed M1, MVP, or production release.**
+**Status: v0.0.5/schema 5 SQL graph oracle implemented; local and native Docker checks passed.
+Not a completed M0/M1/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
 explanation, transactional idempotency, and synchronous active-store purge.
 Tenant/scope permissions are enforced in both the service and PostgreSQL RLS.
 Every mutation commits before its response is sent. Assertion revisions retain
 server-controlled system-time history and revision-specific evidence.
-Typed checkpoints support restore-to-new-branch envelopes. The new milestone
-adds a durable tool-effect intent/outcome ledger, not harness or tool execution.
+Typed checkpoints support restore-to-new-branch envelopes and a durable
+tool-effect ledger. The new milestone adds explicit entity identities and
+revisioned relation assertions with bounded, read-only PostgreSQL graph traversal.
+It does not automatically use graphs in recall or execute tools.
 
 Cross-assertion supersession/fact arbitration, provider receipt verification, harness adapters,
 workers, automatic synthesis,
@@ -49,12 +51,14 @@ and **linux/arm64** runners, including runtime-image startup:
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For **v0.0.4/schema 4**, implementation commit
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8), Apple Container
-and native Docker **linux/amd64** and **linux/arm64** each passed **73 tests**
-(2 existing warnings), Ruff, strict mypy (8 source files), and production HTTP
-health smoke. See
-[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)
+For **v0.0.5/schema 5**, implementation commit
+[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16),
+Apple Container and native Docker **linux/amd64** and **linux/arm64** each passed
+**91 tests** (2 existing warnings), Ruff, strict mypy (9 source files), and
+production HTTP health smoke. Both full CI runs include the strengthened
+relation-context budget and DB target-integrity checks, also passed locally
+after the local full suite. See
+[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
 and the [validation evidence](docs/STATUS.md#validation-evidence).
 
 ## Run the API
@@ -86,12 +90,12 @@ Migration/provisioning access is administrative and must never be exposed as a
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading to v0.0.4 requires a maintenance stop and backup.** Stop all
-old/new API traffic and images, apply pending migrations through `004_tool_effects.sql`,
+**Upgrading to v0.0.5 requires a maintenance stop and backup.** Stop all
+old/new API traffic and images, apply pending migrations through `005_relational_graph.sql`,
 then start only the new API. The new runtime requires schema history exactly
-`[1, 2, 3, 4]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
+`[1, 2, 3, 4, 5]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling old-API compatibility or downgrade is supported. Follow the
-[migration procedure](docs/operations/README.md#v004-maintenance-migration).
+[migration procedure](docs/operations/README.md#v005-maintenance-migration).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -133,6 +137,44 @@ Deleting a source used by any revision purges the entire assertion history.
 See [the full contract](docs/STATUS.md#assertion-revision-contract) and
 [ADR 0002](docs/adr/0002-assertion-revisions.md).
 
+## Entities and SQL graph oracle
+
+`POST /v1/entities` creates an immutable revision-1 identity with an allowlisted
+type, canonical label, 1–32 same-scope episode quotes, and `explicit_intent: true`.
+Use `GET /v1/entities/{memory_id}` for metadata/evidence; entities are excluded
+from recall/explain. These are caller-reported identities, not verified facts or
+trusted instructions. There is no aliasing, merging, name resolution, semantic
+deduplication, or label-correction endpoint. Same HTTP key/body reuses the anchor;
+a different key can create another entity with the same label.
+
+`POST /v1/relations` creates **one canonical assertion**, not a second relation
+object, between same-scope entity UUIDs with same-scope episode evidence.
+Predicates are `depends_on`, `part_of`, `affects`, `works_for`, or `decides`;
+all are multi-valued reported declarations, without fact arbitration.
+`POST /v1/relations/{memory_id}/revisions` changes the target/evidence and replaces
+the entire valid interval under revision-CAS; source/predicate stay fixed.
+The generic assertion correction endpoint rejects typed relations with
+`409 relation_revision_required`. Free-text `remember` never becomes a relation
+by matching a label/predicate. Recall still uses FTS with `graph_used: false`;
+relation items/explanations carry exact entity IDs, also included in budgeted context text.
+
+Authenticated `POST /v1/graph/expand` is read-only and needs no `Idempotency-Key`.
+It uses fixed parameterized SQL joins, not AGE, SQL/PGQ, Cypher, or dynamic
+labels/queries. Explicit scope/seed/predicate filters only narrow current access.
+Deterministic breadth-first simple paths are bounded to 1–2 hops and 1–100 paths;
+all prefixes count. Results declare `backend: "sql"`, `projection_watermark: null`,
+temporal bounds, consistency epochs, and bounded coverage—not complete knowledge.
+Hidden seeds are not echoed; visible isolated seeds may appear without paths.
+Incoming traversal does not infer inverse facts.
+
+Entity revision 1 and exact relation assertion revisions can be declared in
+checkpoint/effect `memory_refs`. Source purge follows entity evidence and **all
+historical relation targets**, then existing checkpoint/effect dependencies.
+Other surviving entities are not deleted merely because a relation is removed.
+See [the contract](docs/STATUS.md#entities-and-sql-graph-oracle) and
+[ADR 0005](docs/adr/0005-relational-graph.md). This is a correctness reference for
+future backends, not measured graph utility or full M1/M3 acceptance.
+
 ## Typed checkpoints
 
 `POST /v1/checkpoints` stores schema-1 typed state under a scope-local run/branch,
@@ -148,7 +190,8 @@ all live run effects, including those added after the snapshot. Untracked hints,
 even planned ones, block resumption; this intentionally tightens legacy behavior.
 `automatic_reexecution` is always false. Saved assertion references keep their exact historical revisions;
 restore neither selects the latest revision nor refreshes current external facts.
-Callers must declare every memory dependency and sanitize all state;
+Callers must declare every copied entity or assertion revision dependency
+in `memory_refs` and sanitize all state;
 undeclared copied text is not discovered automatically.
 
 Deleting a source propagates through assertion history, checkpoint references,
@@ -192,6 +235,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) |
 | [Checkpoint decisions](docs/adr/0003-checkpoints.md) | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) |
 | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) |
+| [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

@@ -2,8 +2,8 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**v0.0.4/schema 4のtool-effect ledgerを実装済みで、ローカルとnative Dockerの検査は合格しています。
-M0/M1全体の完了、MVP完成、本番適格性の確認を意味しません。**
+**v0.0.5/schema 5のSQL graph oracleを実装済みで、ローカルとnative Dockerの検査は合格しています。
+M0/M1/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
 ローカルとCIの検査が合格しても、これらのgateが完了したとは扱いません。
@@ -18,6 +18,11 @@ M0/M1全体の完了、MVP完成、本番適格性の確認を意味しません
 | `POST /v1/observe` | caller指定の発生時刻・同意参照とともにepisodeを1件保存。revisionは`1`、`synthesis_job_id`は`null`で、job enqueueは行わない |
 | `POST /v1/remember` | 同一scopeの読取り可能なepisodeからの原文引用を根拠とし、明示的に要求された構造化assertionを保存 |
 | `POST /v1/assertions/{memory_id}/revisions` | expected head、明示的intent、reason、revision固有のepisode根拠を使い、同一assertionへ全置換revisionを追加 |
+| `POST /v1/entities` | episode根拠付きの不変・caller申告entity identityをrevision 1で作成 |
+| `GET /v1/entities/{memory_id}` | 現在読取り可能なentity metadataとepisode原文根拠を返す |
+| `POST /v1/relations` | 同一scopeのentity UUID間のtyped relationを一つのcanonical assertionとして作成 |
+| `POST /v1/relations/{memory_id}/revisions` | assertion revision-CASでtarget、根拠、valid interval全体を置換 |
+| `POST /v1/graph/expand` | 認証付き読取り専用の上限付きSQL探索。canonical relation revisionを使用し、`Idempotency-Key`は不要 |
 | `POST /v1/checkpoints` | branch headのCASでtyped stateを保存し、不変checkpoint参照/checksumを返す |
 | `GET /v1/checkpoints/{checkpoint_id}` | 現在のアクセス権と完全性を確認し、state・参照・epoch・照合hintを返す |
 | `POST /v1/checkpoints/restore` | 互換checkpointを新target branchへコピー。コード実行や外部副作用の再実行はしない |
@@ -71,7 +76,8 @@ lockを解放するかconnectionを閉じる必要があります。
 `remember`は`explicit_intent: true`と、重複のない1〜32件のepisode根拠IDを
 必須とします。各引用はepisode本文に文字列として含まれていなければならず、
 両objectは同一scopeに属します。このsliceではassertionを別assertionの
-sourceにはできません。subjectとvalueはtextであり、解決済みentity graphではありません。
+sourceにはできません。free-text subject/valueをentity IDへ解決しません。
+明示entity/relation endpointだけがtyped graph dataを作成します。
 
 原文引用の検査はprovenanceを確認するだけで、**意味的な支持や真実を認定しません**。
 引用が指定assertionを証明するかをサービスは推論しません。
@@ -103,6 +109,8 @@ subject、predicate、scopeは不変で、このbodyには指定できません�
 一致するheadが1000のとき追加を試みると`422 revision_limit_exceeded`です。
 上限は初期revisionを含む**全1000 revision**です。
 非公開/削除済み/assertion以外の対象は`404`です。
+typed relationには専用revision endpointが必要で、
+汎用訂正は`409 relation_revision_required`を返します。
 
 idempotency request hashには対象の`memory_id`も含めます。
 同一keyの完全一致再送は、後続訂正があっても元のcommit済みrevision参照を返します。
@@ -146,6 +154,11 @@ assertionの説明には、該当revisionの根拠に加え、
 BM25、日本語の分かち書き、vector検索、hybrid retrievalではありません。
 空の`query`を許可し、scope・時間条件で参照可能なitemを、
 件数とbyteの上限内で取得します。
+entity自体はrecall/explainから除外します。relation assertionはFTS候補のままで、
+recallが自動的にgraphを展開することはなく、`graph_used: false`を維持します。
+itemとassertion説明には返却revisionに対応するnullableな
+`relation: {source_entity, target_entity}`を含めます。
+relationのcontext本文は両entity UUIDを同じbyte予算内に含めます。
 
 request field名は`token_budget`ですが、`utf8-bytes-v1`はmetadata・引用を含む
 serialized context packの**UTF-8 byte数**を予算として扱います。
@@ -161,6 +174,108 @@ recallの返却itemは最大100件、予算値は64〜8,000
 `retrieval_complete`は世界の知識の完全性を意味しません。
 implicit modeはrequest optionであり、自動harness hookの実装ではありません。
 
+## EntityとSQL graph oracle
+
+### Entity identity
+
+作成には`Idempotency-Key`、scopeの現在のread/write権限、次のfieldが必要です。
+
+| `POST /v1/entities` field | 契約 |
+|---|---|
+| `scope_id` | 必須scope UUID |
+| `entity_type` | literalの`person`、`organization`、`project`、`component`、`incident`、`task`、`decision`、`other` |
+| `canonical_label` | 1〜256文字 |
+| `evidence` | 同一scopeの読取り可能で重複しない**episode** ID 1〜32件と、各1〜4,096文字の原文`quote` |
+| `explicit_intent` | `true`必須 |
+
+`201`で`memory_id`と`revision: 1`を返します。identity metadataと根拠は
+不変のcaller申告であり、検証済みfactではありません。alias、entity merge、
+名前ベースの解決、意味的重複抑止、label訂正endpointはありません。
+同じHTTP key/bodyは現在の認可の下でanchorを再利用しますが、
+別keyなら同じlabelの別entityを作成し得ます。名前/typeは非信頼dataであり指示ではありません。
+
+`GET /v1/entities/{memory_id}`はID/revision、scope、type、canonical label、
+記録時刻、episode根拠を返します。entityはrecall/explainには出さず専用GETを使います。
+entity revision 1をcheckpoint/tool-effectの`memory_refs`に指定できます。
+コピーしたすべてのentityまたはassertion revision依存を宣言してください。
+
+### Canonical relation assertion
+
+`POST /v1/relations`は`Idempotency-Key`、`scope_id`、`source_entity`/
+`target_entity` UUID、`predicate`、重複しないepisode原文根拠1〜32件、
+`explicit_intent: true`を必須とします。両endpointと**根拠はすべて同じscope**で
+現在読取り可能でなければなりません。quoteは1〜4,096文字です。
+任意の`valid_from`/`valid_to`はtimezone付きで、省略/nullは無限端、
+開始は終了より前とします。predicate allowlistは`depends_on`、`part_of`、
+`affects`、`works_for`、`decides`です。すべて複数のreportedな申告を許し、
+調停、検証済みtruth、逆向きfactの推論はありません。
+
+relationは独立object IDを持たず、**一つのcanonical assertion identity
+（`memory_id`）**です。`memory.relation`がsourceを固定し、
+`memory.relation_revision`が各assertion revisionの正確なtargetを記録します。
+subjectは不変のsource label、各revisionの不変valueはそのtargetのcanonical labelです。
+valid/system time、truth status、episode根拠は既存assertion revisionに属し、
+並行したgraph履歴ではありません。作成応答は既存の`RememberResult`
+（`memory_id`、revision 1、`epistemic_status: "reported"`）です。
+free-text `remember`はlabel/predicateが一致しても自動的にrelationになりません。
+
+`POST /v1/relations/{memory_id}/revisions`は`Idempotency-Key`、
+厳密な整数1〜1000の`expected_revision`、`target_entity`、置換episode `evidence`、
+`explicit_intent: true`、任意のtimezone付きvalid bound、1〜256文字の`reason`を要求します。
+source/predicate/scopeは固定です。汎用assertion訂正と同じく**valid interval全体**を
+置換し、期間を分割したり、新bound外に旧値を残したりしません。
+旧target ID、根拠、intervalは正確な過去revisionに維持します。
+CAS、過去結果の冪等再送、全1000 revision上限は同じです
+（`409 revision_conflict`、`422 revision_limit_exceeded`）。
+正確なrelation根拠には`explain`を使い、revision省略時は引き続き**1**です。
+
+### 上限付き展開
+
+認証必須の`POST /v1/graph/expand`は読取り専用で、`Idempotency-Key`は不要です。
+
+| Field | 契約 |
+|---|---|
+| `scope_ids` | 必須、重複しないscope UUID 1〜32件 |
+| `seeds` | 必須、重複しないentity UUID 1〜16件 |
+| `relation_types` | 必須、上記allowlistから重複しないpredicate 1〜5件 |
+| `purpose` | 必須、1〜256文字のtext |
+| `direction` | `outgoing`（既定）、`incoming`、`both` |
+| `max_hops` | 厳密な整数1〜2、既定2 |
+| `max_paths` | 厳密な整数1〜100、既定100 |
+| `as_of`, `known_at` | 任意のtimezone付きtimestamp。既定値は展開ごとに一度だけ取得 |
+
+唯一のbackendはcanonical PostgreSQL SQL joinです。graph request/探索に
+AGE、SQL/PGQ、Cypher、動的SQL、動的labelを使いません。
+固定parameterized neighbor queryで時間と現在のRLS可視性をseed、edge、中間node、
+根拠に適用し、同一scope外部keyを使います。scope/seed filterはアクセスを狭めるだけです。
+非公開、不在、時間条件で利用不能なseedは黙って除外し、応答に再掲しません。
+既存のtenant transactionとresponse-drain lockで読取り境界を保護します。
+
+探索は決定的な幅優先**simple path**で、seed UUID順、続いて各hopの
+assertion ID/revision/次entity ID順です。同一path内でentityを繰り返さず、
+意味的なcycle edgeもnodeを反復するpathを作りません。
+全prefixをglobal path予算に数え、limit-plus-one probeで追加可能なpathを検出します。
+返却は最大`max_paths`件です。incoming/bothは探索方向だけを変え、
+edgeのsource/targetやreported factを反転しません。
+
+応答は`backend: "sql"`、`projection_watermark: null`（projection/lag/watermark保証は不要）、
+実効`as_of`/`known_at`と次のfieldを含みます。
+- `nodes`: canonical entity summary。完全な根拠quoteは含めない。
+- `edges`: canonical assertion ID/revision、source/target UUID、predicate、
+  valid interval、記録時刻、`epistemic_status: "reported"`。
+- `paths`: `{nodes: [UUIDs], assertions: [{memory_id, revision}]}`。
+- `coverage`: `max_hops`、`truncated`、`complete_within_bounds`。
+- `consistency`: 現在のaccess/deletion epoch。
+- `empty_reason`: pathがなければ`not_found`、あればnull。
+
+可視の孤立seedはpathがなくても`nodes`に現れ得ます。pathなしや上限内の完全性は
+**factが存在しない証明ではありません**。根拠はentity GET/relation explainで取得し、
+展開summaryには含めません。最終再検査でnodeが欠ければ`409 graph_invalidated`で
+fail-closedとなり、DB障害は空の成功応答でなく`503`です。
+capabilitiesは`graph_backend: "sql"`、entity/relation type allowlist、graph上限を公開します。
+将来backendの適合性を比較する正しさの基準であり、graph有用性の測定や
+M1/M3全体の受入ではありません。[ADR 0005](adr/0005-relational-graph-jp.md)を参照してください。
+
 ## Checkpointの契約
 
 checkpoint作成とrestoreには`Idempotency-Key`とscopeの現在のread/write権限が必要です。
@@ -175,7 +290,7 @@ identityであり、global sessionではありません。
 | `state_schema_version` | `1`のみ。既定も1 |
 | `event_watermark` | 必須の非負64-bit整数。parentから減少できない |
 | `state` | typedな`goal`、`constraints`、`completed_actions`、`decisions`、`unresolved_questions`、`next_actions`、`pending_effects`。任意object/pickleは不可 |
-| `memory_refs` | 同一scopeの重複しない`(memory_id, revision)`を最大100件。episodeはrevision 1、assertionは存在するrevision。list省略は空、revision省略は最新ではなく1 |
+| `memory_refs` | 同一scopeの重複しない`(memory_id, revision)`を最大100件。episode/entityはrevision 1、assertion（relationを含む）は存在するrevision。list省略は空、revision省略は最新ではなく1 |
 
 goalとstateのtext要素は空でなく最大4,096文字です。
 constraints、decisions、unresolved questions、next actionsは各64件、
@@ -254,7 +369,7 @@ planはrunを作らず、存在しないrunは`404`です。
 | `scope_id`, `run_id`, `operation_id` | caller UUID。operation identityはtenant/scope/run/operation内でありglobalではない |
 | `tool_name` | 空でないtext、最大256文字 |
 | `action_hash` | callerの正規化actionの小文字64桁hex digestが必須。serverは外部呼出しとの一致を検証できない |
-| `memory_refs` | 同一scopeの重複しない正確な参照を最大100件。episodeはrevision 1、assertionは存在するrevision 1〜1000。既定は空、revision省略は最新でなく1 |
+| `memory_refs` | 同一scopeの重複しない正確な参照を最大100件。episode/entityはrevision 1、assertion（relationを含む）は存在するrevision 1〜1000。既定は空、revision省略は最新でなく1 |
 
 **actionが利用した全memory依存を宣言してください。**
 checkpoint/effectは参照kindにできず、未宣言コピーは発見しません。
@@ -321,7 +436,12 @@ payloadが衝突すれば`409`です。purge済みeventの完全一致再送は`
 `purge`は1〜100件のroot IDを受け付け、
 **episode → assertion（全revision）→ checkpoint参照 → 子孫/fork checkpoint**
 を辿ります。episodeからcheckpointへの直接参照も対象です。
-宣言済みepisode/assertion-to-effect参照により、
+entity根拠により**episode → entity → sourceまたは過去のどのtargetとしてでも
+そのentityを使うrelation → assertion全履歴**も辿ります。entityの直接purgeも同じ
+relation closureを持ち、checkpoint/effectへの直接entity参照も対象です。
+relationが消えただけで他の生存entity identityは削除しません。
+entityはepisodeだけに依存するため、意味的graph cycleがprovenance cycleを作ることはありません。
+宣言済みepisode/entity/assertion-to-effect参照により、
 **source → tool effect → 同一scope/runの全checkpoint**も辿ります。
 参照が空の旧checkpointやeffect作成前のsnapshotも対象です。
 上限は要求rootに加えて依存物全体で10,000件であり、層ごとの上限ではありません。
@@ -340,8 +460,8 @@ checkpoint削除は祖先やsource episodeを削除しません。再生成も�
 既存tenant session lockでclosure、payload purge、run/branch失効、
 read barrierを原子的に扱います。
 
-purgeは対象episode/assertion/checkpoint/effect payload、
-reason/receipt参照を含むeffect event、依存する引用/参照を同期SQL削除した後、
+purgeは対象episode/entity/assertion/checkpoint/effect payload、entity根拠、
+typed relation link、reason/receipt参照を含むeffect event、依存する引用/参照を同期SQL削除した後、
 **同じtransaction内で**scopeに束縛されたopaqueな削除markerと時刻を
 `memory_ops.object_tombstone`へ挿入します。`memory.object`に`deleted_at`列はなく、
 SELECT RLSがtombstoneのあるobjectを除外します。
@@ -350,6 +470,7 @@ SELECT RLSがtombstoneのあるobjectを除外します。
 opaque operation registry/run flag、run/branch metadata、object記録、tombstone、audit/receipt metadata、
 tenant-keyed HMACのsource/idempotency tombstoneはtenantの存続期間中保持します。
 自動期限切れやtenant完全消去workflowはありません。
+過去参照や再送からpurge済みlabel、value、receiptを復活させることはできません。
 
 receiptは`backup_status: "operator_managed"`、
 `backup_retention_deadline: null`を返します。旧DB page、WAL、replica、backup、
@@ -359,10 +480,15 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-変更しないmigration 001〜003に続き、追加的なschema `004_tool_effects.sql`を適用します。
-保存checkpoint checksumやassertion履歴を書き換えず、
-effect ledger/operation registryとrun失効flagを追加します。
-v0.0.4 runtimeはledgerが厳密に`[1, 2, 3, 4]`であることを要求し、
+変更しないmigration 001〜004に続き、追加的なschema `005_relational_graph.sql`を適用します。
+`entity`、`entity_evidence`、`relation`、`relation_revision`とRLS・同一scope外部keyを追加し、
+runtimeへpayload UPDATE権限を与えません。遅延検査で完全なentity根拠と、
+各relation assertion revisionの正確なtyped target/valueを要求します。
+typed marker/linkの除去やgeneric valueの変更で回避できません。
+checkpoint/effect外部keyの参照kindをentityへ拡張します。
+`assertion.is_relation DEFAULT false`で旧free-text assertionを保護し、
+`Remember` JSON field/hash順、保存checkpoint checksum、effect履歴、assertion履歴を書き換えません。
+v0.0.5 runtimeはledgerが厳密に`[1, 2, 3, 4, 5]`であることを要求し、
 旧版・将来版・不完全な履歴を拒否します。
 
 migrationにはforced RLSをbypassできるDDL権限付き管理者と`btree_gist`が必要です。
@@ -371,42 +497,41 @@ bypass権限を付与するものではありません。旧版・新版すべ�
 backup、原子的migrationの後に、対応する新版APIだけを起動してください。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 旧APIとのrolling共存やdowngradeは非対応です。
-[運用](operations/README-jp.md#v004の保守migration)に従ってください。
+[運用](operations/README-jp.md#v005の保守migration)に従ってください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory)。
-**v0.0.4/schema 4**の実装commit
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8)について、
-2026-09-16に次の成功結果を確認しました。
+**v0.0.5/schema 5**の実装commit
+[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16)について、
+2026-09-16に次の結果を確認しました。
 
 | 環境 | Command | 結果 |
 |---|---|---|
-| ローカルApple Container | `./scripts/test-containers.sh` | 73テスト、Ruff、strict mypy（source 8ファイル）、production HTTP health smokeが合格 |
-| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 73テスト、Ruff、strict mypy（source 8ファイル）、production HTTP health smokeが合格 |
-| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 73テスト、Ruff、strict mypy（source 8ファイル）、production HTTP health smokeが合格 |
+| ローカルApple Container | `./scripts/test-containers.sh` | 91テスト、Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが合格 |
+| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 91テスト、Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが合格 |
+| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 91テスト、Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが合格 |
 
-Dockerの両jobは
-[GitHub Actions run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)
-で成功しました。job状態だけでなく、各jobの実際のlogでテスト数、
-lint/型検査、production HTTP health smokeまで確認しています。
-3環境とも既存warningは2件でした。
+[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
+のDocker両jobの実logで、job成功だけでなく件数と各検査を確認しました。
+3環境の全suiteとも既存warningは2件です。ローカル全suite後に強化した、
+正確なrelation-context byte予算とDBのcross-scope target外部key/value-to-target整合性の
+検査もローカルで個別に合格しました。両CIの全suiteは強化したケースを含み、
+collectionは同じ91テストです。
 
-schema更新とv0.0.3 checkpoint checksumの維持、effect FSM/CASとreceipt要件、
-現在の認可、外部成功を模擬した後の実API process crash、restore/確認の競合、
-restore-fence transactionのrollback、run永久封鎖後の過去dispatch再送を検査しています。
-run当たり100 effect・effect当たり100参照の正確な上限、過去assertionへの依存、
-run全体のeffect/checkpoint purgeも対象です。
-M1全体の完了、性能/品質の測定、外部exactly-once、backup/DR、
-完全消去の適格性を示すものではありません。
+2 tenantのgraph golden/時間/非公開/予算/削除ケース、v4 effect/履歴の維持、
+v3 checkpoint checksum/idempotency互換性を検査しています。
+正確な**1000 revision境界**はfree-textとtyped relation assertionの両方で確認済みです。
+検査はM0/M1/M3全体の完了、性能/品質の測定、外部exactly-once、MVP、本番readiness、
+backup/DR、完全消去の適格性を示すものではありません。
 
 ## 今後の実装対象
 
 worker、job enqueue/status API、自動synthesis、別のworking snapshot/compaction、
-embedding/pgvector、日本語tokenizer、AGE、SQL/PGQ、SQL/graph oracle、
+embedding/pgvector、日本語tokenizer、AGE、SQL/PGQ、
 provider receipt検証、実際のharness連携/実行/recovery、
 別assertion間のsupersession/fact調停、MCP、SDK、postgresem連携はありません。
-このtyped checkpoint envelopeだけで、
+上限付きSQL graph oracleとtyped checkpoint envelopeだけで、
 計画上の二時点・graph・provenance・削除architectureが完了したとは扱いません。
 
 選択理由は[ADR 0001](adr/0001-initial-slice-jp.md)、

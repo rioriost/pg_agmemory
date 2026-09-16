@@ -12,9 +12,10 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
-v0.0.4 tool-effect milestoneにはschema 4が必要です。
-Apple Containerとnative Docker amd64/arm64で、それぞれ73テスト、
-Ruff、strict mypy、production HTTP health smokeが合格しました。
+v0.0.5 SQL graph oracle milestoneにはschema 5が必要です。
+Apple Containerとnative Docker amd64/arm64の各環境で、91テスト（既存warning 2件）、
+Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが合格しました。
+最終commit/CI linkとローカルでの強化ケースの追加確認は
 [検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 
 | 設定 | 利用者 | 用途 |
@@ -32,8 +33,9 @@ Ruff、strict mypy、production HTTP health smokeが合格しました。
    lock取得timeoutは5秒です。既存DBの更新には下記の保守手順が必要です。
 2. 変更しない`src/pg_agmemory/storage/001_initial.sql`、
    `src/pg_agmemory/storage/002_assertion_revisions.sql`、
-   `src/pg_agmemory/storage/003_checkpoints.sql`に続き、追加的な
-   `src/pg_agmemory/storage/004_tool_effects.sql`をpackage resourceとして
+   `src/pg_agmemory/storage/003_checkpoints.sql`、
+   `src/pg_agmemory/storage/004_tool_effects.sql`に続き、追加的な
+   `src/pg_agmemory/storage/005_relational_graph.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
@@ -49,7 +51,7 @@ Ruff、strict mypy、production HTTP health smokeが合格しました。
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4]`であることを
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4, 5]`であることを
    要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
 
 admin URL、署名用秘密鍵、token、tenant HMAC secretをsource管理、issue、
@@ -58,8 +60,9 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
 <a id="v003の保守migration"></a>
+<a id="v004の保守migration"></a>
 
-## v0.0.4の保守migration
+## v0.0.5の保守migration
 
 **旧版/新版APIのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -74,15 +77,18 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
    migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
    lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
-4. migration 004はeffect payload/履歴/参照、opaque operation registry、
-   run失効flagを追加します。migration 001〜003は変更せず、旧DBへ未適用版を順に適用します。
-   保存checkpoint checksumは変わりませんが、live ledgerの再開規則は意図的に厳格化し、
-   未追跡hintはplannedでも再開を阻止します。
-   assertion履歴、source-event/idempotency記録、timestampを維持してください。
-5. ledgerの版が厳密に`[1, 2, 3, 4]`であることを確認してから、
-   制限付きruntime資格情報で**新APIだけを起動**します。
-   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・effect FSM/CAS・
-   restore fencing・legacy hint・run purgeの検査を実行してください。
+4. migration 005は`entity`、`entity_evidence`、`relation`、`relation_revision`、
+   RLS/同一scope外部key、遅延する完全性/typed target検査、checkpoint/effectのentity参照を
+   追加します。payload UPDATE権限は付与しません。
+   `assertion.is_relation DEFAULT false`で旧free-text assertionをuntypedのまま維持します。
+   migration 001〜004は変更せず、旧DBへ未適用版を順に適用します。
+   assertion/effect履歴、checkpoint checksum、timestamp、source-event/idempotency記録、
+   `Remember` JSON/hash順を維持してください。
+   v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
+5. ledgerの版が厳密に`[1, 2, 3, 4, 5]`であることを確認してから、
+   制限付きruntime資格情報で**v5 APIだけを起動**します。
+   capabilities/schemaを確認し、traffic再開前にmilestoneの2 tenant graph/時間/非公開/
+   予算/削除検査と、v4 effect/履歴・v3 checksum/idempotency互換性検査を実行してください。
    health応答だけではこれらを検証できません。
 6. 失敗時はtraffic停止を維持します。変更済みschemaへ旧imageを接続したり、
    downgradeがあると想定したりしないでください。
@@ -91,6 +97,43 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 **旧v0.0.1 APIには新しいschema互換性guardがありません。**
 不整合なschemaでも起動し得るため、運用側で停止を維持する必要があります。
 新runtimeによるschema不一致の拒否は、旧processを保護しません。
+
+## Entityとgraphの運用
+
+1. `POST /v1/entities`で許可済みの同一scope episode引用、allowlist内のtype、
+   長さ制限付きcanonical label、`explicit_intent: true`から明示entityを作成します。
+   返されたrevision 1 UUIDを保存してください。label/typeはcaller申告であり、
+   信頼できる指示や検証済みfactではありません。metadata/根拠にはentity GETを使い、
+   recall/explainは使いません。alias/merge/名前解決やlabel訂正endpointはなく、
+   新HTTP keyは同名の別identityを作成し得ます。不明な作成結果は元のkey/bodyで再送します。
+2. relationは`POST /v1/relations`だけで作成し、同一scopeのsource/target entity UUIDと
+   episode根拠を指定します。返却IDはcanonical assertionであり、第二のrelation objectでは
+   ありません。一致するfree-text `remember`もuntypedのままです。
+   allowlist内の全predicateは複数値を許すreportedな申告です。
+3. `POST /v1/relations/{memory_id}/revisions`で正確なexpected revision、target UUID、
+   置換根拠/valid bound、明示intent、reasonを指定して訂正します。source/predicateは固定で、
+   bound省略は無限端となりinterval全体を置換します。汎用assertion訂正は
+   `409 relation_revision_required`です。過去の正確なrevisionをexplainで確認し、
+   省略時は最新ではなく1です。typed link/valueをSQLで編集してはいけません。
+4. 認証付き読取り専用`POST /v1/graph/expand`へ明示した重複のないscope、entity seed、
+   predicate、purposeを送ります。`Idempotency-Key`は不要です。
+   上限は32 scope、16 seed、5 predicate、1〜2 hop、1〜100 pathです。
+   実効`as_of`/`known_at`、coverage、epochを確認してください。prefixも数え、
+   cycleでもpath内でnodeは反復しません。incoming/bothは探索方向であり逆向きtruthの推論ではありません。
+   非公開seedは返さず、可視の孤立seedはpathなしでも返り得ます。空/上限付き結果は不在の証明ではありません。
+5. `409 graph_invalidated`は失効した読取り、DB `503`は障害として扱い、空graphと
+   みなしてはいけません。canonical PostgreSQL joinなのでAGE/SQL/PGQ導入、
+   projection再構築、lag/watermark操作は不要です。
+   `backend: "sql"`、`projection_watermark: null`を返し、
+   動的graph SQL/Cypher/label入力はありません。recallはFTSで`graph_used: false`のままです。
+6. graph由来を含むコピーした全entity revision 1または正確なassertion revisionを
+   checkpoint/effectの`memory_refs`へ宣言します。entity GET/relation explainが根拠を返し、
+   展開nodeはquoteを省略します。pathやcanonical labelをactionの実行許可として扱ってはいけません。
+
+[契約](../STATUS-jp.md#entityとsql-graph-oracle)と
+[ADR 0005](../adr/0005-relational-graph-jp.md)を参照してください。
+上限付きの正しさの基準であり、graph有用性/性能の証拠、M0/M1/M3全体、MVP、
+本番/DR適格性ではありません。
 
 ## Checkpointの運用
 
@@ -242,15 +285,19 @@ previewは対象を固定せず、purge時に認可と依存関係を再評価�
 内部schema constraintに将来mode名があっても、
 受け付けるmodeは`preview`と`purge`のみです。
 
-purgeはepisode/assertion履歴、宣言済みcheckpoint/effect参照、完全なparent lineageを介した
+purgeはepisode/entity/assertion履歴、宣言済みcheckpoint/effect参照、完全なparent lineageを介した
 全子孫/fork checkpointを辿ります。上限は要求rootに加えて依存物全体で10,000件です。
 旧assertion revisionだけのsourceでもassertion全履歴と影響する全checkpoint stateを削除します。
+episode根拠からentity、さらにそのentityをsourceまたは**過去のどのtargetとしてでも**
+使うrelation全履歴へ伝播します。entityの直接purgeも同じrelation依存を辿り、
+checkpoint/effectへの直接entity参照も対象です。relationが消えただけで他の生存entityは消しません。
+entityはepisodeだけに依存するため、意味的relation cycleはprovenance cycleではありません。
 headが影響を受けるbranchは永続失効するため、同じIDの再開やlineage除去による回避を
 試みないでください。どのeffectでもpurgeすると、古い空snapshotを含む
 **同一scope/runの全checkpoint payload**を削除し、`effects_invalidated`を永続設定します。
 新plan、dispatch、checkpoint、再開を禁止しますが、同じrunというだけで
 独立effectまでpurgeせず、生存記録の照合は可能です。
-payload、引用、参照、reason/receipt参照を含むeffect eventをactive tableから先にSQL削除し、
+payload、entity根拠、typed link、引用、参照、reason/receipt参照を含むeffect eventをactive tableから先にSQL削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
 `memory.object`へのsoft-deleteの`deleted_at`更新や特権削除helperは使いません。
@@ -266,6 +313,8 @@ purgeを「完了」させようとして手動削除したり`dedup_secret`を�
 再送保護が機能しなくなる可能性があります。削除済みsource identityやmemory結果の
 完全一致再送は`404`、payload衝突は引き続き`409`です。
 自動的なtenant完全消去手順はありません。
+過去参照/再送からpurge済みentity label、relation value、receiptは復元できません。
+下記のbackup制限は変わりません。
 
 ## Backup、restore、release証拠
 

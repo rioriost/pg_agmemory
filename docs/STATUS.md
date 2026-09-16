@@ -2,8 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.4/schema 4 tool-effect ledger is implemented; local and native Docker checks passed.
-This is not completion of M0/M1, an MVP, or a production-qualified release.**
+**v0.0.5/schema 5 SQL graph oracle implemented; local and native Docker checks passed.
+This is not completion of M0/M1/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
 targets remain unmeasured or unqualified. Passing local and CI checks does not
@@ -19,6 +19,11 @@ memory database, model service, durable queue, or file-based memory index.
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
 | `POST /v1/assertions/{memory_id}/revisions` | Appends a full replacement revision to the same assertion using an expected head, explicit intent, reason, and revision-specific episode evidence |
+| `POST /v1/entities` | Creates an immutable, evidence-backed, caller-reported entity identity at revision 1 |
+| `GET /v1/entities/{memory_id}` | Returns currently readable entity metadata and literal episode evidence |
+| `POST /v1/relations` | Creates a typed relation as one canonical assertion between same-scope entity UUIDs |
+| `POST /v1/relations/{memory_id}/revisions` | Replaces the target, evidence, and entire valid interval under assertion revision-CAS |
+| `POST /v1/graph/expand` | Authenticated read-only, bounded SQL traversal over canonical relation revisions; no `Idempotency-Key` required |
 | `POST /v1/checkpoints` | Stores typed state with a branch-head CAS and returns an immutable checkpoint reference/checksum |
 | `GET /v1/checkpoints/{checkpoint_id}` | Checks current access and integrity, then returns state, references, epochs, and reconciliation hints |
 | `POST /v1/checkpoints/restore` | Copies a compatible checkpoint into a new target branch; never runs code or repeats external effects |
@@ -73,7 +78,8 @@ not covered by the request/drain race guarantee. See the
 `remember` requires `explicit_intent: true` and 1–32 distinct episode evidence
 IDs. Each quote must occur literally in its episode's content; both objects
 must be in the same scope. An assertion cannot serve as another assertion's
-source in this slice. Subjects and values are text, not resolved entity graphs.
+source in this slice. Free-text subjects/values are not resolved to entity IDs;
+only explicit entity/relation endpoints create typed graph data.
 
 Literal quote validation establishes provenance, **not semantic support or
 truth**. The service does not infer that a quote proves the supplied assertion.
@@ -105,6 +111,8 @@ Subject, predicate, and scope are immutable and are not accepted in this body.
 at the matching head of 1000, another revision is `422 revision_limit_exceeded`.
 The limit is **1000 total revisions**, including the initial one.
 Hidden/deleted/non-assertion targets return `404`.
+Typed relations require their dedicated revision endpoint; generic correction
+returns `409 relation_revision_required`.
 
 The target `memory_id` is included in the idempotency request hash. An identical
 key retry returns its originally committed revision reference even after later
@@ -149,6 +157,11 @@ Full-text search uses PostgreSQL's `simple` configuration, `plainto_tsquery`,
 and `ts_rank_cd`. It is not BM25, Japanese word segmentation, vector search,
 or hybrid retrieval. An empty `query` is allowed and selects accessible items
 under scope/time constraints, subject to item and byte limits.
+Entities themselves are excluded from recall/explain. Relation assertions remain
+FTS candidates; recall never automatically expands the graph and retains
+`graph_used: false`. Items and assertion explanations include nullable
+`relation: {source_entity, target_entity}` for the exact returned revision.
+Relation context text includes both entity UUIDs within the same byte budget.
 
 Despite the request field name `token_budget`, `utf8-bytes-v1` budgets the
 serialized context pack in **UTF-8 bytes**, including its metadata and citations.
@@ -164,6 +177,112 @@ item/budget omissions. An empty selection is `not_found` or `budget_exhausted`;
 `retrieval_complete` does not mean complete knowledge of the world. Implicit
 mode is a request option, not an implemented automatic harness hook.
 
+## Entities and SQL graph oracle
+
+### Entity identity
+
+Creation requires `Idempotency-Key`, current scope read/write access, and:
+
+| `POST /v1/entities` field | Contract |
+|---|---|
+| `scope_id` | Required scope UUID |
+| `entity_type` | Literal `person`, `organization`, `project`, `component`, `incident`, `task`, `decision`, or `other` |
+| `canonical_label` | 1–256 characters |
+| `evidence` | 1–32 distinct readable same-scope **episode** IDs, each with a literal `quote` of 1–4,096 characters |
+| `explicit_intent` | Must be `true` |
+
+`201` returns `memory_id` and `revision: 1`. Identity metadata and evidence are
+immutable caller reports, not verified facts. There are no aliases, entity
+merging, name-based resolution, semantic deduplication, or label-correction
+endpoint. Same HTTP key/body reuses the anchor under current authorization;
+a different key may create a separate same-label entity.
+Names and types are untrusted data, never instructions.
+
+`GET /v1/entities/{memory_id}` returns ID/revision, scope, type, canonical label,
+recorded time, and episode evidence. Entities do not appear in recall/explain;
+use this dedicated GET. Entity revision 1 is allowed in checkpoint/tool-effect
+`memory_refs`; declare every copied entity or assertion revision dependency.
+
+### Canonical relation assertions
+
+`POST /v1/relations` requires `Idempotency-Key`, `scope_id`, `source_entity` and
+`target_entity` UUIDs, `predicate`, 1–32 distinct literal episode evidence quotes,
+and `explicit_intent: true`. Both endpoints **and evidence must share that scope**
+and be currently readable. Quote bounds are 1–4,096 characters. Optional
+`valid_from`/`valid_to` are timezone-aware; null/omitted is unbounded, and start
+must precede end. The predicate allowlist is `depends_on`, `part_of`, `affects`,
+`works_for`, `decides`. All predicates allow multiple reported declarations;
+there is no arbitration, verified truth, or inferred inverse fact.
+
+A relation has **one canonical assertion identity (`memory_id`)**, not an
+independent object ID: `memory.relation` fixes its source, and
+`memory.relation_revision` records the exact target of each assertion revision.
+Subject is the immutable source label; each revision's immutable value is its
+target's canonical label. Valid/system time, truth status, and episode evidence
+are the existing assertion revision's, not a parallel graph history.
+Creation returns the existing `RememberResult` (`memory_id`, revision 1,
+`epistemic_status: "reported"`). A free-text `remember` with matching
+label/predicate never automatically becomes a relation.
+
+`POST /v1/relations/{memory_id}/revisions` requires `Idempotency-Key`,
+strict `expected_revision` 1–1000, `target_entity`, replacement episode `evidence`,
+`explicit_intent: true`, optional aware valid bounds, and `reason` 1–256 characters.
+Source/predicate/scope are fixed. It replaces the **entire valid interval**, like
+generic assertion corrections; it does not split time or retain the prior value
+outside new bounds. Old target IDs, evidence, and intervals remain tied to their
+exact historical revision. CAS, idempotent historical replay, and the 1000-total-
+revision bound are unchanged (`409 revision_conflict`, `422 revision_limit_exceeded`).
+Use `explain` for exact relation evidence; omitted revision still means **1**.
+
+### Bounded expansion
+
+Authenticated `POST /v1/graph/expand` is read-only; no `Idempotency-Key` is required.
+
+| Field | Contract |
+|---|---|
+| `scope_ids` | Required 1–32 distinct scope UUIDs |
+| `seeds` | Required 1–16 distinct entity UUIDs |
+| `relation_types` | Required 1–5 distinct allowlisted predicates above |
+| `purpose` | Required 1–256-character text |
+| `direction` | `outgoing` (default), `incoming`, or `both` |
+| `max_hops` | Strict integer 1–2, default 2 |
+| `max_paths` | Strict integer 1–100, default 100 |
+| `as_of`, `known_at` | Optional timezone-aware timestamps; defaults captured once per expansion |
+
+Canonical PostgreSQL SQL joins are the only backend: no AGE, SQL/PGQ, Cypher,
+dynamic SQL, or dynamic labels in graph requests/traversal. Fixed parameterized
+neighbor queries enforce time and current RLS visibility for seeds, edges,
+intermediate nodes, and evidence, with same-scope foreign keys. Scope/seed
+filters only narrow access. Hidden, nonexistent, or temporally unavailable
+seeds are silently excluded, not echoed. The existing tenant transaction and
+response-drain lock protect the read boundary.
+
+Traversal is deterministic breadth-first **simple paths**: sorted seed UUIDs,
+then each hop's assertion ID/revision/next entity ID. No entity repeats within
+a path; semantic cycle edges do not create repeating-node paths. All prefixes
+count toward the global path budget. A limit-plus-one probe detects additional
+eligible paths; at most `max_paths` are returned. Incoming/both changes traversal
+orientation only; edge source/target and reported facts are not inverted.
+
+Results contain `backend: "sql"`, `projection_watermark: null` (no projection,
+lag, or watermark guarantee is needed), effective `as_of`/`known_at`, and:
+- `nodes`: canonical entity summaries, without full evidence quotes;
+- `edges`: canonical assertion ID/revision, source/target UUIDs, predicate,
+  valid interval, recorded time, and `epistemic_status: "reported"`;
+- `paths`: `{nodes: [UUIDs], assertions: [{memory_id, revision}]}`;
+- `coverage`: `max_hops`, `truncated`, and `complete_within_bounds`;
+- `consistency`: current access/deletion epochs;
+- `empty_reason`: `not_found` when no paths exist, otherwise null.
+
+Visible isolated seeds may still appear in `nodes` without paths. No-path and
+bounded completeness are **not proof that no fact exists**. Entity GET/relation
+explain provide evidence; expansion summaries do not. A missing node on the
+final recheck fails closed with `409 graph_invalidated`; DB errors return `503`,
+not an empty-success fallback. Capabilities expose `graph_backend: "sql"`,
+entity/relation type allowlists, and graph caps. This is a correctness reference
+for future backend conformance, not measured graph utility or full M1/M3 acceptance.
+See [ADR 0005](adr/0005-relational-graph.md).
+
 ## Checkpoint contract
 
 Checkpoint creation and restoration require `Idempotency-Key` and current
@@ -178,7 +297,7 @@ UUIDs are caller-supplied identities within a tenant/scope, not global sessions.
 | `state_schema_version` | Only `1`, also the default |
 | `event_watermark` | Required nonnegative 64-bit integer; cannot decrease relative to the parent |
 | `state` | Typed `goal`, `constraints`, `completed_actions`, `decisions`, `unresolved_questions`, `next_actions`, and `pending_effects`; no arbitrary object/pickle |
-| `memory_refs` | Up to 100 distinct `(memory_id, revision)` pairs in the same scope; episodes use revision 1, assertion revisions must exist; omitted list is empty and omitted revision defaults to 1, not latest |
+| `memory_refs` | Up to 100 distinct `(memory_id, revision)` pairs in the same scope; episodes/entities use revision 1, assertion revisions (including relations) must exist; omitted list is empty and omitted revision defaults to 1, not latest |
 
 The goal and state text entries are nonempty and at most 4,096 characters.
 Constraints, decisions, unresolved questions, and next actions allow 64 entries
@@ -262,7 +381,7 @@ planning does not create a run, and a missing run returns `404`.
 | `scope_id`, `run_id`, `operation_id` | Caller UUIDs; operation identity is tenant/scope/run/operation, not global |
 | `tool_name` | Nonempty text, at most 256 characters |
 | `action_hash` | Required lowercase 64-hex digest of the caller's canonical action; the server cannot verify it against an external call |
-| `memory_refs` | Up to 100 distinct exact same-scope references: episode revision 1 or existing assertion revision 1–1000; defaults to empty, omitted revision is 1, not latest |
+| `memory_refs` | Up to 100 distinct exact same-scope references: episode/entity revision 1 or existing assertion revision 1–1000 (including relations); defaults to empty, omitted revision is 1, not latest |
 
 **Declare every memory dependency used by the action.** Checkpoints/effects are
 not permitted reference kinds; undeclared copied data is not discovered.
@@ -334,7 +453,13 @@ a conflicting payload returns `409`. Exact replay of a purged event returns
 reserved selector token. `purge` accepts 1–100 root IDs and follows
 **episode → assertion (any revision) → checkpoint references → descendant/fork
 checkpoints**. Direct episode-to-checkpoint references also participate.
-Declared episode/assertion-to-effect references add
+Entity evidence adds **episode → entity → relations using it as source or any
+historical target → entire assertion history**. Direct entity purge has the
+same relation closure. Entity references in checkpoints/effects also participate.
+Other surviving entity identities are not deleted merely because a relation is
+removed. Entities depend only on episodes: semantic graph cycles do not introduce
+provenance cycles.
+Declared episode/entity/assertion-to-effect references add
 **source → tool effect → every checkpoint in that scope/run**, including old
 checkpoints with empty references and snapshots predating the effect.
 The total limit is 10,000 dependents plus requested roots, not 10,000 per layer.
@@ -355,8 +480,9 @@ reopened. Deleting a checkpoint does not delete its ancestors or source
 episodes. There is no regeneration. The existing tenant session lock keeps
 the closure, payload purge, run/branch invalidation, and read barrier atomic.
 
-Purge synchronously SQL-deletes target episode/assertion/checkpoint/effect payloads,
-effect events (including reasons/receipt references), and dependent quotes/references,
+Purge synchronously SQL-deletes target episode/entity/assertion/checkpoint/effect
+payloads, entity evidence, typed relation links, effect events (including reasons/
+receipt references), and dependent quotes/references,
 then inserts scope-bound opaque deletion markers with timestamps
 in `memory_ops.object_tombstone` **in the same transaction**. `memory.object`
 has no `deleted_at` column; its SELECT RLS excludes objects with tombstones.
@@ -366,6 +492,7 @@ of complete erasure. Opaque operation registry/run flags, run/branch metadata,
 object records, tombstones, audit/receipt
 metadata, and tenant-keyed HMAC source/idempotency tombstones persist for the
 tenant lifetime; there is no automatic expiry or full tenant-erasure workflow.
+Historical references and replay cannot resurrect purged labels, values, or receipts.
 
 Receipts report `backup_status: "operator_managed"` and
 `backup_retention_deadline: null`. Old database pages, WAL, replicas, backups,
@@ -377,10 +504,16 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-Additive schema `004_tool_effects.sql` follows unchanged migrations 001–003.
-It adds the effect ledger/operation registry and run-invalidation flag without
-rewriting saved checkpoint checksums or assertion history.
-The v0.0.4 runtime requires the ledger to equal `[1, 2, 3, 4]` exactly and rejects
+Additive schema `005_relational_graph.sql` follows unchanged migrations 001–004.
+It adds `entity`, `entity_evidence`, `relation`, and `relation_revision`, with RLS
+and same-scope foreign keys. Runtime receives no payload UPDATE grant. Deferred
+checks require complete entity evidence and the exact typed target/value for
+every relation assertion revision; typed markers/links cannot be stripped or
+generic values mutated to bypass them. Entity references extend checkpoint/effect
+foreign-key kinds. `assertion.is_relation DEFAULT false` protects legacy free-text
+assertions; `Remember` JSON field/hash ordering, saved checkpoint checksums, effect
+history, and assertion history are not rewritten.
+The v0.0.5 runtime requires the ledger to equal `[1, 2, 3, 4, 5]` exactly and rejects
 older, newer, or incomplete histories.
 
 Migration requires a forced-RLS-bypassing administrator with DDL rights and
@@ -389,42 +522,43 @@ its backfill; it does not grant bypass privileges. Stop all old/new API traffic,
 back up, migrate atomically, then start only the matching new API.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling old-API compatibility or downgrade is supported. Follow
-[operations](operations/README.md#v004-maintenance-migration).
+[operations](operations/README.md#v005-maintenance-migration).
 
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-For **v0.0.4/schema 4**, implementation commit
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8),
+For **v0.0.5/schema 5**, implementation commit
+[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16),
 the following results were verified on 2026-09-16:
 
 | Environment | Command | Result |
 |---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
+| Local Apple Container | `./scripts/test-containers.sh` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
 
-Both Docker jobs succeeded in
-[GitHub Actions run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356).
-Each job's actual logs confirmed the test count, lint/type checks, and production
-HTTP health smoke, not just job status. All three test runs reported 2 existing warnings.
+Both Docker jobs' actual logs in
+[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
+confirmed the counts and checks, not just job success. All three full suites
+reported 2 existing warnings. After the local full suite, strengthened exact
+relation-context byte-budget and DB cross-scope target foreign-key/value-to-target
+integrity checks also passed locally. Both full CI suites include those strengthened
+cases; the collection remains 91 tests.
 
-Coverage includes schema upgrades and unchanged v0.0.3 checkpoint checksums,
-effect FSM/CAS and receipt requirements, current authorization, an actual API
-process crash after simulated external success, restore/confirmation races,
-restore-fence transaction rollback, and historical dispatch replay after permanent
-run sealing. Exact 100-effect/run and 100-reference limits, historical assertion
-dependencies, and run-wide effect/checkpoint purge are also exercised.
-These checks do not establish complete M1, measured performance/quality,
-external exactly-once behavior, backup/DR, or full-erasure qualification.
+Coverage includes two-tenant graph golden/temporal/hidden/budget/deletion cases,
+v4 effect/history preservation, and v3 checkpoint checksum/idempotency
+compatibility. The exact **1000-revision boundary** is verified for both free-text
+and typed relation assertions.
+Checks do not establish complete M0/M1/M3, measured performance/quality, external
+exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure qualification.
 
 ## Still roadmap work
 
 Workers, job enqueue/status APIs, automatic synthesis, separate working snapshots/
-compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ, a SQL/graph oracle,
+compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ,
 provider receipt verification, actual harness integration/execution/recovery,
 cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
-are absent. These typed checkpoint envelopes do not complete the planned
+are absent. The bounded SQL graph oracle and typed checkpoint envelopes do not complete the planned
 bitemporal, graph, provenance, or deletion architecture.
 
 See [ADR 0001](adr/0001-initial-slice.md) for these choices,

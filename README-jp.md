@@ -7,16 +7,17 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.4/schema 4のtool-effect ledgerを実装済みで、ローカルとnative Dockerの検査は合格しています。
-M1全体の完了、MVP完成版、本番リリースではありません。**
+**v0.0.5/schema 5のSQL graph oracleを実装済みで、ローカルとnative Dockerの検査は合格しています。
+M0/M1/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
 稼働DBからの同期purgeを実装しています。tenant/scope権限をサービスと
 PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
 assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
-typed checkpointは新branchへのrestore envelopeを提供します。
-新milestoneではdurableなtool-effect intent/outcome台帳を追加しますが、
-harnessやtoolを実行する機能ではありません。
+typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳を提供します。
+新milestoneでは明示的entity identity、revision付きrelation assertion、
+上限付きの読取り専用PostgreSQL graph探索を追加します。
+recallでgraphを自動利用したり、toolを実行したりはしません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、harness adapter、
 worker、自動抽出、pgvector、日本語tokenizer、
@@ -49,12 +50,13 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.4/schema 4**の実装commit
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8)は、
+**v0.0.5/schema 5**の実装commit
+[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16)は、
 Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
-それぞれ**73テスト**（既存warning 2件）、Ruff、strict mypy（source 8ファイル）、
-production HTTP health smokeが合格しました。
-[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)と、
+それぞれ**91テスト**（既存warning 2件）、Ruff、strict mypy（source 9ファイル）、
+production HTTP health smokeが合格しました。両CIの全suiteは強化したrelation-context予算と
+DB target整合性の検査を含み、これらはローカル全suite後にも個別に合格しています。
+[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)と、
 [検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
 
 ## APIの起動
@@ -86,13 +88,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provisionは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.4への更新には保守停止とbackupが必要です。**
-旧版・新版すべてのAPI trafficとimageを停止し、`004_tool_effects.sql`までの
+**v0.0.5への更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI trafficとimageを停止し、`005_relational_graph.sql`までの
 未適用migrationを適用してから新版APIだけを起動します。
-新版runtimeはschema履歴が厳密に`[1, 2, 3, 4]`であることを要求します。
+新版runtimeはschema履歴が厳密に`[1, 2, 3, 4, 5]`であることを要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 旧APIとのrolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v004の保守migration)に従ってください。
+[migration手順](docs/operations/README-jp.md#v005の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -133,6 +135,43 @@ head不一致時は`409 revision_conflict`を返します。
 [完全な契約](docs/STATUS-jp.md#assertion-revisionの契約)と
 [ADR 0002](docs/adr/0002-assertion-revisions-jp.md)を参照してください。
 
+## EntityとSQL graph oracle
+
+`POST /v1/entities`はallowlist内のtype、canonical label、同一scopeのepisode引用
+1〜32件、`explicit_intent: true`で不変のrevision 1 identityを作成します。
+metadata/根拠は`GET /v1/entities/{memory_id}`で取得し、entityはrecall/explainから除外します。
+caller申告のidentityであり、検証済みfactや信頼できる指示ではありません。
+alias、merge、名前解決、意味的重複抑止、label訂正endpointはありません。
+同じHTTP key/bodyはanchorを再利用しますが、別keyなら同名の別entityを作成し得ます。
+
+`POST /v1/relations`は同一scopeのentity UUID間に同一scopeのepisode根拠を付け、
+独立したrelation objectでなく**一つのcanonical assertion**を作成します。
+predicateは`depends_on`、`part_of`、`affects`、`works_for`、`decides`で、
+すべて複数値を許すreportedな申告であり、fact調停はありません。
+`POST /v1/relations/{memory_id}/revisions`はrevision-CASでtarget/根拠を変更し、
+valid interval全体を置換します。source/predicateは固定です。
+汎用assertion訂正endpointはtyped relationを`409 relation_revision_required`で拒否します。
+free-text `remember`はlabel/predicateが一致してもrelationになりません。
+recallはFTSのまま`graph_used: false`で、relation item/説明に正確なentity IDを含め、
+contextの既存byte予算に計上します。
+
+認証必須の`POST /v1/graph/expand`は読取り専用で`Idempotency-Key`は不要です。
+固定parameterized SQL joinを使い、AGE、SQL/PGQ、Cypher、動的label/queryは使いません。
+明示scope/seed/predicate filterは現在のアクセス範囲を狭めるだけです。
+決定的な幅優先simple pathを1〜2 hop・1〜100 pathに制限し、全prefixを数えます。
+結果は`backend: "sql"`、`projection_watermark: null`、時間条件、整合性epoch、
+上限内のcoverageを示すだけで、知識の完全性ではありません。
+非公開seedは返さず、可視の孤立seedはpathなしでも現れ得ます。
+incoming探索は逆向きfactを推論しません。
+
+entity revision 1と正確なrelation assertion revisionをcheckpoint/effectの
+`memory_refs`へ宣言できます。source purgeはentity根拠と**全過去relation target**から、
+既存のcheckpoint/effect依存へ伝播します。
+relationが消えただけで他の生存entityを削除しません。
+[契約](docs/STATUS-jp.md#entityとsql-graph-oracle)と
+[ADR 0005](docs/adr/0005-relational-graph-jp.md)を参照してください。
+将来backendの正しさを比較する基準であり、graph有用性の測定やM1/M3全体の受入ではありません。
+
 ## Typed checkpoint
 
 `POST /v1/checkpoints`はscope内のrun/branchにschema 1のtyped stateを保存します。
@@ -148,7 +187,8 @@ GET/restoreはsnapshot後に追加されたものも含め、runの生存effect�
 `automatic_reexecution`は常にfalseです。
 保存済みassertion参照は正確な過去revisionを維持し、
 restoreで最新revisionを選び直したり、現在の外部事実を更新したりはしません。
-callerは全memory依存を宣言し、stateから機密情報を除去してください。
+callerはコピーした全entityまたはassertion revision依存を`memory_refs`へ宣言し、
+stateから機密情報を除去してください。
 未宣言のコピー本文は自動発見しません。
 
 source削除はassertion履歴、checkpoint参照、全子孫/fork lineageへ伝播します。
@@ -192,6 +232,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) |
 | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) | [Checkpoint decisions](docs/adr/0003-checkpoints.md) |
 | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) |
+| [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

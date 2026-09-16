@@ -13,9 +13,11 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
-The v0.0.4 tool-effect milestone requires schema 4. Apple Container and native
-Docker amd64/arm64 each passed 73 tests, Ruff, strict mypy, and production HTTP
-health smoke; see [validation evidence](../STATUS.md#validation-evidence).
+The v0.0.5 SQL graph oracle milestone requires schema 5. Apple Container and native
+Docker amd64/arm64 each passed 91 tests (2 existing warnings), Ruff, strict mypy
+(9 source files), and production HTTP health smoke. Final commit/CI links and
+the local strengthened-case follow-up are in
+[validation evidence](../STATUS.md#validation-evidence).
 
 | Setting | Consumer | Purpose |
 |---|---|---|
@@ -33,8 +35,9 @@ health smoke; see [validation evidence](../STATUS.md#validation-evidence).
    Any existing DB upgrade requires the maintenance procedure below.
 2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and
    `src/pg_agmemory/storage/002_assertion_revisions.sql` and
-   `src/pg_agmemory/storage/003_checkpoints.sql`, followed by additive
-   `src/pg_agmemory/storage/004_tool_effects.sql`, are installed package
+   `src/pg_agmemory/storage/003_checkpoints.sql` and
+   `src/pg_agmemory/storage/004_tool_effects.sql`, followed by additive
+   `src/pg_agmemory/storage/005_relational_graph.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -52,7 +55,7 @@ health smoke; see [validation evidence](../STATUS.md#validation-evidence).
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2, 3, 4]` exactly; missing, older, newer, or incomplete history
+   ledger to equal `[1, 2, 3, 4, 5]` exactly; missing, older, newer, or incomplete history
    is rejected.
 
 Keep the admin URL, signing private key, tokens, and tenant HMAC secrets out of
@@ -62,8 +65,9 @@ point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
 <a id="v003-maintenance-migration"></a>
+<a id="v004-maintenance-migration"></a>
 
-## v0.0.4 maintenance migration
+## v0.0.5 maintenance migration
 
 **No rolling old/new API coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -80,16 +84,20 @@ Follow this maintenance protocol:
    `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
    transaction under the migration lock. A 5-second lock timeout aborts rather
    than waiting indefinitely; diagnose contention while traffic remains stopped.
-4. Migration 004 adds effect payloads/history/references, the opaque operation
-   registry, and run-invalidation flag. Migrations 001–003 remain unchanged;
-   older DBs receive missing versions sequentially. Saved checkpoint checksums
-   are unchanged, but live-ledger resume rules intentionally tighten legacy
-   behavior: untracked hints, even planned ones, now block resumption.
-   Preserve assertion history, source-event/idempotency records, and timestamps.
-5. Confirm ledger versions are exactly `[1, 2, 3, 4]`, then start **only the new API**
+4. Migration 005 adds `entity`, `entity_evidence`, `relation`, and `relation_revision`,
+   their RLS/same-scope foreign keys, deferred completeness/typed-target checks,
+   and entity checkpoint/effect references. No payload UPDATE grant is added.
+   `assertion.is_relation DEFAULT false` leaves legacy free-text assertions untyped.
+   Migrations 001–004 remain unchanged; older DBs receive missing versions
+   sequentially. Preserve assertion/effect history, checkpoint checksums,
+   timestamps, source-event/idempotency records, and `Remember` JSON/hash ordering.
+   The v4 ledger's stricter resume rules remain: untracked hints, even planned
+   ones, block resumption.
+5. Confirm ledger versions are exactly `[1, 2, 3, 4, 5]`, then start **only the v5 API**
    with restricted runtime credentials. Check its capabilities/schema and run
-   the milestone's migration, effect FSM/CAS, restore fencing, legacy-hint, and run-purge checks
-   before restoring traffic. A health response alone does not validate these.
+   the milestone's two-tenant graph/temporal/hidden/budget/deletion checks and
+   v4 effect/history plus v3 checksum/idempotency compatibility checks before
+   restoring traffic. A health response alone does not validate these.
 6. On failure, leave traffic stopped. Do not launch the old image against the
    changed schema or assume a downgrade exists. Any backup restore remains
    quarantined until the latest deletion/ACL state is reapplied and validated.
@@ -97,6 +105,46 @@ Follow this maintenance protocol:
 **The old v0.0.1 API does not contain the new schema-compatibility guard.**
 It may start against an incompatible schema; operators must keep it stopped.
 The new runtime's refusal of schema mismatches does not protect old processes.
+
+## Entity and graph operations
+
+1. Create explicit entities from approved same-scope episode quotes with
+   `POST /v1/entities`, an allowlisted type, bounded canonical label, and
+   `explicit_intent: true`. Save each returned revision-1 UUID. Labels/types are
+   caller reports, not trusted instructions or verified facts. Use entity GET
+   for metadata/evidence, not recall/explain. There is no alias/merge/name-resolution
+   or label-correction endpoint; a new HTTP key may create a separate same-label
+   identity. Retry uncertain creation with the original key/body.
+2. Create relations only through `POST /v1/relations`, passing same-scope source/
+   target entity UUIDs and episode evidence. The returned ID is the canonical
+   assertion, not a second relation object. Matching free-text `remember` data
+   stays untyped. All allowlisted predicates are multi-valued reported declarations.
+3. Correct with `POST /v1/relations/{memory_id}/revisions`, an exact expected
+   revision, target UUID, replacement evidence/valid bounds, explicit intent, and
+   reason. Source/predicate stay fixed; omission of bounds is unbounded and
+   replaces the entire interval. Generic assertion correction returns
+   `409 relation_revision_required`. Inspect exact historical revisions through
+   explain; omitted revision is 1, not latest. Never edit typed links or values in SQL.
+4. Call authenticated, read-only `POST /v1/graph/expand` with explicit distinct
+   scopes, entity seeds, predicates, and purpose; no `Idempotency-Key` is needed.
+   Limits are 32 scopes, 16 seeds, 5 predicates, 1–2 hops, and 1–100 paths.
+   Inspect effective `as_of`/`known_at`, coverage, and epochs. Prefixes count;
+   cycles cannot repeat nodes within paths. Incoming/both is traversal orientation,
+   not inferred inverse truth. Hidden seeds are not echoed; visible isolated
+   seeds may be returned with no paths. Empty/bounded results do not prove absence.
+5. Treat `409 graph_invalidated` as an invalidated read and DB `503` as failure,
+   never as an empty graph. PostgreSQL canonical joins need no AGE/SQL/PGQ
+   installation, projection rebuild, or lag/watermark operation:
+   `backend: "sql"`, `projection_watermark: null`. There is no dynamic graph
+   SQL/Cypher/label input. Recall remains FTS with `graph_used: false`.
+6. Declare every copied entity revision 1 or exact assertion revision in
+   checkpoint/effect `memory_refs`, including graph-derived dependencies.
+   Entity GET and relation explain supply evidence; expansion nodes omit quotes.
+   Do not treat a path or canonical label as permission to execute an action.
+
+See [the contract](../STATUS.md#entities-and-sql-graph-oracle) and
+[ADR 0005](../adr/0005-relational-graph.md). This bounded correctness reference
+is not graph-utility/performance evidence, full M0/M1/M3, MVP, or production/DR qualification.
 
 ## Checkpoint operations
 
@@ -257,17 +305,24 @@ not freeze targets; authorization and dependencies are evaluated again for
 purge. Only `preview` and `purge` are accepted, even though future-mode names
 may appear in internal schema constraints.
 
-Purge traverses episode/assertion history, declared checkpoint/effect references, and
+Purge traverses episode/entity/assertion history, declared checkpoint/effect references, and
 every descendant/fork checkpoint through the complete parent lineage. Its
 limit is 10,000 dependents in total plus requested roots. A source used only
 by an old assertion revision still removes the entire assertion history and
-all affected checkpoint state. Branches whose heads are affected are permanently
+all affected checkpoint state. Episode evidence also leads to entities and all
+relation histories using them as source or **any historical target**; direct entity
+purge follows the same relation dependencies. Direct entity references in
+checkpoints/effects participate. Other surviving entities are not removed merely
+because a relation disappears. Semantic relation cycles are not provenance cycles:
+entities depend only on episodes.
+Branches whose heads are affected are permanently
 invalidated; do not try to reopen their IDs or remove lineage to avoid deletion.
 Purging any effect also removes **all checkpoint payloads in that scope/run**,
 including older empty snapshots, and permanently sets `effects_invalidated`.
 It blocks new plans, dispatch, checkpoints, and resumption, but does not purge
 independent effects merely for sharing the run; surviving records remain reconcilable.
-Payloads, quotes, references, and effect events (reason/receipt references included)
+Payloads, entity evidence, typed links, quotes, references, and effect events
+(reason/receipt references included)
 are SQL-deleted from active tables before timestamped markers enter
 `memory_ops.object_tombstone` in the same transaction. Object SELECT RLS hides
 those anchors; there is no soft-delete `deleted_at` update on `memory.object`
@@ -284,7 +339,8 @@ Do not manually remove
 them or change `dedup_secret` to “finish” a purge: doing so can defeat replay
 protection. Exact replay of deleted source identities or memory results returns
 `404`; payload conflicts remain `409`. No automatic full tenant-erasure
-procedure is provided.
+procedure is provided. Historical references/replay cannot recover purged
+entity labels, relation values, or receipts. Backup limits below are unchanged.
 
 ## Backups, restoration, and release evidence
 

@@ -7,6 +7,10 @@
 - Supersedes: the ledger deferral and snapshot-only resume rules in [ADR 0003](0003-checkpoints.md)
 - Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
 
+Historical scope: schema-4 requirements and evidence below remain v4-specific.
+[ADR 0005](0005-relational-graph.md) adds entity references and schema 5;
+use current operations for upgrades, not this ADR's historical schema requirement.
+
 ## Decision and scope
 
 Store a bounded, durable external tool-effect intent/outcome ledger in PostgreSQL.
