@@ -13,8 +13,9 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
-The v0.0.3 checkpoint milestone requires schema 3. Its 54-test Apple Container
-and native Docker results are recorded in [validation evidence](../STATUS.md#validation-evidence).
+The v0.0.4 tool-effect milestone requires schema 4. Apple Container and native
+Docker amd64/arm64 each passed 73 tests, Ruff, strict mypy, and production HTTP
+health smoke; see [validation evidence](../STATUS.md#validation-evidence).
 
 | Setting | Consumer | Purpose |
 |---|---|---|
@@ -31,8 +32,9 @@ and native Docker results are recorded in [validation evidence](../STATUS.md#val
    applied versions on rerun; lock acquisition has a 5-second timeout.
    Any existing DB upgrade requires the maintenance procedure below.
 2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and
-   `src/pg_agmemory/storage/002_assertion_revisions.sql`, followed by the additive
-   `src/pg_agmemory/storage/003_checkpoints.sql`, are installed package
+   `src/pg_agmemory/storage/002_assertion_revisions.sql` and
+   `src/pg_agmemory/storage/003_checkpoints.sql`, followed by additive
+   `src/pg_agmemory/storage/004_tool_effects.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -50,7 +52,7 @@ and native Docker results are recorded in [validation evidence](../STATUS.md#val
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2, 3]` exactly; missing, older, newer, or incomplete history
+   ledger to equal `[1, 2, 3, 4]` exactly; missing, older, newer, or incomplete history
    is rejected.
 
 Keep the admin URL, signing private key, tokens, and tenant HMAC secrets out of
@@ -59,7 +61,9 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
-## v0.0.3 maintenance migration
+<a id="v003-maintenance-migration"></a>
+
+## v0.0.4 maintenance migration
 
 **No rolling old/new API coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -76,13 +80,15 @@ Follow this maintenance protocol:
    `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
    transaction under the migration lock. A 5-second lock timeout aborts rather
    than waiting indefinitely; diagnose contention while traffic remains stopped.
-4. Migration 003 adds checkpoint runs, branches, payloads, references, and
-   constraints. Migrations 001/002 remain unchanged; an older DB receives any
-   pending 002 migration before 003. Preserve assertion history, source-event/
-   idempotency records, timestamps, and replay compatibility; do not reset them.
-5. Confirm ledger versions are exactly `[1, 2, 3]`, then start **only the new API**
+4. Migration 004 adds effect payloads/history/references, the opaque operation
+   registry, and run-invalidation flag. Migrations 001–003 remain unchanged;
+   older DBs receive missing versions sequentially. Saved checkpoint checksums
+   are unchanged, but live-ledger resume rules intentionally tighten legacy
+   behavior: untracked hints, even planned ones, now block resumption.
+   Preserve assertion history, source-event/idempotency records, and timestamps.
+5. Confirm ledger versions are exactly `[1, 2, 3, 4]`, then start **only the new API**
    with restricted runtime credentials. Check its capabilities/schema and run
-   the milestone's migration, checkpoint CAS, restore, and lineage-deletion checks
+   the milestone's migration, effect FSM/CAS, restore fencing, legacy-hint, and run-purge checks
    before restoring traffic. A health response alone does not validate these.
 6. On failure, leave traffic stopped. Do not launch the old image against the
    changed schema or assume a downgrade exists. Any backup restore remains
@@ -107,19 +113,61 @@ The new runtime's refusal of schema mismatches does not protect old processes.
    and state schema. The source branch remains unchanged. Saved assertion
    references keep their exact historical revisions; restore does not select
    the latest revision or automatically refresh external facts. Inspect
-   `requires_reconciliation` and `resume_allowed` before handing state to a
-   harness; reconcile unknown/dispatched operations with the external system.
-   `automatic_reexecution` is always false. No receipt lookup or code execution
+   `tool_effects`, `untracked_effects`, `requires_reconciliation`, and `resume_allowed`
+   before handing state to a harness. These include all live run effects, not
+   just snapshot-time effects. Untracked planned hints also block; a conflicting
+   unknown hint plus a tracked planned effect needs uncertainty/receipt reconciliation.
+   Restore atomically marks dispatched ledger records unknown before creating
+   the fork; CAS rejects stale ledger writers, not in-flight external calls.
+   `automatic_reexecution` is always false. No provider receipt lookup or code execution
    is performed by this API.
 5. Retry uncertain writes with the same key and payload. Only the original
    result reference is retained in idempotency records, not state. Current
    authorization/checksum checks still apply; a purged checkpoint returns `404`.
 
 A saved epoch or `resume_allowed: true` is not an approval or an external-effect
-receipt. Typed pending effects are snapshot hints, not a durable effect ledger.
+receipt. Typed pending effects are snapshot hints; the durable ledger is separate.
 Checkpoint creation allows a 1 MiB body; other endpoints allow 256 KiB.
 See [the contract](../STATUS.md#checkpoint-contract) and
-[ADR 0003](../adr/0003-checkpoints.md). No production/DR qualification is implied.
+[ADR 0004](../adr/0004-tool-effects.md). No production/DR qualification is implied.
+
+## Tool-effect operations
+
+1. Bootstrap the intended scope-local run with a checkpoint before planning
+   effects. Compute a stable lowercase 64-hex hash of the host's canonical action,
+   then POST its operation UUID, tool name, hash, and all exact memory dependencies.
+   The service does not store arguments or the raw hash, or verify the intended
+   external call. Sanitize tool names, reasons, receipt references, and state.
+2. Save the returned `memory_id` and GET the latest record, including its stable
+   `external_idempotency_key` and `run_invalidated` flag. Identity is scoped by
+   tenant/scope/run/operation; new run/operation IDs do not deduplicate equivalent
+   real-world actions. The lifetime cap is 100 effects per run, including terminals.
+3. The host must enforce permissions/approvals and durably record a CAS transition
+   to `dispatched` **before** any outside call. Use the stable external key if the
+   provider supports it. The host owns execution coordination: a replayed old
+   dispatch acknowledgment is not fresh permission to send or blindly resend.
+4. On an uncertain outcome, record `unknown` and reconcile with the provider
+   outside this service. `planned → unknown` can capture a legacy/off-protocol
+   attempt; it is not permission to execute. `unknown → dispatched` is forbidden.
+   Terminal `confirmed`/`failed` requires a bounded receipt reference plus
+   `provider_receipt` or `operator_review`; both are caller-reported, not verified.
+   Terminal outcomes are immutable and do not authorize automatic retries.
+5. Retry uncertain ledger writes with the same key/body. Changed intent conflicts;
+   a new key for the same recorded intent still returns its original revision-1
+   reference. Plan/dispatch responses are historical revision references, not
+   current-state snapshots or execution authorization. Under current authorization,
+   replay for a surviving effect may still succeed after run sealing, without
+   allowing fresh dispatch. Read GET for current state rather than trusting an old response.
+   Do not delete checkpoint hints to bypass reconciliation or reuse IDs to evade
+   uncertainty. An untracked hint must be resolved explicitly by the host.
+6. After an effect purge seals the run, do not create new intents, dispatch, checkpoint, or
+   resume it. Independent surviving effects remain GET-readable and can use
+   allowed reconciliation transitions; `unknown → confirmed/failed` remains valid.
+   Preserve the opaque operation registry, run flag, and tombstones.
+
+This is a ledger, not a worker, harness adapter, provider-query client, approval
+service, or external exactly-once mechanism. See [the contract](../STATUS.md#tool-effect-ledger)
+and [ADR 0004](../adr/0004-tool-effects.md).
 
 ## Revision operations
 
@@ -209,22 +257,28 @@ not freeze targets; authorization and dependencies are evaluated again for
 purge. Only `preview` and `purge` are accepted, even though future-mode names
 may appear in internal schema constraints.
 
-Purge traverses episode/assertion history, declared checkpoint references, and
+Purge traverses episode/assertion history, declared checkpoint/effect references, and
 every descendant/fork checkpoint through the complete parent lineage. Its
 limit is 10,000 dependents in total plus requested roots. A source used only
 by an old assertion revision still removes the entire assertion history and
 all affected checkpoint state. Branches whose heads are affected are permanently
 invalidated; do not try to reopen their IDs or remove lineage to avoid deletion.
-Payloads, quotes, and references are removed before timestamped markers enter
+Purging any effect also removes **all checkpoint payloads in that scope/run**,
+including older empty snapshots, and permanently sets `effects_invalidated`.
+It blocks new plans, dispatch, checkpoints, and resumption, but does not purge
+independent effects merely for sharing the run; surviving records remain reconcilable.
+Payloads, quotes, references, and effect events (reason/receipt references included)
+are SQL-deleted from active tables before timestamped markers enter
 `memory_ops.object_tombstone` in the same transaction. Object SELECT RLS hides
 those anchors; there is no soft-delete `deleted_at` update on `memory.object`
 or privileged deletion helper. The barrier/receipt commits before responding.
-The tenant session lock covers closure, branch invalidation, and read draining.
+The tenant session lock covers closure, run/branch invalidation, and read draining.
 Purge does not enqueue a worker or rebuild affected content.
 The receipt's `active_store_purged` is not
 full erasure.
 
-Opaque run/branch metadata, objects and their tombstones, audit/receipt metadata, and
+Opaque operation registry/run flags, run/branch metadata, objects and tombstones,
+audit/receipt metadata, and
 tenant-keyed HMAC source/idempotency tombstones remain for the tenant lifetime.
 Do not manually remove
 them or change `dedup_secret` to “finish” a purge: doing so can defeat replay
@@ -236,6 +290,8 @@ procedure is provided.
 
 Checkpoint restore copies typed state inside the Memory DB; it is not database
 backup restoration, a separate working-snapshot compaction system, or disaster recovery.
+A database backup can also roll back effect states. Keep external execution stopped
+and reconcile provider outcomes separately; the ledger does not automate safe recovery.
 
 Deletion receipts report `backup_status: "operator_managed"` with
 `backup_retention_deadline: null`. SQL row deletion is not proof of physical

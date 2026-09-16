@@ -6,7 +6,7 @@
 remains `rioriost/pgag_memory`; the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.3/schema 3 typed checkpoints implemented; local and native Docker checks passed.
+**Status: v0.0.4/schema 4 tool-effect ledger implemented; local and native Docker checks passed.
 Not a completed M1, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -14,10 +14,10 @@ explanation, transactional idempotency, and synchronous active-store purge.
 Tenant/scope permissions are enforced in both the service and PostgreSQL RLS.
 Every mutation commits before its response is sent. Assertion revisions retain
 server-controlled system-time history and revision-specific evidence.
-The new milestone adds typed checkpoint storage and restore-to-new-branch
-envelopes, not execution of a harness or external effects.
+Typed checkpoints support restore-to-new-branch envelopes. The new milestone
+adds a durable tool-effect intent/outcome ledger, not harness or tool execution.
 
-Cross-assertion supersession/fact arbitration, external-effect ledgers, harness adapters,
+Cross-assertion supersession/fact arbitration, provider receipt verification, harness adapters,
 workers, automatic synthesis,
 pgvector, Japanese tokenization, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
 remain roadmap work. No performance or memory-quality acceptance targets have
@@ -49,13 +49,13 @@ and **linux/arm64** runners, including runtime-image startup:
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For v0.0.3, implementation commit
-[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a), Apple Container
-and native Docker **linux/amd64** and **linux/arm64** each passed **54 tests**,
-Ruff, strict mypy (7 source files), and production HTTP health smoke.
-See [CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)
-and the reported
-[validation evidence](docs/STATUS.md#validation-evidence).
+For **v0.0.4/schema 4**, implementation commit
+[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8), Apple Container
+and native Docker **linux/amd64** and **linux/arm64** each passed **73 tests**
+(2 existing warnings), Ruff, strict mypy (8 source files), and production HTTP
+health smoke. See
+[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)
+and the [validation evidence](docs/STATUS.md#validation-evidence).
 
 ## Run the API
 
@@ -86,12 +86,12 @@ Migration/provisioning access is administrative and must never be exposed as a
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading to v0.0.3 requires a maintenance stop and backup.** Stop all
-old/new API traffic and images, apply pending migrations through `003_checkpoints.sql`,
+**Upgrading to v0.0.4 requires a maintenance stop and backup.** Stop all
+old/new API traffic and images, apply pending migrations through `004_tool_effects.sql`,
 then start only the new API. The new runtime requires schema history exactly
-`[1, 2, 3]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
+`[1, 2, 3, 4]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling old-API compatibility or downgrade is supported. Follow the
-[migration procedure](docs/operations/README.md#v003-maintenance-migration).
+[migration procedure](docs/operations/README.md#v004-maintenance-migration).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -143,9 +143,10 @@ envelope. Checkpoints do not appear in `recall` or `explain`.
 
 `POST /v1/checkpoints/restore` requires an exact harness/version match and
 creates a new branch; it never rewinds the original branch. Dispatched effects
-become unknown and require caller reconciliation. `automatic_reexecution` is
-always false: this is not a durable effect ledger, receipt query, or execution
-engine. Saved assertion references keep their exact historical revisions;
+in the run ledger become unknown atomically with the fork. GET/restore merge
+all live run effects, including those added after the snapshot. Untracked hints,
+even planned ones, block resumption; this intentionally tightens legacy behavior.
+`automatic_reexecution` is always false. Saved assertion references keep their exact historical revisions;
 restore neither selects the latest revision nor refreshes current external facts.
 Callers must declare every memory dependency and sanitize all state;
 undeclared copied text is not discovered automatically.
@@ -154,6 +155,32 @@ Deleting a source propagates through assertion history, checkpoint references,
 and the entire descendant/fork lineage. Affected branch heads cannot be reopened.
 See [the checkpoint contract](docs/STATUS.md#checkpoint-contract) and
 [ADR 0003](docs/adr/0003-checkpoints.md). This is not full M1 or disaster recovery.
+
+## Tool-effect ledger
+
+Create a bootstrap checkpoint first: `POST /v1/tool-effects` requires an existing
+scope-local run. Record a caller-generated operation UUID, tool name, canonical
+action's lowercase 64-hex `action_hash`, and all exact memory dependencies.
+Raw arguments/hash are not persisted; GET returns a tenant-HMAC fingerprint
+and stable external idempotency key. Each run allows 100 effects for its lifetime.
+
+`POST /v1/tool-effects/{memory_id}/transitions` appends CAS-checked state changes.
+The harness must durably record dispatch **before** calling the tool and use the
+stable external key where supported. Plan/transition responses are historical
+revision references, not current-state snapshots or execution authorization.
+With current authorization, surviving effects can replay old references even
+after the run is sealed; fresh dispatch remains rejected.
+Confirmed/failed outcomes require caller-reported
+receipt references; the server does not verify them or query providers.
+There is no external exactly-once guarantee, approval service, or automatic execution.
+
+Purging any effect, directly or through a declared source, removes every
+checkpoint payload in its run and permanently seals the run against new
+effects, dispatch, checkpoints, or resumption. Independent surviving effects
+remain readable/reconcilable. New run/operation IDs are not semantic deduplication.
+See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
+[operations](docs/operations/README.md#tool-effect-operations), and
+[ADR 0004](docs/adr/0004-tool-effects.md).
 
 ## Documentation
 
@@ -164,6 +191,7 @@ See [the checkpoint contract](docs/STATUS.md#checkpoint-contract) and
 | [Initial architecture decisions](docs/adr/0001-initial-slice.md) | [初期アーキテクチャ決定](docs/adr/0001-initial-slice-jp.md) |
 | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) |
 | [Checkpoint decisions](docs/adr/0003-checkpoints.md) | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) |
+| [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

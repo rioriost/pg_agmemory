@@ -8,6 +8,12 @@
 - Naming: local directory/package/service `pg_agmemory`; public repository
   remains `rioriost/pgag_memory`
 
+**Historical v0.0.3 record.** [ADR 0004](0004-tool-effects.md) supersedes the
+ledger deferral and snapshot-only reconciliation/resume decisions below.
+v0.0.4 consults the live run ledger, blocks all untracked hints, and seals runs
+after effect purge. Saved checkpoint checksums remain unchanged; the decisions
+and validation evidence below retain their historical v0.0.3 scope.
+
 ## Decision and scope
 
 Store typed, immutable checkpoint payloads in PostgreSQL, with scope-local

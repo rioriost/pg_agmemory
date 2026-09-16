@@ -2,7 +2,7 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.3/schema 3 checkpoints are implemented; local and native Docker checks passed.
+**v0.0.4/schema 4 tool-effect ledger is implemented; local and native Docker checks passed.
 This is not completion of M0/M1, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -22,6 +22,9 @@ memory database, model service, durable queue, or file-based memory index.
 | `POST /v1/checkpoints` | Stores typed state with a branch-head CAS and returns an immutable checkpoint reference/checksum |
 | `GET /v1/checkpoints/{checkpoint_id}` | Checks current access and integrity, then returns state, references, epochs, and reconciliation hints |
 | `POST /v1/checkpoints/restore` | Copies a compatible checkpoint into a new target branch; never runs code or repeats external effects |
+| `POST /v1/tool-effects` | Records/deduplicates an intent within an existing checkpoint run; returns its initial revision reference |
+| `POST /v1/tool-effects/{memory_id}/transitions` | Appends a CAS-checked ledger transition; does not call the tool |
+| `GET /v1/tool-effects/{memory_id}` | Returns current state, immutable event history, references, HMAC identifiers, and the run-invalidated flag |
 | `POST /v1/recall` | Retrieves authorized episodes/assertions with PostgreSQL full-text search and builds a deterministic, byte-budgeted context pack |
 | `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
 | `POST /v1/forget` | Accepts explicit IDs with `preview` or `purge`; no arbitrary selector or `suppress` mode |
@@ -208,15 +211,32 @@ branch/checkpoint is unchanged; restore never rewinds a head. An existing target
 branch gives `409 checkpoint_branch_conflict`; incompatible harness/schema gives
 `422 checkpoint_incompatible`.
 
-State and references are copied, but dispatched pending effects become unknown.
+State and references are copied, but dispatched snapshot hints become unknown.
+In the same transaction, restore appends `unknown` events for every dispatched
+live effect in the run, with `origin: "checkpoint_restore"`, then creates the fork.
+The new revisions fence stale ledger writers through CAS; they cannot cancel
+external calls already in flight. Exact restore replay creates neither a new
+fork nor duplicate journal events.
 Saved assertion references retain their exact historical revisions. Restore
 neither selects the latest assertion revision nor automatically refreshes
 current external facts; obtain fresh observations separately when needed.
-GET/restore list dispatched or unknown operation IDs in `requires_reconciliation`
-and set `resume_allowed: false` while any remain. `automatic_reexecution` is
-always false, even when resumption is allowed. The caller must reconcile with
-the external system: there is no durable effect ledger, receipt-query service,
-actual code execution, or harness adapter.
+GET/restore merge **all live effects in the run**, including other branches and
+effects added after the saved checkpoint. `tool_effects` contains current
+summaries; saved state and its checksum remain unchanged by this live view.
+
+| Current ledger state | Snapshot hint | Reconciliation for this operation |
+|---|---|---|
+| `dispatched` / `unknown` | Any or absent | Required |
+| `confirmed` / `failed` | Any or absent | Resolved by the caller-reported terminal record |
+| `planned` | Absent or `planned` | Not required; still not execution permission |
+| `planned` | `dispatched` / `unknown` | Required; record uncertainty, then reconcile a receipt |
+| Untracked | Any hint, **including `planned`** | Required; also listed in `untracked_effects` |
+
+`requires_reconciliation` contains all blocking operation IDs; any blocker makes
+`resume_allowed: false`. This is an intentional tightening of v0.0.3's
+snapshot-only behavior. `automatic_reexecution` is always false.
+The host owns permission checks, approvals, and provider reconciliation;
+no provider-query service, automatic execution, or harness adapter is implemented.
 
 Identical-key retries retain the original checkpoint reference, not a new head.
 Replay records contain no state; reads/restore retries rebuild envelopes under
@@ -224,11 +244,77 @@ current authorization, so current epoch metadata can change. Purged-reference
 replay returns `404`.
 
 **Callers must declare every memory dependency in `memory_refs`.** The
-dependency DAG covers declared references and the complete parent lineage only;
+dependency DAG covers declared references, complete parent lineage, and the
+run-wide effect-to-checkpoint dependency described below;
 no semantic scanner discovers copied but undeclared source text. Callers remain
 responsible for consent and secret/PII sanitization. Working snapshots,
-compaction, and a durable external-effect ledger remain separate future work.
-See [ADR 0003](adr/0003-checkpoints.md).
+compaction, and harness integration remain separate future work.
+See [ADR 0003](adr/0003-checkpoints.md) and [ADR 0004](adr/0004-tool-effects.md).
+
+## Tool-effect ledger
+
+Planning and transitions require `Idempotency-Key` and current scope read/write
+access; GET requires read access. **Create a bootstrap checkpoint first**:
+planning does not create a run, and a missing run returns `404`.
+
+| Planning field | Contract |
+|---|---|
+| `scope_id`, `run_id`, `operation_id` | Caller UUIDs; operation identity is tenant/scope/run/operation, not global |
+| `tool_name` | Nonempty text, at most 256 characters |
+| `action_hash` | Required lowercase 64-hex digest of the caller's canonical action; the server cannot verify it against an external call |
+| `memory_refs` | Up to 100 distinct exact same-scope references: episode revision 1 or existing assertion revision 1–1000; defaults to empty, omitted revision is 1, not latest |
+
+**Declare every memory dependency used by the action.** Checkpoints/effects are
+not permitted reference kinds; undeclared copied data is not discovered.
+The service persists only a tenant-HMAC `action_fingerprint` and a stable
+64-hex `external_idempotency_key`, not raw action hashes or arguments.
+GET exposes these identifiers, reference IDs, latest revision/status,
+`run_invalidated`, and immutable history of at most four events.
+Effects are excluded from recall/explain; use their dedicated GET endpoint.
+Tool names, reasons, and receipt references must still be sanitized by the caller.
+
+Planning returns `201` with `memory_id`, `revision: 1`, `status: "planned"`.
+Different idempotency keys with the same operation identity and normalized body
+deduplicate to that original revision-1 reference, even after later transitions.
+Changed intent returns `409 operation_conflict`; changed body under the same
+idempotency key returns `409 idempotency_conflict`. Hidden/purged identities cannot
+be recovered by replay (`404` for an exact retry).
+Each run allows **100 effects over its lifetime, including terminal records**;
+the cap returns `422 effect_limit_exceeded`. Purging does not free capacity for
+reuse because it seals the run. New run/operation IDs are not semantic deduplication.
+
+Transitions require strict integer `expected_revision` 1–4, `status`, and a
+nonempty `reason` of at most 256 characters. Success returns `201` with the
+next revision/status; stale CAS is `409 revision_conflict`, and a forbidden
+transition is `409 effect_transition_conflict`.
+
+| Current state | Allowed next state |
+|---|---|
+| `planned` | `dispatched`, `unknown` |
+| `dispatched` | `unknown`, `confirmed`, `failed` |
+| `unknown` | `confirmed`, `failed` |
+| `confirmed`, `failed` | None; terminal states are immutable |
+
+`planned → unknown` records uncertainty about an off-protocol/legacy attempt;
+it does not authorize execution. There is no `unknown → dispatched`.
+Terminal transitions require a nonempty `receipt_reference` (at most 256
+characters) and `receipt_source: "provider_receipt"` or `"operator_review"`;
+other states require both receipt fields to be omitted or null. These are **caller-reported references,
+not server-verified outcomes**. GET history includes recorded time, reason,
+receipt fields, and `origin`; the DB assigns timestamps and actors and enforces
+the FSM, contiguous revisions, head advancement, and reference constraints.
+RLS and composite tenant/scope foreign keys remain in force; no privileged helper.
+
+Idempotency retains only the result reference/revision/status and keyed request
+digest, not receipt or body copies. Plan and transition responses, including
+dispatch acknowledgments, are **historical revision references, not current-state
+snapshots or execution authorization**. Under current authorization, same-intent
+planning retries and exact transition replays can return the original reference
+for a surviving effect even after its run is sealed. This does not unseal the
+run: fresh dispatch remains rejected, and exact replay of a purged effect remains `404`.
+The harness must durably record dispatch before an outside call and use the
+stable external key where the provider supports it. No external exactly-once,
+approval, automatic retry/execution, or provider-receipt-query guarantee is made.
 
 ## Idempotency and deletion
 
@@ -248,24 +334,36 @@ a conflicting payload returns `409`. Exact replay of a purged event returns
 reserved selector token. `purge` accepts 1–100 root IDs and follows
 **episode → assertion (any revision) → checkpoint references → descendant/fork
 checkpoints**. Direct episode-to-checkpoint references also participate.
+Declared episode/assertion-to-effect references add
+**source → tool effect → every checkpoint in that scope/run**, including old
+checkpoints with empty references and snapshots predating the effect.
 The total limit is 10,000 dependents plus requested roots, not 10,000 per layer.
 Larger closures fail with `422` without partial purge. Any historical source
 conservatively removes the assertion's entire history and all dependent
 checkpoint payloads, even when later snapshots omit that source. Every child
 inherits its full parent lineage; forks cannot escape it.
 
+Purging **any** effect permanently sets the run's `effects_invalidated` flag.
+New effect plans/dispatch return `409 effect_run_invalidated`; new checkpoints
+are rejected with `409 checkpoint_invalidated`, and no checkpoint in that run
+can resume. Other independent effects are not automatically purged: GET still
+returns their history with `run_invalidated: true`, and allowed reconciliation
+transitions remain possible, including `unknown → confirmed/failed`, but no dispatch.
+
 Affected branch heads are permanently invalidated and their IDs cannot be
 reopened. Deleting a checkpoint does not delete its ancestors or source
 episodes. There is no regeneration. The existing tenant session lock keeps
-the closure, payload purge, branch invalidation, and read barrier atomic.
+the closure, payload purge, run/branch invalidation, and read barrier atomic.
 
-Purge synchronously removes target episode/assertion/checkpoint bodies and
-dependent quotes/references, then inserts scope-bound opaque deletion markers with timestamps
+Purge synchronously SQL-deletes target episode/assertion/checkpoint/effect payloads,
+effect events (including reasons/receipt references), and dependent quotes/references,
+then inserts scope-bound opaque deletion markers with timestamps
 in `memory_ops.object_tombstone` **in the same transaction**. `memory.object`
 has no `deleted_at` column; its SELECT RLS excludes objects with tombstones.
 The transaction also advances `deletion_epoch` and commits a receipt.
 HTTP `202` with `active_store_purged` is **not** a queued purge job or certification
-of complete erasure. Opaque run/branch metadata, object records, tombstones, audit/receipt
+of complete erasure. Opaque operation registry/run flags, run/branch metadata,
+object records, tombstones, audit/receipt
 metadata, and tenant-keyed HMAC source/idempotency tombstones persist for the
 tenant lifetime; there is no automatic expiry or full tenant-erasure workflow.
 
@@ -279,51 +377,52 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-Additive schema `003_checkpoints.sql` follows unchanged `001_initial.sql` and
-`002_assertion_revisions.sql`. It adds checkpoint runs, branches, payloads,
-references, and their constraints without rewriting prior assertion history.
-The v0.0.3 runtime requires the ledger to equal `[1, 2, 3]` exactly and rejects
+Additive schema `004_tool_effects.sql` follows unchanged migrations 001–003.
+It adds the effect ledger/operation registry and run-invalidation flag without
+rewriting saved checkpoint checksums or assertion history.
+The v0.0.4 runtime requires the ledger to equal `[1, 2, 3, 4]` exactly and rejects
 older, newer, or incomplete histories.
 
 Migration requires a forced-RLS-bypassing administrator with DDL rights and
-`btree_gist`. `row_security = off` fails closed if RLS would filter the
-backfill; it does not grant bypass privileges. Stop all old/new API traffic,
+`btree_gist`. Migration 002's `row_security = off` fails closed if RLS would filter
+its backfill; it does not grant bypass privileges. Stop all old/new API traffic,
 back up, migrate atomically, then start only the matching new API.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling old-API compatibility or downgrade is supported. Follow
-[operations](operations/README.md#v003-maintenance-migration).
+[operations](operations/README.md#v004-maintenance-migration).
 
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-For the **v0.0.3 checkpoint milestone**, implementation commit
-[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a), the implementation
-session supplied the following successful results on 2026-09-16:
+For **v0.0.4/schema 4**, implementation commit
+[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8),
+the following results were verified on 2026-09-16:
 
 | Environment | Command | Result |
 |---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
+| Local Apple Container | `./scripts/test-containers.sh` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 73 tests, Ruff, strict mypy (8 source files), and production HTTP health smoke passed |
 
 Both Docker jobs succeeded in
-[GitHub Actions run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082).
-The implementation session checked each job's exact logs, including test counts,
-lint/type checks, and production HTTP health smoke—not just job status.
-These are the reported implementation/CI runs, not independent reruns by the
-documentation task.
+[GitHub Actions run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356).
+Each job's actual logs confirmed the test count, lint/type checks, and production
+HTTP health smoke, not just job status. All three test runs reported 2 existing warnings.
 
-The suite covers real API-process crash/restart with checkpoint/idempotency
-recovery, actual 1 MiB body/100-reference boundaries, and staged schema
-001 → 002 with actual revision-2 data → 003 preserving historical assertion data.
-Passing these checks does not establish complete M1, measured performance/quality,
-backup/DR guarantees, or full-erasure qualification.
+Coverage includes schema upgrades and unchanged v0.0.3 checkpoint checksums,
+effect FSM/CAS and receipt requirements, current authorization, an actual API
+process crash after simulated external success, restore/confirmation races,
+restore-fence transaction rollback, and historical dispatch replay after permanent
+run sealing. Exact 100-effect/run and 100-reference limits, historical assertion
+dependencies, and run-wide effect/checkpoint purge are also exercised.
+These checks do not establish complete M1, measured performance/quality,
+external exactly-once behavior, backup/DR, or full-erasure qualification.
 
 ## Still roadmap work
 
 Workers, job enqueue/status APIs, automatic synthesis, separate working snapshots/
 compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ, a SQL/graph oracle,
-durable external-effect ledgers, actual harness execution/recovery,
+provider receipt verification, actual harness integration/execution/recovery,
 cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
 are absent. These typed checkpoint envelopes do not complete the planned
 bitemporal, graph, provenance, or deletion architecture.

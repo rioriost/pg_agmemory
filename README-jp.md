@@ -7,17 +7,18 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.3/schema 3のtyped checkpointを実装済みで、ローカルとnative Dockerの検査は合格しています。
+**v0.0.4/schema 4のtool-effect ledgerを実装済みで、ローカルとnative Dockerの検査は合格しています。
 M1全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
 稼働DBからの同期purgeを実装しています。tenant/scope権限をサービスと
 PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
 assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
-新milestoneではtyped checkpointの保存と新branchへのrestore envelopeを追加します。
-harnessや外部副作用を実行する機能ではありません。
+typed checkpointは新branchへのrestore envelopeを提供します。
+新milestoneではdurableなtool-effect intent/outcome台帳を追加しますが、
+harnessやtoolを実行する機能ではありません。
 
-別assertion間のsupersession/fact調停、外部副作用ledger、harness adapter、
+別assertion間のsupersession/fact調停、provider receipt検証、harness adapter、
 worker、自動抽出、pgvector、日本語tokenizer、
 AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
@@ -48,13 +49,13 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-v0.0.3の実装commit
-[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a)は、
+**v0.0.4/schema 4**の実装commit
+[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8)は、
 Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
-それぞれ**54テスト**、Ruff、strict mypy（source 7ファイル）、
+それぞれ**73テスト**（既存warning 2件）、Ruff、strict mypy（source 8ファイル）、
 production HTTP health smokeが合格しました。
-[CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)と、
-報告された[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)と、
+[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
 
 ## APIの起動
 
@@ -85,13 +86,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provisionは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.3への更新には保守停止とbackupが必要です。**
-旧版・新版すべてのAPI trafficとimageを停止し、`003_checkpoints.sql`までの
+**v0.0.4への更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI trafficとimageを停止し、`004_tool_effects.sql`までの
 未適用migrationを適用してから新版APIだけを起動します。
-新版runtimeはschema履歴が厳密に`[1, 2, 3]`であることを要求します。
+新版runtimeはschema履歴が厳密に`[1, 2, 3, 4]`であることを要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 旧APIとのrolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v003の保守migration)に従ってください。
+[migration手順](docs/operations/README-jp.md#v004の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -141,9 +142,10 @@ head不一致時は`409 revision_conflict`を返します。
 checkpointは`recall`や`explain`には出しません。
 
 `POST /v1/checkpoints/restore`はharness/versionの完全一致と新しいbranchを要求し、
-元branchを巻き戻しません。dispatched effectはunknownになり、callerの照合が必要です。
-`automatic_reexecution`は常にfalseであり、
-durable effect ledger、receipt照会、実行engineではありません。
+元branchを巻き戻しません。run台帳のdispatched effectはfork作成と原子的にunknownになります。
+GET/restoreはsnapshot後に追加されたものも含め、runの生存effect全件を統合します。
+未追跡hintはplannedでも再開を阻止します。旧動作を意図的に厳格化しています。
+`automatic_reexecution`は常にfalseです。
 保存済みassertion参照は正確な過去revisionを維持し、
 restoreで最新revisionを選び直したり、現在の外部事実を更新したりはしません。
 callerは全memory依存を宣言し、stateから機密情報を除去してください。
@@ -155,6 +157,31 @@ source削除はassertion履歴、checkpoint参照、全子孫/fork lineageへ伝
 [ADR 0003](docs/adr/0003-checkpoints-jp.md)を参照してください。
 M1全体や災害復旧の完成を意味しません。
 
+## Tool-effect ledger
+
+先にbootstrap checkpointを作成してください。`POST /v1/tool-effects`は
+同一scopeの既存runを要求します。caller生成のoperation UUID、tool名、
+正規化actionの小文字64桁hex `action_hash`、すべての正確なmemory依存を記録します。
+生の引数/hashは永続化せず、GETはtenant-HMAC fingerprintと安定した外部冪等性keyを返します。
+runの存続期間中のeffect上限は100件です。
+
+`POST /v1/tool-effects/{memory_id}/transitions`はCAS付きの状態遷移を追記します。
+harnessはtool呼出し**前**にdispatchを永続記録し、providerが対応する場合は
+安定した外部keyを使ってください。plan/遷移の応答は過去revisionの参照であり、
+現在状態のsnapshotや実行許可ではありません。
+現在の認可の下で、生存effectはrun封鎖後も旧参照を再送できますが、
+新たなdispatchは引き続き拒否します。
+confirmed/failedにはcaller申告のreceipt参照が必要ですが、
+serverは参照を検証せずproviderにも照会しません。
+外部exactly-once保証、承認サービス、自動実行はありません。
+
+effectを直接または宣言済みsource経由でpurgeすると、そのrunの全checkpoint payloadを削除し、
+新effect、dispatch、checkpoint、再開を永続的に禁止します。
+独立した生存effectの読取り/照合は可能です。新run/operation IDは意味的な重複抑止ではありません。
+[台帳の契約](docs/STATUS-jp.md#tool-effect-ledger)、
+[運用](docs/operations/README-jp.md#tool-effectの運用)、
+[ADR 0004](docs/adr/0004-tool-effects-jp.md)を参照してください。
+
 ## ドキュメント
 
 | 日本語 | English |
@@ -164,6 +191,7 @@ M1全体や災害復旧の完成を意味しません。
 | [初期アーキテクチャ決定](docs/adr/0001-initial-slice-jp.md) | [Initial architecture decisions](docs/adr/0001-initial-slice.md) |
 | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) |
 | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) | [Checkpoint decisions](docs/adr/0003-checkpoints.md) |
+| [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

@@ -8,6 +8,11 @@
 - 命名: ローカルdirectory/package/serviceは`pg_agmemory`、
   公開repositoryは引き続き`rioriost/pgag_memory`
 
+**v0.0.3当時の記録です。** [ADR 0004](0004-tool-effects-jp.md)は下記の
+ledger延期とsnapshot-onlyの照合/再開判断を置き換えます。
+v0.0.4はlive run ledgerを参照し、全未追跡hintを阻止してeffect purge後のrunを封鎖します。
+保存checkpoint checksumは変わらず、下記の決定と検証証拠はv0.0.3当時の範囲に限定します。
+
 ## 決定と範囲
 
 scope内のrun/branch identity、正確な宣言済みmemory参照、HMAC完全性検査、

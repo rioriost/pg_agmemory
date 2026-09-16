@@ -12,9 +12,10 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
-v0.0.3 checkpoint milestoneにはschema 3が必要です。
-Apple Container/native Dockerの54テストの結果は
-[検証証拠](../STATUS-jp.md#検証証拠)に記録しています。
+v0.0.4 tool-effect milestoneにはschema 4が必要です。
+Apple Containerとnative Docker amd64/arm64で、それぞれ73テスト、
+Ruff、strict mypy、production HTTP health smokeが合格しました。
+[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
@@ -30,8 +31,9 @@ Apple Container/native Dockerの54テストの結果は
    連続した履歴のみを受け付け、適用済み版は再実行時にskipします。
    lock取得timeoutは5秒です。既存DBの更新には下記の保守手順が必要です。
 2. 変更しない`src/pg_agmemory/storage/001_initial.sql`、
-   `src/pg_agmemory/storage/002_assertion_revisions.sql`と、追加的な
-   `src/pg_agmemory/storage/003_checkpoints.sql`をpackage resourceとして
+   `src/pg_agmemory/storage/002_assertion_revisions.sql`、
+   `src/pg_agmemory/storage/003_checkpoints.sql`に続き、追加的な
+   `src/pg_agmemory/storage/004_tool_effects.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
@@ -47,7 +49,7 @@ Apple Container/native Dockerの54テストの結果は
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3]`であることを
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4]`であることを
    要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
 
 admin URL、署名用秘密鍵、token、tenant HMAC secretをsource管理、issue、
@@ -55,7 +57,9 @@ logへ残さず、不要なものをruntime環境へ渡さないでください�
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
-## v0.0.3の保守migration
+<a id="v003の保守migration"></a>
+
+## v0.0.4の保守migration
 
 **旧版/新版APIのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -70,14 +74,16 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
    migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
    lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
-4. migration 003はcheckpoint run、branch、payload、参照、制約を追加します。
-   migration 001/002は変更せず、古いDBには未適用の002を003より先に適用します。
-   assertion履歴、source-event/idempotency記録、timestamp、再送互換性を維持し、
-   resetしないでください。
-5. ledgerの版が厳密に`[1, 2, 3]`であることを確認してから、
+4. migration 004はeffect payload/履歴/参照、opaque operation registry、
+   run失効flagを追加します。migration 001〜003は変更せず、旧DBへ未適用版を順に適用します。
+   保存checkpoint checksumは変わりませんが、live ledgerの再開規則は意図的に厳格化し、
+   未追跡hintはplannedでも再開を阻止します。
+   assertion履歴、source-event/idempotency記録、timestampを維持してください。
+5. ledgerの版が厳密に`[1, 2, 3, 4]`であることを確認してから、
    制限付きruntime資格情報で**新APIだけを起動**します。
-   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・checkpoint CAS・
-   restore・lineage削除の検査を実行してください。health応答だけではこれらを検証できません。
+   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・effect FSM/CAS・
+   restore fencing・legacy hint・run purgeの検査を実行してください。
+   health応答だけではこれらを検証できません。
 6. 失敗時はtraffic停止を維持します。変更済みschemaへ旧imageを接続したり、
    downgradeがあると想定したりしないでください。
    backup restoreも最新削除/ACL状態の再適用・検証まで隔離します。
@@ -99,18 +105,57 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 4. harness ID/versionとstate schemaを完全一致させ、未使用のtarget branchへrestoreします。
    元branchは変えません。保存済みassertion参照は正確な過去revisionを維持し、
    最新revisionへの変更や外部事実の自動更新は行いません。
-   harnessへstateを渡す前に`requires_reconciliation`と
-   `resume_allowed`を確認し、unknown/dispatched操作を外部システムと照合してください。
-   `automatic_reexecution`は常にfalseで、このAPIはreceipt照会やコード実行を行いません。
+   harnessへstateを渡す前に`tool_effects`、`untracked_effects`、
+   `requires_reconciliation`、`resume_allowed`を確認してください。
+   snapshot時点だけでなくrunの全生存effectを含みます。未追跡planned hintも阻止対象で、
+   unknown hintとtracked planned effectの矛盾には不確実性/receiptの照合が必要です。
+   restoreはfork作成前にledgerのdispatchedを原子的にunknownにします。
+   CASは古いledger writerを拒否しますが、進行中の外部呼出しは止めません。
+   `automatic_reexecution`は常にfalseで、provider receipt照会やコード実行は行いません。
 5. 結果が不明なwriteは同じkey/payloadで再送します。
    idempotency記録にはstateでなく元の結果参照のみを保存します。
    現在の認可/checksum検査を適用し、purge済みcheckpointは`404`です。
 
 保存時epochや`resume_allowed: true`は承認や外部副作用receiptではありません。
-typed pending effectはsnapshot hintでありdurable effect ledgerではありません。
+typed pending effectはsnapshot hintであり、durable ledgerは別に管理します。
 作成bodyは1 MiB、他endpointは256 KiBまでです。
 [契約](../STATUS-jp.md#checkpointの契約)と
-[ADR 0003](../adr/0003-checkpoints-jp.md)を参照してください。本番/DR適格性は主張しません。
+[ADR 0004](../adr/0004-tool-effects-jp.md)を参照してください。本番/DR適格性は主張しません。
+
+## Tool-effectの運用
+
+1. effect planの前に、意図したscope内のrunをcheckpointで初期化します。
+   hostの正規化actionの安定した小文字64桁hex hashを計算し、
+   operation UUID、tool名、hash、全memory依存の正確な参照をPOSTします。
+   サービスは引数や生hashを保存せず、外部呼出しの内容を検証しません。
+   tool名、reason、receipt参照、stateの機密情報を除去してください。
+2. 返された`memory_id`を保存し、GETで安定した`external_idempotency_key`、
+   `run_invalidated`を含む最新記録を取得します。identityはtenant/scope/run/operation内です。
+   新run/operation IDは同じ実世界actionを重複抑止しません。
+   runの存続期間中の上限はterminalを含め100 effectです。
+3. hostは権限/承認を検査し、外部呼出し**前**にCASで`dispatched`を永続記録します。
+   providerが対応する場合は安定した外部keyを使ってください。
+   実行の協調はhostの責任であり、旧dispatch応答の再送は新たな送信/盲目的再送の許可ではありません。
+4. 結果が不明なら`unknown`を記録し、サービス外でproviderと照合します。
+   `planned → unknown`はlegacy/protocol外の試行を記録できますが、実行許可ではありません。
+   `unknown → dispatched`は禁止です。terminalの`confirmed`/`failed`は、
+   長さ制限付きreceipt参照と`provider_receipt`または`operator_review`を要求します。
+   どちらもcaller申告で、検証済みではありません。terminalは不変で自動再試行を許可しません。
+5. 不明なledger writeは同じkey/bodyで再送します。intent変更は衝突し、
+   同じintentを新keyで送っても元のrevision 1参照を返します。
+   plan/dispatch応答は過去revisionの参照であり、現在状態のsnapshotや実行許可ではありません。
+   現在の認可の下で、生存effectの再送はrun封鎖後も成功し得ますが、新たなdispatchは許可しません。
+   旧応答を信用せずGETで現在状態を読んでください。照合を回避するためhintを消したり、
+   不確実性を逃れるためIDを使い直したりしてはいけません。
+   未追跡hintはhostが明示的に解決する必要があります。
+6. effect purgeで封鎖されたrunでは新intent作成、dispatch、checkpoint、再開を行いません。
+   独立した生存effectはGETと許可済み照合遷移が可能で、
+   `unknown → confirmed/failed`も有効です。opaque operation registry、run flag、
+   tombstoneを維持してください。
+
+これは台帳であり、worker、harness adapter、provider照会client、承認サービス、
+外部exactly-once機構ではありません。[契約](../STATUS-jp.md#tool-effect-ledger)と
+[ADR 0004](../adr/0004-tool-effects-jp.md)を参照してください。
 
 ## Revisionの運用
 
@@ -197,20 +242,25 @@ previewは対象を固定せず、purge時に認可と依存関係を再評価�
 内部schema constraintに将来mode名があっても、
 受け付けるmodeは`preview`と`purge`のみです。
 
-purgeはepisode/assertion履歴、宣言済みcheckpoint参照、完全なparent lineageを介した
+purgeはepisode/assertion履歴、宣言済みcheckpoint/effect参照、完全なparent lineageを介した
 全子孫/fork checkpointを辿ります。上限は要求rootに加えて依存物全体で10,000件です。
 旧assertion revisionだけのsourceでもassertion全履歴と影響する全checkpoint stateを削除します。
 headが影響を受けるbranchは永続失効するため、同じIDの再開やlineage除去による回避を
-試みないでください。payload、引用、参照を先に削除し、
+試みないでください。どのeffectでもpurgeすると、古い空snapshotを含む
+**同一scope/runの全checkpoint payload**を削除し、`effects_invalidated`を永続設定します。
+新plan、dispatch、checkpoint、再開を禁止しますが、同じrunというだけで
+独立effectまでpurgeせず、生存記録の照合は可能です。
+payload、引用、参照、reason/receipt参照を含むeffect eventをactive tableから先にSQL削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
 `memory.object`へのsoft-deleteの`deleted_at`更新や特権削除helperは使いません。
 barrier/receiptをcommitしてから応答します。
-tenant session lockがclosure、branch失効、read drainを覆います。
+tenant session lockがclosure、run/branch失効、read drainを覆います。
 workerへのenqueueや影響本文の再構築は行いません。
 receiptの`active_store_purged`は完全消去ではありません。
 
-opaque run/branch metadata、objectとそのtombstone、audit/receipt metadata、tenant-keyed HMACの
+opaque operation registry/run flag、run/branch metadata、objectとtombstone、
+audit/receipt metadata、tenant-keyed HMACの
 source/idempotency tombstoneはtenantの存続期間中残します。
 purgeを「完了」させようとして手動削除したり`dedup_secret`を変更したりしないでください。
 再送保護が機能しなくなる可能性があります。削除済みsource identityやmemory結果の
@@ -221,6 +271,8 @@ purgeを「完了」させようとして手動削除したり`dedup_secret`を�
 
 checkpoint restoreはMemory DB内のtyped stateのコピーであり、DB backupからの復旧、
 別のworking snapshot compactionシステム、災害復旧ではありません。
+DB backupはeffect状態も巻き戻し得ます。外部実行を停止したままprovider結果を別途照合してください。
+ledgerが安全な復旧を自動化するものではありません。
 
 削除receiptは`backup_status: "operator_managed"`、
 `backup_retention_deadline: null`を返します。SQL行削除は物理媒体の消去、
