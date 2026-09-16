@@ -1,7 +1,12 @@
+import asyncio
+import hashlib
+import hmac
+import json
 import os
 import secrets
 import time
 from dataclasses import dataclass
+from importlib.resources import files
 from uuid import UUID, uuid4
 
 import jwt
@@ -13,9 +18,10 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from pg_agmemory.api import create_app
-from pg_agmemory.database import Settings, migrate
+from pg_agmemory.database import Settings, migrate, validate_runtime
 
 
 @dataclass
@@ -96,8 +102,7 @@ def database():
     url = os.environ.get("PGAG_TEST_DATABASE_URL")
     if not url:
         pytest.skip("PGAG_TEST_DATABASE_URL must identify a disposable PostgreSQL database")
-    migrate(url)
-    migrate(url)
+    legacy = seed_legacy_database(url)
     role = "pgag_test_" + uuid4().hex
     password = secrets.token_urlsafe(32)
     with psycopg.connect(url, autocommit=True) as admin:
@@ -108,14 +113,20 @@ def database():
         )
     params = conninfo_to_dict(url)
     params.update(user=role, password=password)
-    yield url, make_conninfo(**params)
+    runtime_url = make_conninfo(**params)
+    with pytest.raises(RuntimeError, match="run pg-agmemory migrate"):
+        asyncio.run(validate_runtime(runtime_url))
+    migrate(url)
+    migrate(url)
+    asyncio.run(validate_runtime(runtime_url))
+    yield url, runtime_url, legacy
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
 
 
 @pytest.fixture
 def env(database):
-    admin_url, runtime_url = database
+    admin_url, runtime_url, _ = database
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private = key.private_bytes(
         serialization.Encoding.PEM,
@@ -157,3 +168,110 @@ def env(database):
         yield Environment(
             client, settings, admin_url, private, tenants, principals, scopes, subjects
         )
+
+
+def seed_legacy_database(url):
+    records = []
+    with psycopg.connect(url) as conn:
+        if conn.execute("SELECT to_regnamespace('memory')").fetchone()[0] is not None:
+            pytest.fail("Integration tests require a fresh disposable database")
+        conn.execute(files("pg_agmemory").joinpath("storage/001_initial.sql").read_text())
+        conn.execute(
+            """CREATE TABLE public.pgag_schema_migration
+               (version integer PRIMARY KEY, applied_at timestamptz DEFAULT clock_timestamp())"""
+        )
+        conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (1)")
+        for _ in range(2):
+            tenant, principal, scope, source, assertion, deleted = [uuid4() for _ in range(6)]
+            secret = secrets.token_bytes(32)
+            subject = str(uuid4())
+            conn.execute(
+                "INSERT INTO memory.tenant(id, dedup_secret) VALUES (%s,%s)", (tenant, secret)
+            )
+            conn.execute(
+                "INSERT INTO memory.principal VALUES (%s,%s,%s)", (tenant, principal, subject)
+            )
+            conn.execute("INSERT INTO memory.scope VALUES (%s,%s)", (tenant, scope))
+            conn.execute(
+                """INSERT INTO memory.scope_member
+                   (tenant_id,scope_id,principal_id,permissions)
+                   VALUES (%s,%s,%s,ARRAY['read','write','delete'])""",
+                (tenant, scope, principal),
+            )
+            for object_id, kind in [
+                (source, "episode"),
+                (assertion, "assertion"),
+                (deleted, "episode"),
+            ]:
+                conn.execute(
+                    """INSERT INTO memory.object(tenant_id,id,scope_id,kind,created_at)
+                       VALUES (%s,%s,%s,%s,'2026-09-10T00:00:00Z')""",
+                    (tenant, object_id, scope, kind),
+                )
+            conn.execute(
+                """INSERT INTO memory.episode
+                   (tenant_id,id,scope_id,occurred_at,content,consent_reference)
+                   VALUES (%s,%s,%s,'2026-09-01T00:00:00Z','ACME Gold','legacy-consent')""",
+                (tenant, source, scope),
+            )
+            conn.execute(
+                """INSERT INTO memory.assertion
+                   (tenant_id,id,scope_id,subject,predicate,value,valid_time,system_time,
+                    explicit_intent)
+                   VALUES (%s,%s,%s,'ACME','contract_tier','Gold',
+                           '[2026-09-01,2026-10-01)','[2026-09-10,)',true)""",
+                (tenant, assertion, scope),
+            )
+            conn.execute(
+                """INSERT INTO memory.provenance_edge
+                   (tenant_id,child_id,parent_id,scope_id,quote) VALUES (%s,%s,%s,%s,'Gold')""",
+                (tenant, assertion, source, scope),
+            )
+            conn.execute(
+                """INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id)
+                   VALUES (%s,%s,%s)""",
+                (tenant, deleted, scope),
+            )
+            # Preserve the v0.0.1 normalized field order for idempotency compatibility.
+            payload = {
+                "scope_id": str(scope),
+                "subject": "ACME",
+                "predicate": "contract_tier",
+                "value": "Gold",
+                "evidence": [{"memory_id": str(source), "quote": "Gold"}],
+                "explicit_intent": True,
+                "valid_from": "2026-09-01T00:00:00Z",
+                "valid_to": "2026-10-01T00:00:00Z",
+            }
+            key = "legacy-remember"
+            digest = hmac.new(
+                secret, json.dumps(payload, separators=(",", ":")).encode(), hashlib.sha256
+            ).hexdigest()
+            result = {"memory_id": str(assertion), "revision": 1, "epistemic_status": "reported"}
+            conn.execute(
+                """INSERT INTO memory_ops.idempotency
+                   (tenant_id,principal_id,operation,key_digest,request_digest,result)
+                   VALUES (%s,%s,'remember',%s,%s,%s)""",
+                (
+                    tenant,
+                    principal,
+                    hmac.new(secret, key.encode(), hashlib.sha256).hexdigest(),
+                    digest,
+                    Jsonb(result),
+                ),
+            )
+            records.append(
+                {
+                    "tenant": tenant,
+                    "principal": principal,
+                    "scope": scope,
+                    "source": source,
+                    "assertion": assertion,
+                    "deleted": deleted,
+                    "subject": subject,
+                    "payload": payload,
+                    "result": result,
+                    "key": key,
+                }
+            )
+    return records

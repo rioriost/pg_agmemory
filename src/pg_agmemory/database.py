@@ -7,6 +7,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 Connection = psycopg.AsyncConnection[dict[str, Any]]
+MIGRATIONS = ("001_initial.sql", "002_assertion_revisions.sql")
+SCHEMA_VERSION = len(MIGRATIONS)
 
 
 @dataclass(frozen=True)
@@ -50,20 +52,39 @@ async def validate_runtime(url: str) -> None:
         role = await cursor.fetchone()
         if not role or role["rolsuper"] or role["rolbypassrls"] or role["owns_tables"]:
             raise RuntimeError("Runtime database role must not own tables or bypass RLS")
-        await conn.execute("SELECT 1 FROM memory.tenant LIMIT 0")
+        try:
+            versions = await (
+                await conn.execute(
+                    "SELECT version FROM public.pgag_schema_migration ORDER BY version"
+                )
+            ).fetchall()
+        except (psycopg.errors.UndefinedTable, psycopg.errors.InsufficientPrivilege) as exc:
+            raise RuntimeError("Database schema is unavailable; run pg-agmemory migrate") from exc
+        if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
+            raise RuntimeError("Database schema version mismatch; run matching migrations and API")
 
 
 def migrate(url: str) -> None:
     with psycopg.connect(url) as conn:
+        conn.execute("SET LOCAL lock_timeout = '5s'")
         conn.execute("SELECT pg_advisory_xact_lock(742091830)")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS public.pgag_schema_migration
                (version integer PRIMARY KEY, applied_at timestamptz DEFAULT clock_timestamp())"""
         )
-        row = conn.execute(
-            "SELECT version FROM public.pgag_schema_migration WHERE version = 1"
-        ).fetchone()
-        if row is None:
-            sql = files("pg_agmemory").joinpath("storage/001_initial.sql").read_text()
+        installed = [
+            row[0]
+            for row in conn.execute(
+                "SELECT version FROM public.pgag_schema_migration ORDER BY version"
+            ).fetchall()
+        ]
+        if installed != list(range(1, len(installed) + 1)) or len(installed) > SCHEMA_VERSION:
+            raise RuntimeError("Unsupported database migration history")
+        for version, name in enumerate(MIGRATIONS, start=1):
+            if version <= len(installed):
+                continue
+            sql = files("pg_agmemory").joinpath("storage", name).read_text()
             conn.execute(sql)
-            conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (1)")
+            conn.execute(
+                "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)", (version,)
+            )

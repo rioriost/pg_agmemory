@@ -6,6 +6,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
 Content = Annotated[str, Field(min_length=1, max_length=65536)]
+Revision = Annotated[int, Field(ge=1, le=1000, strict=True)]
 
 
 class Contract(BaseModel):
@@ -26,6 +27,15 @@ class Evidence(Contract):
     quote: Annotated[str, Field(min_length=1, max_length=4096)]
 
 
+def validate_assertion_content(
+    valid_from: datetime | None, valid_to: datetime | None, evidence: list[Evidence]
+) -> None:
+    if valid_from and valid_to and valid_from >= valid_to:
+        raise ValueError("valid_from must precede valid_to")
+    if len({item.memory_id for item in evidence}) != len(evidence):
+        raise ValueError("evidence IDs must be unique")
+
+
 class Remember(Contract):
     scope_id: UUID
     subject: ShortText
@@ -38,10 +48,22 @@ class Remember(Contract):
 
     @model_validator(mode="after")
     def valid_interval(self) -> "Remember":
-        if self.valid_from and self.valid_to and self.valid_from >= self.valid_to:
-            raise ValueError("valid_from must precede valid_to")
-        if len({item.memory_id for item in self.evidence}) != len(self.evidence):
-            raise ValueError("evidence IDs must be unique")
+        validate_assertion_content(self.valid_from, self.valid_to, self.evidence)
+        return self
+
+
+class ReviseAssertion(Contract):
+    expected_revision: Revision
+    value: Content
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
+    explicit_intent: Literal[True]
+    valid_from: AwareDatetime | None = None
+    valid_to: AwareDatetime | None = None
+    reason: ShortText
+
+    @model_validator(mode="after")
+    def valid_interval(self) -> "ReviseAssertion":
+        validate_assertion_content(self.valid_from, self.valid_to, self.evidence)
         return self
 
 
@@ -65,7 +87,7 @@ class Recall(Contract):
 
 class Explain(Contract):
     memory_id: UUID
-    revision: Literal[1] = 1
+    revision: Revision = 1
 
 
 class Forget(Contract):
@@ -121,6 +143,12 @@ class RememberResult(BaseModel):
     epistemic_status: Literal["reported"]
 
 
+class RevisionResult(BaseModel):
+    memory_id: UUID
+    revision: Revision
+    epistemic_status: Literal["reported"]
+
+
 class ContextPack(BaseModel):
     format: Literal["memory-context-v1"]
     text: str
@@ -171,6 +199,8 @@ class ExplainedAssertion(BaseModel):
     valid_from: datetime | None
     valid_to: datetime | None
     recorded_at: datetime
+    known_until: datetime | None = None
+    correction_reason: str | None = None
 
 
 class ExplainedEvidence(BaseModel):
@@ -181,7 +211,7 @@ class ExplainedEvidence(BaseModel):
 
 class AssertionExplanation(BaseModel):
     memory_id: UUID
-    revision: Literal[1]
+    revision: Revision
     type: Literal["assertion"]
     assertion: ExplainedAssertion
     evidence: list[ExplainedEvidence]

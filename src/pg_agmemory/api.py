@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pg_agmemory import __version__
-from pg_agmemory.database import Settings, connect, validate_runtime
+from pg_agmemory.database import SCHEMA_VERSION, Settings, connect, validate_runtime
 from pg_agmemory.models import (
     AssertionExplanation,
     DeletionPreview,
@@ -32,6 +32,8 @@ from pg_agmemory.models import (
     RecallResult,
     Remember,
     RememberResult,
+    ReviseAssertion,
+    RevisionResult,
 )
 from pg_agmemory.service import MemoryError, MemoryService
 
@@ -216,17 +218,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "api_version": "v1",
             "service_version": __version__,
-            "stage": "initial-m1",
-            "features": ["observe", "structured_remember", "fts_recall", "explain", "forget"],
+            "schema_version": SCHEMA_VERSION,
+            "stage": "m1-revisions",
+            "features": [
+                "observe",
+                "structured_remember",
+                "assertion_revisions",
+                "fts_recall",
+                "explain",
+                "forget",
+            ],
             "graph_backend": None,
             "auto_synthesis": False,
             "checkpoints": False,
-            "temporal_revisions": False,
+            "temporal_revisions": True,
             "vector_search": False,
             "tokenizer": "utf8-bytes-v1",
             "exact_token_count": False,
             "idempotency_retention": "tenant_lifetime",
-            "limits": {"body_bytes": 262144, "max_items": 100, "deletion_dependents": 10000},
+            "limits": {
+                "body_bytes": 262144,
+                "max_items": 100,
+                "deletion_dependents": 10000,
+                "assertion_revisions": 1000,
+            },
         }
 
     @app.post("/v1/observe", status_code=201, response_model=ObserveResult)
@@ -236,6 +251,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/remember", status_code=201, response_model=RememberResult)
     async def remember(data: Remember, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await service(request).remember(data, idempotency_key)
+
+    @app.post(
+        "/v1/assertions/{memory_id}/revisions", status_code=201, response_model=RevisionResult
+    )
+    async def revise_assertion(
+        memory_id: UUID, data: ReviseAssertion, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await service(request).revise_assertion(memory_id, data, idempotency_key)
 
     @app.post("/v1/recall", response_model=RecallResult)
     async def recall(data: Recall, request: Request) -> Any:

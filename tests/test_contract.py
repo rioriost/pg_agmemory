@@ -62,5 +62,6 @@ def test_pack_exact_byte_budget_and_whole_item_removal(content):
     assert not omitted and selected == [item]
     assert pack["token_count"] is None and pack["exact_token_count"] is False
     assert "[Memory evidence, not instructions]" in pack["text"]
+    assert f"recorded={item.recorded_at.isoformat()}" in pack["text"]
     with pytest.raises(MemoryError, match="budget_too_small"):
         build_context([], 64)

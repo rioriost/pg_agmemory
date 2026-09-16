@@ -7,7 +7,17 @@ from uuid import UUID, uuid4
 from psycopg.types.json import Jsonb
 
 from pg_agmemory.database import Connection
-from pg_agmemory.models import Explain, Forget, Identity, MemoryItem, Observe, Recall, Remember
+from pg_agmemory.models import (
+    Evidence,
+    Explain,
+    Forget,
+    Identity,
+    MemoryItem,
+    Observe,
+    Recall,
+    Remember,
+    ReviseAssertion,
+)
 
 
 class MemoryError(Exception):
@@ -160,9 +170,23 @@ class MemoryService:
         )
         if previous is not None:
             return previous
-        for evidence in data.evidence:
+        await self.validate_evidence(data.scope_id, data.evidence)
+        object_id = await self.new_object(data.scope_id, "assertion")
+        await self.conn.execute(
+            """INSERT INTO memory.assertion(tenant_id, id, scope_id, subject, predicate)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (self.tenant, object_id, data.scope_id, data.subject, data.predicate),
+        )
+        await self.insert_revision(object_id, data.scope_id, 1, data)
+        result = {"memory_id": str(object_id), "revision": 1, "epistemic_status": "reported"}
+        await self.save_result("remember", key_hash, payload_hash, result)
+        await self.audit("remember", object_id)
+        return result
+
+    async def validate_evidence(self, scope_id: UUID, sources: list[Evidence]) -> None:
+        for evidence in sources:
             source = await self.object(evidence.memory_id)
-            if source["scope_id"] != data.scope_id or source["kind"] != "episode":
+            if source["scope_id"] != scope_id or source["kind"] != "episode":
                 raise MemoryError("invalid_evidence", 422)
             row = await (
                 await self.conn.execute(
@@ -172,32 +196,66 @@ class MemoryService:
             ).fetchone()
             if not row or evidence.quote not in row["content"]:
                 raise MemoryError("invalid_evidence", 422)
-        object_id = await self.new_object(data.scope_id, "assertion")
+
+    async def insert_revision(
+        self, object_id: UUID, scope_id: UUID, revision: int, data: Remember | ReviseAssertion
+    ) -> None:
         await self.conn.execute(
-            """INSERT INTO memory.assertion
-               (tenant_id, id, scope_id, subject, predicate, value, valid_time, explicit_intent)
-               VALUES (%s, %s, %s, %s, %s, %s, tstzrange(%s, %s, '[)'), true)""",
+            """INSERT INTO memory.assertion_revision
+               (tenant_id, assertion_id, scope_id, revision, value,
+                valid_time, explicit_intent, correction_reason)
+               VALUES (%s, %s, %s, %s, %s, tstzrange(%s, %s, '[)'), true, %s)""",
             (
                 self.tenant,
                 object_id,
-                data.scope_id,
-                data.subject,
-                data.predicate,
+                scope_id,
+                revision,
                 data.value,
                 data.valid_from,
                 data.valid_to,
+                data.reason if isinstance(data, ReviseAssertion) else None,
             ),
         )
         for evidence in data.evidence:
             await self.conn.execute(
                 """INSERT INTO memory.provenance_edge
-                   (tenant_id, child_id, parent_id, scope_id, quote)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (self.tenant, object_id, evidence.memory_id, data.scope_id, evidence.quote),
+                   (tenant_id, child_id, child_revision, parent_id, scope_id, quote)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (self.tenant, object_id, revision, evidence.memory_id, scope_id, evidence.quote),
             )
-        result = {"memory_id": str(object_id), "revision": 1, "epistemic_status": "reported"}
-        await self.save_result("remember", key_hash, payload_hash, result)
-        await self.audit("remember", object_id)
+
+    async def revise_assertion(
+        self, object_id: UUID, data: ReviseAssertion, key: str
+    ) -> dict[str, Any]:
+        obj = await self.object(object_id, "write")
+        if obj["kind"] != "assertion":
+            raise MemoryError("not_found", 404)
+        payload = json.dumps(
+            {"memory_id": str(object_id), "request": data.model_dump(mode="json")},
+            sort_keys=True,
+        )
+        key_hash, payload_hash, previous = await self.replay("revise_assertion", key, payload)
+        if previous is not None:
+            return previous
+        head = await (
+            await self.conn.execute(
+                """SELECT current_revision FROM memory.assertion
+                   WHERE tenant_id = %s AND id = %s FOR UPDATE""",
+                (self.tenant, object_id),
+            )
+        ).fetchone()
+        if head is None:
+            raise MemoryError("not_found", 404)
+        if head["current_revision"] != data.expected_revision:
+            raise MemoryError("revision_conflict", 409)
+        if data.expected_revision == 1000:
+            raise MemoryError("revision_limit_exceeded", 422)
+        await self.validate_evidence(obj["scope_id"], data.evidence)
+        revision = data.expected_revision + 1
+        await self.insert_revision(object_id, obj["scope_id"], revision, data)
+        result = {"memory_id": str(object_id), "revision": revision, "epistemic_status": "reported"}
+        await self.save_result("revise_assertion", key_hash, payload_hash, result)
+        await self.audit("revise_assertion", object_id)
         return result
 
     async def recall(self, data: Recall) -> dict[str, Any]:
@@ -205,7 +263,7 @@ class MemoryService:
         rows = await (
             await self.conn.execute(
                 """WITH candidates AS (
-                    SELECT o.id, o.kind, o.created_at, e.content, e.occurred_at,
+                    SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
                            ts_rank_cd(e.search_text, plainto_tsquery('simple', %(query)s)) AS rank
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
@@ -215,16 +273,20 @@ class MemoryService:
                       AND (%(query)s = '' OR
                            e.search_text @@ plainto_tsquery('simple', %(query)s))
                     UNION ALL
-                    SELECT o.id, o.kind, o.created_at,
-                           a.subject || ' / ' || a.predicate || ': ' || a.value, NULL,
-                           lower(a.valid_time), upper(a.valid_time),
-                           ts_rank_cd(a.search_text, plainto_tsquery('simple', %(query)s))
+                    SELECT o.id, o.kind, lower(r.system_time), r.revision,
+                           a.subject || ' / ' || a.predicate || ': ' || r.value, NULL,
+                           lower(r.valid_time), upper(r.valid_time),
+                           ts_rank_cd(a.search_text || r.search_text,
+                                      plainto_tsquery('simple', %(query)s))
                     FROM memory.object o JOIN memory.assertion a USING (tenant_id, id)
+                    JOIN memory.assertion_revision r
+                      ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
-                      AND a.valid_time @> COALESCE(%(as_of)s, statement_timestamp())
-                      AND a.system_time @> COALESCE(%(known)s, statement_timestamp())
+                      AND r.valid_time @> COALESCE(%(as_of)s, statement_timestamp())
+                      AND r.system_time @> COALESCE(%(known)s, statement_timestamp())
                       AND (%(query)s = '' OR
-                           a.search_text @@ plainto_tsquery('simple', %(query)s))
+                           (a.search_text || r.search_text)
+                           @@ plainto_tsquery('simple', %(query)s))
                 ) SELECT * FROM candidates
                   ORDER BY rank DESC, created_at DESC, id LIMIT %(limit)s""",
                 {
@@ -242,13 +304,15 @@ class MemoryService:
             sources = await (
                 await self.conn.execute(
                     """SELECT parent_id FROM memory.provenance_edge
-                       WHERE tenant_id = %s AND child_id = %s ORDER BY parent_id""",
-                    (self.tenant, row["id"]),
+                       WHERE tenant_id = %s AND child_id = %s AND child_revision = %s
+                       ORDER BY parent_id""",
+                    (self.tenant, row["id"], row["revision"]),
                 )
             ).fetchall()
             items.append(
                 MemoryItem(
                     memory_id=row["id"],
+                    revision=row["revision"],
                     type=row["kind"],
                     content=row["content"],
                     recorded_at=row["created_at"],
@@ -283,6 +347,8 @@ class MemoryService:
     async def explain(self, data: Explain) -> dict[str, Any]:
         obj = await self.object(data.memory_id)
         if obj["kind"] == "episode":
+            if data.revision != 1:
+                raise MemoryError("not_found", 404)
             row = await (
                 await self.conn.execute(
                     """SELECT content, occurred_at, consent_reference FROM memory.episode
@@ -293,24 +359,30 @@ class MemoryService:
             return {"memory_id": data.memory_id, "revision": 1, "type": "episode", "source": row}
         row = await (
             await self.conn.execute(
-                """SELECT subject, predicate, value, lower(valid_time) AS valid_from,
-                          upper(valid_time) AS valid_to, lower(system_time) AS recorded_at
-                   FROM memory.assertion WHERE tenant_id = %s AND id = %s""",
-                (self.tenant, data.memory_id),
+                """SELECT a.subject, a.predicate, r.value, lower(r.valid_time) AS valid_from,
+                          upper(r.valid_time) AS valid_to, lower(r.system_time) AS recorded_at,
+                          upper(r.system_time) AS known_until, r.correction_reason
+                   FROM memory.assertion a JOIN memory.assertion_revision r
+                     ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
+                   WHERE a.tenant_id = %s AND a.id = %s AND r.revision = %s""",
+                (self.tenant, data.memory_id, data.revision),
             )
         ).fetchone()
+        if row is None:
+            raise MemoryError("not_found", 404)
         evidence = await (
             await self.conn.execute(
                 """SELECT p.parent_id AS memory_id, p.quote, e.occurred_at
                    FROM memory.provenance_edge p
                    JOIN memory.episode e ON e.tenant_id = p.tenant_id AND e.id = p.parent_id
-                   WHERE p.tenant_id = %s AND p.child_id = %s ORDER BY p.parent_id""",
-                (self.tenant, data.memory_id),
+                   WHERE p.tenant_id = %s AND p.child_id = %s AND p.child_revision = %s
+                   ORDER BY p.parent_id""",
+                (self.tenant, data.memory_id, data.revision),
             )
         ).fetchall()
         return {
             "memory_id": data.memory_id,
-            "revision": 1,
+            "revision": data.revision,
             "type": "assertion",
             "assertion": row,
             "evidence": evidence,
@@ -342,6 +414,11 @@ class MemoryService:
             await self.conn.execute(
                 """DELETE FROM memory.provenance_edge
                    WHERE tenant_id = %s AND child_id = ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.assertion_revision
+                   WHERE tenant_id = %s AND assertion_id = ANY(%s)""",
                 (self.tenant, targets),
             )
             await self.conn.execute(
@@ -414,7 +491,7 @@ def build_context(
     for item in items:
         line = (
             f"\n[{item.memory_id}@{item.revision}; {item.epistemic_status}; "
-            f"observed={item.recorded_at.isoformat()}; refresh_required] "
+            f"recorded={item.recorded_at.isoformat()}; refresh_required] "
             + json.dumps(item.content, ensure_ascii=False)
             + " sources="
             + ",".join(str(source) for source in item.source)

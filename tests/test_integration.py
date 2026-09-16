@@ -61,7 +61,7 @@ def test_observe_remember_recall_explain_forget(env):
         == 404
     )
     with psycopg.connect(env.admin_url) as admin:
-        for table in ["episode", "assertion", "provenance_edge"]:
+        for table in ["episode", "assertion", "assertion_revision", "provenance_edge"]:
             count = admin.execute(
                 psycopg.sql.SQL("SELECT count(*) FROM memory.{} WHERE tenant_id = %s").format(
                     psycopg.sql.Identifier(table)
@@ -294,8 +294,14 @@ def test_database_requires_same_scope_evidence_and_at_least_one_source(env):
             )
             conn.execute(
                 """INSERT INTO memory.assertion
-                   (tenant_id,id,scope_id,subject,predicate,value,valid_time,explicit_intent)
-                   VALUES (%s,%s,%s,'ACME','plan','Gold','(,)',true)""",
+                   (tenant_id,id,scope_id,subject,predicate)
+                   VALUES (%s,%s,%s,'ACME','plan')""",
+                (env.tenants[0], target, env.scopes[0]),
+            )
+            conn.execute(
+                """INSERT INTO memory.assertion_revision
+                   (tenant_id,assertion_id,scope_id,revision,value,valid_time,explicit_intent)
+                   VALUES (%s,%s,%s,1,'Gold','(,)',true)""",
                 (env.tenants[0], target, env.scopes[0]),
             )
             conn.execute("SET CONSTRAINTS ALL IMMEDIATE")
@@ -407,8 +413,14 @@ def test_cross_scope_evidence_rejected_even_when_both_scopes_are_readable(env):
             )
             conn.execute(
                 """INSERT INTO memory.assertion
-                   (tenant_id,id,scope_id,subject,predicate,value,valid_time,explicit_intent)
-                   VALUES (%s,%s,%s,'ACME','plan','Gold','(,)',true)""",
+                   (tenant_id,id,scope_id,subject,predicate)
+                   VALUES (%s,%s,%s,'ACME','plan')""",
+                (env.tenants[0], target, env.scopes[2]),
+            )
+            conn.execute(
+                """INSERT INTO memory.assertion_revision
+                   (tenant_id,assertion_id,scope_id,revision,value,valid_time,explicit_intent)
+                   VALUES (%s,%s,%s,1,'Gold','(,)',true)""",
                 (env.tenants[0], target, env.scopes[2]),
             )
             conn.execute(
