@@ -7,6 +7,11 @@
 - プロジェクト/repository: `pgag_memory`、Python package/service: `pg_agmemory`
 - License: MIT。依存ライブラリのlicenseは別途適用
 
+**v0.0.1当時の決定記録です。** revision 1のみの時間モデルと
+同一assertion訂正の延期は、v0.0.2 milestoneでは
+[ADR 0002](0002-assertion-revisions-jp.md)に置き換えます。
+以下の原決定は履歴として維持し、現在のrevision契約を示すものではありません。
+
 ## 背景
 
 [実装プラン](../PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)は、はるかに広いサービスを

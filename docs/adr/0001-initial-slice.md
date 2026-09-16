@@ -7,6 +7,11 @@
 - Project/repository: `pgag_memory`; Python package/service: `pg_agmemory`
 - License: MIT; dependency licenses remain separate
 
+**Historical v0.0.1 decision record.** The revision-1-only time model and
+deferral of same-assertion corrections are superseded for the v0.0.2 milestone
+by [ADR 0002](0002-assertion-revisions.md). The original decisions below are
+retained as history, not a description of the current revision contract.
+
 ## Context
 
 The [implementation plan](../PG_AGMEMORY_IMPLEMENTATION_PLAN.md) calls for a

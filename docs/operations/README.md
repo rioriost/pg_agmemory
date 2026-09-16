@@ -12,6 +12,7 @@ databases or real user histories.
 
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
+The v0.0.2 revision milestone requires schema 2.
 
 | Setting | Consumer | Purpose |
 |---|---|---|
@@ -23,12 +24,18 @@ The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 
 1. Confirm that the admin URL identifies the intended empty, disposable Memory
    DB. Run `pg-agmemory migrate` from the application image. The migration is
-   transactional and version-recorded in `public.pgag_schema_migration`; reruns
-   skip an already-applied version. Do not treat this as a general upgrade or
-   rollback framework.
-2. The schema is packaged at `src/pg_agmemory/storage/001_initial.sql` and loaded
-   as an installed package resource. Do not substitute the illustrative DDL in
-   the implementation plan or expect a generated migration file.
+   transactional and version-recorded in `public.pgag_schema_migration`.
+   The migration loop accepts only sequential supported history and skips
+   applied versions on rerun; lock acquisition has a 5-second timeout.
+   An existing v0.0.1 DB requires the maintenance procedure below.
+2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and subsequent
+   `src/pg_agmemory/storage/002_assertion_revisions.sql` are installed package
+   resources. Do not substitute the illustrative DDL in the plan or expect
+   generated files. The administrator must be superuser or a qualified
+   `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
+   `btree_gist` extension installation rights. Bypass alone does not grant DDL.
+   Migration 002 uses `row_security = off` to fail closed if RLS would filter
+   its backfill; that setting does not bypass forced RLS by itself.
 3. With a separate administrator, create a dedicated runtime login using
    `NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime` and securely assign its password.
    Grant neither table ownership nor membership in the migration owner's role.
@@ -39,13 +46,64 @@ The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
    Use a subject issued by the configured trusted issuer.
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
-   startup, including owner-role membership.
+   startup, including owner-role membership. It also requires the schema
+   ledger to equal `[1, 2]` exactly; missing, older, newer, or incomplete history
+   is rejected.
 
 Keep the admin URL, signing private key, tokens, and tenant HMAC secrets out of
 source control, issue reports, logs, and the runtime environment where not
 needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
+
+## v0.0.2 maintenance migration
+
+**No rolling old/new API coexistence or downgrade is supported.**
+Rehearse upgrades only in disposable test databases. The following is a required
+maintenance protocol, not a report of a verified v0.0.2 upgrade:
+
+1. Stop and drain **all old and new API traffic and processes**, including
+   replicas and automatic restarts. The migration advisory lock is not a
+   substitute for stopping API traffic.
+2. Take a backup and record the old application/schema versions. Preserve the
+   latest deletion ledger and ACL revocations independently as required for
+   restore quarantine. Do not overwrite the only pre-migration backup.
+3. With the privileged migration administrator and the new image, run
+   `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
+   transaction under the migration lock. A 5-second lock timeout aborts rather
+   than waiting indefinitely; diagnose contention while traffic remains stopped.
+4. Migration 002 installs `btree_gist`, backfills existing values, valid/system
+   ranges, status, and evidence as revision 1, and preserves their actual
+   timestamps. Existing source-event/idempotency records remain intact; legacy
+   request serialization order must remain compatible for exact replay.
+   Do not edit/reapply migration 001 or manually reset timestamps.
+5. Confirm ledger versions are exactly `[1, 2]`, then start **only the new API**
+   with restricted runtime credentials. Check its capabilities/schema and run
+   the milestone's migration, historical-read, revision, and deletion checks
+   before restoring traffic. A health response alone does not validate these.
+6. On failure, leave traffic stopped. Do not launch the old image against the
+   changed schema or assume a downgrade exists. Any backup restore remains
+   quarantined until the latest deletion/ACL state is reapplied and validated.
+
+**The old v0.0.1 API does not contain the new schema-compatibility guard.**
+It may start against an incompatible schema; operators must keep it stopped.
+The new runtime's refusal of schema mismatches does not protect old processes.
+
+## Revision operations
+
+Corrections append a full replacement revision, with immutable subject,
+predicate, and scope. Preserve the same `Idempotency-Key`, target ID, and body
+when retrying an uncertain correction. A successful replay returns its original
+revision reference even if newer revisions exist; it is not a read of the head.
+For `409 revision_conflict`, resolve the stale expected head rather than
+silently overwriting. There are at most 1000 total revisions per assertion.
+
+`explain` with no revision still means revision 1, not latest. Use the exact
+revision returned by a mutation/recall when inspecting that result. Each
+historical read remains subject to current ACLs and tombstones. A future-dated
+replacement does not preserve the previous value before its new valid interval.
+See [the revision contract](../STATUS.md#assertion-revision-contract) and
+[ADR 0002](../adr/0002-assertion-revisions.md).
 
 ## Authentication, transport, and health
 
@@ -119,9 +177,11 @@ not freeze targets; authorization and dependencies are evaluated again for
 purge. Only `preview` and `purge` are accepted, even though future-mode names
 may appear in internal schema constraints.
 
-Purge handles the current episode → assertion closure synchronously, up to
-10,000 dependent assertions. It removes active episode/assertion bodies and
-evidence quotes first, then inserts scope-bound timestamped markers into
+Purge handles the episode → assertion closure across all revisions synchronously,
+up to 10,000 dependent assertions. A source used only by an old revision still
+causes the entire assertion history to be purged. It removes episode bodies,
+all assertion revisions including correction reasons, and all evidence quotes
+first, then inserts scope-bound timestamped markers into
 `memory_ops.object_tombstone` in the same transaction. Object SELECT RLS hides
 those anchors; there is no soft-delete `deleted_at` update on `memory.object`
 or privileged deletion helper. The barrier/receipt commits before responding.

@@ -11,6 +11,7 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
+v0.0.2 revision milestoneにはschema 2が必要です。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
@@ -22,11 +23,17 @@ CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 
 1. admin URLが、意図した空の使い捨てMemory DBを指すことを確認します。
    アプリimageから`pg-agmemory migrate`を実行します。migrationはtransactionalで、
-   `public.pgag_schema_migration`に版を記録し、適用済み版は再実行時にskipします。
-   一般的なupgrade/rollback frameworkとして扱わないでください。
-2. schemaは`src/pg_agmemory/storage/001_initial.sql`として同梱され、
-   インストール済みpackage resourceから読み込まれます。
-   実装プランの例示DDLで代用したり、別の生成済みmigration fileを想定したりしないでください。
+   `public.pgag_schema_migration`に版を記録します。migration loopは対応する
+   連続した履歴のみを受け付け、適用済み版は再実行時にskipします。
+   lock取得timeoutは5秒です。既存v0.0.1 DBには下記の保守手順が必要です。
+2. 変更しない`src/pg_agmemory/storage/001_initial.sql`と後続の
+   `src/pg_agmemory/storage/002_assertion_revisions.sql`をpackage resourceとして
+   同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
+   管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
+   extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
+   bypassだけではDDL権限を与えません。migration 002の`row_security = off`は、
+   backfillがRLSでfilterされる場合にfail-closedにする設定で、
+   それ自体がforced RLSをbypassするものではありません。
 3. 別の管理者で`NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime`の専用runtime
    loginを作り、passwordを安全に設定します。table所有権もmigration owner roleへの
    所属も付与しません。このloginにはrole/database作成権限を与えないでください。
@@ -36,12 +43,59 @@ CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2]`であることを
+   要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
 
 admin URL、署名用秘密鍵、token、tenant HMAC secretをsource管理、issue、
 logへ残さず、不要なものをruntime環境へ渡さないでください。
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
+
+## v0.0.2の保守migration
+
+**旧版/新版APIのrolling共存やdowngradeは非対応です。**
+upgradeの予行は使い捨てtest DBに限定してください。
+以下は必要な保守protocolであり、v0.0.2 upgradeの検証済み報告ではありません。
+
+1. replicaと自動再起動を含め、**旧版・新版の全API traffic/processを停止・drain**します。
+   migration advisory lockはAPI traffic停止の代わりにはなりません。
+2. backupを取得し、旧application/schema版を記録します。
+   restore隔離の要件に従い、最新削除台帳とACL失効を独立して保全してください。
+   唯一のmigration前backupを上書きしてはいけません。
+3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
+   migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
+   lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
+4. migration 002は`btree_gist`を導入し、既存の値、valid/system range、
+   status、根拠をrevision 1へbackfillして実際のtimestampを維持します。
+   既存source-event/idempotency記録を維持し、完全一致再送のため
+   旧requestのserialization順序との互換性を保つ必要があります。
+   migration 001の編集/再適用やtimestampの手動resetはしないでください。
+5. ledgerの版が厳密に`[1, 2]`であることを確認してから、
+   制限付きruntime資格情報で**新APIだけを起動**します。
+   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・過去読取り・
+   revision・削除の検査を実行してください。health応答だけではこれらを検証できません。
+6. 失敗時はtraffic停止を維持します。変更済みschemaへ旧imageを接続したり、
+   downgradeがあると想定したりしないでください。
+   backup restoreも最新削除/ACL状態の再適用・検証まで隔離します。
+
+**旧v0.0.1 APIには新しいschema互換性guardがありません。**
+不整合なschemaでも起動し得るため、運用側で停止を維持する必要があります。
+新runtimeによるschema不一致の拒否は、旧processを保護しません。
+
+## Revisionの運用
+
+訂正は全置換revisionの追加であり、subject、predicate、scopeは不変です。
+結果が不明な訂正を再送するときは、`Idempotency-Key`、対象ID、bodyを維持します。
+再送成功時は新しいrevisionが存在していても元のrevision参照を返し、
+headの読取りにはなりません。`409 revision_conflict`では、
+暗黙上書きせず古いexpected headを解決してください。上限はassertionあたり全1000 revisionです。
+
+`explain`のrevision省略は、最新ではなく引き続きrevision 1を意味します。
+mutation/recall結果を調べる場合は、その結果の正確なrevisionを指定してください。
+過去読取りにも現在のACLとtombstoneを適用します。
+未来日付の置換では、新valid intervalの開始前に旧値を維持しません。
+[revision契約](../STATUS-jp.md#assertion-revisionの契約)と
+[ADR 0002](../adr/0002-assertion-revisions-jp.md)を参照してください。
 
 ## 認証、通信、health
 
@@ -113,8 +167,9 @@ previewは対象を固定せず、purge時に認可と依存関係を再評価�
 内部schema constraintに将来mode名があっても、
 受け付けるmodeは`preview`と`purge`のみです。
 
-purgeは現在のepisode → assertion closureを最大10,000件の派生assertionまで
-同期処理します。稼働DBのepisode/assertion本文と根拠引用を先に削除し、
+purgeは全revisionのepisode → assertion closureを最大10,000件の派生assertionまで
+同期処理します。旧revisionだけで使われたsourceでもassertion全履歴をpurgeします。
+episode本文、訂正理由を含む全assertion revision、全根拠引用を先に削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
 `memory.object`へのsoft-deleteの`deleted_at`更新や特権削除helperは使いません。

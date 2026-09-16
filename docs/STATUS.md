@@ -2,7 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Initial M1 slice, not completion of M0/M1, an MVP, or a production-qualified release.**
+**v0.0.2 M1 assertion revisions are implemented; local and native Docker CI passed.
+This is not completion of M0/M1, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
 targets remain unmeasured or unqualified. Passing local and CI checks does not
@@ -17,8 +18,9 @@ memory database, model service, durable queue, or file-based memory index.
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
+| `POST /v1/assertions/{memory_id}/revisions` | Appends a full replacement revision to the same assertion using an expected head, explicit intent, reason, and revision-specific episode evidence |
 | `POST /v1/recall` | Retrieves authorized episodes/assertions with PostgreSQL full-text search and builds a deterministic, byte-budgeted context pack |
-| `POST /v1/explain` | Returns an episode or an assertion's evidence. Only revision `1` is accepted; no historical correction or ranking trace API |
+| `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
 | `POST /v1/forget` | Accepts explicit IDs with `preview` or `purge`; no arbitrary selector or `suppress` mode |
 | `GET /v1/deletions/{receipt_id}` | Returns an authorized deletion receipt and the unresolved, operator-managed backup status |
 | `GET /v1/capabilities` | Reports current features, limits, and unavailable capabilities; requires authentication |
@@ -77,11 +79,63 @@ Retrieved content is evidence, not trusted instructions.
 registry verification, capture-policy engine, or automatic secret/PII redaction.
 Callers must supply only approved, already-sanitized data.
 
-Assertions have valid/system intervals but only revision `1`. `as_of` and
-`known_at` filter those intervals; episode filtering uses occurrence/recording
-times. Omitted valid bounds are open-ended. This is **not** a correction history:
-there is no supersession, historical revision update, or fact-conflict resolution.
-Past query times do not bypass current authorization or deletion.
+### Assertion revision contract
+
+`POST /v1/assertions/{memory_id}/revisions` requires `Idempotency-Key` and
+read/write access to the assertion's scope. Supply the entire replacement:
+
+| Body field | Contract |
+|---|---|
+| `expected_revision` | Strict integer 1–1000 matching the current head |
+| `value` | Nonempty text, at most 65,536 characters |
+| `evidence` | 1–32 distinct episode IDs with nonempty literal `quote` values of at most 4,096 characters, all in the assertion's scope |
+| `explicit_intent` | Must be `true` |
+| `valid_from`, `valid_to` | Optional timezone-aware bounds; omitted/null means unbounded, not “keep the old bound.” If both exist, start must precede end |
+| `reason` | Nonempty correction reason, at most 256 characters |
+
+Subject, predicate, and scope are immutable and are not accepted in this body.
+`201` returns `memory_id`, revision `expected_revision + 1`, and
+`epistemic_status: "reported"`. A head mismatch is `409 revision_conflict`;
+at the matching head of 1000, another revision is `422 revision_limit_exceeded`.
+The limit is **1000 total revisions**, including the initial one.
+Hidden/deleted/non-assertion targets return `404`.
+
+The target `memory_id` is included in the idempotency request hash. An identical
+key retry returns its originally committed revision reference even after later
+corrections; it does not create another revision or substitute the latest head.
+Reusing a key for a changed target/body is an idempotency conflict. Current
+authorization and tombstones still apply to every replay.
+
+### Temporal and evidence semantics
+
+An INSERT trigger uses the DB clock to close the preceding system interval,
+advance the assertion head, and assign the new interval atomically. Callers
+cannot set system time. System ranges are contiguous `[)` intervals with GiST
+non-overlap enforcement through `btree_gist`; deferred DB constraints require
+evidence for every revision. Values, reasons, and evidence belong to revisions.
+
+Each correction replaces the **entire valid interval**, not a partial-time
+segment. For example, replacing an unbounded Gold assertion with Platinum
+valid from October 1 means a September 16 query at the new `known_at` no longer
+matches this assertion. It does **not** preserve Gold until October 1 as future
+scheduling would. A `known_at` before the correction still selects the former
+Gold revision. There is no automatic interval splitting, cross-assertion
+supersession, or arbitration between competing facts.
+
+`recall` selects by `as_of`/`known_at`, searches immutable identity text plus
+that revision's value, and returns its exact revision and its own sources.
+Old values are never paired with newer evidence. Episode filtering still uses
+occurrence/recording times. All historical reads apply current ACLs/tombstones.
+Context text labels `recorded_at` as `recorded=`: an assertion revision's system
+adoption time or an episode's service recording time. It is not an `observed=`
+label and does not claim a new external observation; `occurred_at` remains separate.
+
+`explain` accepts an explicit revision from 1–1000, but **omitting it still
+requests revision 1**, for compatibility—not the latest revision. Missing
+revisions return `404`; episodes accept only revision 1. Assertion explanations
+include `recorded_at` (system start), `known_until` (system end, null for the
+current head), and `correction_reason` (null for revision 1), alongside that
+revision's evidence. See [ADR 0002](adr/0002-assertion-revisions.md).
 
 ## Retrieval and budgets
 
@@ -119,10 +173,12 @@ a conflicting payload returns `409`. Exact replay of a purged event returns
 
 `preview` reports the current target count without changing state or issuing a
 reserved selector token. `purge` accepts 1–100 IDs and follows only the current
-**episode → assertion** dependency relation, up to 10,000 dependent assertions.
-Larger closures are rejected with `422`, not partially purged. Removing one
-source deletes an affected multi-source assertion rather than regenerating it;
-deleting an assertion does not delete its source episodes.
+**episode → assertion** dependency relation across **all revisions**, up to
+10,000 dependent assertions. Larger closures are rejected with `422`, not
+partially purged. A source used by any historical revision conservatively
+causes the whole assertion, all revision values/reasons, and all evidence to
+be purged—even if the current revision no longer uses that source. There is
+no regeneration; deleting an assertion does not delete its source episodes.
 
 Purge synchronously removes target episode/assertion bodies and dependent
 evidence quotes, then inserts scope-bound opaque deletion markers with timestamps
@@ -141,30 +197,66 @@ qualified for full-erasure guarantees or production compliance. Restores must
 remain quarantined until the latest deletion ledger and ACL revocations have
 been reapplied; automated recovery/replay and DR qualification are not implemented.
 
+## Schema compatibility
+
+Schema `002_assertion_revisions.sql` follows the unchanged `001_initial.sql`.
+It moves existing assertion values, intervals, status, and evidence into
+revision 1, preserving actual timestamps and existing idempotency records.
+Legacy request serialization order remains compatible for exact replay.
+The new runtime requires the ledger to equal `[1, 2]` exactly and rejects
+older, newer, or incomplete histories.
+
+Migration requires a forced-RLS-bypassing administrator with DDL rights and
+`btree_gist`. `row_security = off` fails closed if RLS would filter the
+backfill; it does not grant bypass privileges. Stop all old/new API traffic,
+back up, migrate atomically, then start only the matching new API.
+**The old API does not have this startup guard and must remain stopped.**
+No rolling old-API compatibility or downgrade is supported. Follow
+[operations](operations/README.md#v002-maintenance-migration).
+
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-On 2026-09-16, the implementation session supplied these successful results:
+For **v0.0.2**, implementation commit
+[5458402](https://github.com/rioriost/pgag_memory/commit/5458402), the implementation
+session supplied the following successful results on 2026-09-16:
 
 | Environment | Command | Result |
 |---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | Ruff, mypy, 19 tests, and runtime HTTP health smoke passed |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 19 tests, and runtime HTTP health smoke passed |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 19 tests, and runtime HTTP health smoke passed |
+| Local Apple Container | `./scripts/test-containers.sh` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
 
 Both Docker jobs succeeded in
-[GitHub Actions run 35078936073](https://github.com/rioriost/pgag_memory/actions/runs/35078936073).
+[GitHub Actions run 35082970968](https://github.com/rioriost/pgag_memory/actions/runs/35082970968).
+The implementation session checked each job's exact logs, including test counts,
+lint/type checks, and production HTTP health smoke—not just job status.
 These are the reported implementation/CI runs, not independent reruns by the
-documentation task. They validate the initial test suite, not completion of
-M0/M1, performance/quality targets, or disaster-recovery and full-erasure
-qualification.
+documentation task.
+
+The migration fixture starts from the actual unchanged
+001 schema with two tenants' old values, timestamps, evidence, HMAC replay
+records, and tombstones before applying 002. It also covers runtime rejection
+of pre-migration schema and future/malformed ledgers.
+
+The boundary fixture bulk-seeds a valid 999-revision prefix while retaining
+the anchor's deferred history/evidence validation and FK/GiST constraints. It then exercises
+public HTTP adoption from 999 to 1000, rejection of 1001 with `422`, replay at
+the cap, explain of revision 1000, and current recall. It does not create the
+entire prefix through HTTP.
+
+These checks do not establish M0/M1 completion, measured performance/quality,
+DR guarantees, or full-erasure qualification. For historical context, the
+19-test **v0.0.1 baseline** is
+[run 35078936073](https://github.com/rioriost/pgag_memory/actions/runs/35078936073),
+not the current milestone's evidence.
 
 ## Still roadmap work
 
 Workers, job enqueue/status APIs, automatic synthesis, compaction, vector
 embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ, checkpoints/recovery,
-corrections/supersession, MCP, SDKs, and postgresem integration are absent.
-The current interval filters and episode evidence do not complete the planned
+cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
+are absent. This same-assertion revision milestone does not complete the planned
 bitemporal, graph, provenance, or deletion architecture.
 
 See [ADR 0001](adr/0001-initial-slice.md) for these choices,

@@ -5,13 +5,16 @@
 **MITライセンスのPostgreSQLベースAgent Memory Serviceです。**
 リポジトリ名は`pgag_memory`、Pythonパッケージ名とサービス名は`pg_agmemory`です。
 
-**現在はM1の初期実装であり、MVP完成版・本番リリースではありません。**
+**v0.0.2のM1 assertion revisionを実装済みで、ローカルとnative Docker CIが合格しました。
+M1全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
 稼働DBからの同期purgeを実装しています。tenant/scope権限をサービスと
 PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
+このmilestoneでは、サーバー管理のsystem-time履歴とrevision固有の根拠を持つ、
+同一assertionの訂正を追加します。
 
-訂正・revision履歴、checkpoint、worker、自動抽出、pgvector、日本語tokenizer、
+別assertion間のsupersession/fact調停、checkpoint、worker、自動抽出、pgvector、日本語tokenizer、
 AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
@@ -41,6 +44,9 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
+v0.0.2はApple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
+それぞれ32テスト、Ruff、mypy、runtime HTTP health smokeが合格しました。
+[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
 
 ## APIの起動
 
@@ -49,7 +55,10 @@ PostgreSQL 18を使用します。以下のアプリケーションコマンド�
 
 1. 対象の空Memory DBを`PGAG_ADMIN_DATABASE_URL`に指定し、
    `pg-agmemory migrate`を実行します。migrationはtransactionalで再実行可能です。
-   管理者にはrole/schemaを作成する権限が必要です。
+   管理者はforced RLSをbypassできる必要があります
+   （superuserまたは適切な権限を持つ`BYPASSRLS`）。
+   role/schema/tableのDDLと`btree_gist`導入に必要な権限も必要です。
+   runtimeに付与する権限ではありません。
 2. `NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime`の専用loginを作成し、
    passwordを安全に設定します。**migrationのtable owner roleへの所属を与えないでください。**
    このloginの接続先を`PGAG_DATABASE_URL`に設定します。
@@ -67,6 +76,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 組込みcredential、既定token、認証回避設定はありません。
 migration/provisionは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
+
+**v0.0.1からの更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI trafficとimageを停止し、`002_assertion_revisions.sql`を
+適用してから新版APIだけを起動します。新版runtimeはschema履歴が厳密に
+`[1, 2]`であることを要求します。旧版APIにはこの互換性guardがないため、
+必ず停止を維持してください。旧APIとのrolling共存やdowngradeは非対応です。
+[migration手順](docs/operations/README-jp.md#v002の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -91,6 +107,22 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
 
+## Assertionの訂正
+
+`POST /v1/assertions/{memory_id}/revisions`は`Idempotency-Key`と、
+`expected_revision`、`value`、同一scopeのepisode `evidence`、
+`explicit_intent: true`、valid bound、`reason`を含む全置換bodyを要求します。
+subject、predicate、scopeは変更できません。成功時は次のrevisionを含む`201`、
+head不一致時は`409 revision_conflict`を返します。
+
+これは**valid interval全体の置換**であり、省略したboundは無限端になります。
+期間を分割したり、未来日付の開始前に旧値を維持したりしません。
+過去の`known_at`では旧revisionを照会できます。
+`explain`のrevision省略時は**最新ではなく**`1`です。
+どのrevisionでも使われたsourceを削除すれば、assertionの全履歴をpurgeします。
+[完全な契約](docs/STATUS-jp.md#assertion-revisionの契約)と
+[ADR 0002](docs/adr/0002-assertion-revisions-jp.md)を参照してください。
+
 ## ドキュメント
 
 | 日本語 | English |
@@ -98,6 +130,7 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 | [実装プラン](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md) | [Implementation plan](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md) |
 | [現在の契約と制限](docs/STATUS-jp.md) | [Current contract and limitations](docs/STATUS.md) |
 | [初期アーキテクチャ決定](docs/adr/0001-initial-slice-jp.md) | [Initial architecture decisions](docs/adr/0001-initial-slice.md) |
+| [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 
