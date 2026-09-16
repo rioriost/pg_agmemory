@@ -2,7 +2,7 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.2 M1 assertion revisions are implemented; local and native Docker CI passed.
+**v0.0.3/schema 3 checkpoints are implemented; local and native Docker checks passed.
 This is not completion of M0/M1, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -19,6 +19,9 @@ memory database, model service, durable queue, or file-based memory index.
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
 | `POST /v1/assertions/{memory_id}/revisions` | Appends a full replacement revision to the same assertion using an expected head, explicit intent, reason, and revision-specific episode evidence |
+| `POST /v1/checkpoints` | Stores typed state with a branch-head CAS and returns an immutable checkpoint reference/checksum |
+| `GET /v1/checkpoints/{checkpoint_id}` | Checks current access and integrity, then returns state, references, epochs, and reconciliation hints |
+| `POST /v1/checkpoints/restore` | Copies a compatible checkpoint into a new target branch; never runs code or repeats external effects |
 | `POST /v1/recall` | Retrieves authorized episodes/assertions with PostgreSQL full-text search and builds a deterministic, byte-budgeted context pack |
 | `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
 | `POST /v1/forget` | Accepts explicit IDs with `preview` or `purge`; no arbitrary selector or `suppress` mode |
@@ -151,11 +154,81 @@ The response declares `budget_unit: "utf8_bytes"`, `token_count: null`, and
 tokenizer or a size limit for the entire HTTP response. Items are omitted whole;
 if even pack metadata will not fit, the request returns `422`.
 
-Limits include a 256 KiB request body, 100 returned items at most, and budget
+Limits include a 1 MiB body for checkpoint creation and 256 KiB for other
+endpoints, 100 returned recall items at most, and budget
 values of 64–8,000 (implicit mode at most 2,000). `coverage.truncated` signals
 item/budget omissions. An empty selection is `not_found` or `budget_exhausted`;
 `retrieval_complete` does not mean complete knowledge of the world. Implicit
 mode is a request option, not an implemented automatic harness hook.
+
+## Checkpoint contract
+
+Checkpoint creation and restoration require `Idempotency-Key` and current
+read/write access to the scope. GET requires current read access. Run/branch
+UUIDs are caller-supplied identities within a tenant/scope, not global sessions.
+
+| Creation field | Contract |
+|---|---|
+| `scope_id`, `run_id`, `branch_id` | UUIDs identifying the scope-local run and branch |
+| `expected_head` | Required UUID or `null`; null only for an empty branch, otherwise the exact current checkpoint ID |
+| `harness_id`, `harness_version` | Required nonempty text, at most 256 characters each; fixed for the run |
+| `state_schema_version` | Only `1`, also the default |
+| `event_watermark` | Required nonnegative 64-bit integer; cannot decrease relative to the parent |
+| `state` | Typed `goal`, `constraints`, `completed_actions`, `decisions`, `unresolved_questions`, `next_actions`, and `pending_effects`; no arbitrary object/pickle |
+| `memory_refs` | Up to 100 distinct `(memory_id, revision)` pairs in the same scope; episodes use revision 1, assertion revisions must exist; omitted list is empty and omitted revision defaults to 1, not latest |
+
+The goal and state text entries are nonempty and at most 4,096 characters.
+Constraints, decisions, unresolved questions, and next actions allow 64 entries
+each; completed actions and pending effects allow 100. Each pending effect has
+a unique UUID `operation_id`, a 1–256-character `description`, and a
+`planned / dispatched / unknown` status. These are snapshot hints, not evidence
+that an external action was executed or confirmed.
+
+The server assigns checkpoint UUIDs and branch-local sequences starting at 1.
+Branch-head CAS rejects stale heads with `409 checkpoint_head_conflict`;
+decreasing watermarks yield `409 checkpoint_watermark_conflict`. An invalidated
+branch cannot be reopened (`409 checkpoint_invalidated`). Existing checkpoint
+payloads are immutable. The HMAC checksum uses `hmac-sha256-v1` and covers the
+saved envelope, including references and capture epochs. GET checks checksum,
+typed state, visible references, and current authorization. An invalid envelope
+fails closed; hidden/deleted checkpoints return `404`.
+
+The envelope includes `saved_access_epoch`, `saved_deletion_epoch`,
+`current_access_epoch`, and `current_deletion_epoch`. Saved epochs are metadata,
+not permission to use old authorization. Checkpoints are excluded from recall
+and explain; use the checkpoint GET endpoint for their state.
+
+### Restore and dependency boundary
+
+Restore takes `checkpoint_id`, a never-used `target_branch_id`, and exactly
+matching `harness_id`, `harness_version`, and `state_schema_version`.
+It creates a new checkpoint at sequence 1 in the same scope/run, with the source
+checkpoint as parent—even when that parent is on another branch. The original
+branch/checkpoint is unchanged; restore never rewinds a head. An existing target
+branch gives `409 checkpoint_branch_conflict`; incompatible harness/schema gives
+`422 checkpoint_incompatible`.
+
+State and references are copied, but dispatched pending effects become unknown.
+Saved assertion references retain their exact historical revisions. Restore
+neither selects the latest assertion revision nor automatically refreshes
+current external facts; obtain fresh observations separately when needed.
+GET/restore list dispatched or unknown operation IDs in `requires_reconciliation`
+and set `resume_allowed: false` while any remain. `automatic_reexecution` is
+always false, even when resumption is allowed. The caller must reconcile with
+the external system: there is no durable effect ledger, receipt-query service,
+actual code execution, or harness adapter.
+
+Identical-key retries retain the original checkpoint reference, not a new head.
+Replay records contain no state; reads/restore retries rebuild envelopes under
+current authorization, so current epoch metadata can change. Purged-reference
+replay returns `404`.
+
+**Callers must declare every memory dependency in `memory_refs`.** The
+dependency DAG covers declared references and the complete parent lineage only;
+no semantic scanner discovers copied but undeclared source text. Callers remain
+responsible for consent and secret/PII sanitization. Working snapshots,
+compaction, and a durable external-effect ledger remain separate future work.
+See [ADR 0003](adr/0003-checkpoints.md).
 
 ## Idempotency and deletion
 
@@ -172,91 +245,87 @@ a conflicting payload returns `409`. Exact replay of a purged event returns
 `404`; reusing its original source identity does not resurrect the episode.
 
 `preview` reports the current target count without changing state or issuing a
-reserved selector token. `purge` accepts 1–100 IDs and follows only the current
-**episode → assertion** dependency relation across **all revisions**, up to
-10,000 dependent assertions. Larger closures are rejected with `422`, not
-partially purged. A source used by any historical revision conservatively
-causes the whole assertion, all revision values/reasons, and all evidence to
-be purged—even if the current revision no longer uses that source. There is
-no regeneration; deleting an assertion does not delete its source episodes.
+reserved selector token. `purge` accepts 1–100 root IDs and follows
+**episode → assertion (any revision) → checkpoint references → descendant/fork
+checkpoints**. Direct episode-to-checkpoint references also participate.
+The total limit is 10,000 dependents plus requested roots, not 10,000 per layer.
+Larger closures fail with `422` without partial purge. Any historical source
+conservatively removes the assertion's entire history and all dependent
+checkpoint payloads, even when later snapshots omit that source. Every child
+inherits its full parent lineage; forks cannot escape it.
 
-Purge synchronously removes target episode/assertion bodies and dependent
-evidence quotes, then inserts scope-bound opaque deletion markers with timestamps
+Affected branch heads are permanently invalidated and their IDs cannot be
+reopened. Deleting a checkpoint does not delete its ancestors or source
+episodes. There is no regeneration. The existing tenant session lock keeps
+the closure, payload purge, branch invalidation, and read barrier atomic.
+
+Purge synchronously removes target episode/assertion/checkpoint bodies and
+dependent quotes/references, then inserts scope-bound opaque deletion markers with timestamps
 in `memory_ops.object_tombstone` **in the same transaction**. `memory.object`
 has no `deleted_at` column; its SELECT RLS excludes objects with tombstones.
 The transaction also advances `deletion_epoch` and commits a receipt.
 HTTP `202` with `active_store_purged` is **not** a queued purge job or certification
-of complete erasure. Opaque object records, object tombstones, audit/receipt
+of complete erasure. Opaque run/branch metadata, object records, tombstones, audit/receipt
 metadata, and tenant-keyed HMAC source/idempotency tombstones persist for the
 tenant lifetime; there is no automatic expiry or full tenant-erasure workflow.
 
 Receipts report `backup_status: "operator_managed"` and
 `backup_retention_deadline: null`. Old database pages, WAL, replicas, backups,
 and previously delivered context are not certified erased. The service is not
-qualified for full-erasure guarantees or production compliance. Restores must
-remain quarantined until the latest deletion ledger and ACL revocations have
-been reapplied; automated recovery/replay and DR qualification are not implemented.
+qualified for full-erasure guarantees or production compliance. Databases
+restored from backups must remain quarantined until the latest deletion ledger
+and ACL revocations have been reapplied; automated backup recovery/ledger replay
+and DR qualification are not implemented.
 
 ## Schema compatibility
 
-Schema `002_assertion_revisions.sql` follows the unchanged `001_initial.sql`.
-It moves existing assertion values, intervals, status, and evidence into
-revision 1, preserving actual timestamps and existing idempotency records.
-Legacy request serialization order remains compatible for exact replay.
-The new runtime requires the ledger to equal `[1, 2]` exactly and rejects
+Additive schema `003_checkpoints.sql` follows unchanged `001_initial.sql` and
+`002_assertion_revisions.sql`. It adds checkpoint runs, branches, payloads,
+references, and their constraints without rewriting prior assertion history.
+The v0.0.3 runtime requires the ledger to equal `[1, 2, 3]` exactly and rejects
 older, newer, or incomplete histories.
 
 Migration requires a forced-RLS-bypassing administrator with DDL rights and
 `btree_gist`. `row_security = off` fails closed if RLS would filter the
 backfill; it does not grant bypass privileges. Stop all old/new API traffic,
 back up, migrate atomically, then start only the matching new API.
-**The old API does not have this startup guard and must remain stopped.**
+**Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling old-API compatibility or downgrade is supported. Follow
-[operations](operations/README.md#v002-maintenance-migration).
+[operations](operations/README.md#v003-maintenance-migration).
 
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-For **v0.0.2**, implementation commit
-[5458402](https://github.com/rioriost/pgag_memory/commit/5458402), the implementation
+For the **v0.0.3 checkpoint milestone**, implementation commit
+[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a), the implementation
 session supplied the following successful results on 2026-09-16:
 
 | Environment | Command | Result |
 |---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | Ruff, mypy, 32 tests, and runtime HTTP health smoke passed |
+| Local Apple Container | `./scripts/test-containers.sh` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke passed |
 
 Both Docker jobs succeeded in
-[GitHub Actions run 35082970968](https://github.com/rioriost/pgag_memory/actions/runs/35082970968).
+[GitHub Actions run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082).
 The implementation session checked each job's exact logs, including test counts,
 lint/type checks, and production HTTP health smoke—not just job status.
 These are the reported implementation/CI runs, not independent reruns by the
 documentation task.
 
-The migration fixture starts from the actual unchanged
-001 schema with two tenants' old values, timestamps, evidence, HMAC replay
-records, and tombstones before applying 002. It also covers runtime rejection
-of pre-migration schema and future/malformed ledgers.
-
-The boundary fixture bulk-seeds a valid 999-revision prefix while retaining
-the anchor's deferred history/evidence validation and FK/GiST constraints. It then exercises
-public HTTP adoption from 999 to 1000, rejection of 1001 with `422`, replay at
-the cap, explain of revision 1000, and current recall. It does not create the
-entire prefix through HTTP.
-
-These checks do not establish M0/M1 completion, measured performance/quality,
-DR guarantees, or full-erasure qualification. For historical context, the
-19-test **v0.0.1 baseline** is
-[run 35078936073](https://github.com/rioriost/pgag_memory/actions/runs/35078936073),
-not the current milestone's evidence.
+The suite covers real API-process crash/restart with checkpoint/idempotency
+recovery, actual 1 MiB body/100-reference boundaries, and staged schema
+001 → 002 with actual revision-2 data → 003 preserving historical assertion data.
+Passing these checks does not establish complete M1, measured performance/quality,
+backup/DR guarantees, or full-erasure qualification.
 
 ## Still roadmap work
 
-Workers, job enqueue/status APIs, automatic synthesis, compaction, vector
-embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ, checkpoints/recovery,
+Workers, job enqueue/status APIs, automatic synthesis, separate working snapshots/
+compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ, a SQL/graph oracle,
+durable external-effect ledgers, actual harness execution/recovery,
 cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
-are absent. This same-assertion revision milestone does not complete the planned
+are absent. These typed checkpoint envelopes do not complete the planned
 bitemporal, graph, provenance, or deletion architecture.
 
 See [ADR 0001](adr/0001-initial-slice.md) for these choices,

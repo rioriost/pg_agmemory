@@ -630,10 +630,10 @@ Evolve schemas in the order expand -> backfill -> switch reads -> contract; prov
 
 ## 16. OSS Module Structure and Deliverables
 
-The actual project directory and public GitHub repository name are `pgag_memory`; the Python package and service name are `pg_agmemory`. Git was initialized and the original draft committed before implementation. Develop the implementation as a public GitHub repository under the MIT license, providing the README, this plan, and usage instructions in Japanese and English. This does not indicate that publication or implementation of all the modules below is complete.
+The actual local project directory is `pg_agmemory`; the public GitHub repository name remains `pgag_memory`. The Python package and service name are `pg_agmemory`. Git was initialized and the original draft committed before implementation. Develop the implementation as a public GitHub repository under the MIT license, providing the README, this plan, and usage instructions in Japanese and English. This does not indicate that publication or implementation of all the modules below is complete.
 
 ```text
-pgag_memory/
+pg_agmemory/
   README.md                      # English
   README-jp.md                   # Japanese
   LICENSE                        # MIT

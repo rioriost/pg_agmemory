@@ -2,20 +2,23 @@
 
 [日本語](README-jp.md) | [Implementation plan](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**PostgreSQL-backed agent memory, licensed under MIT.** The repository is
-`pgag_memory`; the Python package and service are `pg_agmemory`.
+**PostgreSQL-backed agent memory, licensed under MIT.** The public repository
+remains `rioriost/pgag_memory`; the local checkout directory, Python package,
+and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.2 M1 assertion revisions implemented; local and native Docker CI passed.
+**Status: v0.0.3/schema 3 typed checkpoints implemented; local and native Docker checks passed.
 Not a completed M1, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
 explanation, transactional idempotency, and synchronous active-store purge.
 Tenant/scope permissions are enforced in both the service and PostgreSQL RLS.
-Every mutation commits before its response is sent. This milestone adds
-same-assertion corrections with server-controlled system-time history and
-revision-specific evidence.
+Every mutation commits before its response is sent. Assertion revisions retain
+server-controlled system-time history and revision-specific evidence.
+The new milestone adds typed checkpoint storage and restore-to-new-branch
+envelopes, not execution of a harness or external effects.
 
-Cross-assertion supersession/fact arbitration, checkpoints, workers, automatic synthesis,
+Cross-assertion supersession/fact arbitration, external-effect ledgers, harness adapters,
+workers, automatic synthesis,
 pgvector, Japanese tokenization, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
 remain roadmap work. No performance or memory-quality acceptance targets have
 been measured. Consult [the current contract and limitations](docs/STATUS.md)
@@ -46,8 +49,12 @@ and **linux/arm64** runners, including runtime-image startup:
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For v0.0.2, Apple Container and native Docker **linux/amd64** and **linux/arm64**
-each passed 32 tests, Ruff, mypy, and runtime HTTP health smoke. See the
+For v0.0.3, implementation commit
+[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a), Apple Container
+and native Docker **linux/amd64** and **linux/arm64** each passed **54 tests**,
+Ruff, strict mypy (7 source files), and production HTTP health smoke.
+See [CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)
+and the reported
 [validation evidence](docs/STATUS.md#validation-evidence).
 
 ## Run the API
@@ -79,12 +86,12 @@ Migration/provisioning access is administrative and must never be exposed as a
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading from v0.0.1 requires a maintenance stop and backup.** Stop all
-old/new API traffic and images, apply migration `002_assertion_revisions.sql`,
+**Upgrading to v0.0.3 requires a maintenance stop and backup.** Stop all
+old/new API traffic and images, apply pending migrations through `003_checkpoints.sql`,
 then start only the new API. The new runtime requires schema history exactly
-`[1, 2]`; the old API lacks this compatibility guard and must remain stopped.
+`[1, 2, 3]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling old-API compatibility or downgrade is supported. Follow the
-[migration procedure](docs/operations/README.md#v002-maintenance-migration).
+[migration procedure](docs/operations/README.md#v003-maintenance-migration).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -126,6 +133,28 @@ Deleting a source used by any revision purges the entire assertion history.
 See [the full contract](docs/STATUS.md#assertion-revision-contract) and
 [ADR 0002](docs/adr/0002-assertion-revisions.md).
 
+## Typed checkpoints
+
+`POST /v1/checkpoints` stores schema-1 typed state under a scope-local run/branch,
+with mandatory `expected_head` (`null` for the first checkpoint), a nondecreasing
+event watermark, exact memory references, and an HMAC checksum.
+`GET /v1/checkpoints/{checkpoint_id}` returns a currently authorized, checked
+envelope. Checkpoints do not appear in `recall` or `explain`.
+
+`POST /v1/checkpoints/restore` requires an exact harness/version match and
+creates a new branch; it never rewinds the original branch. Dispatched effects
+become unknown and require caller reconciliation. `automatic_reexecution` is
+always false: this is not a durable effect ledger, receipt query, or execution
+engine. Saved assertion references keep their exact historical revisions;
+restore neither selects the latest revision nor refreshes current external facts.
+Callers must declare every memory dependency and sanitize all state;
+undeclared copied text is not discovered automatically.
+
+Deleting a source propagates through assertion history, checkpoint references,
+and the entire descendant/fork lineage. Affected branch heads cannot be reopened.
+See [the checkpoint contract](docs/STATUS.md#checkpoint-contract) and
+[ADR 0003](docs/adr/0003-checkpoints.md). This is not full M1 or disaster recovery.
+
 ## Documentation
 
 | English | 日本語 |
@@ -134,6 +163,7 @@ See [the full contract](docs/STATUS.md#assertion-revision-contract) and
 | [Current contract and limitations](docs/STATUS.md) | [現在の契約と制限](docs/STATUS-jp.md) |
 | [Initial architecture decisions](docs/adr/0001-initial-slice.md) | [初期アーキテクチャ決定](docs/adr/0001-initial-slice-jp.md) |
 | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) |
+| [Checkpoint decisions](docs/adr/0003-checkpoints.md) | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

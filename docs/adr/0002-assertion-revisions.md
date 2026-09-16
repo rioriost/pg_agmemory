@@ -7,6 +7,10 @@
 - Supersedes: the revision-1-only model and deferred same-assertion corrections
   in [ADR 0001](0001-initial-slice.md), not the entire initial architecture
 
+**Historical v0.0.2 record.** [ADR 0003](0003-checkpoints.md) extends the
+checkpoint/deletion boundary and advances the required schema to 3 for v0.0.3.
+The decisions and validation results below remain scoped to v0.0.2.
+
 ## Scope and decision
 
 Retain one stable assertion identity: tenant, scope, subject, and predicate
@@ -105,7 +109,7 @@ Stop all old/new API traffic and processes, take a backup, migrate, then start
 only the matching new API. Its startup check requires ledger `[1, 2]` exactly.
 **The old API has no equivalent guard and must remain stopped.** There is no
 rolling old-API compatibility or downgrade path. Follow the
-[maintenance protocol](../operations/README.md#v002-maintenance-migration);
+[current maintenance protocol](../operations/README.md#v003-maintenance-migration);
 backup restoration still requires quarantine and current deletion/ACL replay.
 
 ## Validation and remaining scope

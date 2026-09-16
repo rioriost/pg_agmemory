@@ -3,18 +3,22 @@
 [English](README.md) | [実装プラン](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 **MITライセンスのPostgreSQLベースAgent Memory Serviceです。**
-リポジトリ名は`pgag_memory`、Pythonパッケージ名とサービス名は`pg_agmemory`です。
+公開リポジトリは引き続き`rioriost/pgag_memory`、
+ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
+以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.2のM1 assertion revisionを実装済みで、ローカルとnative Docker CIが合格しました。
+**v0.0.3/schema 3のtyped checkpointを実装済みで、ローカルとnative Dockerの検査は合格しています。
 M1全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
 稼働DBからの同期purgeを実装しています。tenant/scope権限をサービスと
 PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
-このmilestoneでは、サーバー管理のsystem-time履歴とrevision固有の根拠を持つ、
-同一assertionの訂正を追加します。
+assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
+新milestoneではtyped checkpointの保存と新branchへのrestore envelopeを追加します。
+harnessや外部副作用を実行する機能ではありません。
 
-別assertion間のsupersession/fact調停、checkpoint、worker、自動抽出、pgvector、日本語tokenizer、
+別assertion間のsupersession/fact調停、外部副作用ledger、harness adapter、
+worker、自動抽出、pgvector、日本語tokenizer、
 AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
@@ -44,9 +48,13 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-v0.0.2はApple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
-それぞれ32テスト、Ruff、mypy、runtime HTTP health smokeが合格しました。
-[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+v0.0.3の実装commit
+[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a)は、
+Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
+それぞれ**54テスト**、Ruff、strict mypy（source 7ファイル）、
+production HTTP health smokeが合格しました。
+[CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)と、
+報告された[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
 
 ## APIの起動
 
@@ -77,12 +85,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provisionは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.1からの更新には保守停止とbackupが必要です。**
-旧版・新版すべてのAPI trafficとimageを停止し、`002_assertion_revisions.sql`を
-適用してから新版APIだけを起動します。新版runtimeはschema履歴が厳密に
-`[1, 2]`であることを要求します。旧版APIにはこの互換性guardがないため、
-必ず停止を維持してください。旧APIとのrolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v002の保守migration)に従ってください。
+**v0.0.3への更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI trafficとimageを停止し、`003_checkpoints.sql`までの
+未適用migrationを適用してから新版APIだけを起動します。
+新版runtimeはschema履歴が厳密に`[1, 2, 3]`であることを要求します。
+旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
+旧APIとのrolling共存やdowngradeは非対応です。
+[migration手順](docs/operations/README-jp.md#v003の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -123,6 +132,29 @@ head不一致時は`409 revision_conflict`を返します。
 [完全な契約](docs/STATUS-jp.md#assertion-revisionの契約)と
 [ADR 0002](docs/adr/0002-assertion-revisions-jp.md)を参照してください。
 
+## Typed checkpoint
+
+`POST /v1/checkpoints`はscope内のrun/branchにschema 1のtyped stateを保存します。
+`expected_head`は必須（最初は`null`）で、非減少のevent watermark、
+正確なmemory参照、HMAC checksumを使います。
+`GET /v1/checkpoints/{checkpoint_id}`は現在の認可と検査を通したenvelopeを返します。
+checkpointは`recall`や`explain`には出しません。
+
+`POST /v1/checkpoints/restore`はharness/versionの完全一致と新しいbranchを要求し、
+元branchを巻き戻しません。dispatched effectはunknownになり、callerの照合が必要です。
+`automatic_reexecution`は常にfalseであり、
+durable effect ledger、receipt照会、実行engineではありません。
+保存済みassertion参照は正確な過去revisionを維持し、
+restoreで最新revisionを選び直したり、現在の外部事実を更新したりはしません。
+callerは全memory依存を宣言し、stateから機密情報を除去してください。
+未宣言のコピー本文は自動発見しません。
+
+source削除はassertion履歴、checkpoint参照、全子孫/fork lineageへ伝播します。
+影響するbranch headは再開できません。
+[checkpoint契約](docs/STATUS-jp.md#checkpointの契約)と
+[ADR 0003](docs/adr/0003-checkpoints-jp.md)を参照してください。
+M1全体や災害復旧の完成を意味しません。
+
 ## ドキュメント
 
 | 日本語 | English |
@@ -131,6 +163,7 @@ head不一致時は`409 revision_conflict`を返します。
 | [現在の契約と制限](docs/STATUS-jp.md) | [Current contract and limitations](docs/STATUS.md) |
 | [初期アーキテクチャ決定](docs/adr/0001-initial-slice-jp.md) | [Initial architecture decisions](docs/adr/0001-initial-slice.md) |
 | [Assertion revisionの決定](docs/adr/0002-assertion-revisions-jp.md) | [Assertion revision decisions](docs/adr/0002-assertion-revisions.md) |
+| [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) | [Checkpoint decisions](docs/adr/0003-checkpoints.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

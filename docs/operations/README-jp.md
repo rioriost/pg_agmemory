@@ -11,7 +11,10 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
-v0.0.2 revision milestoneにはschema 2が必要です。
+ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
+v0.0.3 checkpoint milestoneにはschema 3が必要です。
+Apple Container/native Dockerの54テストの結果は
+[検証証拠](../STATUS-jp.md#検証証拠)に記録しています。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
@@ -25,9 +28,10 @@ v0.0.2 revision milestoneにはschema 2が必要です。
    アプリimageから`pg-agmemory migrate`を実行します。migrationはtransactionalで、
    `public.pgag_schema_migration`に版を記録します。migration loopは対応する
    連続した履歴のみを受け付け、適用済み版は再実行時にskipします。
-   lock取得timeoutは5秒です。既存v0.0.1 DBには下記の保守手順が必要です。
-2. 変更しない`src/pg_agmemory/storage/001_initial.sql`と後続の
-   `src/pg_agmemory/storage/002_assertion_revisions.sql`をpackage resourceとして
+   lock取得timeoutは5秒です。既存DBの更新には下記の保守手順が必要です。
+2. 変更しない`src/pg_agmemory/storage/001_initial.sql`、
+   `src/pg_agmemory/storage/002_assertion_revisions.sql`と、追加的な
+   `src/pg_agmemory/storage/003_checkpoints.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
@@ -43,7 +47,7 @@ v0.0.2 revision milestoneにはschema 2が必要です。
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2]`であることを
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3]`であることを
    要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
 
 admin URL、署名用秘密鍵、token、tenant HMAC secretをsource管理、issue、
@@ -51,11 +55,12 @@ logへ残さず、不要なものをruntime環境へ渡さないでください�
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
-## v0.0.2の保守migration
+## v0.0.3の保守migration
 
 **旧版/新版APIのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
-以下は必要な保守protocolであり、v0.0.2 upgradeの検証済み報告ではありません。
+migrationテストの合格は、本番upgradeや災害復旧の適格性を示すものではありません。
+次の保守protocolに従ってください。
 
 1. replicaと自動再起動を含め、**旧版・新版の全API traffic/processを停止・drain**します。
    migration advisory lockはAPI traffic停止の代わりにはなりません。
@@ -65,15 +70,14 @@ upgradeの予行は使い捨てtest DBに限定してください。
 3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
    migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
    lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
-4. migration 002は`btree_gist`を導入し、既存の値、valid/system range、
-   status、根拠をrevision 1へbackfillして実際のtimestampを維持します。
-   既存source-event/idempotency記録を維持し、完全一致再送のため
-   旧requestのserialization順序との互換性を保つ必要があります。
-   migration 001の編集/再適用やtimestampの手動resetはしないでください。
-5. ledgerの版が厳密に`[1, 2]`であることを確認してから、
+4. migration 003はcheckpoint run、branch、payload、参照、制約を追加します。
+   migration 001/002は変更せず、古いDBには未適用の002を003より先に適用します。
+   assertion履歴、source-event/idempotency記録、timestamp、再送互換性を維持し、
+   resetしないでください。
+5. ledgerの版が厳密に`[1, 2, 3]`であることを確認してから、
    制限付きruntime資格情報で**新APIだけを起動**します。
-   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・過去読取り・
-   revision・削除の検査を実行してください。health応答だけではこれらを検証できません。
+   capabilities/schemaを確認し、traffic再開前にmilestoneのmigration・checkpoint CAS・
+   restore・lineage削除の検査を実行してください。health応答だけではこれらを検証できません。
 6. 失敗時はtraffic停止を維持します。変更済みschemaへ旧imageを接続したり、
    downgradeがあると想定したりしないでください。
    backup restoreも最新削除/ACL状態の再適用・検証まで隔離します。
@@ -81,6 +85,32 @@ upgradeの予行は使い捨てtest DBに限定してください。
 **旧v0.0.1 APIには新しいschema互換性guardがありません。**
 不整合なschemaでも起動し得るため、運用側で停止を維持する必要があります。
 新runtimeによるschema不一致の拒否は、旧processを保護しません。
+
+## Checkpointの運用
+
+1. 機密情報を除去したschema 1のstateだけを保存します。
+   コピーした全memory sourceを正確なrevisionとともに`memory_refs`へ宣言してください。
+   未宣言コピーをsemantic scannerが発見することはありません。
+2. 意図したscope/run/branchに`expected_head`を明示して作成し、
+   nullは新branchだけに使います。headを黙ってresetせず、
+   head/watermark/harnessの`409`競合を解決して返されたcheckpoint IDを保存します。
+3. recall/explainでなくcheckpoint GETで読み込みます。
+   checksum/参照検査の失敗は失効として扱い、検査の回避や保存payloadの編集をしないでください。
+4. harness ID/versionとstate schemaを完全一致させ、未使用のtarget branchへrestoreします。
+   元branchは変えません。保存済みassertion参照は正確な過去revisionを維持し、
+   最新revisionへの変更や外部事実の自動更新は行いません。
+   harnessへstateを渡す前に`requires_reconciliation`と
+   `resume_allowed`を確認し、unknown/dispatched操作を外部システムと照合してください。
+   `automatic_reexecution`は常にfalseで、このAPIはreceipt照会やコード実行を行いません。
+5. 結果が不明なwriteは同じkey/payloadで再送します。
+   idempotency記録にはstateでなく元の結果参照のみを保存します。
+   現在の認可/checksum検査を適用し、purge済みcheckpointは`404`です。
+
+保存時epochや`resume_allowed: true`は承認や外部副作用receiptではありません。
+typed pending effectはsnapshot hintでありdurable effect ledgerではありません。
+作成bodyは1 MiB、他endpointは256 KiBまでです。
+[契約](../STATUS-jp.md#checkpointの契約)と
+[ADR 0003](../adr/0003-checkpoints-jp.md)を参照してください。本番/DR適格性は主張しません。
 
 ## Revisionの運用
 
@@ -167,17 +197,20 @@ previewは対象を固定せず、purge時に認可と依存関係を再評価�
 内部schema constraintに将来mode名があっても、
 受け付けるmodeは`preview`と`purge`のみです。
 
-purgeは全revisionのepisode → assertion closureを最大10,000件の派生assertionまで
-同期処理します。旧revisionだけで使われたsourceでもassertion全履歴をpurgeします。
-episode本文、訂正理由を含む全assertion revision、全根拠引用を先に削除し、
+purgeはepisode/assertion履歴、宣言済みcheckpoint参照、完全なparent lineageを介した
+全子孫/fork checkpointを辿ります。上限は要求rootに加えて依存物全体で10,000件です。
+旧assertion revisionだけのsourceでもassertion全履歴と影響する全checkpoint stateを削除します。
+headが影響を受けるbranchは永続失効するため、同じIDの再開やlineage除去による回避を
+試みないでください。payload、引用、参照を先に削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
 `memory.object`へのsoft-deleteの`deleted_at`更新や特権削除helperは使いません。
-barrier/receiptをcommitしてから応答します。workerへのenqueueはしません。
-source削除の影響を受ける複数sourceのassertionは再構築せず削除します。
+barrier/receiptをcommitしてから応答します。
+tenant session lockがclosure、branch失効、read drainを覆います。
+workerへのenqueueや影響本文の再構築は行いません。
 receiptの`active_store_purged`は完全消去ではありません。
 
-opaque objectとそのobject tombstone、audit/receipt metadata、tenant-keyed HMACの
+opaque run/branch metadata、objectとそのtombstone、audit/receipt metadata、tenant-keyed HMACの
 source/idempotency tombstoneはtenantの存続期間中残します。
 purgeを「完了」させようとして手動削除したり`dedup_secret`を変更したりしないでください。
 再送保護が機能しなくなる可能性があります。削除済みsource identityやmemory結果の
@@ -185,6 +218,9 @@ purgeを「完了」させようとして手動削除したり`dedup_secret`を�
 自動的なtenant完全消去手順はありません。
 
 ## Backup、restore、release証拠
+
+checkpoint restoreはMemory DB内のtyped stateのコピーであり、DB backupからの復旧、
+別のworking snapshot compactionシステム、災害復旧ではありません。
 
 削除receiptは`backup_status: "operator_managed"`、
 `backup_retention_deadline: null`を返します。SQL行削除は物理媒体の消去、

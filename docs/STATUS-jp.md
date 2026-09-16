@@ -2,7 +2,7 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**v0.0.2のM1 assertion revisionを実装済みで、ローカルとnative Docker CIが合格しました。
+**v0.0.3/schema 3のcheckpointを実装済みで、ローカルとnative Dockerの検査は合格しています。
 M0/M1全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -18,6 +18,9 @@ M0/M1全体の完了、MVP完成、本番適格性の確認を意味しません
 | `POST /v1/observe` | caller指定の発生時刻・同意参照とともにepisodeを1件保存。revisionは`1`、`synthesis_job_id`は`null`で、job enqueueは行わない |
 | `POST /v1/remember` | 同一scopeの読取り可能なepisodeからの原文引用を根拠とし、明示的に要求された構造化assertionを保存 |
 | `POST /v1/assertions/{memory_id}/revisions` | expected head、明示的intent、reason、revision固有のepisode根拠を使い、同一assertionへ全置換revisionを追加 |
+| `POST /v1/checkpoints` | branch headのCASでtyped stateを保存し、不変checkpoint参照/checksumを返す |
+| `GET /v1/checkpoints/{checkpoint_id}` | 現在のアクセス権と完全性を確認し、state・参照・epoch・照合hintを返す |
+| `POST /v1/checkpoints/restore` | 互換checkpointを新target branchへコピー。コード実行や外部副作用の再実行はしない |
 | `POST /v1/recall` | PostgreSQL全文検索で許可済みepisode/assertionを検索し、byte予算内の決定的context packを生成 |
 | `POST /v1/explain` | 指定したassertion revisionと根拠を返す。省略時は最新ではなく引き続き`1`。episodeはrevision `1`のみ。ranking trace APIはない |
 | `POST /v1/forget` | 明示IDによる`preview`または`purge`。任意selectorや`suppress` modeは受け付けない |
@@ -148,11 +151,79 @@ serialized context packの**UTF-8 byte数**を予算として扱います。
 モデルの正確なtokenizerやHTTP応答全体のsize制限ではありません。
 item単位で除外し、packのmetadataすら収まらない場合は`422`を返します。
 
-request bodyは256 KiB、返却itemは最大100件、予算値は64〜8,000
+request bodyはcheckpoint作成のみ1 MiB、他endpointは256 KiBです。
+recallの返却itemは最大100件、予算値は64〜8,000
 （implicit modeは最大2,000）です。件数・予算による省略を`coverage.truncated`で
 示します。空の選択結果は`not_found`または`budget_exhausted`です。
 `retrieval_complete`は世界の知識の完全性を意味しません。
 implicit modeはrequest optionであり、自動harness hookの実装ではありません。
+
+## Checkpointの契約
+
+checkpoint作成とrestoreには`Idempotency-Key`とscopeの現在のread/write権限が必要です。
+GETには現在のread権限が必要です。run/branch UUIDはtenant/scope内でcallerが指定する
+identityであり、global sessionではありません。
+
+| 作成field | 契約 |
+|---|---|
+| `scope_id`, `run_id`, `branch_id` | scope内のrunとbranchを識別するUUID |
+| `expected_head` | 必須UUIDまたは`null`。空branchだけnull、それ以外は正確な現checkpoint ID |
+| `harness_id`, `harness_version` | 必須の空でないtext、各最大256文字。run内で固定 |
+| `state_schema_version` | `1`のみ。既定も1 |
+| `event_watermark` | 必須の非負64-bit整数。parentから減少できない |
+| `state` | typedな`goal`、`constraints`、`completed_actions`、`decisions`、`unresolved_questions`、`next_actions`、`pending_effects`。任意object/pickleは不可 |
+| `memory_refs` | 同一scopeの重複しない`(memory_id, revision)`を最大100件。episodeはrevision 1、assertionは存在するrevision。list省略は空、revision省略は最新ではなく1 |
+
+goalとstateのtext要素は空でなく最大4,096文字です。
+constraints、decisions、unresolved questions、next actionsは各64件、
+completed actionsとpending effectsは各100件までです。pending effectは
+一意のUUID `operation_id`、1〜256文字の`description`、
+`planned / dispatched / unknown`のstatusを持ちます。
+snapshot hintであり、外部actionの実行・確認の証拠ではありません。
+
+checkpoint UUIDとbranch内のsequence（1から）はサーバーが付与します。
+古いheadはCASで`409 checkpoint_head_conflict`、
+watermark減少は`409 checkpoint_watermark_conflict`です。
+失効branchは再開できません（`409 checkpoint_invalidated`）。
+既存checkpoint payloadは不変です。HMAC checksumは`hmac-sha256-v1`で、
+参照・保存時epochを含むenvelopeを対象にします。
+GETはchecksum、typed state、可視参照、現在の認可を確認します。
+不正envelopeはfail-closed、非公開/削除済みcheckpointは`404`です。
+
+envelopeは`saved_access_epoch`、`saved_deletion_epoch`、
+`current_access_epoch`、`current_deletion_epoch`を含みます。
+保存時epochはmetadataであって旧権限の利用許可ではありません。
+checkpointはrecall/explainの対象外で、stateにはcheckpoint GETを使います。
+
+### Restoreと依存境界
+
+restoreには`checkpoint_id`、未使用の`target_branch_id`、
+完全一致する`harness_id`、`harness_version`、`state_schema_version`を指定します。
+同一scope/runでsequence 1の新checkpointを作り、別branch上でも元checkpointを
+parentにします。元branch/checkpointは変更せず、headを巻き戻しません。
+既存target branchは`409 checkpoint_branch_conflict`、
+harness/schema不一致は`422 checkpoint_incompatible`です。
+
+stateと参照をコピーしますが、dispatched pending effectはunknownに変更します。
+保存済みassertion参照は正確な過去revisionを維持します。
+restoreで最新assertion revisionを選び直したり、現在の外部事実を自動更新したりはしません。
+必要な場合は別途、新しい観測を取得してください。
+GET/restoreではdispatchedまたはunknownのoperation IDを`requires_reconciliation`に
+列挙し、一つでも残れば`resume_allowed: false`です。
+再開可能でも`automatic_reexecution`は常にfalseです。
+callerが外部システムと照合しなければならず、durable effect ledger、
+receipt照会サービス、実際のコード実行、harness adapterはありません。
+
+同一keyの完全一致再送は新headでなく元のcheckpoint参照を維持します。
+再送記録にstateは保存せず、読取り/restore再送は現在の認可でenvelopeを再構成するため、
+現在のepoch metadataは変わり得ます。purge済み参照の再送は`404`です。
+
+**callerは全memory依存を`memory_refs`へ宣言しなければなりません。**
+依存DAGは宣言済み参照とparent lineage全体のみを対象にし、
+未宣言のコピー本文をsemantic scannerが発見することはありません。
+同意とsecret/PII除去もcallerの責任です。
+working snapshot、compaction、durable外部副作用ledgerは別の将来課題です。
+[ADR 0003](adr/0003-checkpoints-jp.md)を参照してください。
 
 ## 冪等性と削除
 
@@ -169,86 +240,83 @@ payloadが衝突すれば`409`です。purge済みeventの完全一致再送は`
 元のsource identityを再利用してepisodeを復活させることはできません。
 
 `preview`は現在の対象件数を示すだけで、状態変更やselector予約token発行はしません。
-`purge`は1〜100件のIDを受け付け、**全revision**の
-**episode → assertion**依存関係を最大10,000件の派生assertionまで辿ります。
-これを超えるclosureは一部削除せず`422`で拒否します。
-過去のどのrevisionでも使われたsourceを削除すると、現revisionがもうそのsourceを
-使っていなくても、保守的にassertion全体・全revisionの値/理由・全根拠をpurgeします。
-再生成はしません。assertionの削除ではsource episodeを削除しません。
+`purge`は1〜100件のroot IDを受け付け、
+**episode → assertion（全revision）→ checkpoint参照 → 子孫/fork checkpoint**
+を辿ります。episodeからcheckpointへの直接参照も対象です。
+上限は要求rootに加えて依存物全体で10,000件であり、層ごとの上限ではありません。
+超過時は一部削除せず`422`です。過去のどのsourceでも、その削除は保守的に
+assertion全履歴と全依存checkpoint payloadを削除し、後のsnapshotがそのsourceを
+省略していても対象です。すべての子はparent lineage全体を引き継ぎ、forkでも逃れられません。
 
-purgeは対象episode/assertion本文と依存する根拠引用を同期削除した後、
+影響するbranch headは永続的に失効し、同じIDで再開できません。
+checkpoint削除は祖先やsource episodeを削除しません。再生成も行いません。
+既存tenant session lockでclosure、payload purge、branch失効、
+read barrierを原子的に扱います。
+
+purgeは対象episode/assertion/checkpoint本文と依存する引用/参照を同期削除した後、
 **同じtransaction内で**scopeに束縛されたopaqueな削除markerと時刻を
 `memory_ops.object_tombstone`へ挿入します。`memory.object`に`deleted_at`列はなく、
 SELECT RLSがtombstoneのあるobjectを除外します。
 同じtransactionで`deletion_epoch`を進めてreceiptをcommitします。
 `active_store_purged`を含むHTTP `202`は、**queue上のpurge jobや完全消去証明ではありません**。
-opaque object記録、object tombstone、audit/receipt metadata、
+opaque run/branch metadata、object記録、tombstone、audit/receipt metadata、
 tenant-keyed HMACのsource/idempotency tombstoneはtenantの存続期間中保持します。
 自動期限切れやtenant完全消去workflowはありません。
 
 receiptは`backup_status: "operator_managed"`、
 `backup_retention_deadline: null`を返します。旧DB page、WAL、replica、backup、
 配信済みcontextの消去は証明しません。完全消去保証や本番complianceへの適格性は未確認です。
-restoreは最新の削除台帳とACL失効を再適用するまで隔離してください。
-自動recovery/replayとDR適格性確認は未実装です。
+backupから復元したDBは最新の削除台帳とACL失効を再適用するまで隔離してください。
+自動backup recovery/台帳replayとDR適格性確認は未実装です。
 
 ## Schema互換性
 
-変更しない`001_initial.sql`に続いて`002_assertion_revisions.sql`を適用します。
-既存assertionの値・期間・status・根拠をrevision 1へ移し、
-実際のtimestampと既存idempotency記録を維持します。
-完全一致再送のため、旧requestのserialization順序との互換性も維持します。
-新版runtimeはledgerが厳密に`[1, 2]`であることを要求し、
+変更しない`001_initial.sql`、`002_assertion_revisions.sql`に続き、
+追加的なschema `003_checkpoints.sql`を適用します。
+既存assertion履歴を書き換えず、checkpoint run・branch・payload・参照と制約を追加します。
+v0.0.3 runtimeはledgerが厳密に`[1, 2, 3]`であることを要求し、
 旧版・将来版・不完全な履歴を拒否します。
 
 migrationにはforced RLSをbypassできるDDL権限付き管理者と`btree_gist`が必要です。
 `row_security = off`はbackfillがRLSでfilterされる場合にfail-closedにする設定で、
 bypass権限を付与するものではありません。旧版・新版すべてのAPI trafficを停止し、
 backup、原子的migrationの後に、対応する新版APIだけを起動してください。
-**旧APIにはこの起動guardがないため、必ず停止を維持します。**
+**すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 旧APIとのrolling共存やdowngradeは非対応です。
-[運用](operations/README-jp.md#v002の保守migration)に従ってください。
+[運用](operations/README-jp.md#v003の保守migration)に従ってください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory)。
-**v0.0.2**の実装commit
-[5458402](https://github.com/rioriost/pgag_memory/commit/5458402)について、
+**v0.0.3 checkpoint milestone**の実装commit
+[8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a)について、
 2026-09-16に実装sessionから次の成功結果が提供されました。
 
 | 環境 | Command | 結果 |
 |---|---|---|
-| ローカルApple Container | `./scripts/test-containers.sh` | Ruff、mypy、32件のテスト、runtime HTTP health smokeが合格 |
-| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | Ruff、mypy、32件のテスト、runtime HTTP health smokeが合格 |
-| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | Ruff、mypy、32件のテスト、runtime HTTP health smokeが合格 |
+| ローカルApple Container | `./scripts/test-containers.sh` | 54テスト、Ruff、strict mypy（source 7ファイル）、production HTTP health smokeが合格 |
+| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 54テスト、Ruff、strict mypy（source 7ファイル）、production HTTP health smokeが合格 |
+| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 54テスト、Ruff、strict mypy（source 7ファイル）、production HTTP health smokeが合格 |
 
 Dockerの両jobは
-[GitHub Actions run 35082970968](https://github.com/rioriost/pgag_memory/actions/runs/35082970968)
+[GitHub Actions run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)
 で成功しました。実装sessionはjob状態だけでなく、各jobの実際のlogで
 テスト数、lint/型検査、production HTTP health smokeまで確認しています。
 報告された実装/CIの実行結果であり、文書作業での独立した再実行ではありません。
 
-migration fixtureは実際の変更しない001 schemaから開始し、
-2 tenantsの旧値、timestamp、根拠、HMAC再送記録、tombstoneを設定してから002を適用します。
-runtimeによるmigration前schemaと将来/不正ledgerの拒否も検査します。
-
-境界fixtureは有効な999-revision prefixを一括投入し、
-anchorによる遅延history/根拠検査とFK/GiST制約を維持します。
-続いて公開HTTPで999から1000への採用、1001の`422`拒否、上限到達後の再送、
-revision 1000のexplain、現在のrecallを検査します。
-prefix全体をHTTP経由で作成したわけではありません。
-
-これらの検査はM0/M1完了、性能/品質の測定、DR保証、完全消去の適格性を示すものではありません。
-過去の参考として、19テストの**v0.0.1 baseline**は
-[run 35078936073](https://github.com/rioriost/pgag_memory/actions/runs/35078936073)であり、
-現在のmilestoneの証拠ではありません。
+suiteは実API processのcrash/restart後のcheckpoint/冪等性回復、
+実際の1 MiB body/100参照の境界、およびschema 001 → 実revision 2データを
+持つ002 → 003の段階的migrationでのassertion履歴保持を含みます。
+これらの検査の合格はM1全体の完了、性能/品質の測定、
+backup/DR保証、完全消去の適格性を示すものではありません。
 
 ## 今後の実装対象
 
-worker、job enqueue/status API、自動synthesis、compaction、vector embedding/
-pgvector、日本語tokenizer、AGE、SQL/PGQ、checkpoint/recovery、
+worker、job enqueue/status API、自動synthesis、別のworking snapshot/compaction、
+embedding/pgvector、日本語tokenizer、AGE、SQL/PGQ、SQL/graph oracle、
+durable外部副作用ledger、実際のharness実行/recovery、
 別assertion間のsupersession/fact調停、MCP、SDK、postgresem連携はありません。
-この同一assertionのrevision milestoneだけで、
+このtyped checkpoint envelopeだけで、
 計画上の二時点・graph・provenance・削除architectureが完了したとは扱いません。
 
 選択理由は[ADR 0001](adr/0001-initial-slice-jp.md)、

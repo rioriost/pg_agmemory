@@ -7,6 +7,10 @@
 - 置換対象: [ADR 0001](0001-initial-slice-jp.md)のrevision 1のみのモデルと
   同一assertion訂正の延期。初期architecture全体を置き換えるものではない
 
+**v0.0.2当時の記録です。** [ADR 0003](0003-checkpoints-jp.md)で
+checkpoint/削除境界を拡張し、v0.0.3の要求schemaを3へ進めます。
+以下の決定と検証結果は引き続きv0.0.2の範囲に限定します。
+
 ## 範囲と決定
 
 tenant、scope、subject、predicateを不変とする安定したassertion identityを維持します。
@@ -101,7 +105,7 @@ bypass権限を付与する設定ではなく、runtimeは非特権のままで�
 対応する新APIだけを起動します。新版の起動検査はledgerが厳密に`[1, 2]`であることを
 要求します。**旧APIには同等のguardがなく、停止を維持しなければなりません。**
 旧APIとのrolling共存やdowngrade経路はありません。
-[保守protocol](../operations/README-jp.md#v002の保守migration)に従い、
+[現在の保守protocol](../operations/README-jp.md#v003の保守migration)に従い、
 backup restoreでは引き続き隔離と最新削除/ACLのreplayを必要とします。
 
 ## 検証と残る範囲

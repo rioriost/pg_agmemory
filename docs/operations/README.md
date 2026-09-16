@@ -12,7 +12,9 @@ databases or real user histories.
 
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
-The v0.0.2 revision milestone requires schema 2.
+The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
+The v0.0.3 checkpoint milestone requires schema 3. Its 54-test Apple Container
+and native Docker results are recorded in [validation evidence](../STATUS.md#validation-evidence).
 
 | Setting | Consumer | Purpose |
 |---|---|---|
@@ -27,9 +29,10 @@ The v0.0.2 revision milestone requires schema 2.
    transactional and version-recorded in `public.pgag_schema_migration`.
    The migration loop accepts only sequential supported history and skips
    applied versions on rerun; lock acquisition has a 5-second timeout.
-   An existing v0.0.1 DB requires the maintenance procedure below.
-2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and subsequent
-   `src/pg_agmemory/storage/002_assertion_revisions.sql` are installed package
+   Any existing DB upgrade requires the maintenance procedure below.
+2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and
+   `src/pg_agmemory/storage/002_assertion_revisions.sql`, followed by the additive
+   `src/pg_agmemory/storage/003_checkpoints.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -47,7 +50,7 @@ The v0.0.2 revision milestone requires schema 2.
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2]` exactly; missing, older, newer, or incomplete history
+   ledger to equal `[1, 2, 3]` exactly; missing, older, newer, or incomplete history
    is rejected.
 
 Keep the admin URL, signing private key, tokens, and tenant HMAC secrets out of
@@ -56,11 +59,12 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
-## v0.0.2 maintenance migration
+## v0.0.3 maintenance migration
 
 **No rolling old/new API coexistence or downgrade is supported.**
-Rehearse upgrades only in disposable test databases. The following is a required
-maintenance protocol, not a report of a verified v0.0.2 upgrade:
+Rehearse upgrades only in disposable test databases. Passing migration tests
+does not qualify a production upgrade or disaster recovery.
+Follow this maintenance protocol:
 
 1. Stop and drain **all old and new API traffic and processes**, including
    replicas and automatic restarts. The migration advisory lock is not a
@@ -72,14 +76,13 @@ maintenance protocol, not a report of a verified v0.0.2 upgrade:
    `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
    transaction under the migration lock. A 5-second lock timeout aborts rather
    than waiting indefinitely; diagnose contention while traffic remains stopped.
-4. Migration 002 installs `btree_gist`, backfills existing values, valid/system
-   ranges, status, and evidence as revision 1, and preserves their actual
-   timestamps. Existing source-event/idempotency records remain intact; legacy
-   request serialization order must remain compatible for exact replay.
-   Do not edit/reapply migration 001 or manually reset timestamps.
-5. Confirm ledger versions are exactly `[1, 2]`, then start **only the new API**
+4. Migration 003 adds checkpoint runs, branches, payloads, references, and
+   constraints. Migrations 001/002 remain unchanged; an older DB receives any
+   pending 002 migration before 003. Preserve assertion history, source-event/
+   idempotency records, timestamps, and replay compatibility; do not reset them.
+5. Confirm ledger versions are exactly `[1, 2, 3]`, then start **only the new API**
    with restricted runtime credentials. Check its capabilities/schema and run
-   the milestone's migration, historical-read, revision, and deletion checks
+   the milestone's migration, checkpoint CAS, restore, and lineage-deletion checks
    before restoring traffic. A health response alone does not validate these.
 6. On failure, leave traffic stopped. Do not launch the old image against the
    changed schema or assume a downgrade exists. Any backup restore remains
@@ -88,6 +91,35 @@ maintenance protocol, not a report of a verified v0.0.2 upgrade:
 **The old v0.0.1 API does not contain the new schema-compatibility guard.**
 It may start against an incompatible schema; operators must keep it stopped.
 The new runtime's refusal of schema mismatches does not protect old processes.
+
+## Checkpoint operations
+
+1. Capture only sanitized schema-1 state. Declare every copied memory source in
+   `memory_refs`, including the exact revision. Undeclared copies are not
+   discovered by a semantic scanner.
+2. Create under the intended scope/run/branch with an explicit `expected_head`;
+   use null only for a new branch. Resolve `409` head/watermark/harness conflicts
+   rather than silently resetting the head. Save the returned checkpoint ID.
+3. Load through the checkpoint GET endpoint, not recall/explain. Treat checksum
+   or reference-validation failures as invalidation, not permission to bypass
+   validation or edit the stored payload.
+4. Restore only to a never-used target branch with the exact harness ID/version
+   and state schema. The source branch remains unchanged. Saved assertion
+   references keep their exact historical revisions; restore does not select
+   the latest revision or automatically refresh external facts. Inspect
+   `requires_reconciliation` and `resume_allowed` before handing state to a
+   harness; reconcile unknown/dispatched operations with the external system.
+   `automatic_reexecution` is always false. No receipt lookup or code execution
+   is performed by this API.
+5. Retry uncertain writes with the same key and payload. Only the original
+   result reference is retained in idempotency records, not state. Current
+   authorization/checksum checks still apply; a purged checkpoint returns `404`.
+
+A saved epoch or `resume_allowed: true` is not an approval or an external-effect
+receipt. Typed pending effects are snapshot hints, not a durable effect ledger.
+Checkpoint creation allows a 1 MiB body; other endpoints allow 256 KiB.
+See [the contract](../STATUS.md#checkpoint-contract) and
+[ADR 0003](../adr/0003-checkpoints.md). No production/DR qualification is implied.
 
 ## Revision operations
 
@@ -177,19 +209,22 @@ not freeze targets; authorization and dependencies are evaluated again for
 purge. Only `preview` and `purge` are accepted, even though future-mode names
 may appear in internal schema constraints.
 
-Purge handles the episode → assertion closure across all revisions synchronously,
-up to 10,000 dependent assertions. A source used only by an old revision still
-causes the entire assertion history to be purged. It removes episode bodies,
-all assertion revisions including correction reasons, and all evidence quotes
-first, then inserts scope-bound timestamped markers into
+Purge traverses episode/assertion history, declared checkpoint references, and
+every descendant/fork checkpoint through the complete parent lineage. Its
+limit is 10,000 dependents in total plus requested roots. A source used only
+by an old assertion revision still removes the entire assertion history and
+all affected checkpoint state. Branches whose heads are affected are permanently
+invalidated; do not try to reopen their IDs or remove lineage to avoid deletion.
+Payloads, quotes, and references are removed before timestamped markers enter
 `memory_ops.object_tombstone` in the same transaction. Object SELECT RLS hides
 those anchors; there is no soft-delete `deleted_at` update on `memory.object`
 or privileged deletion helper. The barrier/receipt commits before responding.
-Purge does not enqueue a worker. A multi-source assertion affected by source
-removal is deleted, not rebuilt. The receipt's `active_store_purged` is not
+The tenant session lock covers closure, branch invalidation, and read draining.
+Purge does not enqueue a worker or rebuild affected content.
+The receipt's `active_store_purged` is not
 full erasure.
 
-Opaque objects and their object tombstones, audit/receipt metadata, and
+Opaque run/branch metadata, objects and their tombstones, audit/receipt metadata, and
 tenant-keyed HMAC source/idempotency tombstones remain for the tenant lifetime.
 Do not manually remove
 them or change `dedup_secret` to “finish” a purge: doing so can defeat replay
@@ -198,6 +233,9 @@ protection. Exact replay of deleted source identities or memory results returns
 procedure is provided.
 
 ## Backups, restoration, and release evidence
+
+Checkpoint restore copies typed state inside the Memory DB; it is not database
+backup restoration, a separate working-snapshot compaction system, or disaster recovery.
 
 Deletion receipts report `backup_status: "operator_managed"` with
 `backup_retention_deadline: null`. SQL row deletion is not proof of physical
