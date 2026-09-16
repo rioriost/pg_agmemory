@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args
 from uuid import UUID, uuid4
 
 import jwt
@@ -18,28 +18,38 @@ from pg_agmemory import __version__
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, Settings, connect, validate_runtime
 from pg_agmemory.effects import ToolEffects
+from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.models import (
     AssertionExplanation,
     CheckpointEnvelope,
     CheckpointReceipt,
     CreateCheckpoint,
+    CreateEntity,
+    CreateRelation,
     DeletionPreview,
     DeletionProgress,
     DeletionResult,
+    EntityDetail,
+    EntityReceipt,
+    EntityType,
     EpisodeExplanation,
     ErrorBody,
+    ExpandGraph,
     Explain,
     Forget,
+    GraphResult,
     Identity,
     Observe,
     ObserveResult,
     PlanToolEffect,
     Recall,
     RecallResult,
+    RelationType,
     Remember,
     RememberResult,
     RestoreCheckpoint,
     ReviseAssertion,
+    ReviseRelation,
     RevisionResult,
     ToolEffectDetail,
     ToolEffectReceipt,
@@ -230,7 +240,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m1-effect-ledger",
+            "stage": "m1-sql-graph",
             "features": [
                 "observe",
                 "structured_remember",
@@ -241,8 +251,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "checkpoints",
                 "checkpoint_restore",
                 "tool_effect_ledger",
+                "entities",
+                "structured_relations",
+                "graph_expand",
             ],
-            "graph_backend": None,
+            "graph_backend": "sql",
+            "entity_types": list(get_args(EntityType)),
+            "relation_types": list(get_args(RelationType)),
             "auto_synthesis": False,
             "checkpoints": True,
             "tool_effect_ledger": True,
@@ -260,6 +275,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "checkpoint_references": 100,
                 "tool_effects_per_run": 100,
                 "tool_effect_references": 100,
+                "graph_hops": 2,
+                "graph_seeds": 16,
+                "graph_paths": 100,
             },
         }
 
@@ -321,6 +339,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/recall", response_model=RecallResult)
     async def recall(data: Recall, request: Request) -> Any:
         return await service(request).recall(data)
+
+    @app.post("/v1/entities", status_code=201, response_model=EntityReceipt)
+    async def entity(data: CreateEntity, request: Request, idempotency_key: IdempotencyKey) -> Any:
+        return await SqlGraph(service(request)).create_entity(data, idempotency_key)
+
+    @app.get("/v1/entities/{memory_id}", response_model=EntityDetail)
+    async def get_entity(memory_id: UUID, request: Request) -> Any:
+        return await SqlGraph(service(request)).entity(memory_id)
+
+    @app.post("/v1/relations", status_code=201, response_model=RememberResult)
+    async def relation(
+        data: CreateRelation, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await SqlGraph(service(request)).create_relation(data, idempotency_key)
+
+    @app.post("/v1/relations/{memory_id}/revisions", status_code=201, response_model=RevisionResult)
+    async def revise_relation(
+        memory_id: UUID, data: ReviseRelation, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await SqlGraph(service(request)).revise_relation(memory_id, data, idempotency_key)
+
+    @app.post("/v1/graph/expand", response_model=GraphResult)
+    async def expand_graph(data: ExpandGraph, request: Request) -> Any:
+        return await SqlGraph(service(request)).expand(data)
 
     @app.post("/v1/explain", response_model=EpisodeExplanation | AssertionExplanation)
     async def explain(data: Explain, request: Request) -> Any:

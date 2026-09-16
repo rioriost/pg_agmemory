@@ -556,7 +556,14 @@ def test_schema_upgrade_preserves_v3_checkpoint_checksum_and_gates_legacy_hints(
     assert response.json()["state"] == record["checkpoint"]["state"]
     assert response.json()["resume_allowed"] is False
     assert len(response.json()["untracked_effects"]) == 1
-    assert response.json()["tool_effects"] == []
+    assert response.json()["tool_effects"] == [
+        {
+            "memory_id": record["effect"]["result"]["memory_id"],
+            "operation_id": record["effect"]["payload"]["operation_id"],
+            "revision": 2,
+            "status": "dispatched",
+        }
+    ]
     schema = env.client.get("/openapi.json").json()
     for path, verb, status in [
         ("/v1/tool-effects", "post", "201"),

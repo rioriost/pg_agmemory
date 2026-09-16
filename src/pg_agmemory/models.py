@@ -7,6 +7,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
 Content = Annotated[str, Field(min_length=1, max_length=65536)]
 Revision = Annotated[int, Field(ge=1, le=1000, strict=True)]
+EntityType = Literal[
+    "person", "organization", "project", "component", "incident", "task", "decision", "other"
+]
+RelationType = Literal["depends_on", "part_of", "affects", "works_for", "decides"]
 
 
 class Contract(BaseModel):
@@ -85,6 +89,69 @@ class Recall(Contract):
         return self
 
 
+class CreateEntity(Contract):
+    scope_id: UUID
+    entity_type: EntityType
+    canonical_label: ShortText
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
+    explicit_intent: Literal[True]
+
+    @model_validator(mode="after")
+    def unique_evidence(self) -> "CreateEntity":
+        validate_assertion_content(None, None, self.evidence)
+        return self
+
+
+class CreateRelation(Contract):
+    scope_id: UUID
+    source_entity: UUID
+    target_entity: UUID
+    predicate: RelationType
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
+    explicit_intent: Literal[True]
+    valid_from: AwareDatetime | None = None
+    valid_to: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def valid_interval(self) -> "CreateRelation":
+        validate_assertion_content(self.valid_from, self.valid_to, self.evidence)
+        return self
+
+
+class ReviseRelation(Contract):
+    expected_revision: Revision
+    target_entity: UUID
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
+    explicit_intent: Literal[True]
+    valid_from: AwareDatetime | None = None
+    valid_to: AwareDatetime | None = None
+    reason: ShortText
+
+    @model_validator(mode="after")
+    def valid_interval(self) -> "ReviseRelation":
+        validate_assertion_content(self.valid_from, self.valid_to, self.evidence)
+        return self
+
+
+class ExpandGraph(Contract):
+    scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
+    seeds: Annotated[list[UUID], Field(min_length=1, max_length=16)]
+    relation_types: Annotated[list[RelationType], Field(min_length=1, max_length=5)]
+    purpose: ShortText
+    direction: Literal["outgoing", "incoming", "both"] = "outgoing"
+    max_hops: Annotated[int, Field(ge=1, le=2, strict=True)] = 2
+    max_paths: Annotated[int, Field(ge=1, le=100, strict=True)] = 100
+    as_of: AwareDatetime | None = None
+    known_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def unique_filters(self) -> "ExpandGraph":
+        for values in (self.scope_ids, self.seeds, self.relation_types):
+            if len(set(values)) != len(values):
+                raise ValueError("graph filters must be unique")
+        return self
+
+
 class Explain(Contract):
     memory_id: UUID
     revision: Revision = 1
@@ -107,6 +174,11 @@ class Identity(BaseModel):
     principal_id: UUID
 
 
+class RelationEndpoints(BaseModel):
+    source_entity: UUID
+    target_entity: UUID
+
+
 class MemoryItem(BaseModel):
     memory_id: UUID
     revision: int = 1
@@ -122,6 +194,7 @@ class MemoryItem(BaseModel):
     )
     source: list[UUID] = Field(default_factory=list)
     requires_refresh: bool = True
+    relation: RelationEndpoints | None = None
 
 
 class ErrorBody(BaseModel):
@@ -217,6 +290,7 @@ class AssertionExplanation(BaseModel):
     evidence: list[ExplainedEvidence]
     epistemic_status: Literal["reported"]
     confidence: dict[str, str | None]
+    relation: RelationEndpoints | None = None
 
 
 class DeletionResult(BaseModel):
@@ -249,6 +323,55 @@ class DeletionPreview(BaseModel):
 class MemoryReference(Contract):
     memory_id: UUID
     revision: Revision = 1
+
+
+class EntityReceipt(BaseModel):
+    memory_id: UUID
+    revision: Literal[1] = 1
+
+
+class EntitySummary(EntityReceipt):
+    scope_id: UUID
+    entity_type: EntityType
+    canonical_label: str
+    recorded_at: datetime
+
+
+class EntityDetail(EntitySummary):
+    evidence: list[ExplainedEvidence]
+
+
+class GraphEdge(RelationEndpoints):
+    assertion: MemoryReference
+    predicate: RelationType
+    valid_from: datetime | None
+    valid_to: datetime | None
+    recorded_at: datetime
+    epistemic_status: Literal["reported"] = "reported"
+
+
+class GraphPath(BaseModel):
+    nodes: list[UUID]
+    assertions: list[MemoryReference]
+
+
+class GraphCoverage(BaseModel):
+    complete_within_bounds: bool
+    truncated: bool
+    max_hops: int
+
+
+class GraphResult(BaseModel):
+    backend: Literal["sql"] = "sql"
+    projection_watermark: None = None
+    as_of: datetime
+    known_at: datetime
+    nodes: list[EntitySummary]
+    edges: list[GraphEdge]
+    paths: list[GraphPath]
+    coverage: GraphCoverage
+    consistency: Consistency
+    empty_reason: Literal["not_found"] | None
 
 
 class PendingEffect(Contract):

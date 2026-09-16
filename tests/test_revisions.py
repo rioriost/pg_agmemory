@@ -284,7 +284,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
     with psycopg.connect(admin_url) as conn:
         assert conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,)]
         for record in records:
             row = conn.execute(
                 """SELECT value, lower(valid_time), lower(system_time), revision
@@ -308,7 +308,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
             )
             assert response.json()["evidence"][0]["memory_id"] == str(record["source"])
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 4 and capabilities["temporal_revisions"] is True
+    assert capabilities["schema_version"] == 5 and capabilities["temporal_revisions"] is True
     schema = env.client.get("/openapi.json").json()
     contract = schema["paths"]["/v1/assertions/{memory_id}/revisions"]["post"]
     assert contract["security"] == [{"BearerAuth": []}]
@@ -336,14 +336,34 @@ def test_unknown_assertion_matches_inaccessible_response(env):
     assert response.status_code == 404 and response.json()["code"] == "not_found"
 
 
-def test_exact_revision_limit_preserves_replay_and_history(env):
+@pytest.mark.parametrize("typed", [False, True])
+def test_exact_revision_limit_preserves_replay_and_history(env, typed):
     source = env.observe("Gold Silver").json()["memory_id"]
+    entities = []
+    if typed:
+        for label in ("Gold", "Silver"):
+            response = env.client.post(
+                "/v1/entities",
+                headers=env.headers(),
+                json={
+                    "scope_id": str(env.scopes[0]),
+                    "entity_type": "component",
+                    "canonical_label": label,
+                    "explicit_intent": True,
+                    "evidence": [{"memory_id": source, "quote": label}],
+                },
+            )
+            assert response.status_code == 201
+            entities.append(response.json()["memory_id"])
     memory = str(uuid4())
     with psycopg.connect(env.admin_url) as conn:
         # Bulk-seed a valid prefix with the anchor's deferred history check enabled;
         # the actual 999 -> 1000 adoption below still uses the HTTP/DB runtime path.
         conn.execute("ALTER TABLE memory.assertion_revision DISABLE TRIGGER adopt_revision")
         conn.execute("ALTER TABLE memory.assertion_revision DISABLE TRIGGER revision_history")
+        conn.execute("ALTER TABLE memory.assertion_revision DISABLE TRIGGER relation_shape")
+        if typed:
+            conn.execute("ALTER TABLE memory.relation_revision DISABLE TRIGGER relation_shape")
         conn.execute(
             """INSERT INTO memory.object(tenant_id,id,scope_id,kind)
                VALUES (%s,%s,%s,'assertion')""",
@@ -351,10 +371,22 @@ def test_exact_revision_limit_preserves_replay_and_history(env):
         )
         conn.execute(
             """INSERT INTO memory.assertion
-               (tenant_id,id,scope_id,subject,predicate,current_revision)
-               VALUES (%s,%s,%s,'ACME','contract_tier',999)""",
-            (env.tenants[0], memory, env.scopes[0]),
+               (tenant_id,id,scope_id,subject,predicate,current_revision,is_relation)
+               VALUES (%s,%s,%s,%s,%s,999,%s)""",
+            (
+                env.tenants[0],
+                memory,
+                env.scopes[0],
+                "Gold" if typed else "ACME",
+                "depends_on" if typed else "contract_tier",
+                typed,
+            ),
         )
+        if typed:
+            conn.execute(
+                "INSERT INTO memory.relation(tenant_id,id,scope_id,source_id) VALUES (%s,%s,%s,%s)",
+                (env.tenants[0], memory, env.scopes[0], entities[0]),
+            )
         conn.execute(
             """INSERT INTO memory.assertion_revision
                (tenant_id,assertion_id,scope_id,revision,value,valid_time,system_time,
@@ -375,15 +407,42 @@ def test_exact_revision_limit_preserves_replay_and_history(env):
                SELECT %s,%s,n,%s,%s,'Silver' FROM generate_series(1,999) n""",
             (env.tenants[0], memory, source, env.scopes[0]),
         )
+        if typed:
+            conn.execute(
+                """INSERT INTO memory.relation_revision
+                   (tenant_id,assertion_id,scope_id,revision,target_id)
+                   SELECT %s,%s,%s,n,%s FROM generate_series(1,999) n""",
+                (env.tenants[0], memory, env.scopes[0], entities[1]),
+            )
+        conn.execute("SET CONSTRAINTS ALL IMMEDIATE")
         conn.execute("ALTER TABLE memory.assertion_revision ENABLE TRIGGER adopt_revision")
         conn.execute("ALTER TABLE memory.assertion_revision ENABLE TRIGGER revision_history")
+        conn.execute("ALTER TABLE memory.assertion_revision ENABLE TRIGGER relation_shape")
+        if typed:
+            conn.execute("ALTER TABLE memory.relation_revision ENABLE TRIGGER relation_shape")
+
+    def append(expected, headers=None):
+        if not typed:
+            return revise(env, memory, source, expected=expected, headers=headers)
+        return env.client.post(
+            f"/v1/relations/{memory}/revisions",
+            headers=headers or env.headers(),
+            json={
+                "expected_revision": expected,
+                "target_entity": entities[1],
+                "evidence": [{"memory_id": source, "quote": "Silver"}],
+                "explicit_intent": True,
+                "reason": "Correction",
+            },
+        )
+
     key = env.headers()
-    final = revise(env, memory, source, expected=999, headers=key)
+    final = append(999, headers=key)
     assert final.status_code == 201, final.text
     assert final.json()["revision"] == 1000
-    exceeded = revise(env, memory, source, expected=1000)
+    exceeded = append(1000)
     assert exceeded.status_code == 422
     assert exceeded.json()["code"] == "revision_limit_exceeded"
-    assert revise(env, memory, source, expected=999, headers=key).json() == final.json()
+    assert append(999, headers=key).json() == final.json()
     assert explain(env, memory, 1000).status_code == 200
     assert assertions(env)[0]["revision"] == 1000

@@ -145,6 +145,9 @@ def database():
     seed_v3_checkpoint(url, legacy[0])
     with pytest.raises(RuntimeError, match="schema version mismatch"):
         asyncio.run(validate_runtime(runtime_url))
+    seed_v4_effect(url, legacy[0])
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
@@ -384,6 +387,99 @@ def seed_v3_checkpoint(url, record):
         )
     record["checkpoint"] = payload
     record["checksum"] = checksum
+
+
+def seed_v4_effect(url, record):
+    effect, operation = uuid4(), uuid4()
+    payload = {
+        "scope_id": str(record["scope"]),
+        "run_id": record["checkpoint"]["run_id"],
+        "operation_id": str(operation),
+        "tool_name": "legacy.send",
+        "action_hash": "b" * 64,
+        "memory_refs": [{"memory_id": str(record["assertion"]), "revision": 1}],
+    }
+    result = {"memory_id": str(effect), "revision": 1, "status": "planned"}
+    key = "legacy-plan-effect"
+    with psycopg.connect(url) as conn:
+        conn.execute(files("pg_agmemory").joinpath("storage/004_tool_effects.sql").read_text())
+        conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (4)")
+        conn.execute(
+            """SELECT set_config('pgag.tenant_id',%s,true),
+                      set_config('pgag.principal_id',%s,true)""",
+            (str(record["tenant"]), str(record["principal"])),
+        )
+        secret = conn.execute(
+            "SELECT dedup_secret FROM memory.tenant WHERE id = %s", (record["tenant"],)
+        ).fetchone()[0]
+
+        def digest(value):
+            return hmac.new(secret, value.encode(), hashlib.sha256).hexdigest()
+
+        request_digest = digest(json.dumps(payload, separators=(",", ":")))
+        fingerprint = digest("effect-action-v1:" + payload["action_hash"])
+        external_key = digest(
+            "effect-dispatch-v1:"
+            + json.dumps([payload["scope_id"], payload["run_id"], str(operation), fingerprint])
+        )
+        conn.execute(
+            "INSERT INTO memory.object(tenant_id,id,scope_id,kind) VALUES (%s,%s,%s,'tool_effect')",
+            (record["tenant"], effect, record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory.tool_effect
+               (tenant_id,id,scope_id,run_id,operation_id,tool_name,
+                action_fingerprint,external_idempotency_key,reference_count)
+               VALUES (%s,%s,%s,%s,%s,'legacy.send',%s,%s,1)""",
+            (
+                record["tenant"],
+                effect,
+                record["scope"],
+                payload["run_id"],
+                operation,
+                fingerprint,
+                external_key,
+            ),
+        )
+        conn.execute(
+            """INSERT INTO memory.tool_effect_reference
+               (tenant_id,effect_id,scope_id,source_id,source_revision,source_kind)
+               VALUES (%s,%s,%s,%s,1,'assertion')""",
+            (record["tenant"], effect, record["scope"], record["assertion"]),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.tool_effect_identity
+               (tenant_id,scope_id,run_id,operation_id,effect_id,request_digest)
+               VALUES (%s,%s,%s,%s,%s,%s)""",
+            (
+                record["tenant"],
+                record["scope"],
+                payload["run_id"],
+                operation,
+                effect,
+                request_digest,
+            ),
+        )
+        for revision, status in [(1, "planned"), (2, "dispatched")]:
+            conn.execute(
+                """INSERT INTO memory.tool_effect_revision
+                   (tenant_id,effect_id,revision,status,reason,origin)
+                   VALUES (%s,%s,%s,%s,'Legacy v4 event','api')""",
+                (record["tenant"], effect, revision, status),
+            )
+        conn.execute(
+            """INSERT INTO memory_ops.idempotency
+               (tenant_id,principal_id,operation,key_digest,request_digest,result)
+               VALUES (%s,%s,'plan_tool_effect',%s,%s,%s)""",
+            (record["tenant"], record["principal"], digest(key), request_digest, Jsonb(result)),
+        )
+    record["effect"] = {
+        "payload": payload,
+        "result": result,
+        "key": key,
+        "external_key": external_key,
+        "fingerprint": fingerprint,
+    }
 
 
 @pytest.fixture

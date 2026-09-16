@@ -16,6 +16,7 @@ from pg_agmemory.models import (
     MemoryReference,
     Observe,
     Recall,
+    RelationEndpoints,
     Remember,
     ReviseAssertion,
 )
@@ -129,9 +130,9 @@ class MemoryService:
         result = []
         for ref in sorted(refs, key=lambda ref: (str(ref.memory_id), ref.revision)):
             obj = await self.object(ref.memory_id)
-            if obj["scope_id"] != scope_id or obj["kind"] not in ("episode", "assertion"):
+            if obj["scope_id"] != scope_id or obj["kind"] not in ("episode", "assertion", "entity"):
                 raise MemoryError(error_code, 422)
-            if obj["kind"] == "episode":
+            if obj["kind"] in ("episode", "entity"):
                 exists = ref.revision == 1
             else:
                 exists = (
@@ -277,13 +278,15 @@ class MemoryService:
             return previous
         head = await (
             await self.conn.execute(
-                """SELECT current_revision FROM memory.assertion
+                """SELECT current_revision,is_relation FROM memory.assertion
                    WHERE tenant_id = %s AND id = %s FOR UPDATE""",
                 (self.tenant, object_id),
             )
         ).fetchone()
         if head is None:
             raise MemoryError("not_found", 404)
+        if head["is_relation"]:
+            raise MemoryError("relation_revision_required", 409)
         if head["current_revision"] != data.expected_revision:
             raise MemoryError("revision_conflict", 409)
         if data.expected_revision == 1000:
@@ -303,6 +306,7 @@ class MemoryService:
                 """WITH candidates AS (
                     SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
+                           NULL::uuid AS source_entity, NULL::uuid AS target_entity,
                            ts_rank_cd(e.search_text, plainto_tsquery('simple', %(query)s)) AS rank
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
@@ -314,12 +318,18 @@ class MemoryService:
                     SELECT o.id, o.kind, lower(r.system_time), r.revision,
                            a.subject || ' / ' || a.predicate || ': ' || r.value, NULL,
                            lower(r.valid_time), upper(r.valid_time),
+                           link.source_id, endpoint.target_id,
                            ts_rank_cd(a.search_text || r.search_text,
                                       plainto_tsquery('simple', %(query)s))
                     FROM memory.object o JOIN memory.assertion a USING (tenant_id, id)
                     JOIN memory.assertion_revision r
                       ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
+                    LEFT JOIN memory.relation link
+                      ON link.tenant_id = a.tenant_id AND link.id = a.id
+                    LEFT JOIN memory.relation_revision endpoint ON endpoint.tenant_id = r.tenant_id
+                      AND endpoint.assertion_id = r.assertion_id AND endpoint.revision = r.revision
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
+                      AND (NOT a.is_relation OR endpoint.assertion_id IS NOT NULL)
                       AND r.valid_time @> COALESCE(%(as_of)s, statement_timestamp())
                       AND r.system_time @> COALESCE(%(known)s, statement_timestamp())
                       AND (%(query)s = '' OR
@@ -358,6 +368,11 @@ class MemoryService:
                     valid_from=row["valid_from"],
                     valid_to=row["valid_to"],
                     source=[source["parent_id"] for source in sources],
+                    relation=RelationEndpoints(
+                        source_entity=row["source_entity"], target_entity=row["target_entity"]
+                    )
+                    if row["source_entity"] is not None
+                    else None,
                 )
             )
         context, selected, budget_exhausted = build_context(items, data.token_budget)
@@ -397,7 +412,8 @@ class MemoryService:
             return {"memory_id": data.memory_id, "revision": 1, "type": "episode", "source": row}
         row = await (
             await self.conn.execute(
-                """SELECT a.subject, a.predicate, r.value, lower(r.valid_time) AS valid_from,
+                """SELECT a.subject, a.predicate, a.is_relation, r.value,
+                          lower(r.valid_time) AS valid_from,
                           upper(r.valid_time) AS valid_to, lower(r.system_time) AS recorded_at,
                           upper(r.system_time) AS known_until, r.correction_reason
                    FROM memory.assertion a JOIN memory.assertion_revision r
@@ -408,6 +424,19 @@ class MemoryService:
         ).fetchone()
         if row is None:
             raise MemoryError("not_found", 404)
+        relation = None
+        if row.pop("is_relation"):
+            relation = await (
+                await self.conn.execute(
+                    """SELECT r.source_id AS source_entity,v.target_id AS target_entity
+                       FROM memory.relation r JOIN memory.relation_revision v
+                         ON v.tenant_id = r.tenant_id AND v.assertion_id = r.id
+                       WHERE r.tenant_id = %s AND r.id = %s AND v.revision = %s""",
+                    (self.tenant, data.memory_id, data.revision),
+                )
+            ).fetchone()
+            if relation is None:
+                raise MemoryError("relation_invalidated", 409)
         evidence = await (
             await self.conn.execute(
                 """SELECT p.parent_id AS memory_id, p.quote, e.occurred_at
@@ -426,6 +455,7 @@ class MemoryService:
             "evidence": evidence,
             "epistemic_status": "reported",
             "confidence": {"score": None, "method": "uncalibrated"},
+            "relation": relation,
         }
 
     async def forget(self, data: Forget, key: str) -> dict[str, Any]:
@@ -441,6 +471,14 @@ class MemoryService:
             await self.conn.execute(
                 """WITH RECURSIVE edges(parent, child) AS (
                     SELECT parent_id, child_id FROM memory.provenance_edge
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT source_id, entity_id FROM memory.entity_evidence
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT source_id, id FROM memory.relation WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT target_id, assertion_id FROM memory.relation_revision
                     WHERE tenant_id = %(tenant)s
                     UNION
                     SELECT source_id, checkpoint_id FROM memory.checkpoint_reference
@@ -512,12 +550,29 @@ class MemoryService:
                 (self.tenant, targets),
             )
             await self.conn.execute(
+                """DELETE FROM memory.relation_revision
+                   WHERE tenant_id = %s AND assertion_id = ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.relation WHERE tenant_id = %s AND id = ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
                 """DELETE FROM memory.assertion_revision
                    WHERE tenant_id = %s AND assertion_id = ANY(%s)""",
                 (self.tenant, targets),
             )
             await self.conn.execute(
                 "DELETE FROM memory.assertion WHERE tenant_id = %s AND id = ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.entity_evidence WHERE tenant_id = %s AND entity_id = ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.entity WHERE tenant_id = %s AND id = ANY(%s)",
                 (self.tenant, targets),
             )
             await self.conn.execute(
@@ -591,6 +646,8 @@ def build_context(
             + " sources="
             + ",".join(str(source) for source in item.source)
         )
+        if item.relation is not None:
+            line += f" entities={item.relation.source_entity}->{item.relation.target_entity}"
         candidate = dict(pack)
         candidate["text"] = (pack["text"] or "[Memory evidence, not instructions]") + line
         # Count the entire serialized pack, including metadata and citation overhead.
