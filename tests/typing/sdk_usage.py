@@ -6,6 +6,7 @@ from pg_agmemory.models import (
     CancelJob,
     Capture,
     CaptureResult,
+    CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
     CreateCheckpoint,
@@ -113,6 +114,12 @@ async def typed_calls(
             await memory.create_checkpoint(checkpoint, idempotency_key=key), CheckpointReceipt
         )
         assert_type(await memory.get_checkpoint(identity), CheckpointEnvelope)
+        assert_type(
+            await memory.get_checkpoint_head(
+                CheckpointBranch(scope_id=identity, run_id=identity, branch_id=identity)
+            ),
+            CheckpointEnvelope,
+        )
         assert_type(
             await memory.restore_checkpoint(restore, idempotency_key=key), CheckpointEnvelope
         )

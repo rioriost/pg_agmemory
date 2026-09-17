@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from pg_agmemory.effects import ToolEffects
 from pg_agmemory.models import (
+    CheckpointBranch,
     CheckpointState,
     CreateCheckpoint,
     RestoreCheckpoint,
@@ -123,6 +124,27 @@ class Checkpoints:
             "resume_allowed": not (unresolved or untracked),
             "automatic_reexecution": False,
         }
+
+    async def head(self, data: CheckpointBranch) -> dict[str, Any]:
+        await self.memory.scope(data.scope_id, "read")
+        branch = await (
+            await self.conn.execute(
+                """SELECT head_id,sequence,invalidated FROM memory.checkpoint_branch
+                   WHERE tenant_id=%s AND scope_id=%s AND run_id=%s AND branch_id=%s""",
+                (self.tenant, data.scope_id, data.run_id, data.branch_id),
+            )
+        ).fetchone()
+        if branch is None:
+            raise MemoryError("not_found", 404)
+        if branch["invalidated"]:
+            raise MemoryError("checkpoint_invalidated", 409)
+        if branch["head_id"] is None:
+            raise MemoryError("not_found", 404)
+        saved = await self.envelope(branch["head_id"])
+        expected = data.model_dump(mode="json") | {"sequence": branch["sequence"]}
+        if any(saved[field] != value for field, value in expected.items()):
+            raise MemoryError("checkpoint_invalidated", 409)
+        return saved
 
     async def create(self, data: CreateCheckpoint, key: str) -> dict[str, Any]:
         await self.memory.scope(data.scope_id, "write")

@@ -591,6 +591,12 @@ class CheckpointState(Contract):
         return self
 
 
+class CheckpointBranch(Contract):
+    scope_id: UUID
+    run_id: UUID
+    branch_id: UUID
+
+
 class CreateCheckpoint(Contract):
     scope_id: UUID
     run_id: UUID

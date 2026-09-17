@@ -17,6 +17,7 @@ from pg_agmemory.models import (
     CancelJob,
     Capture,
     CaptureResult,
+    CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
     CreateCheckpoint,
@@ -372,6 +373,15 @@ class AsyncMemoryClient:
 
     async def get_checkpoint(self, checkpoint_id: UUID) -> CheckpointEnvelope:
         return await self._get(f"/v1/checkpoints/{_id(checkpoint_id)}", CheckpointEnvelope)
+
+    async def get_checkpoint_head(self, request: CheckpointBranch) -> CheckpointEnvelope:
+        return await self._post(
+            "/v1/checkpoints/head",
+            request,
+            CheckpointBranch,
+            TypeAdapter(CheckpointEnvelope),
+            mutation=False,
+        )
 
     async def restore_checkpoint(
         self, request: RestoreCheckpoint, *, idempotency_key: str

@@ -555,6 +555,53 @@ print("Production recall filters smoke passed: exact filters, required mismatch,
 
 "$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
 import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+from pg_agmemory.models import CheckpointBranch, CheckpointState, CreateCheckpoint, Forget, MemoryReference, Observe
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-head", source_event_id="head-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic checkpoint evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="head-source")
+        branch = CheckpointBranch(scope_id=scope, run_id=uuid4(), branch_id=uuid4())
+        body = CreateCheckpoint(
+            **branch.model_dump(), expected_head=None, harness_id="production-head",
+            harness_version="1", event_watermark=1,
+            state=CheckpointState(goal="Recover latest state"),
+            memory_refs=[MemoryReference(memory_id=source.memory_id)],
+        )
+        first = await sdk.create_checkpoint(body, idempotency_key="head-first")
+        assert (await sdk.get_checkpoint_head(branch)).checkpoint_id == first.checkpoint_id
+        second = await sdk.create_checkpoint(body.model_copy(update={
+            "expected_head": first.checkpoint_id, "event_watermark": 2,
+        }), idempotency_key="head-second")
+        latest = await sdk.get_checkpoint_head(branch)
+        assert latest.checkpoint_id == second.checkpoint_id and latest.sequence == 2
+        assert latest.resume_allowed and not latest.automatic_reexecution
+        assert (await sdk.get_checkpoint(first.checkpoint_id)).sequence == 1
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="head-purge")
+        assert purged.object_count == 3
+        try:
+            await sdk.get_checkpoint_head(branch)
+        except MemoryClientError as error:
+            assert error.error.code == "checkpoint_invalidated" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Invalidated branch returned a head")
+
+asyncio.run(smoke())
+print("Production checkpoint head smoke passed: discover, advance, historical get, source purge")
+' "$scope_id"
+
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
 import json
 import os
 import subprocess

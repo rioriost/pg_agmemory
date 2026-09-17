@@ -17,6 +17,7 @@ from pg_agmemory.models import (
     CancelJob,
     Capture,
     CapturedMemory,
+    CheckpointBranch,
     CheckpointEnvelope,
     CheckpointState,
     CreateCheckpoint,
@@ -526,6 +527,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/jobs/{job_id}/retry",
         "/v1/jobs/{job_id}/cancel",
         "/v1/checkpoints",
+        "/v1/checkpoints/head",
         "/v1/checkpoints/{checkpoint_id}",
         "/v1/checkpoints/restore",
         "/v1/tool-effects",
@@ -538,7 +540,49 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 25
+    assert len(methods) == len(expected) == 26
+
+
+@pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
+def test_sdk_checkpoint_head_is_read_only_and_validates_errors(monkeypatch, outcome):
+    body = CheckpointBranch(scope_id=uuid4(), run_id=uuid4(), branch_id=uuid4())
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/checkpoints/head"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        assert "idempotency-key" not in request.headers
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated head response loss")
+        if outcome in ("missing", "invalidated"):
+            return response(
+                404 if outcome == "missing" else 409,
+                {
+                    "code": "not_found" if outcome == "missing" else "checkpoint_invalidated",
+                    "request_id": str(uuid4()),
+                    "retryable": False,
+                    "details": {},
+                },
+            )
+        return response(201 if outcome == "wrong_status" else 200, {"checkpoint_id": str(uuid4())})
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            with pytest.raises(MemoryClientError) as error:
+                await sdk.get_checkpoint_head(body)
+            assert not error.value.error.outcome_unknown
+            if outcome in ("missing", "invalidated"):
+                assert error.value.error.code == (
+                    "not_found" if outcome == "missing" else "checkpoint_invalidated"
+                )
+            assert "PRIVATE" not in str(error.value)
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.get_checkpoint_head(body.model_copy(update={"run_id": "invalid"}))
+            assert len(calls) == 2
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.integration
@@ -752,6 +796,10 @@ def test_real_sdk_graph_job_retry_checkpoints_and_effects(env, api_process):
                 )
                 envelope = await client.get_checkpoint(checkpoint.checkpoint_id)
                 assert isinstance(envelope, CheckpointEnvelope)
+                branch = CheckpointBranch(
+                    scope_id=env.scopes[0], run_id=checkpoint.run_id, branch_id=checkpoint.branch_id
+                )
+                assert await client.get_checkpoint_head(branch) == envelope
                 effect = await client.plan_tool_effect(
                     PlanToolEffect(
                         scope_id=env.scopes[0],
@@ -772,6 +820,9 @@ def test_real_sdk_graph_job_retry_checkpoints_and_effects(env, api_process):
                     idempotency_key="transition",
                 )
                 assert (await client.get_tool_effect(effect.memory_id)).status == "dispatched"
+                active = await client.get_checkpoint_head(branch)
+                assert not active.resume_allowed and not active.automatic_reexecution
+                assert active.tool_effects[0].status == "dispatched"
                 restored = await client.restore_checkpoint(
                     RestoreCheckpoint(
                         checkpoint_id=checkpoint.checkpoint_id,
@@ -783,6 +834,15 @@ def test_real_sdk_graph_job_retry_checkpoints_and_effects(env, api_process):
                 )
                 assert not restored.resume_allowed and not restored.automatic_reexecution
                 assert (await client.get_tool_effect(effect.memory_id)).status == "unknown"
+                assert (
+                    await client.get_checkpoint_head(
+                        branch.model_copy(update={"branch_id": restored.branch_id})
+                    )
+                    == restored
+                )
+                assert (await client.get_checkpoint_head(branch)).tool_effects[
+                    0
+                ].status == "unknown"
 
         asyncio.run(scenario())
 
@@ -871,6 +931,73 @@ def test_sdk_lost_committed_response_replays_same_reference(
                     ).fetchone()[0]
                     == 1
                 )
+
+        asyncio.run(scenario())
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("lost_path", ["/v1/checkpoints", "/v1/checkpoints/head"])
+def test_sdk_recovers_checkpoint_head_after_real_response_loss(
+    env, api_process, monkeypatch, lost_path
+):
+    class LoseCheckpointResponse(httpx.AsyncHTTPTransport):
+        calls = 0
+        observed = None
+
+        async def handle_async_request(self, request):
+            response = await super().handle_async_request(request)
+            if request.url.path == lost_path:
+                self.calls += 1
+                if self.calls == 1:
+                    await response.aread()
+                    assert response.status_code == (201 if lost_path == "/v1/checkpoints" else 200)
+                    self.observed = response.json()
+                    await response.aclose()
+                    raise httpx.ReadError("simulated checkpoint response loss")
+            return response
+
+    transport = LoseCheckpointResponse()
+
+    def client(settings):
+        return httpx.AsyncClient(
+            base_url=settings.api_url,
+            transport=transport,
+            headers={"Authorization": f"Bearer {settings.api_token}"},
+            trust_env=False,
+            follow_redirects=False,
+        )
+
+    monkeypatch.setattr(NativeSettings, "client", client)
+    with api_process("sdk-head-loss.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                branch = CheckpointBranch(scope_id=env.scopes[0], run_id=uuid4(), branch_id=uuid4())
+                body = CreateCheckpoint(
+                    **branch.model_dump(),
+                    expected_head=None,
+                    harness_id="head-recovery",
+                    harness_version="1",
+                    event_watermark=0,
+                    state=CheckpointState(goal="Recover head without reexecution"),
+                )
+                if lost_path == "/v1/checkpoints":
+                    with pytest.raises(MemoryClientError) as failure:
+                        await sdk.create_checkpoint(body, idempotency_key="durable-checkpoint")
+                    assert failure.value.error.outcome_unknown and transport.calls == 1
+                    recovered = await sdk.get_checkpoint_head(branch)
+                    replay = await sdk.create_checkpoint(body, idempotency_key="durable-checkpoint")
+                    assert replay.checkpoint_id == recovered.checkpoint_id
+                else:
+                    saved = await sdk.create_checkpoint(body, idempotency_key="durable-checkpoint")
+                    with pytest.raises(MemoryClientError) as failure:
+                        await sdk.get_checkpoint_head(branch)
+                    assert not failure.value.error.outcome_unknown and transport.calls == 1
+                    recovered = await sdk.get_checkpoint_head(branch)
+                    assert saved.checkpoint_id == recovered.checkpoint_id
+                assert recovered.checkpoint_id == UUID(transport.observed["checkpoint_id"])
+                assert recovered.sequence == 1 and recovered.resume_allowed
+                assert not recovered.automatic_reexecution and transport.calls == 2
 
         asyncio.run(scenario())
 

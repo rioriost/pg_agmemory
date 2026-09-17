@@ -8,7 +8,7 @@ import pytest
 
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import connect
-from pg_agmemory.models import Identity
+from pg_agmemory.models import CheckpointBranch, Identity
 from pg_agmemory.service import MemoryError, MemoryService
 
 pytestmark = pytest.mark.integration
@@ -41,6 +41,21 @@ def get(env, checkpoint, index=0):
     return env.client.get(f"/v1/checkpoints/{checkpoint}", headers=env.headers(index))
 
 
+def head(env, branch, index=0, **overrides):
+    headers = env.headers(index)
+    del headers["Idempotency-Key"]
+    return env.client.post(
+        "/v1/checkpoints/head",
+        json={
+            "scope_id": branch.get("scope_id", str(env.scopes[index])),
+            "run_id": branch["run_id"],
+            "branch_id": branch["branch_id"],
+            **overrides,
+        },
+        headers=headers,
+    )
+
+
 def restore(env, checkpoint, headers=None, **overrides):
     return env.client.post(
         "/v1/checkpoints/restore",
@@ -68,6 +83,7 @@ def test_immutable_checkpoint_roundtrip_head_cas_and_idempotency(env):
     first = get(env, checkpoint)
     assert first.status_code == 200, first.text
     saved = first.json()
+    assert head(env, body).json() == saved
     assert saved["state"]["goal"] == body["state"]["goal"]
     assert saved["memory_refs"] == [{"memory_id": source, "revision": 1}]
     assert saved["automatic_reexecution"] is False and saved["resume_allowed"] is True
@@ -85,6 +101,7 @@ def test_immutable_checkpoint_roundtrip_head_cas_and_idempotency(env):
     assert advanced.status_code == 201, advanced.text
     assert advanced.json()["sequence"] == 2
     assert advanced.json()["parent_checkpoint"] == checkpoint
+    assert head(env, body).json() == get(env, advanced.json()["checkpoint_id"]).json()
     assert create(env, body).status_code == 409
     assert get(env, checkpoint).json() == saved
     assert create(env, body, headers).json() == receipt
@@ -109,6 +126,10 @@ def test_parallel_checkpoint_head_and_replay_have_one_effect(env):
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: create(env, next_body), range(2)))
     assert sorted(response.status_code for response in results) == [201, 409]
+    winner = next(
+        response.json()["checkpoint_id"] for response in results if response.status_code == 201
+    )
+    assert head(env, body).json() == get(env, winner).json()
 
 
 def test_restore_forks_without_rewinding_or_reexecuting_effects(env):
@@ -134,6 +155,8 @@ def test_restore_forks_without_rewinding_or_reexecuting_effects(env):
     assert fork["requires_reconciliation"] == [operation]
     assert fork["resume_allowed"] is False and fork["automatic_reexecution"] is False
     assert fork["state"]["pending_effects"][0]["status"] == "unknown"
+    assert head(env, fork).json() == fork
+    assert head(env, body).json()["checkpoint_id"] == later
     assert get(env, original).json()["state"]["pending_effects"][0]["status"] == "dispatched"
     assert restore(env, original, headers=headers, target_branch_id=target).json() == fork
     assert restore(env, original, target_branch_id=target).status_code == 409
@@ -160,6 +183,7 @@ def test_checkpoint_identity_and_reference_isolation(env):
     body = payload(env, memory_refs=[{"memory_id": source}])
     checkpoint = create(env, body).json()["checkpoint_id"]
     for index in [1, 2]:
+        assert head(env, body, index).status_code == 404
         assert get(env, checkpoint, index).status_code == 404
         assert restore(env, checkpoint, headers=env.headers(index)).status_code == 404
         assert create(env, body, env.headers(index)).status_code == 404
@@ -167,6 +191,7 @@ def test_checkpoint_identity_and_reference_isolation(env):
             env, scope_id=str(env.scopes[index]), run_id=body["run_id"], branch_id=body["branch_id"]
         )
         assert create(env, other, env.headers(index)).status_code == 201
+        assert head(env, other, index).json()["scope_id"] == other["scope_id"]
         other["memory_refs"] = [{"memory_id": source}]
         other["branch_id"] = str(uuid4())
         assert create(env, other, env.headers(index)).status_code == 404
@@ -210,6 +235,7 @@ def test_authorization_revocation_rechecks_get_restore_and_idempotency(env):
             (env.tenants[0], env.principals[0]),
         )
     assert get(env, checkpoint).status_code == 200
+    assert head(env, body).status_code == 200
     assert restore(env, checkpoint).status_code == 404
     assert create(env, body, key).status_code == 404
     with psycopg.connect(env.admin_url) as conn:
@@ -219,6 +245,7 @@ def test_authorization_revocation_rechecks_get_restore_and_idempotency(env):
             (env.tenants[0], env.principals[0]),
         )
     assert get(env, checkpoint).status_code == 404
+    assert head(env, body).status_code == 404
     assert restore(env, checkpoint).status_code == 404
 
 
@@ -249,6 +276,11 @@ def test_forget_invalidates_checkpoint_descendants_and_forks(env, root_kind):
     for checkpoint in [first, second, fork]:
         assert get(env, checkpoint).status_code == 404
         assert restore(env, checkpoint).status_code == 404
+    for branch in (body, {**body, "branch_id": target}):
+        invalidated = head(env, branch)
+        assert invalidated.status_code == 409
+        assert invalidated.json()["code"] == "checkpoint_invalidated"
+        assert first not in invalidated.text and second not in invalidated.text
     assert create(env, body, key).status_code == 404
     assert restore(env, first, headers=restore_key, target_branch_id=target).status_code == 404
     assert create(env, {**body, "expected_head": second}).status_code == 409
@@ -386,11 +418,18 @@ def test_checkpoint_routes_publish_typed_contracts_and_capabilities(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
     assert capabilities["checkpoints"] is True and capabilities["tool_effect_ledger"] is True
     assert capabilities["schema_version"] == 10
+    assert capabilities["checkpoint_head"] == {
+        "endpoint": "/v1/checkpoints/head",
+        "read_only": True,
+        "branch_identity": ["scope_id", "run_id", "branch_id"],
+        "fallback_to_ancestor": False,
+    }
     schema = env.client.get("/openapi.json").json()
     for path, verb, status in [
         ("/v1/checkpoints", "post", "201"),
         ("/v1/checkpoints/restore", "post", "201"),
         ("/v1/checkpoints/{checkpoint_id}", "get", "200"),
+        ("/v1/checkpoints/head", "post", "200"),
     ]:
         contract = schema["paths"][path][verb]
         assert contract["security"] == [{"BearerAuth": []}]
@@ -410,6 +449,201 @@ def test_checkpoint_metadata_hmac_is_tenant_scoped(env):
                 return await Checkpoints(memory).checksum({"identical": "payload"})
 
     assert asyncio.run(checksum_for(0)) != asyncio.run(checksum_for(1))
+
+
+def test_checkpoint_head_unknown_and_empty_branches_never_create_state(env):
+    body = payload(env)
+    for changes in ({}, {"scope_id": str(uuid4())}):
+        response = head(env, body, **changes)
+        assert response.status_code == 404 and response.json()["code"] == "not_found"
+    with psycopg.connect(env.admin_url) as conn:
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM memory.checkpoint_run WHERE tenant_id=%s", (env.tenants[0],)
+            ).fetchone()[0]
+            == 0
+        )
+        conn.execute(
+            """INSERT INTO memory.checkpoint_run
+               (tenant_id,scope_id,run_id,harness_id,harness_version,state_schema_version)
+               VALUES (%s,%s,%s,%s,%s,1)""",
+            (
+                env.tenants[0],
+                env.scopes[0],
+                body["run_id"],
+                body["harness_id"],
+                body["harness_version"],
+            ),
+        )
+        conn.execute(
+            """INSERT INTO memory.checkpoint_branch(tenant_id,scope_id,run_id,branch_id)
+               VALUES (%s,%s,%s,%s)""",
+            (env.tenants[0], env.scopes[0], body["run_id"], body["branch_id"]),
+        )
+    assert head(env, body).status_code == 404
+    receipt = create(env, body).json()
+    assert receipt["sequence"] == 1
+    assert head(env, body).json()["checkpoint_id"] == receipt["checkpoint_id"]
+    for field in ("scope_id", "run_id", "branch_id"):
+        assert head(env, body, **{field: str(uuid4())}).status_code == 404
+
+
+def test_head_read_is_not_a_reservation_or_a_mutation_receipt(env):
+    body = payload(env)
+    key = env.headers()
+    first = create(env, body, key).json()
+    saved = head(env, body).json()
+    next_body = {**body, "expected_head": saved["checkpoint_id"], "state": {"goal": "Advanced"}}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writing = pool.submit(create, env, next_body)
+        reading = pool.submit(head, env, body)
+        second, observed = writing.result(), reading.result()
+    assert second.status_code == 201 and observed.status_code == 200
+    assert observed.json()["checkpoint_id"] in (
+        first["checkpoint_id"],
+        second.json()["checkpoint_id"],
+    )
+    assert create(env, next_body).json()["code"] == "checkpoint_head_conflict"
+    assert create(env, body, key).json() == first
+    latest = head(env, body).json()
+    assert latest["checkpoint_id"] == second.json()["checkpoint_id"] and latest["sequence"] == 2
+    assert get(env, first["checkpoint_id"]).json()["state"]["goal"] == body["state"]["goal"]
+
+
+def test_corrupt_head_never_falls_back_to_surviving_ancestor(env):
+    body = payload(env)
+    first = create(env, body).json()["checkpoint_id"]
+    second = create(env, {**body, "expected_head": first}).json()["checkpoint_id"]
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            """UPDATE memory.checkpoint SET state=jsonb_set(state,'{goal}','"PRIVATE_CORRUPTION"')
+               WHERE id=%s""",
+            (second,),
+        )
+    response = head(env, body)
+    assert response.status_code == 409 and response.json()["code"] == "checkpoint_invalidated"
+    assert "PRIVATE_CORRUPTION" not in response.text and first not in response.text
+    assert get(env, first).status_code == 200
+
+
+def test_tombstoned_head_without_branch_invalidation_never_falls_back(env):
+    body = payload(env)
+    first = create(env, body).json()["checkpoint_id"]
+    second = create(env, {**body, "expected_head": first}).json()["checkpoint_id"]
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            """INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id)
+               VALUES (%s,%s,%s)""",
+            (env.tenants[0], second, env.scopes[0]),
+        )
+    assert head(env, body).status_code == 404
+    assert get(env, first).status_code == 200
+
+
+def test_checkpoint_head_http_body_and_authentication_contract(env):
+    body = payload(env)
+    create(env, body)
+    branch = {field: body[field] for field in ("scope_id", "run_id", "branch_id")}
+    raw = json.dumps(branch).encode()
+    exact = raw + b" " * (262144 - len(raw))
+    headers = {**env.headers(), "Content-Type": "application/json"}
+    del headers["Idempotency-Key"]
+    response = env.client.post("/v1/checkpoints/head", content=exact, headers=headers)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.json() == head(env, body).json()
+    assert (
+        env.client.post("/v1/checkpoints/head", content=exact + b" ", headers=headers).status_code
+        == 413
+    )
+    assert env.client.post("/v1/checkpoints/head", json=branch).status_code == 401
+    assert head(env, body, expected_head=None).status_code == 422
+
+
+@pytest.mark.parametrize("field", ["scope_id", "run_id", "branch_id", "sequence"])
+def test_head_checks_loaded_envelope_against_branch_pointer(env, monkeypatch, field):
+    body = payload(env)
+    create(env, body)
+    original = Checkpoints.envelope
+
+    async def inconsistent(self, checkpoint_id):
+        envelope = await original(self, checkpoint_id)
+        envelope[field] = envelope[field] + 1 if field == "sequence" else str(uuid4())
+        return envelope
+
+    monkeypatch.setattr(Checkpoints, "envelope", inconsistent)
+    response = head(env, body)
+    assert response.status_code == 409 and response.json()["code"] == "checkpoint_invalidated"
+    assert "state" not in response.json()
+
+
+def test_head_reuses_run_invalidation_and_never_changes_effect_hints(env):
+    operation = str(uuid4())
+    body = payload(
+        env,
+        state={
+            "goal": "Reconcile externally",
+            "pending_effects": [
+                {"operation_id": operation, "description": "test", "status": "dispatched"}
+            ],
+        },
+    )
+    receipt = create(env, body).json()
+    result = head(env, body)
+    assert result.json() == get(env, receipt["checkpoint_id"]).json()
+    assert result.json()["requires_reconciliation"] == [operation]
+    assert result.json()["untracked_effects"] == [operation]
+    assert not result.json()["resume_allowed"] and not result.json()["automatic_reexecution"]
+    assert result.json()["state"]["pending_effects"][0]["status"] == "dispatched"
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            """UPDATE memory.checkpoint_run SET effects_invalidated=true
+               WHERE tenant_id=%s AND scope_id=%s AND run_id=%s""",
+            (env.tenants[0], env.scopes[0], body["run_id"]),
+        )
+    invalidated = head(env, body)
+    assert invalidated.status_code == 409 and invalidated.json()["code"] == "checkpoint_invalidated"
+    assert operation not in invalidated.text
+
+
+def test_head_uses_read_only_sql_and_current_epochs_without_audit_or_receipts(env):
+    body = payload(env)
+    receipt = create(env, body).json()
+    source = env.observe().json()["memory_id"]
+    assert (
+        env.client.post(
+            "/v1/forget", json={"memory_ids": [source], "reason": "test"}, headers=env.headers()
+        ).status_code
+        == 202
+    )
+    statement = """SELECT
+        (SELECT count(*) FROM memory_ops.audit_event WHERE tenant_id=%s),
+        (SELECT count(*) FROM memory_ops.idempotency WHERE tenant_id=%s)"""
+    with psycopg.connect(env.admin_url) as conn:
+        before = conn.execute(statement, (env.tenants[0],) * 2).fetchone()
+
+    async def read_only():
+        async with await connect(env.settings.database_url) as conn:
+            async with conn.transaction():
+                await conn.execute("SET TRANSACTION READ ONLY")
+                await conn.execute(
+                    """SELECT set_config('pgag.tenant_id',%s,true),
+                              set_config('pgag.principal_id',%s,true)""",
+                    (str(env.tenants[0]), str(env.principals[0])),
+                )
+                memory = MemoryService(
+                    conn, Identity(tenant_id=env.tenants[0], principal_id=env.principals[0])
+                )
+                return await Checkpoints(memory).head(
+                    CheckpointBranch(
+                        scope_id=env.scopes[0], run_id=body["run_id"], branch_id=body["branch_id"]
+                    )
+                )
+
+    direct = asyncio.run(read_only())
+    assert direct == head(env, body).json() == get(env, receipt["checkpoint_id"]).json()
+    assert direct["current_deletion_epoch"] > direct["saved_deletion_epoch"]
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(statement, (env.tenants[0],) * 2).fetchone() == before
 
 
 def test_exact_reference_count_limit_and_batch_purge(env):

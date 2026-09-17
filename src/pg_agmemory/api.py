@@ -34,6 +34,7 @@ from pg_agmemory.models import (
     CancelJob,
     Capture,
     CaptureResult,
+    CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
     CreateCheckpoint,
@@ -263,7 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-structured-recall",
+            "stage": "m2-checkpoint-head",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -302,6 +303,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "provider_interruption": False,
             },
             "checkpoints": True,
+            "checkpoint_head": {
+                "endpoint": "/v1/checkpoints/head",
+                "read_only": True,
+                "branch_identity": ["scope_id", "run_id", "branch_id"],
+                "fallback_to_ancestor": False,
+            },
             "tool_effect_ledger": True,
             "temporal_revisions": True,
             "vector_search": True,
@@ -427,6 +434,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         data: RestoreCheckpoint, request: Request, idempotency_key: IdempotencyKey
     ) -> Any:
         return await Checkpoints(service(request)).restore(data, idempotency_key)
+
+    @app.post("/v1/checkpoints/head", response_model=CheckpointEnvelope)
+    async def checkpoint_head(data: CheckpointBranch, request: Request) -> Any:
+        return await Checkpoints(service(request)).head(data)
 
     @app.get("/v1/checkpoints/{checkpoint_id}", response_model=CheckpointEnvelope)
     async def get_checkpoint(checkpoint_id: UUID, request: Request) -> Any:

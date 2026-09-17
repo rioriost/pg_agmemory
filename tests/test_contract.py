@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from pg_agmemory.models import CancelJob, MemoryItem, Observe, Recall, Remember
+from pg_agmemory.models import CancelJob, CheckpointBranch, MemoryItem, Observe, Recall, Remember
 from pg_agmemory.service import MemoryError, build_context
 
 
@@ -84,3 +84,26 @@ def test_pack_exact_byte_budget_and_whole_item_removal(content):
 def test_cancel_requires_explicit_active_state_and_strict_attempt(data):
     with pytest.raises(ValidationError):
         CancelJob.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"scope_id": None},
+        {"run_id": "not-a-uuid"},
+        {"branch_id": False},
+        {"tenant_id": str(uuid4())},
+        {"principal_id": str(uuid4())},
+        {"expected_head": None},
+        {"harness_version": "latest"},
+        {"as_of": "2026-09-01T00:00:00Z"},
+    ],
+)
+def test_checkpoint_head_has_only_exact_branch_identity(changes):
+    body = {"scope_id": uuid4(), "run_id": uuid4(), "branch_id": uuid4()}
+    assert CheckpointBranch(**body).model_dump() == body
+    with pytest.raises(ValidationError):
+        CheckpointBranch(**{**body, **changes})
+    for field in body:
+        with pytest.raises(ValidationError):
+            CheckpointBranch(**{key: value for key, value in body.items() if key != field})
