@@ -3,7 +3,7 @@
 [日本語](0021-entity-query-jp.md) | [Contract](../STATUS.md#exact-entity-query-and-pagination) | [Operations](../operations/README.md#exact-entity-query-and-pagination)
 
 - Date: 2026-09-18
-- Status: accepted and verified in bounded v0.0.21/schema 10, locally and on both native architectures
+- Status: accepted in bounded v0.0.21/schema 10; follow-up verified locally and on both native architectures
 - Extends: [entities and graph](0005-relational-graph.md) and [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/identity-resolution/memory-quality/production/DR qualification
@@ -89,7 +89,36 @@ Stop/drain old components and use matching versions; no mixed-version promise.
 
 ## Validation boundary
 
-**Final local and native implementation validation passed.** The full Apple
+**Current graph-query follow-up verified locally and on both native architectures.**
+Fix [`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)
+materializes the `adjacent` CTE to remove repeated `relation_revision` scans
+reproduced under a forced generic prepared plan in a separate disposable fixture.
+All RLS, temporal/scope/evidence checks, ordering, and limits are preserved;
+no timeout increase, JIT disable, or RLS weakening is used.
+The added regression exercises the existing 100/101-path fixture and verifies
+`pg_prepared_statements.generic_plans > 0`, not merely a custom-plan result.
+Version/schema/API and 29 resource methods remain unchanged.
+The full Apple Container `./scripts/test-containers.sh` passed with
+**730 passed, 1 existing warning, 430.12 s** (**729 retained + 1 generic-plan case**).
+Ruff, mypy **19 source files + 1 strict SDK consumer**, core/hook/sdk-only
+installations, and all production smokes passed locally.
+Native [CI 35257534254](https://github.com/rioriost/pg_agmemory/actions/runs/35257534254)
+passed on that exact fix SHA: amd64 **730 passed, 1 warning, 748.37 s**;
+arm64 **730 passed, 1 warning, 654.52 s**. Both native runs also passed the same
+checks, optional installations, and all production smokes.
+This qualifies new code, not a successful retry of the failed docs revision.
+Regenerated final-docs CI has not run.
+
+Earlier final-docs revision
+[`4d97e92ec08d845ebd2c969819a999e9f0fd6f83`](https://github.com/rioriost/pg_agmemory/commit/4d97e92ec08d845ebd2c969819a999e9f0fd6f83)
+**failed** [CI 35254318489](https://github.com/rioriost/pg_agmemory/actions/runs/35254318489):
+amd64 **728 passed, 1 failed, 549.51 s**; arm64 **729 passed, 626.14 s**.
+The existing `test_exact_graph_path_seed_and_entity_evidence_limits` received
+**503** with `QueryCanceled` / statement timeout while expanding 100 paths.
+Its actual CI plan was not captured; the separate reproduction is not proof
+of that plan or a production performance benchmark.
+
+**Historical initial v21 implementation evidence, not qualification of the fix.** The full Apple
 Container `./scripts/test-containers.sh` completed with **729 passed,
 1 existing warning, 390.27 s**: **695 retained + 34 new cases**
 (20 contract, 7 graph-query, 7 SDK—6 mock + 1 real).
@@ -108,7 +137,7 @@ deleted/forged cursors, **32-scope and 100-item page caps**, no quotes, and
 explicit graph-seed selection.
 Elapsed time is not a benchmark; no MVP, performance, identity-resolution,
 memory-quality, production, or DR qualification is claimed.
-These are implementation results, not a final-docs CI result.
-See [verified evidence](../STATUS.md#v0021--schema-10).
+The initial results and failed docs run remain distinct from the follow-up qualification.
+See [qualification evidence](../STATUS.md#v0021--schema-10).
 V20 implementation and separate final-docs CI remain
 [historical evidence](../STATUS.md#v0020--schema-10), not v21 qualification.

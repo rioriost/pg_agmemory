@@ -72,6 +72,9 @@ entity-query smokeではscope内のlabel/type完全一致、同名の異なるid
 明示的なgraph seed選択、source purgeを検査します。共有scopeの可視性を
 所有者限定のjob検索と区別し、同名でidentityを統合してはいけません。
 metadata pageに根拠引用は含めません。[ADR 0021](docs/adr/0021-entity-query-jp.md)を参照してください。
+graphのpath件数制限は実際のgeneric prepared planでも検査します。
+canonical metadataのjoinでRLS保護されたrelation scanが増幅しないよう、
+adjacencyのmaterialization境界を維持し、timeoutの延長で退行を隠してはいけません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

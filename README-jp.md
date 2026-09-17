@@ -8,7 +8,7 @@
 以下のコマンドはこのローカルcheckoutから実行してください。
 
 **現在の上限付き実装はv0.0.21/schema 10の完全一致entity照会とpaginationです。
-v0.0.21実装はlocalと両native architectureで検証済みです。
+v0.0.21追加修正はlocalと両native architectureで検証済みです。
 以下の検証済みv0.0.20以前の結果は過去の証拠であり、v0.0.21の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
@@ -33,7 +33,7 @@ postgresem連携は今後の実装対象です。
 
 ## Exact entity query and pagination
 
-**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.21/schema 10の追加修正はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
 closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
@@ -84,7 +84,7 @@ schema 10にはmigration、依存/provider、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.21/schema 10の追加修正はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -132,7 +132,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.21/schema 10の追加修正はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -178,7 +178,7 @@ Native/SDKは**29 resource method**となり、MCPの4 toolとhookは不変でjo
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.21はlocalと両native architectureで検証済みです。**
+**既存checkpoint head契約を維持します。v0.0.21の追加修正はlocalと両native architectureで検証済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -220,7 +220,7 @@ v20からのSQL migration、依存/provider/artifact固定値の変更はあり�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.21はlocalと両native architectureで検証済みです。**
+**既存recall filter契約を維持します。v0.0.21の追加修正はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -256,7 +256,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
+**既存required-context契約を維持し、v0.0.21の追加修正はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -291,7 +291,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
+**既存job取消契約を維持し、v0.0.21の追加修正はlocalと両native architectureで検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -321,7 +321,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
+**既存readiness契約を維持し、v0.0.21/schema 10の追加修正はlocalと両native architectureで検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -350,7 +350,7 @@ readinessはSDK/MCP/hook probe methodを追加せず、entity照会による現�
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
+**既存scope-access契約を維持し、v0.0.21の追加修正はlocalと両native architectureで検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -378,7 +378,7 @@ PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
 
 ## Python SDK
 
-**SDKはread-only完全一致entity照会を追加し29 methodです。v0.0.21はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
+**SDKはread-only完全一致entity照会を追加し29 methodです。v0.0.21の追加修正はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -490,16 +490,35 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.21実装はlocalと両native architectureで検証済みです。**
+**v0.0.21追加修正はlocalと両native architectureで検証済みです。**
+修正[`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)は
+上限付きgraph隣接集合をmaterializeし、強制generic prepared planで再現した
+relation revisionの反復scanを除去します。RLS、時刻/scope/根拠検証、順序、上限は維持します。
+失敗したCIのplanは未取得で、この診断は本番性能benchmarkではありません。
 Apple Containerのfull `./scripts/test-containers.sh`は
-**729合格、既存warning 1件、390.27秒**でした。実装
+**730合格、既存warning 1件、430.12秒**（**既存729 + generic-plan回帰1件**）でした。
+Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
+全production smokeも合格しました。
+[CI 35257534254](https://github.com/rioriost/pg_agmemory/actions/runs/35257534254)は
+この修正の完全一致SHAで、native amd64 **730合格、warning 1件、748.37秒**、
+arm64 **730合格、warning 1件、654.52秒**でした。
+両native runで同じ検査、optional導入、全production smokeも合格しました。
+失敗したdocs revisionの再実行成功ではなく、新しいcode修正の適格性確認です。
+再生成した最終docsのCIはまだ実行していません。
+version/schema/APIと29 resource methodは不変です。
+SQL migration、timeout引上げ、JIT無効化、RLS緩和はありません。
+
+**以前のv21証拠であり、修正の適格性確認ではありません。** 初期実装
 [`a34477d7511f22202f0bd981772f51408634a9af`](https://github.com/rioriost/pg_agmemory/commit/a34477d7511f22202f0bd981772f51408634a9af)は
 完全一致SHAの[CI 35252290223](https://github.com/rioriost/pg_agmemory/actions/runs/35252290223)に合格しました。
-native amd64は**729合格、764.95秒**、arm64は**729合格、614.98秒**でした。
-Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
-従来の全production smokeとentity照会が全3環境で合格しました。
-これは実装結果であり、最終docs CI結果ではありません。
-[検証済み証拠](docs/STATUS-jp.md#v0021--schema-10)を参照してください。
+localは**729合格、既存warning 1件、390.27秒**、
+native amd64は**729合格、764.95秒**、arm64は**729合格、614.98秒**で、
+全検査/導入/smokeも合格しました。その後のdocs revision
+[`4d97e92ec08d845ebd2c969819a999e9f0fd6f83`](https://github.com/rioriost/pg_agmemory/commit/4d97e92ec08d845ebd2c969819a999e9f0fd6f83)の
+[最終docs CI 35254318489](https://github.com/rioriost/pg_agmemory/actions/runs/35254318489)は**失敗**しました。
+amd64は既存100-path graph上限テストの`QueryCanceled` / statement timeoutで
+**728合格、1失敗、549.51秒**、arm64は**729合格、626.14秒**でした。
+[検証状況と証拠](docs/STATUS-jp.md#v0021--schema-10)を参照してください。
 
 **過去のv0.0.20実装はlocalと両native architectureで検証済みです。**
 Apple Containerのfull `./scripts/test-containers.sh`は

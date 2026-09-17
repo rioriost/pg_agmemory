@@ -10,7 +10,8 @@
 
 **過去版の注記:** このADRは検証済みv0.0.20/schema 10を記録しています。
 [ADR 0021](0021-entity-query-jp.md)はv0.0.21/schema 10の完全一致entity照会を記録し、
-Native/SDK resourceは29です。localと両native architectureで検証済みです。
+Native/SDK resourceは29です。graph queryの追加修正はlocalと両native architectureで検証済みで、
+以前のdocs CI失敗とは区別しています。
 別の最終v20 docs CI 35249560753は実装CIと分けて
 [過去の証拠](../STATUS-jp.md#v0020--schema-10)へ記録しています。
 

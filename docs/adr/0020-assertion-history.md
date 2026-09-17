@@ -10,7 +10,8 @@
 
 **Historical version notice:** this ADR records verified v0.0.20/schema 10.
 [ADR 0021](0021-entity-query.md) records exact entity query in v0.0.21/schema 10
-with 29 Native/SDK resources, verified locally and on both native architectures.
+with 29 Native/SDK resources; its graph-query follow-up is verified locally
+and on both native architectures, separately from the earlier failed docs CI.
 Separate final v20 docs CI 35249560753 is recorded in
 [historical evidence](../STATUS.md#v0020--schema-10), distinct from implementation CI.
 

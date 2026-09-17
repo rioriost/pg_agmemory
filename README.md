@@ -7,7 +7,7 @@ is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local 
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 **Current bounded implementation: v0.0.21/schema 10 exact entity query and pagination.
-Implementation verified locally and on both native architectures.
+Follow-up verified locally and on both native architectures.
 Verified v0.0.20 and earlier results below are historical, not v0.0.21 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
@@ -37,7 +37,7 @@ before using the service.
 
 ## Exact entity query and pagination
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Authenticated read-only `POST /v1/entities/query` requires no `Idempotency-Key`.
 Closed `QueryEntities` accepts distinct `scope_ids` (1–32 UUIDs), nullable
 `entity_type` (one of the existing eight `EntityType` values), nullable
@@ -90,7 +90,7 @@ and [ADR 0021](docs/adr/0021-entity-query.md).
 
 ## Assertion metadata history
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Authenticated read-only `POST /v1/assertions/history` requires no `Idempotency-Key`.
 Closed `AssertionHistory` accepts only required UUID `memory_id`, strict integer
 `max_items` (1–100, default 20), and nullable strict integer `before_revision`
@@ -138,7 +138,7 @@ and [ADR 0020](docs/adr/0020-assertion-history.md).
 
 ## Owned-job query and pagination
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Authenticated read-only `POST /v1/jobs/query` requires no `Idempotency-Key`.
 Closed `QueryJobs` accepts distinct `scope_ids` (1–32 UUIDs), distinct `states`
 (at most five; `[]`/omitted means all), strict integer `max_items` (1–100,
@@ -189,7 +189,7 @@ and [ADR 0019](docs/adr/0019-job-query.md).
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.21 verified locally and on both native architectures.**
+**Retained checkpoint-head contract; v0.0.21 follow-up verified locally and on both native architectures.**
 Authenticated `POST /v1/checkpoints/head` is read-only and requires no
 `Idempotency-Key`. Its closed `CheckpointBranch` body contains exactly three
 required UUIDs: `scope_id`, `run_id`, and `branch_id`. It selects only that exact,
@@ -238,7 +238,7 @@ and [ADR 0018](docs/adr/0018-checkpoint-head.md).
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.21 verified locally and on both native architectures.**
+**Retained recall-filter contract; v0.0.21 follow-up verified locally and on both native architectures.**
 Existing Native `POST /v1/recall`, typed SDK `recall`, and MCP `memory_recall`
 accept `Recall.filters: RecallFilters | None = None`. The closed nested model has
 only nullable `kind` (`"episode"` or `"assertion"`), `subject` (`ShortText`,
@@ -277,7 +277,7 @@ and [ADR 0017](docs/adr/0017-recall-filters.md).
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.21 verified locally and on both native architectures.**
+**Retained required-context contract; v0.0.21 follow-up verified locally and on both native architectures.**
 Existing Native `POST /v1/recall`, SDK `recall`, and MCP `memory_recall` accept
 `Recall.required_memory_refs`: omitted or `[]` by default, at most **16**
 `MemoryReference` entries. Each selects a UUID and exact revision **1–1000**;
@@ -316,7 +316,7 @@ and [ADR 0016](docs/adr/0016-required-context.md).
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.21 verified locally and on both native architectures.**
+**Retained job-cancellation contract; v0.0.21 follow-up verified locally and on both native architectures.**
 `POST /v1/jobs/{job_id}/cancel` requires Native authentication, a caller-retained
 `Idempotency-Key`, and exactly `expected_state` (`pending` or `running`) plus
 strict integer `expected_attempt` (0–5; running requires at least 1).
@@ -349,7 +349,7 @@ and [ADR 0015](docs/adr/0015-job-cancellation.md).
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.21/schema 10 verified locally and on both native architectures.**
+**Retained readiness contract; v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 `GET /healthz` remains process liveness after successful startup:
 `{"status":"ok"}`, without DB calls. Public, unauthenticated `GET /readyz`
 returns HTTP **200** with exactly `{"status":"ready"}` or an expected-failure
@@ -381,7 +381,7 @@ and [ADR 0014](docs/adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.21 verified locally and on both native architectures.**
+**Retained scope-access contract; v0.0.21 follow-up verified locally and on both native architectures.**
 The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
 for existing same-tenant scope/principal UUIDs. It requires
 `PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
@@ -411,7 +411,7 @@ and [ADR 0013](docs/adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds read-only exact entity query: 29 methods; v0.0.21 verified locally and on both native architectures.** From the matching checkout:
+**SDK adds read-only exact entity query: 29 methods; v0.0.21 follow-up verified locally and on both native architectures.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -523,17 +523,37 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.21 implementation verified locally and on both native architectures.**
-The full Apple Container `./scripts/test-containers.sh` completed with
-**729 passed, 1 existing warning, 390.27 s**. Implementation
+**v0.0.21 follow-up verified locally and on both native architectures.**
+Fix [`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)
+materializes bounded graph adjacency to remove repeated relation-revision scans
+reproduced under a forced generic prepared plan, preserving RLS, temporal/scope/
+evidence checks, ordering, and limits. The failing CI plan was not captured;
+the diagnostic is not a production performance benchmark.
+The full Apple Container `./scripts/test-containers.sh` passed with
+**730 passed, 1 existing warning, 430.12 s** (**729 retained + 1 generic-plan
+regression**), including Ruff, mypy **19 source files + 1 strict SDK consumer**,
+core/hook/sdk-only installations, and all production smokes.
+[CI 35257534254](https://github.com/rioriost/pg_agmemory/actions/runs/35257534254)
+passed on that exact fix SHA: native amd64 **730 passed, 1 warning, 748.37 s**;
+arm64 **730 passed, 1 warning, 654.52 s**. Both native runs also passed the same
+checks, optional installations, and all production smokes.
+This qualifies new code, not a successful retry of the failed docs revision.
+Regenerated final-docs CI has not run.
+Version/schema/API and the 29 resource methods are unchanged; no SQL migration,
+timeout increase, JIT disable, or RLS weakening.
+
+**Earlier v21 evidence, not qualification of the fix:** initial implementation
 [`a34477d7511f22202f0bd981772f51408634a9af`](https://github.com/rioriost/pg_agmemory/commit/a34477d7511f22202f0bd981772f51408634a9af)
 passed [CI 35252290223](https://github.com/rioriost/pg_agmemory/actions/runs/35252290223)
-on that exact SHA: native amd64 **729 passed, 764.95 s**; arm64
-**729 passed, 614.98 s**. Ruff, mypy **19 source files + 1 strict SDK consumer**,
-core/hook/sdk-only installations, and all previous production smokes plus
-entity query passed in all three environments.
-These are implementation results, not a final-docs CI result.
-See [verified evidence](docs/STATUS.md#v0021--schema-10).
+on that exact SHA: local **729 passed, 1 existing warning, 390.27 s**;
+native amd64 **729 passed, 764.95 s**, arm64 **729 passed, 614.98 s**;
+all checks/installations/smokes passed.
+Later docs revision
+[`4d97e92ec08d845ebd2c969819a999e9f0fd6f83`](https://github.com/rioriost/pg_agmemory/commit/4d97e92ec08d845ebd2c969819a999e9f0fd6f83)
+had a **failed** [final-docs CI 35254318489](https://github.com/rioriost/pg_agmemory/actions/runs/35254318489):
+amd64 **728 passed, 1 failed, 549.51 s**, with `QueryCanceled` / statement timeout
+at the existing 100-path graph limit test; arm64 **729 passed, 626.14 s**.
+See [qualification evidence](docs/STATUS.md#v0021--schema-10).
 
 **Historical v0.0.20 implementation verified locally and on both native architectures.**
 The full Apple Container `./scripts/test-containers.sh` completed with

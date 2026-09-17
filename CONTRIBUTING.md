@@ -72,6 +72,9 @@ The entity-query smoke checks exact scoped label/type lookup, duplicate identiti
 explicit graph-seed selection, and source purge. Keep shared-scope visibility
 distinct from owner-only job discovery; equal labels must not merge identities.
 Metadata pages omit evidence quotes; see [ADR 0021](docs/adr/0021-entity-query.md).
+Graph path-limit checks also exercise actual generic prepared plans. Preserve the
+materialized adjacency boundary so canonical metadata joins do not multiply
+RLS-protected relation scans; do not mask regressions by increasing timeouts.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

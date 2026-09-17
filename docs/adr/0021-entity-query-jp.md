@@ -3,7 +3,7 @@
 [English](0021-entity-query.md) | [契約](../STATUS-jp.md#exact-entity-query-and-pagination) | [運用](../operations/README-jp.md#exact-entity-query-and-pagination)
 
 - 日付: 2026-09-18
-- 状態: 上限付きv0.0.21/schema 10で採用・検証済み。localと両native architectureで確認
+- 状態: 上限付きv0.0.21/schema 10で採用。追加修正はlocalと両native architectureで検証済み
 - 拡張対象: [entityとgraph](0005-relational-graph-jp.md)、[Python SDK](0012-python-sdk-jp.md)
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/identity解決/記憶品質/本番/DRの適格性確認ではない
@@ -88,7 +88,35 @@ SQL migration、依存/provider、AGE変更はありません。
 
 ## 検証境界
 
-**最終localとnativeの実装検証は合格しました。** Apple Containerのfull
+**現在のgraph query追加修正はlocalと両native architectureで検証済みです。**
+修正[`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)は
+別の使い捨てfixtureの強制generic prepared planで再現した
+`relation_revision`の反復scanを`adjacent` CTEのmaterializeで除去します。
+RLS、時刻/scope/根拠検証、順序、上限はすべて維持し、
+timeout引上げ、JIT無効化、RLS緩和は行いません。
+追加回帰は既存100/101-path fixtureを使い、custom planの結果だけでなく
+`pg_prepared_statements.generic_plans > 0`を確認します。
+version/schema/APIと29 resource methodは不変です。
+Apple Containerのfull `./scripts/test-containers.sh`は
+**730合格、既存warning 1件、430.12秒**（**既存729 + generic-plan case 1件**）でした。
+Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
+全production smokeもlocalで合格しました。
+nativeの[CI 35257534254](https://github.com/rioriost/pg_agmemory/actions/runs/35257534254)は
+この修正の完全一致SHAで、amd64 **730合格、warning 1件、748.37秒**、
+arm64 **730合格、warning 1件、654.52秒**でした。
+両native runで同じ検査、optional導入、全production smokeも合格しました。
+失敗したdocs revisionの再実行成功ではなく、新しいcode修正の適格性確認です。
+再生成した最終docsのCIはまだ実行していません。
+
+以前の最終docs revision
+[`4d97e92ec08d845ebd2c969819a999e9f0fd6f83`](https://github.com/rioriost/pg_agmemory/commit/4d97e92ec08d845ebd2c969819a999e9f0fd6f83)の
+[CI 35254318489](https://github.com/rioriost/pg_agmemory/actions/runs/35254318489)は**失敗**しました。
+amd64は**728合格、1失敗、549.51秒**、arm64は**729合格、626.14秒**でした。
+既存`test_exact_graph_path_seed_and_entity_evidence_limits`の100-path展開で
+`QueryCanceled` / statement timeoutによる**503**が発生しました。
+実際のCI planは未取得で、別の再現はそのplanの証明や本番性能benchmarkではありません。
+
+**初期v21実装の過去の証拠であり、修正の適格性確認ではありません。** Apple Containerのfull
 `./scripts/test-containers.sh`は**729合格、既存warning 1件、390.27秒**でした。
 **既存695 + 新規34 case**で、contract 20、graph-query 7、SDK 7（mock 6 + real 1）です。
 実装
@@ -103,7 +131,7 @@ ACL変更/現在epoch、削除/偽造cursor、**32-scope/100-item page上限**�
 quoteなし、明示graph-seed選択を含みます。
 所要時間はbenchmarkではなく、MVP、性能、identity解決、記憶品質、
 本番、DR適格性確認は主張しません。
-これは実装結果であり、最終docs CI結果ではありません。
-[検証済み証拠](../STATUS-jp.md#v0021--schema-10)を参照してください。
+初期結果とdocs runの失敗は追加修正の適格性確認と区別して維持します。
+[検証状況と証拠](../STATUS-jp.md#v0021--schema-10)を参照してください。
 v20実装と別の最終docs CIは[過去の証拠](../STATUS-jp.md#v0020--schema-10)であり、
 v21の適格性確認ではありません。

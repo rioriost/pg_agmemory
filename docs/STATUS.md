@@ -3,7 +3,7 @@
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
 **Current bounded implementation: v0.0.21/schema 10 exact entity query and pagination.
-Implementation verified locally and on both native architectures.
+Follow-up verified locally and on both native architectures.
 Verified v0.0.20 and earlier results remain historical evidence, not v0.0.21 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -58,7 +58,7 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Exact entity query and pagination
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -153,7 +153,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -247,7 +247,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.21/schema 10 verified locally and on both native architectures.**
+**v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -335,7 +335,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.21 verified locally and on both native architectures.**
+**Retained checkpoint-head contract; v0.0.21 follow-up verified locally and on both native architectures.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -413,7 +413,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.21 verified locally and on both native architectures.**
+**Retained recall-filter contract; v0.0.21 follow-up verified locally and on both native architectures.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -484,7 +484,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.21 verified locally and on both native architectures.**
+**Retained required-context contract; v0.0.21 follow-up verified locally and on both native architectures.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -566,7 +566,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.21 verified locally and on both native architectures.**
+**Retained job-cancellation contract; v0.0.21 follow-up verified locally and on both native architectures.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -659,7 +659,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.21/schema 10 verified locally and on both native architectures.**
+**Retained readiness contract; v0.0.21/schema 10 follow-up verified locally and on both native architectures.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -742,7 +742,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.21 verified locally and on both native architectures.**
+**Retained scope-access contract; v0.0.21 follow-up verified locally and on both native architectures.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -873,7 +873,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds read-only exact entity query: 29 methods; v0.0.21 verified locally and on both native architectures.**
+**SDK adds read-only exact entity query: 29 methods; v0.0.21 follow-up verified locally and on both native architectures.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -891,7 +891,7 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification passed for v0.0.21 locally and on both native architectures.
+verification passed for the v0.0.21 follow-up locally and on both native architectures.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -2438,9 +2438,44 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0021--schema-10"></a>
 
-### v0.0.21 / schema 10 — verified
+### v0.0.21 / schema 10 — follow-up verified
 
-**Final local and native implementation results verified, 2026-09-18 JST:**
+**Current follow-up verified locally and natively, 2026-09-18 JST:** committed and pushed
+[`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)
+(`fix: stabilize bounded graph adjacency under prepared plans`).
+The full Apple Container `./scripts/test-containers.sh` requalification passed:
+**730 passed, 1 existing warning, 430.12 s** (**729 retained + 1 generic-plan
+regression**). Ruff, mypy **19 source files + 1 strict SDK consumer**,
+genuine core/hook/sdk-only installations, and all production smokes listed below
+passed locally. Native [CI 35257534254](https://github.com/rioriost/pg_agmemory/actions/runs/35257534254)
+passed on that exact fix SHA: amd64 **730 passed, 1 warning, 748.37 s**;
+arm64 **730 passed, 1 warning, 654.52 s**. Both native Docker runs also passed
+Ruff, mypy **19 source files + 1 strict SDK consumer**, all optional installation
+checks, and all production smokes listed below.
+This qualifies the new code fix, not a successful retry of the failed docs revision.
+Regenerated final-docs CI has not run.
+
+The preceding final-docs revision
+[`4d97e92ec08d845ebd2c969819a999e9f0fd6f83`](https://github.com/rioriost/pg_agmemory/commit/4d97e92ec08d845ebd2c969819a999e9f0fd6f83)
+**failed** [CI 35254318489](https://github.com/rioriost/pg_agmemory/actions/runs/35254318489):
+amd64 **728 passed, 1 failed, 549.51 s**, while arm64 passed
+**729 tests, 626.14 s**. The existing
+`test_exact_graph_path_seed_and_entity_evidence_limits` received **503**
+with `QueryCanceled` / statement timeout while expanding 100 paths.
+That CI execution plan was not captured.
+
+A separate disposable-fixture diagnostic reproduced repeated `relation_revision`
+scans under a forced generic prepared plan. Materializing the `adjacent` CTE
+removes that scan multiplication while retaining all RLS, temporal, scope,
+evidence, ordering, and limit semantics. The diagnostic is not a production
+performance benchmark or proof of the uncaptured CI plan.
+An added regression uses the existing 100/101-path fixture and verifies actual
+generic prepared execution through `pg_prepared_statements.generic_plans > 0`.
+No timeout increase, JIT disable, or RLS weakening is used.
+Service v0.0.21, API v1, schema 10, and 29 Native/SDK resource methods remain
+unchanged; the fix adds no migration, dependency, or provider change.
+
+**Historical initial v21 implementation evidence, not qualification of the fix:**
 the full Apple Container `./scripts/test-containers.sh` completed with
 **729 passed, 1 existing warning, 390.27 s**.
 The total is **695 retained + 34 new cases**: **20 contract**, **7 graph-query**,
@@ -2470,7 +2505,8 @@ and the explicit graph-seed workflow.
 The bounded request/filter, current-access, cursor, metadata, and SDK contracts
 are unchanged. Schema 10/history 1–10 and dependencies/provider/artifact pins
 remain unchanged; v20→v21 has no SQL migration or AGE change.
-These are implementation results, not a final-docs CI result.
+The initial implementation results remain distinct from the later failed
+final-docs CI and the qualified follow-up.
 Elapsed time is not a performance benchmark; no MVP, performance,
 identity-resolution, memory-quality, production, or DR qualification is claimed.
 
