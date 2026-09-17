@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and SDK/vector/capture/API/worker/MCP/hook smokes."
+    echo "Build and run lint, types, PostgreSQL tests, and admin/SDK/vector/capture/API/worker/MCP/hook smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -436,4 +436,57 @@ asyncio.run(smoke())
 print("Production Python SDK smoke passed: capture, replay, typed reads, vector recall, purge")
 ' "$scope_id"
 
-echo "Container tests and production SDK/vector/capture/API/worker/MCP/hook smoke passed ($engine)."
+"$engine" exec \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import Observe, Recall
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+identity = json.loads(sys.argv[1])
+base = ["pg-agmemory", "scope-access"]
+flags = ["--tenant-id", identity["tenant_id"], "--scope-id", identity["scope_id"],
+         "--principal-id", identity["principal_id"]]
+def admin(operation, *arguments):
+    result = subprocess.run(base + [operation] + flags + list(arguments),
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0 and result.stderr == ""
+    return json.loads(result.stdout)
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(identity["scope_id"])
+        body = Observe(scope_id=scope, source_namespace="production-access",
+            source_event_id="scope-access-smoke", occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+            content="Synthetic access evidence", consent_reference="synthetic-smoke")
+        source = await sdk.observe(body, idempotency_key="access-source")
+        before = admin("get")
+        readonly = admin("set", "--expected-access-epoch", str(before["access_epoch"]),
+            "--permissions", "read", "--no-expiry")
+        assert readonly["changed"] and readonly["access_epoch"] == before["access_epoch"] + 1
+        found = await sdk.recall(Recall(scope_ids=[scope], purpose="synthetic-smoke"))
+        assert [item.memory_id for item in found.items] == [source.memory_id]
+        try:
+            await sdk.observe(body, idempotency_key="access-source")
+        except MemoryClientError as exc:
+            assert exc.error.code == "not_found" and not exc.error.outcome_unknown
+        else:
+            raise AssertionError("Read-only membership permitted write replay")
+        revoked = admin("revoke", "--expected-access-epoch", str(readonly["access_epoch"]))
+        assert not revoked["membership_exists"] and revoked["changed"]
+        assert not (await sdk.recall(Recall(scope_ids=[scope], purpose="synthetic-smoke"))).items
+        current = admin("get")
+        assert current["access_epoch"] == revoked["access_epoch"]
+        assert not current["effective_permissions"]
+
+asyncio.run(smoke())
+print("Production scope access smoke passed: inspect, read-only CAS, replay denial, revoke")
+' "$provisioned"
+
+echo "Container tests and production admin/SDK/vector/capture/API/worker/MCP/hook smoke passed ($engine)."

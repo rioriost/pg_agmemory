@@ -251,7 +251,7 @@ def test_response_status_and_mode_are_not_silently_coerced(monkeypatch, method):
     "capabilities",
     [
         {"service_version": "0.0.11"},
-        {"schema_version": 9},
+        {"schema_version": SCHEMA_VERSION + 1},
         {"api_version": "v2"},
     ],
 )

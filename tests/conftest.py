@@ -220,6 +220,33 @@ def database():
             admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
             == 7
         )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:8])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+
+        def fail_access_ledger(self, query, params=None, **kwargs):
+            if (
+                query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)"
+                and params == (9,)
+            ):
+                raise RuntimeError("simulated schema 9 ledger failure")
+            return execute(self, query, params, **kwargs)
+
+        patch.setattr(psycopg.Connection, "execute", fail_access_ledger)
+        with pytest.raises(RuntimeError, match="schema 9 ledger failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert (
+            admin.execute("SELECT to_regclass('memory_ops.scope_access_event')").fetchone()[0]
+            is None
+        )
+        assert (
+            admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
+            == 8
+        )
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))

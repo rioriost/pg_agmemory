@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 from uuid import uuid4
 
 import psycopg
@@ -14,11 +15,23 @@ from pg_agmemory.worker import run
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["scope-access"]:
+        from pg_agmemory.scope_access import main as access_main
+
+        access_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
         choices=[
-            "serve", "migrate", "provision", "worker", "reindex-lexical", "mcp", "recall-hook"
+            "serve",
+            "migrate",
+            "provision",
+            "worker",
+            "reindex-lexical",
+            "mcp",
+            "recall-hook",
+            "scope-access",
         ],
     )
     parser.add_argument(
@@ -32,7 +45,9 @@ def main() -> None:
         parser.error("--once is only supported by worker")
     if args.command == "reindex-lexical" and args.subject is not None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
-    if args.command == "recall-hook":
+    if args.command == "scope-access":
+        parser.error("scope-access must precede its arguments; use scope-access --help")
+    elif args.command == "recall-hook":
         if args.subject is not None:
             parser.error("recall-hook uses its fixed startup token; --subject is not supported")
         try:

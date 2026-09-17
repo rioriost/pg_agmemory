@@ -227,7 +227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-python-sdk",
+            "stage": "m2-scope-access",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -287,6 +287,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "installation": "sdk-extra",
                 "async": True,
                 "automatic_retry": False,
+            },
+            "scope_access_administration": {
+                "transport": "admin-cli",
+                "command": "scope-access",
+                "compare_and_swap": "tenant_access_epoch",
+                "audit": "database_role",
             },
             "recall_hook": {
                 "installation": "hook-extra",
