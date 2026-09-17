@@ -10,6 +10,11 @@
   公開MIT repositoryは`rioriost/pg_agmemory`。英語/日本語文書を維持
 - 受入: M0〜M3、MVP、本番、性能、記憶品質、DR、完全消去のgateは未完了
 
+**過去の範囲:** このADRはv0.0.8/schema 7とその証拠の記録であり、v0.0.9の検証ではありません。
+[ADR 0009](0009-implicit-recall-hook-jp.md)でrecall hookと共有client抽出を追加します。
+現在の起動versionは[STATUS](../STATUS-jp.md)を参照してください。
+両MCP protocol時代とsemanticsは引き続き必須です。
+
 ## 決定と範囲
 
 `pg-agmemory mcp`を**認証付きNative HTTP APIへのlocal stdio adapter**として追加します。
@@ -23,7 +28,7 @@ v0.0.7からの新migration・DDL・backfillはありません**。
 任意の`pg-agmemory[mcp]` extraは公式**mcp 2.2.0**と**httpx 0.28.1**を固定します。
 Docker test/runtime両stageにはextraを含め、base package利用者にはextraを必須としません。
 local検証はDocker Desktopでなく**Apple Container**、CIはnative **linux/amd64**・
-**linux/arm64**上のDockerを使います。このmilestoneの最終結果はまだ記録していません。
+**linux/arm64**上のDockerを使います。このmilestoneの過去の最終結果は以下に記録しています。
 
 remote MCP HTTP/Streamable HTTP/SSE listener、OAuth、caller identity委譲、
 任意header/URL、agent harness実行、汎用SDKは追加しません。

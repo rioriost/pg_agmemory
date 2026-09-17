@@ -2,8 +2,8 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**v0.0.8/schema 7のlocal stdio MCPを実装しました。
-ローカル/native Docker検証に合格しています。
+**v0.0.9/schema 7のimplicit recall hookを実装し、最終local Apple Containerと
+native Docker amd64/arm64検査に合格しました。v0.0.8結果は過去の証拠として維持します。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -47,10 +47,13 @@ PostgreSQLへの継続的なreadiness検査ではありません。
 
 ## Local stdio MCP
 
-このmilestoneは`pg-agmemory mcp`を追加します。**stdio専用の信頼するlocal Native API
+v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、repositoryのDocker test/runtime両stageにextraを
-含めます。remote MCP HTTP/SSE listener、OAuth、caller identity委譲、
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.9のrepository Docker test/runtime両stageに
+`mcp`・`hook`両extraを含めます。抽出する共有の上限付きNative HTTP clientは以下の
+MCP不変条件をすべて維持する必要があります。regressionはlocalとnative Docker両architectureで合格しました。
+共有`NativeSettings`は`httpx.URL`でもoriginをparseし、transport前に制御文字や不正IDNAを拒否します。
+remote MCP HTTP/SSE listener、OAuth、caller identity委譲、
 semantic cache、response cacheは提供しません。
 
 ### ToolとNative semantics
@@ -119,9 +122,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.8"`、`schema_version: 7`を要求します。
+`service_version: "0.0.9"`、`schema_version: 7`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-**migration 008はありません**。v0.0.8はschema 7を維持します。
+**migration 008/009はありません**。v0.0.9はschema 7を維持します。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -140,7 +143,7 @@ forget/ACL変更後はhostがcached contextを破棄する必要があり、そ�
 [protocol文書](https://py.sdk.modelcontextprotocol.io/protocol-versions/)は、
 `2026-07-28`の`server/discover`と`2025-11-25`までのlegacy `initialize`を説明します。
 これはSDKについての事実であり、**adapter/clientの適格性確認結果ではありません**。
-限定的な検査では、実stdio SDK `Client`接続とraw JSON fixtureで両modeを実行しました。
+過去のv0.0.8の限定的な検査では、実stdio SDK `Client`接続とraw JSON fixtureで両modeを実行しました。
 
 - **Modern `2026-07-28`:** `Client(mode="auto")`は`server/discover`を使います。
   raw requestは毎回`params._meta`に`io.modelcontextprotocol/protocolVersion`、
@@ -157,11 +160,181 @@ runtime smokeはnon-root production image内で実`pg-agmemory mcp` childを起�
 assertionが一つだけであることの検査を含めます。自動retryはありません。
 正確な256/257文字のkey境界と、空白をtrimせず拒否することも対象です。
 
-最終local/native CI結果を以下に記録しています。
+過去のv0.0.8のlocal/native CI結果を以下に記録しています。
+v0.0.9は両protocol時代を維持し、localと両native CI検査に合格しました。
 実行済み経路から、未検証の旧client、特定host application、
 全protocol versionの適格性を主張してはいけません。
 [ADR 0008](adr/0008-local-mcp-jp.md)と
 [運用](operations/README-jp.md#local-stdio-mcpの運用)を参照してください。
+
+## Implicit recall hook
+
+**v0.0.9: 最終localとnative Docker両architectureの検査に合格しました。**
+`pg-agmemory recall-hook`は任意のvendor-neutralな**harness側**local Native HTTP clientです。
+hostへの自動登録はなく、Copilot・Claude・Codex連携を主張しません。
+呼出し時点はhostが選択し、service自体がhost lifecycle eventを監視するものではありません。
+`pg-agmemory[hook]`は**httpx==0.28.1を固定し、MCP SDKは含めません**。
+Docker test/runtime両stageは`mcp`・`hook`を含めます。
+真のcore-only/hook-only依存分離検査はlocalとnative Docker両architectureで合格しました。
+hookにはDB資格情報、署名key、LLM/provider keyは不要です。
+
+### 入力と信頼する起動設定
+
+一回の実行で**stdinからUTF-8 JSON document一つとEOF**を受け取ります。
+入力上限は**32,768 byte**です。不正UTF-8/JSON、上限超過、入力validation失敗は、
+無視されるeventでなく明示errorになります。
+
+```json
+{"event":"session_start","query":""}
+```
+
+許可するfieldは次の二つだけです。
+
+| Field | 契約 |
+|---|---|
+| `event` | `session_start`、`task_switch`、`after_compaction`のいずれか完全一致 |
+| `query` | 必須string、0〜4,096 Unicode文字。空なら設定scopeと現在時刻条件内のアクセス可能なcanonical itemをbrowse |
+
+取得意図はJSONの`query`だけから渡します。
+`event`はlifecycle名であり、別のquery本文や自然言語指示channelではありません。
+
+identity、`scope_ids`、`purpose`、`mode`、budget、URL、header、tool、時刻を含む
+**すべての追加fieldを禁止**します。event/query textはアクセス権を付与せず、
+transportを設定できません。`--subject`と`--once`は拒否します。
+
+routing、認証、recall設定は**信頼する起動環境だけ**から渡します。
+信頼できないprompt、query、tool出力、取得memoryからその環境を生成してはいけません。
+queryをlogへ記録したりerrorへコピーしたりしないでください。
+固定tokenはhost/vendor audience用でなく**Native API audience用**で、
+eventから上書きできません。
+
+| 環境変数 | 既定値 / 制約 |
+|---|---|
+| `PGAG_HOOK_API_URL` | 必須、defaultなし。信頼するHTTPS originまたはloopback HTTP origin。userinfo/application path/query/fragment禁止。root `/`は許可。URL未設定は`invalid_hook_configuration` |
+| `PGAG_HOOK_API_TOKEN` | 必須の固定Native audience bearer token。operatorが安全に渡す |
+| `PGAG_HOOK_SCOPE_IDS` | 必須の重複しないUUID 1〜32件のJSON配列。scope指定は既存権限を狭めるだけで、付与はしない |
+| `PGAG_HOOK_PURPOSE` | `implicit_context`。1〜256文字 |
+| `PGAG_HOOK_TOKEN_BUDGET` | `2000`。整数64〜2,000 **UTF-8 byte、model tokenではない** |
+| `PGAG_HOOK_MAX_ITEMS` | `20`。整数1〜20 |
+| `PGAG_HOOK_SEARCH_PROFILE` | `simple-v1`。明示`ja-janome-0.5.0-v1`だけopt-in可能 |
+| `PGAG_HOOK_TIMEOUT_SECONDS` | `2.0`。有限数0.1〜20秒 |
+
+URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はorigin制約に加えて
+`httpx.URL`を使い、transport前に制御文字や不正IDNAを拒否します。
+これらの不正origin caseは最終localと両native CI suiteで検査済みです。
+
+呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
+**service `0.0.9` / API `v1` / schema `7`**を要求し、その後`POST /v1/recall`を送ります。
+`mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
+eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
+現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
+capabilities probeは認可cacheではありません。token置換時は次回実行の信頼する起動設定へ渡します。
+recall scopeは現在の認可に従って**黙って狭めます**。未認可scopeや失効membershipは
+filterされ、許可済みsubsetまたはitemなし/`not_found`となり、
+scopeの存在を示す`404`にはしません。
+token認証失敗は別で、Nativeは明示`401`、hookはerrorと終了値`1`を返します。
+Native動作の維持であり、空recallの成功はアクセス権の付与でもscope存在の証明でもありません。
+
+### 上限、結果、失敗処理
+
+network deadlineは**capabilitiesとrecallの合計**に適用し、既定2.0秒（有限の0.1〜20秒）です。
+各requestに別々の全時間を与えるものではありません。
+process/interpreter起動、stdin入力/待機、出力は含まず、
+**LLM latency SLOや性能適格性でもありません**。
+harnessはstdinを閉じ、別のsubprocess timeoutを設定する必要があります。
+抽出する共有Native HTTP clientは**serialize済みrequest 256 KiB / HTTP response 2 MiB**の
+上限を維持し、redirect/proxy環境設定を無効化し、TLS検証を有効にします。
+これらのHTTP上限は全host bufferの上限ではありません。
+serialize済みcontext packも設定byte予算内に収めますが、完全なRecallResult全体を
+その小さいcontext予算に制限するものではありません。
+`context_pack.byte_count`は**context pack全体をcompact JSON serializeした結果**の
+UTF-8 byte長です。`ensure_ascii=False`、`separators=(",", ":")`を使い、
+本文だけでなく全metadata/citationを含みます。
+hookは同じserialize結果が申告`byte_count`と一致して設定予算以下であること、
+返却item数が設定`max_items`以下であること、返却search profileが設定と一致することを
+検査します。不整合な応答はvalidation失敗とし、広いfallbackは行いません。
+
+空packでも**約192 byte**を要しますが、新しい固定設定下限ではありません。
+有効な予算範囲は引き続き64からです。pack metadata自体が収まらない場合は
+Nativeが**422 `budget_too_small`**を返し、hookは**終了値1 / `result: null`**の明示error
+envelopeを返します。空の成功にはしません。
+packは収まるが候補が収まらない場合、Nativeは`empty_reason: "budget_exhausted"`付きの
+**200**、hookは**終了値0**になり得ます。
+lexical projection欠落で候補がない場合は、**200 / 終了値0**で
+`empty_reason: "index_incomplete"`、`coverage.lexical_incomplete: true`、
+`coverage.retrieval_complete: false`です。
+これらはNative semanticsの維持であり、HTTP取得成功はcoverageの完全性を意味しません。
+
+検証対象のhook runtime結果はstdoutへJSON結果一つと末尾改行を出します。
+stderrはsanitized診断専用で、
+raw query/body/URL/header/credentialを含めません。
+以下はenvelopeの構造を表すもので、placeholderを含む実JSONではありません。
+
+```text
+{status: "ok", event: <event>, result: <full Native RecallResult>, error: null}
+{status: "error", event: <validated event or null>, result: null,
+ error: {code, retryable, outcome_unknown: false,
+         native_status: <integer or null>, request_id: <UUID or null>}}
+```
+
+`request_id`は検証済みNative request UUIDであり、host event IDではありません。
+`retryable`はhintにすぎず、自動retryはありません。
+読取り専用hookなので`outcome_unknown`は常に`false`ですが、
+MCP mutationのsemanticsは変更しません。
+
+| 終了値 | 意味 |
+|---|---|
+| `0` | 有効なNative成功。`empty_reason`が`not_found`、`budget_exhausted`、`index_incomplete`の場合も含む |
+| `2` | 不正設定/入力。不正UTF-8/JSON、stdin上限超過を含む |
+| `1` | Native/network/version/protocol障害 |
+
+確定runtime error codeは次のとおりです。
+
+| Code | 終了値 | 意味 |
+|---|---|---|
+| `invalid_hook_configuration` | `2` | 信頼する起動設定が不正 |
+| `invalid_hook_input` | `2` | 不正UTF-8/JSON、またはevent/query検査失敗 |
+| `hook_input_too_large` | `2` | stdinのbyte上限超過 |
+| `hook_input_unavailable` | `2` | stdinを読取りできない |
+| `hook_deadline_exceeded` | `1` | 合算network deadline超過。`retryable: true` |
+| `native_api_unavailable` | `1` | Native API transport利用不能。`retryable: true` |
+| `native_version_mismatch` | `1` | capabilitiesのversion不一致 |
+| `invalid_native_response` | `1` | 不正なNative protocol/response |
+| `budget_too_small` | `1` | Mapping済みNative `422`。context pack metadata自体が収まらない |
+| Mapping済みsanitized Native code | `1` | Native API error。raw詳細は転送しない |
+
+**起動方法のerrorはJSON envelope契約の例外です。**
+CLI flag拒否（`--subject`/`--once`を含む）と`hook` extra未導入は、
+argparseのstderr診断と**終了値2で、JSON envelopeを返しません**。
+上記設定/入力失敗を含む検証対象のhook runtime errorはすべてerror envelopeを返します。
+harnessは非JSON/不正envelopeとsubprocess timeoutも扱い、
+raw stderrやresponse/例外本文をhost logへechoしてはいけません。
+
+**error時にresultはなく、取得失敗を空の成功へ変換しません。**
+正当な空結果でもcoverageが不完全な場合があります。
+hostは終了値**と**構造化statusを確認し、error/coverageを表示した上で、
+停止かmemoryなしで継続かを明示判断してください。古いcontextを再利用して失敗を隠しません。
+hostがkill/timeoutしたprocessはenvelopeを出せない場合があります。
+それはhostが観測した失敗であり、空結果ではありません。
+
+hookには**書込み、capture、queue投入、LLM/provider呼出し、cache、retry、
+idempotency keyはありません**。event名はcheckpoint作成、compaction、tool dispatch、
+synthesis、権限拡大を意味しません。
+memoryは別の**信頼できない根拠**として保持し、hostの指示/policyにしてはいけません。
+
+### 削除と適格性の境界
+
+Nativeのtenant session advisory response-drain barrierは、
+**信頼するlocal hook**へのHTTP配信で終了します。
+hook buffer、stdout/pipe buffer、host contextは**原子的な対象ではありません**。
+回収や削除通知はありません。forget/ACL変更後はhostが以前のcontextを破棄し、
+現在の認可で新しくhookを呼び出す必要があります。
+host消去証明、backup/WAL/replica消去、lifecycle全体のアクセス保証は得られません。
+
+技術検査だけで特定vendor連携、意味品質、性能の適格性を確認したとは扱いません。
+M0〜M3/MVP/本番/性能/品質/DR/完全消去の全gateは未完了です。
+[ADR 0009](adr/0009-implicit-recall-hook-jp.md)と
+[実行可能なvendor-neutral harness例](operations/README-jp.md#vendor-neutral-python-harness例)を参照してください。
 
 ## Identityと認可
 
@@ -173,7 +346,8 @@ assertionが一つだけであることの検査を含めます。自動retryは
   未登録subjectは未認証扱いです。
 - request bodyでtenant/principal identityを指定できません。要求scopeは範囲を
   狭めるだけで、サービスとRLSがmembership・権限を強制します。
-  非公開または削除済みobjectへのアクセスは、存在を区別せず`404`です。
+  非公開または削除済みobjectの照会は存在を区別せず`404`です。
+  一方、recall scopeのfilterは上記のとおり許可済みitemだけを黙って返します。
 - runtime資格情報はsuperuser、RLS bypass、アプリケーションtable ownerに
   できません。owner role経由の所属も禁止します。
   migration/provision/rebuild用の管理者資格情報を分離します。
@@ -296,12 +470,14 @@ queryとの関連性、過去のqueue状態、synthesis完了を意味しませ�
 job自体はrecall/explainとcheckpoint/effect参照から除外します。
 
 request field名は`token_budget`ですが、`utf8-bytes-v1`はmetadata・引用を含む
-serialized context packの**UTF-8 byte数**を予算として扱います。
+context pack全体のcompact JSON serialize結果の**UTF-8 byte数**を予算として扱います。
+`ensure_ascii=False`、`separators=(",", ":")`を使います。
 応答には`budget_unit: "utf8_bytes"`、`token_count: null`、
 `exact_token_count: false`を明示します。保守的なfallbackであり、
 モデルの正確なtokenizerやHTTP応答全体のsize制限ではありません。
 このcontext `tokenizer_id`は日本語検索の分割とは無関係です。
-item単位で除外し、packのmetadataすら収まらない場合は`422`を返します。
+item単位で除外し、packのmetadataすら収まらない場合は`422 budget_too_small`を返し、
+空の成功にはしません。
 
 request bodyはcheckpoint作成のみ1 MiB、他endpointは256 KiBです。
 recallの返却itemは最大100件、予算値は64〜8,000
@@ -309,7 +485,9 @@ recallの返却itemは最大100件、予算値は64〜8,000
 示します。空の選択結果は`not_found`、`budget_exhausted`、
 または下記の`index_incomplete`です。
 `retrieval_complete`は世界の知識の完全性を意味しません。
-implicit modeはrequest optionであり、自動harness hookの実装ではありません。
+Nativeのimplicit modeは引き続きrequest optionです。
+v0.0.9の[hook](#implicit-recall-hook)は信頼するharnessがcommandを起動したときだけ呼び出し、
+hostへの自動登録はしません。
 
 ### 日本語lexical profile
 
@@ -644,7 +822,7 @@ GET/restoreは別branchや保存後に追加したeffectも含め、**runの全�
 一つでもあれば`resume_allowed: false`です。v0.0.3のsnapshot-only動作から
 意図的に厳格化しています。`automatic_reexecution`は常にfalseです。
 権限検査・承認・provider照合はhostの責任です。
-provider照会サービス、自動実行、harness adapterは未実装です。
+provider照会サービス、自動実行、checkpoint実行用harness adapterは未実装です。
 
 同一keyの完全一致再送は新headでなく元のcheckpoint参照を維持します。
 再送記録にstateは保存せず、読取り/restore再送は現在の認可でenvelopeを再構成するため、
@@ -654,7 +832,7 @@ provider照会サービス、自動実行、harness adapterは未実装です。
 依存DAGは宣言済み参照、parent lineage全体、下記のrun全体のeffect-to-checkpoint依存を対象にし、
 未宣言のコピー本文をsemantic scannerが発見することはありません。
 同意とsecret/PII除去もcallerの責任です。
-working snapshot、compaction、harness連携は別の将来課題です。
+working snapshot、compaction、checkpoint実行用harness連携は別の将来課題です。
 [ADR 0003](adr/0003-checkpoints-jp.md)と[ADR 0004](adr/0004-tool-effects-jp.md)を参照してください。
 
 ## Tool-effect ledger
@@ -793,9 +971,9 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.8はschema 7を維持し、v0.0.7への追加migrationはありません。**
-MCP adapterはHTTPだけを使い、DDL/backfillは行いません。
-認証付き起動検査は単なるDB版互換ではなく、対応するv0.0.8/schema 7 Native APIを要求します。
+**v0.0.9は厳密なschema 7を維持し、v0.0.7/v0.0.8への追加migration 008/009はありません。**
+MCP adapterとrecall hookはHTTPだけを使い、DDL/backfillは行いません。
+認証付き起動検査は単なるDB版互換ではなく、対応するv0.0.9/schema 7 Native APIを要求します。
 以下のmigration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -807,7 +985,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.8のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、
+追加しません。v0.0.9のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、
 旧版・将来版・不完全な履歴と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -819,7 +997,7 @@ filterされる場合にfail-closedにする設定であり、bypass権限を与
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.8 processだけを起動してください。保守中はadapterも停止します。
+対応するv0.0.9 processだけを起動してください。保守中はadapterとhook起動も停止します。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
 [運用](operations/README-jp.md#v007の保守migration)に従ってください。
@@ -828,7 +1006,42 @@ rolling共存やdowngradeは非対応です。
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
-### v0.0.8 / schema 7
+### v0.0.9 / schema 7
+
+**2026-09-17 JSTに最終localとnative CI結果を確認しました。**
+検査した最終local sourceは公開済み実装
+[3d52a8f](https://github.com/rioriost/pg_agmemory/commit/3d52a8fdf950e28fbbd30181850629021bd00050)と一致します。
+[CI run 35181334488](https://github.com/rioriost/pg_agmemory/actions/runs/35181334488)の
+両native jobは合格し、実logでjob statusだけでなく完全一致SHAと以下の件数・検査を確認しました。
+v0.0.7/v0.0.8の結果をv0.0.9証拠に流用しません。
+
+| 環境 | Command | テスト | テスト所要時間 |
+|---|---|---|---|
+| ローカルApple Container | `./scripts/test-containers.sh` | **274合格、既存warning 1件** | **248.29秒** |
+| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | **274合格、既存warning 1件** | **482.21秒** |
+| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | **274合格、既存warning 1件** | **374.33秒** |
+
+全3環境の最終runで**Ruff、strict mypy（source 15ファイル）、真のcore-only/hook-only導入検査、
+non-root productionの全smoke**にも合格しました。
+日本語tokenizer、API HTTP、worker CLI、MCPの**`2026-07-28`・`2025-11-25`両mode**、
+recall-hookの**`session_start`・`task_switch`・`after_compaction`**が対象です。
+suiteは抽出済み共有`native_client.py`、hook入力検証/失敗処理、pack全体のbyte計算、
+index欠落時の`index_incomplete`/不完全coverage、予算の各結果、
+scope/失効の黙ったfilter、明示token認証失敗を検査し、Native/MCP semanticsを維持します。
+所要時間は観測値であり、性能benchmarkではありません。
+
+共有`NativeSettings`の`httpx.URL`によるorigin検証もsuiteの対象で、
+transport前に制御文字や不正IDNAを拒否します。
+
+自動Docker **`adapter-extras-check`** targetは真のcore-only導入/extra未導入、
+続いて**MCPなし**のhook-only導入を検査し、HTTP失敗時の明示JSONも対象とします。
+container scriptはlocal Apple Containerとnative Docker両architectureでこのtargetをbuildします。
+真の導入/HTTP失敗の検査は、上記production smokeとともに**全3環境で合格**しました。
+M0〜M3/MVP/本番/性能/品質/DR/完全消去の全gateは未完了です。
+
+<a id="v008--schema-7"></a>
+
+### 過去のv0.0.8 / schema 7
 
 実装
 [3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)を
@@ -854,7 +1067,14 @@ MCPはSDK 2.2.0と独立したraw wire fixtureで`2026-07-28`・`2025-11-25`の�
 extra未導入の明示的な診断付きで終了しました。この追加検査はローカルだけであり、
 別のDocker CI検査の主張ではありません。
 M0〜M3/MVP/本番/性能/品質/DR/完全消去の全受入gateは未完了です。
-以下の過去結果をMCP検証として扱ってはいけません。
+以下の過去のv0.0.7結果をMCP検証として扱ってはいけません。
+
+その後のbilingual docs commit
+[0b0f695](https://github.com/rioriost/pg_agmemory/commit/0b0f695d8df63db0f70ddd1a277c497166698ac2)は、
+[CI run 35177260509](https://github.com/rioriost/pg_agmemory/actions/runs/35177260509)で
+**各native architecture（`linux/amd64`・`linux/arm64`）214テスト**に合格しました。
+v0.0.8のdocs runであり、上記実装runの所要時間とは別です。
+どちらのrunもv0.0.9やrecall hookを検証していません。
 
 ### 過去のv0.0.7 / schema 7
 
@@ -877,7 +1097,7 @@ non-root productionの日本語tokenizer、API HTTP、実CLI workerという全3
 [aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)も、
 [CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899)で
 両native jobが合格しました。これは過去の最終docs CIであり、上記実装runの所要時間とは別です。
-どちらのrunもv0.0.8を検証していません。
+どちらのrunもv0.0.8/v0.0.9を検証していません。
 
 既定/opt-in lexical動作、日本語/ASCII処理、正確な65,536文字のindex化と65,537文字の拒否、
 lazy load/fresh Linux初期化guard、時間/RLSとindex不完全/予算動作、
@@ -913,9 +1133,10 @@ backup/DR、完全消去の適格性を示すものではありません。
 自動enqueue/自然言語抽出/synthesis、LLM/provider処理、global multi-tenant scheduling/
 公平性/cost pool、別のworking snapshot/compaction、
 embedding/pgvector、vector/hybrid retrieval、AGE、SQL/PGQ、
-provider receipt検証、実際のharness連携/実行/recovery、
+provider receipt検証、vendor固有harness連携と実行/recovery、
 別assertion間のsupersession/fact調停、remote MCP HTTP/SSE/OAuth/delegation、
 application SDK、postgresem連携はありません。
+vendor-neutral hookはどのhostも登録せず、適格性を認定しません。
 local stdio MCP、opt-in lexical分割、明示structured job、上限付きSQL graph oracle、
 typed checkpoint envelopeだけで、
 計画上の二時点・graph・provenance・削除architectureが完了したとは扱いません。

@@ -13,9 +13,12 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The v0.0.8 local stdio MCP milestone retains schema 7; **214 tests and production
-smokes passed in Apple Container and native Docker amd64/arm64**.
-No migration is added to v0.0.7. M0–M3, MVP, production, performance,
+The **v0.0.9/schema 7 implicit recall hook passed final local Apple Container
+and native Docker amd64/arm64 checks**.
+No migration 008 or 009 is added.
+**Historical v0.0.8:** 214 tests and production smokes passed in Apple Container
+and native Docker amd64/arm64. These are not v0.0.9 results.
+M0–M3, MVP, production, performance,
 quality, DR, and full-erasure acceptance remain incomplete.
 **Historical v0.0.7 only:** Apple Container and native Docker amd64/arm64 each passed **144 tests**
 (2 existing warnings), Ruff, strict mypy (12 source files), and all three non-root
@@ -28,9 +31,10 @@ The historical v0.0.7 final lock retained the existing package-feed registry. Al
 equivalent to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0 was
 added and the project version became v0.0.7; no unrelated upgrades or registry
 migration occurred. Native CI built that retained-registry lock. This is not a
-package-count or validation claim about v0.0.8. Use the current locked build;
+package-count or validation claim about v0.0.8/v0.0.9. Use the current locked build;
 the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
-both Docker test and runtime stages.
+both Docker test and runtime stages. v0.0.9 also includes `hook` in both stages;
+`pg-agmemory[hook]` pins `httpx==0.28.1` **without the MCP SDK**.
 The container-check script requires runner-side `jq` for **both Apple Container
 and Docker**, including disposable smoke configuration.
 
@@ -122,7 +126,7 @@ authorization boundary.
    `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
    not human prompts or ordinary log output. Diagnostics use sanitized stderr.
 6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
-   `0.0.8`, schema `7` before serving tools. A bad setting/token, unreachable API,
+   `0.0.9`, schema `7` before serving tools. A bad setting/token, unreachable API,
    or version mismatch exits nonzero without logging secrets. A passing
    `/healthz` alone is insufficient. Fix trusted configuration and restart;
    do not bypass the check or change tool arguments to override identity/URL.
@@ -182,7 +186,7 @@ obtain fresh authorized data rather than reuse old output. There is **no MCP
 deletion notification** that does this automatically. Purge does not certify
 host-context, backup, WAL, replica, or physical-media erasure.
 
-Actual stdio SDK `Client` connections and raw JSON fixtures have exercised:
+Historical v0.0.8 actual stdio SDK `Client` connections and raw JSON fixtures exercised:
 
 - Modern `2026-07-28`: `Client(mode="auto")` and `server/discover`. Raw requests
   carry `params._meta` keys `io.modelcontextprotocol/protocolVersion`,
@@ -193,25 +197,277 @@ Actual stdio SDK `Client` connections and raw JSON fixtures have exercised:
 The response-loss regression drops an actual HTTP response **after remember
 commits**, then retries the same key/body and checks that only one assertion
 persists. This tests caller-driven recovery, not an automatic retry.
-Final local/native CI evidence is recorded in STATUS.
+Historical local/native CI evidence is recorded in STATUS. v0.0.9 retains both
+protocol eras, these semantics, and MCP bounds while extracting the shared
+Native HTTP client. Regression checks and both protocol smokes passed locally
+and on both native Docker architectures.
 These specific checks do not prove compatibility with untested
 older clients or a named host.
 See [the full contract](../STATUS.md#local-stdio-mcp) and
 [ADR 0008](../adr/0008-local-mcp.md).
 
-## v0.0.8 application update (schema unchanged)
+## Implicit recall hook operations
 
-For an existing v0.0.7/schema-7 database there is **no migration 008 or new
+**v0.0.9: final local and both native Docker checks passed.** This is a vendor-neutral,
+one-shot harness-side command, not MCP, a model caller, or an automatically
+registered host plugin. No Copilot/Claude/Codex integration is claimed.
+
+### Install and configure from a trusted operator environment
+
+1. Provision the Native API subject/scopes using the role separation above.
+   The hook requires **no DB credentials**, admin URL, JWT signing key, or
+   external model key. It only uses the configured Native audience token.
+2. Install `pg-agmemory[hook]` or use the v0.0.9 repository image with both
+   `mcp` and `hook` extras. For the checkout use `uv sync --frozen --extra hook`.
+   Hook-only installation pins `httpx==0.28.1`, **not the MCP SDK**.
+3. Have the operator securely supply the following environment before starting
+   the trusted harness. Do not derive it from prompts, queries, event fields,
+   tools, or retrieved text. Do not place tokens in command-line arguments,
+   checked-in examples, logs, or issue reports.
+
+   | Variable | Operator setting / default |
+   |---|---|
+   | `PGAG_HOOK_API_URL` | Required, no default. Trusted HTTPS origin or loopback HTTP origin; no userinfo, application path, query, or fragment. Root `/` is accepted; absent URL gives `invalid_hook_configuration` |
+   | `PGAG_HOOK_API_TOKEN` | Required fixed Native API audience bearer token |
+   | `PGAG_HOOK_SCOPE_IDS` | Required JSON array of 1–32 unique provisioned scope UUIDs |
+   | `PGAG_HOOK_PURPOSE` | Default `implicit_context`; 1–256 characters |
+   | `PGAG_HOOK_TOKEN_BUDGET` | Default `2000`; integer 64–2,000 **UTF-8 bytes, not model tokens** |
+   | `PGAG_HOOK_MAX_ITEMS` | Default `20`; integer 1–20 |
+   | `PGAG_HOOK_SEARCH_PROFILE` | Default `simple-v1`; opt in explicitly to `ja-janome-0.5.0-v1` |
+   | `PGAG_HOOK_TIMEOUT_SECONDS` | Default `2.0`; finite 0.1–20 seconds |
+
+   URL, token, and scope IDs are **all required**. Shared `NativeSettings` also
+   parses origins with `httpx.URL`, rejecting control characters and invalid
+   IDNA before transport. These invalid-origin checks passed in all three environments.
+
+   Loopback is relative to the hook process/container; do not assume it reaches
+   a sibling container or the Mac host. Non-loopback HTTP is rejected.
+   Redirects and proxy environment settings are disabled; TLS verification is on.
+4. Launch `pg-agmemory recall-hook` with exactly one JSON document on stdin, then
+   EOF. `--subject`/`--once` are rejected. Only `event` and `query` are allowed:
+   `event` is `session_start`, `task_switch`, or `after_compaction`; `query` is a
+   required string of at most 4,096 Unicode characters. Empty query is canonical
+   browsing in the configured scopes, not a missing field. Retrieval intent is
+   supplied only by JSON `query`; `event` is a lifecycle label. No identity,
+   `scope_ids`, purpose, mode, budget, URL, header, tool, time, or other field
+   is accepted. Event text never authorizes access.
+5. Each invocation freshly checks authenticated `GET /v1/capabilities` for exact
+   service `0.0.9`, API `v1`, schema `7`, then sends `POST /v1/recall` with
+   `mode: "implicit"`, trusted recall settings, and Native current-time defaults.
+   The same fixed token is used for both requests; no caching of authorization
+   or responses occurs. Replace credentials only through trusted startup configuration.
+
+Recall silently filters unauthorized scopes and revoked memberships. Expect the
+authorized subset, or a successful no-items/`not_found` result, **not a
+scope-existence 404**. Token authentication failure instead returns explicit
+Native **401**, which is hook **exit 1 with an error envelope**.
+These are unchanged Native behaviors, not a hook fallback or permission grant.
+
+Stdin is limited to **32,768 bytes**. Invalid UTF-8/JSON, oversized input, and
+validation failures produce explicit errors. The network deadline is shared by
+**capabilities and recall together**, not two independent allowances.
+Its default 2 s (finite 0.1–20 s) excludes process startup, stdin input/waiting
+for EOF, and output;
+it is **not** a total-process or LLM latency SLO. Set a separate host subprocess
+timeout and close stdin. Request/response bounds are **256 KiB/2 MiB**; the
+**entire compact JSON-serialized context pack** must have UTF-8 byte length
+equal to `context_pack.byte_count` and obey the configured budget.
+Serialization uses `ensure_ascii=False`, `separators=(",", ":")` and includes
+metadata/citations, **not just text**. Returned item count must not exceed configured
+`max_items`; the returned profile must match configuration. Mismatches fail
+without broad fallback. These are not blanket
+host-buffer limits. Shared-client extraction must preserve the MCP bounds above.
+The hook does not write, capture, enqueue, invoke an LLM/provider, cache, retry,
+or send an idempotency key.
+
+Budget 64 is valid configuration, but even an empty pack costs roughly 192 bytes.
+If its metadata cannot fit, Native returns **422 `budget_too_small`** and the hook
+returns an error envelope with **exit 1**, not empty success. Do not treat the
+approximate empty-pack size as a guaranteed constant. When the pack fits but
+candidates do not, `budget_exhausted` is Native **200 / hook exit 0** instead.
+Missing-index `index_incomplete` is also **200 / exit 0**, with
+`coverage.lexical_incomplete: true` and `coverage.retrieval_complete: false`
+when projections are missing and no candidates exist. The host must surface
+that incomplete coverage even though the hook succeeded.
+
+### Vendor-neutral Python harness example
+
+After preparing the executable and operator environment, run this shell block.
+It uses only Python's standard library. The example's host policy is to **pause
+on failure or incomplete retrieval**, not silently continue; a different host
+must explicitly choose and surface any continuation without memory.
+The 30 s subprocess timeout is an illustrative **separate host policy**, not a
+measured startup guarantee or service SLO. Set it for your deployment.
+The trusted executable/PATH and startup environment must be operator-controlled.
+The empty sample query requires no external model; a host may supply untrusted
+task text only as `query`, never as configuration. Do not log it.
+
+```bash
+python - <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+def pause(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+setting_names = (
+    "PGAG_HOOK_API_URL",
+    "PGAG_HOOK_API_TOKEN",
+    "PGAG_HOOK_SCOPE_IDS",
+    "PGAG_HOOK_PURPOSE",
+    "PGAG_HOOK_TOKEN_BUDGET",
+    "PGAG_HOOK_MAX_ITEMS",
+    "PGAG_HOOK_SEARCH_PROFILE",
+    "PGAG_HOOK_TIMEOUT_SECONDS",
+)
+child_env = {name: os.environ[name] for name in setting_names if name in os.environ}
+child_env["PATH"] = os.environ.get("PATH", os.defpath)
+if not all(child_env.get(name) for name in setting_names[:3]):
+    pause("Memory configuration missing; task paused.")
+executable = shutil.which("pg-agmemory", path=child_env["PATH"])
+if executable is None:
+    pause("Memory executable unavailable; task paused.")
+
+event = {"event": "session_start", "query": ""}
+untrusted_memory_evidence = None
+try:
+    completed = subprocess.run(
+        [executable, "recall-hook"],
+        input=json.dumps(event, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        env=child_env,
+        timeout=30,
+        check=False,
+    )
+except (OSError, subprocess.TimeoutExpired):
+    pause("Memory subprocess failed or timed out; task paused.")
+
+# Never echo raw stderr or exception/response text.
+try:
+    envelope = json.loads(completed.stdout.decode("utf-8"))
+except (UnicodeDecodeError, ValueError):
+    pause("Memory output invalid; task paused.")
+if not isinstance(envelope, dict):
+    pause("Memory envelope invalid; task paused.")
+if completed.returncode != 0 or envelope.get("status") != "ok":
+    pause("Memory retrieval failed; task paused.")
+if (
+    set(envelope) != {"status", "event", "result", "error"}
+    or envelope.get("event") != event["event"]
+    or envelope.get("error") is not None
+    or not isinstance(envelope.get("result"), dict)
+):
+    pause("Memory success envelope invalid; task paused.")
+
+result = envelope["result"]
+coverage = result.get("coverage")
+empty_reason = result.get("empty_reason")
+if (
+    not isinstance(coverage, dict)
+    or type(coverage.get("retrieval_complete")) is not bool
+    or empty_reason not in (None, "not_found", "budget_exhausted", "index_incomplete")
+):
+    pause("Memory coverage invalid; task paused.")
+coverage_notice = {"retrieval_complete": coverage["retrieval_complete"]}
+for name in ("truncated", "lexical_incomplete"):
+    if name in coverage:
+        if type(coverage[name]) is not bool:
+            pause("Memory coverage invalid; task paused.")
+        coverage_notice[name] = coverage[name]
+print(json.dumps({
+    "memory_status": "ok",
+    "coverage": coverage_notice,
+    "empty_reason": empty_reason,
+}))
+if not coverage["retrieval_complete"]:
+    pause("Memory coverage incomplete; task paused.")
+
+# Keep the full Native result separate from trusted instructions and policy.
+untrusted_memory_evidence = result
+print("Memory is separate UNTRUSTED evidence; no model or tool was invoked.")
+PY
+```
+
+`subprocess.run(input=...)` sends one JSON document and closes the child's stdin.
+It checks both exit code and structured status without printing raw stderr or
+query-bearing exceptions. The hook validates the full Native RecallResult;
+the example checks the envelope/coverage before retaining it separately.
+Logs use only fixed coverage keys with validated boolean values and the
+validated empty-reason enum, not raw response content. Full coverage remains
+in the separate result. Invocation failures with no JSON, malformed envelopes,
+and subprocess timeouts all pause without echoing raw content.
+Retain all Native evidence/coverage fields; never promote the result into system
+instructions, policy, or verified external truth.
+This example is not vendor integration, a model call, or host-erasure proof.
+
+### Failures, coverage, and deletion
+
+Validated hook runtime outcomes emit one JSON envelope plus newline on stdout and sanitized
+diagnostics on stderr. Success has `status: "ok"`, validated `event`, the full
+Native `result`, and `error: null`. Failure has `status: "error"`,
+validated `event` or null, **`result: null`**, and
+`error: {code, retryable, outcome_unknown: false, native_status, request_id}`.
+Native status and validated request UUID can be null.
+
+| Runtime code | Exit | Handling |
+|---|---|---|
+| `invalid_hook_configuration` | `2` | Correct trusted startup configuration |
+| `invalid_hook_input` | `2` | Correct UTF-8/JSON or event/query validation errors without logging the input |
+| `hook_input_too_large` | `2` | Keep stdin within 32,768 bytes |
+| `hook_input_unavailable` | `2` | Supply readable stdin |
+| `hook_deadline_exceeded` | `1` | Combined network deadline exceeded; `retryable: true` |
+| `native_api_unavailable` | `1` | Native API transport unavailable; `retryable: true` |
+| `native_version_mismatch` | `1` | Use matching service/API/schema versions |
+| `invalid_native_response` | `1` | Reject the invalid protocol/response, without fallback |
+| `budget_too_small` | `1` | Native `422`: the pack metadata cannot fit; adjust the trusted byte budget |
+| Mapped sanitized Native codes | `1` | Surface the Native failure without forwarding raw details |
+
+**Invocation-error exception:** rejected CLI flags (including `--subject`/
+`--once`) and a missing `hook` extra use argparse stderr and **exit 2 without
+a JSON envelope**. All validated hook runtime errors, including the configuration/
+input codes above, return the error envelope. Do not assume stdout is JSON
+before checking/parsing it; never echo raw stderr or invalid output.
+
+Exit **0** includes genuine Native `not_found`, `budget_exhausted`, and
+`index_incomplete` empty reasons; inspect coverage even for successful retrieval.
+Exit **2** is invalid configuration/input; exit **1** is Native/network/version/
+protocol failure. A process killed by the host may have no envelope.
+**Never map failed retrieval to empty success or hide it with stale context.**
+Surface errors/coverage, then explicitly pause or continue without memory.
+`retryable` is only a hint; the hook has no automatic retry or idempotency key,
+and `outcome_unknown: false` reflects its read-only operations, not MCP mutation behavior.
+
+The Native tenant session advisory barrier ends at HTTP delivery to this
+**trusted local hook**. Hook/stdout/pipe buffers and host context are not
+atomically covered. No retraction or deletion notifications exist.
+After forget or ACL changes, stop using/discard previous context and invoke a
+fresh hook under current authorization; do not assume an in-flight pre-change
+result is fresh. The hook never expands permissions or proves host, WAL,
+replica, backup, or physical-media erasure. Engineering tests do not qualify
+specific vendor integration, semantic quality, or performance.
+See [the complete contract](../STATUS.md#implicit-recall-hook) and
+[ADR 0009](../adr/0009-implicit-recall-hook.md).
+
+<a id="v008-application-update-schema-unchanged"></a>
+
+## v0.0.9 application update (schema unchanged)
+
+For an existing v0.0.7/v0.0.8 schema-7 database there is **no migration 008/009 or new
 backfill**. Record the application/schema versions and preserve a backup and
 current deletion/ACL records. Stop/drain old APIs, workers, and MCP adapters,
-including auto-restarts; replace them with matching v0.0.8 images. Confirm exact
+and suspend hook launches, including auto-restarts; replace them with matching v0.0.9 images. Confirm exact
 schema history `[1, 2, 3, 4, 5, 6, 7]`, then start the restricted Native API/workers,
-check authenticated capabilities, and start each fixed-identity adapter.
+check authenticated capabilities, and start each fixed-identity adapter/hook.
 Same schema does not establish rolling mixed-version compatibility or a
-supported downgrade. Packaged runtime and retained schema-contract results are
-recorded in [validation evidence](../STATUS.md#validation-evidence).
+supported downgrade. v0.0.9 packaged runtime and retained schema-contract
+checks passed locally and on both native Docker architectures. Historical results stay separate in
+[validation evidence](../STATUS.md#validation-evidence).
 For older schemas, apply the retained schema-7 migration procedure below using
-the current image. Reindex remains separate offline maintenance, not an MCP command.
+the current image. Reindex remains separate offline maintenance, not an MCP/hook command.
 
 <a id="v003-maintenance-migration"></a>
 <a id="v004-maintenance-migration"></a>
@@ -221,7 +477,7 @@ the current image. Reindex remains separate offline maintenance, not an MCP comm
 ## v0.0.7 maintenance migration
 
 This is the retained schema-7 migration introduced in v0.0.7, for older
-databases; it is **not a new v0.0.8 migration**.
+databases; it is **not a new v0.0.8/v0.0.9 migration**.
 
 **No rolling old/new API/worker coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -253,7 +509,7 @@ Follow this maintenance protocol:
    JSON/HMAC ordering. Use the pinned Janome 0.5.0 dependency and bundled dictionary.
    The v4 ledger's stricter resume rules remain: untracked hints, even planned
    ones, block resumption.
-5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v0.0.8 APIs/workers**
+5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v0.0.9 APIs/workers**
    with restricted runtime credentials and the intended fixed worker subjects.
    Check capabilities/schema, default/opt-in recall and projection coverage,
    historical revision selection, authorization, purge, atomic publication, and
@@ -313,7 +569,7 @@ To rebuild an existing schema-7 database from canonical data:
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v0.0.8 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.9 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
@@ -331,7 +587,7 @@ To rebuild an existing schema-7 database from canonical data:
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v0.0.8 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.9 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.
@@ -530,7 +786,7 @@ See [the contract](../STATUS.md#checkpoint-contract) and
    allowed reconciliation transitions; `unknown → confirmed/failed` remains valid.
    Preserve the opaque operation registry, run flag, and tombstones.
 
-This is a ledger, not a worker, harness adapter, provider-query client, approval
+This is a ledger, not a worker, tool-execution harness adapter, provider-query client, approval
 service, or external exactly-once mechanism. See [the contract](../STATUS.md#tool-effect-ledger)
 and [ADR 0004](../adr/0004-tool-effects.md).
 
@@ -712,12 +968,12 @@ asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
 It also checks `東京都` → `東京` / `都` segmentation in the non-root runtime image
 and emits `Production Japanese tokenizer smoke passed` on success. This tests
 packaged tokenizer initialization/segmentation, not end-to-end recall or quality.
-The current runner also launches an actual `pg-agmemory mcp` child in the
+The historical v0.0.8 runner also launches an actual `pg-agmemory mcp` child in the
 non-root production image. Its fixed token and provisioned scope access the
 loopback Native API; it lists all four tools and calls recall in **both**
 modern `2026-07-28` and legacy `2025-11-25` modes. Existing Japanese/API/worker
 smokes remain. These checks passed in all three v0.0.8 environments.
-The current CI step is `Test containers and smoke-test production API, worker, and MCP`.
+The v0.0.8 CI step is `Test containers and smoke-test production API, worker, and MCP`.
 This idle-worker check is not a publication test or production/DR qualification.
 Historical v0.0.7 implementation
 [678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)
@@ -729,8 +985,31 @@ Historical final-docs commit
 [aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)
 also passed both native jobs in
 [CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899).
-**v0.0.8:** implementation
+**Historical v0.0.8:** implementation
 [3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)
 passed 214 tests, Ruff, strict mypy (13 files), and all production smokes locally
 and in [CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)
-on both native architectures. Neither historical run validates the MCP adapter.
+on both native architectures. The two v0.0.7 runs do not validate MCP.
+The subsequent v0.0.8 bilingual documentation commit
+[0b0f695](https://github.com/rioriost/pg_agmemory/commit/0b0f695d8df63db0f70ddd1a277c497166698ac2)
+passed **214 tests on each native architecture** in
+[CI run 35177260509](https://github.com/rioriost/pg_agmemory/actions/runs/35177260509).
+None of these historical runs validates the v0.0.9 hook or shared-client extraction.
+**Final v0.0.9 results verified 2026-09-17 JST:** Apple Container and native Docker
+amd64/arm64 each passed **274 tests, 1 existing warning**, Ruff, strict mypy
+(**15 source files**), genuine core-only/hook-only installation checks, and all
+non-root production Japanese/API/worker smokes, MCP **`2026-07-28` and `2025-11-25`**,
+and hook **`session_start`, `task_switch`, and `after_compaction`**.
+Test elapsed times were **248.29 s** locally, **482.21 s** on native amd64, and
+**374.33 s** on native arm64. The tested final local source matches published implementation
+[3d52a8f](https://github.com/rioriost/pg_agmemory/commit/3d52a8fdf950e28fbbd30181850629021bd00050).
+Actual logs from both jobs in
+[CI run 35181334488](https://github.com/rioriost/pg_agmemory/actions/runs/35181334488)
+confirmed that exact SHA and all checks, not just job status.
+Timings are not performance benchmarks.
+See [v0.0.9 evidence](../STATUS.md#v009--schema-7), not a production/DR acceptance claim.
+The implemented Docker **`adapter-extras-check`** target checks genuine core-only
+installation/missing extras, then hook-only **without MCP**, including explicit
+JSON for failed HTTP. The container script builds it on local Apple Container
+and both native Docker architectures. It **passed in all three environments**.
+No original milestone or acceptance gate is complete.

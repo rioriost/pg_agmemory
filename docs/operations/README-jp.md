@@ -12,9 +12,10 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
-v0.0.8 local stdio MCP milestoneはschema 7を維持し、
-**Apple Containerとnative Docker amd64/arm64で214テストとproduction smokeに合格**しています。
-v0.0.7への追加migrationはありません。
+**v0.0.9/schema 7のimplicit recall hookは最終local Apple Containerと
+native Docker amd64/arm64検査に合格しました**。migration 008/009は追加しません。
+**過去のv0.0.8:** Apple Containerとnative Docker amd64/arm64で214テストと
+production smokeに合格しました。v0.0.9の結果ではありません。
 M0〜M3、MVP、本番、性能、品質、DR、完全消去の受入は未完了です。
 **過去のv0.0.7だけの証拠:** Apple Containerとnative Docker amd64/arm64の各環境で
 **144テスト**（既存warning 2件）、
@@ -26,9 +27,11 @@ API HTTP、実worker CLI `--once` idle実行という全3種のsmokeが合格し
 全36 packageのversion、依存metadata、artifact hashはテスト済みPyPI解決lockと
 byte単位で同一です。v6との差分はJanome 0.5.0の追加とprojectのv0.0.7へのversion更新だけで、
 無関係なupgradeやregistry移行はありません。native CIはこのretained-registry lockから
-buildしました。v0.0.8のpackage件数や検証についての主張ではありません。
+buildしました。v0.0.8/v0.0.9のpackage件数や検証についての主張ではありません。
 現在のlock済みbuildを使用してください。任意のMCP extraは`mcp==2.2.0`と
 `httpx==0.28.1`を固定し、Docker test/runtime両stageに含めます。
+v0.0.9は両stageに`hook`も含めます。`pg-agmemory[hook]`は
+`httpx==0.28.1`を固定し、**MCP SDKは含めません**。
 container検査scriptは使い捨てsmoke設定を含め、**Apple ContainerとDockerの両方**で
 runner側の`jq`を必須とします。
 
@@ -111,7 +114,7 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
    `--subject`と`--once`は両方拒否するため付けません。
    stdin/stdoutは人間用promptや通常logでなくMCP message用に接続を維持します。
    診断にはsanitized stderrを使います。
-6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.8`、schema `7`の
+6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.9`、schema `7`の
    一致を確認してからtoolを提供します。不正設定/token、API到達不能、version不一致は
    secretをlogに出さず非zero終了します。`/healthz`合格だけでは不十分です。
    信頼する設定を修正し再起動してください。検査を回避したり、
@@ -168,7 +171,7 @@ forget/権限変更後はhostがcached contextを破棄し、古い出力を再�
 新しく認可済みdataを取得する必要があります。これを自動実行する**MCP削除通知はありません**。
 purgeはhost context、backup、WAL、replica、物理mediaの消去を証明しません。
 
-実stdio SDK `Client`接続とraw JSON fixtureで次を検査しました。
+過去のv0.0.8で実stdio SDK `Client`接続とraw JSON fixtureにより次を検査しました。
 
 - Modern `2026-07-28`: `Client(mode="auto")`と`server/discover`。
   raw requestの`params._meta`に`io.modelcontextprotocol/protocolVersion`、
@@ -179,23 +182,267 @@ purgeはhost context、backup、WAL、replica、物理mediaの消去を証明し
 応答喪失regressionは**rememberのcommit後**に実HTTP応答を失わせ、
 同じkey/bodyで再送してassertionが一つだけ残ることを検査します。
 caller主導の復旧の検査であり、自動retryではありません。
-最終local/native CI証拠をSTATUSに記録しています。
+過去のlocal/native CI証拠をSTATUSに記録しています。
+v0.0.9は共有Native HTTP clientを抽出しつつ、両protocol時代、semantics、MCP上限を
+維持します。regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
 これらの特定経路の検査は、未検証の旧clientや特定hostとの互換性を証明しません。
 [全契約](../STATUS-jp.md#local-stdio-mcp)と
 [ADR 0008](../adr/0008-local-mcp-jp.md)を参照してください。
 
-## v0.0.8のapplication更新（schema変更なし）
+## Implicit recall hookの運用
 
-既存v0.0.7/schema 7 DBには**migration 008も新backfillもありません**。
+**v0.0.9: 最終localとnative Docker両architectureの検査に合格しました。**
+vendor-neutralな一回実行のharness側commandであり、MCP、model caller、
+自動登録host pluginではありません。Copilot/Claude/Codex連携を主張しません。
+
+### 信頼するoperator環境からの導入と設定
+
+1. 上記role分離に従ってNative APIのsubject/scopeをprovisionします。
+   hookには**DB資格情報**、admin URL、JWT署名key、外部model keyは不要です。
+   設定されたNative audience tokenだけを使います。
+2. `pg-agmemory[hook]`を導入するか、`mcp`・`hook`両extraを含むv0.0.9 repository imageを
+   使用します。checkoutでは`uv sync --frozen --extra hook`を使います。
+   hook-only導入は`httpx==0.28.1`を固定し、**MCP SDKは含めません**。
+3. 信頼するharnessを起動する前にoperatorが以下の環境を安全に渡します。
+   prompt、query、event field、tool、取得textから生成してはいけません。
+   tokenをcommand-line引数、commitする例、log、issue報告へ残さないでください。
+
+   | 変数 | Operator設定 / 既定値 |
+   |---|---|
+   | `PGAG_HOOK_API_URL` | 必須、defaultなし。信頼するHTTPS originまたはloopback HTTP origin。userinfo/application path/query/fragment禁止。root `/`は許可。URL未設定は`invalid_hook_configuration` |
+   | `PGAG_HOOK_API_TOKEN` | 必須の固定Native API audience bearer token |
+   | `PGAG_HOOK_SCOPE_IDS` | 必須の重複しないprovision済みscope UUID 1〜32件のJSON配列 |
+   | `PGAG_HOOK_PURPOSE` | 既定`implicit_context`。1〜256文字 |
+   | `PGAG_HOOK_TOKEN_BUDGET` | 既定`2000`。整数64〜2,000 **UTF-8 byte、model tokenではない** |
+   | `PGAG_HOOK_MAX_ITEMS` | 既定`20`。整数1〜20 |
+   | `PGAG_HOOK_SEARCH_PROFILE` | 既定`simple-v1`。`ja-janome-0.5.0-v1`には明示opt-in |
+   | `PGAG_HOOK_TIMEOUT_SECONDS` | 既定`2.0`。有限の0.1〜20秒 |
+
+   URL、token、scope IDは**すべて必須**です。共有`NativeSettings`は`httpx.URL`でも
+   originをparseし、transport前に制御文字や不正IDNAを拒否します。
+   これらの不正origin検査は全3環境で合格しています。
+
+   loopbackはhook process/container基準です。別containerやMac hostへ到達すると
+   仮定してはいけません。非loopback HTTPは拒否します。
+   redirect/proxy環境設定を無効にし、TLS検証を有効にします。
+4. `pg-agmemory recall-hook`を起動し、stdinへJSON document一つとEOFを送ります。
+   `--subject`/`--once`は拒否します。許可するのは`event`と`query`だけです。
+   `event`は`session_start`、`task_switch`、`after_compaction`のいずれか、
+   `query`は必須の最大4,096 Unicode文字のstringです。
+   空queryは設定scope内のcanonical browsingであり、field省略ではありません。
+   取得意図はJSONの`query`だけから渡し、`event`はlifecycle名です。
+   identity、`scope_ids`、purpose、mode、budget、URL、header、tool、時刻、その他fieldは
+   許可しません。event textはアクセス権を付与しません。
+5. 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密なservice `0.0.9`、
+   API `v1`、schema `7`を検査し、`POST /v1/recall`へ`mode: "implicit"`、
+   信頼するrecall設定、Nativeの現在時刻defaultを送ります。
+   両requestに同じ固定tokenを使い、認可やresponseをcacheしません。
+   資格情報の置換も信頼する起動設定だけを使います。
+
+recallは未認可scopeや失効membershipを黙ってfilterします。
+許可済みsubsetまたは成功したitemなし/`not_found`となり、**scope存在を示す404にはしません**。
+一方、token認証失敗は明示的なNative **401**、hookの**終了値1とerror envelope**になります。
+Native動作の維持であり、hookのfallbackや権限付与ではありません。
+
+stdin上限は**32,768 byte**です。不正UTF-8/JSON、上限超過、validation失敗は明示errorです。
+network deadlineは**capabilitiesとrecallの合計**で共有し、別々の時間枠ではありません。
+既定2秒（有限の0.1〜20秒）はprocess起動、stdin入力/EOF待機、出力を含まず、
+process全体やLLM latencyのSLOでは**ありません**。
+host側に別のsubprocess timeoutを設定し、stdinを閉じてください。
+request/response上限は**256 KiB/2 MiB**です。
+**context pack全体をcompact JSON serializeした結果**のUTF-8 byte数が
+`context_pack.byte_count`と一致し、設定byte予算以下である必要があります。
+`ensure_ascii=False`、`separators=(",", ":")`を使い、
+**本文だけでなくmetadata/citationも含みます**。
+返却item数は設定`max_items`以下、返却profileは設定と一致しなければなりません。
+不一致は失敗させ、広いfallbackは行いません。
+全host buffer共通の上限ではありません。共有client抽出でも上記MCP上限を維持する必要があります。
+hookは書込み、capture、enqueue、LLM/provider呼出し、cache、retry、
+idempotency key送信を行いません。
+
+予算64は有効な設定ですが、空packでも約192 byteを要します。
+metadataが収まらなければNativeは**422 `budget_too_small`**、
+hookは**終了値1**のerror envelopeを返し、空の成功にはしません。
+空packの概算sizeを保証された定数として扱ってはいけません。
+packは収まるが候補が収まらない`budget_exhausted`はNative **200 / hook終了値0**です。
+index欠落の`index_incomplete`も**200 / 終了値0**で、
+projectionが欠けて候補がない場合は`coverage.lexical_incomplete: true`、
+`coverage.retrieval_complete: false`になります。
+hookが成功してもhostは不完全coverageを表示しなければなりません。
+
+### Vendor-neutral Python harness例
+
+実行fileとoperator環境を準備してから以下のshell blockを実行します。
+Python標準libraryだけを使用します。この例のhost policyは**失敗または不完全な取得で停止**
+することであり、黙って継続しません。別のhostがmemoryなしで継続する場合も、
+明示的に選択し表示する必要があります。
+30秒のsubprocess timeoutは例示的な**別のhost policy**であり、
+測定済み起動保証やservice SLOではありません。配置に合わせて設定してください。
+信頼する実行file/PATHと起動環境はoperatorが制御する必要があります。
+空のsample queryに外部modelは不要です。hostは信頼できないtask textを
+`query`だけに渡せますが、設定には使えません。queryをlogに残してはいけません。
+
+```bash
+python - <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+def pause(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+setting_names = (
+    "PGAG_HOOK_API_URL",
+    "PGAG_HOOK_API_TOKEN",
+    "PGAG_HOOK_SCOPE_IDS",
+    "PGAG_HOOK_PURPOSE",
+    "PGAG_HOOK_TOKEN_BUDGET",
+    "PGAG_HOOK_MAX_ITEMS",
+    "PGAG_HOOK_SEARCH_PROFILE",
+    "PGAG_HOOK_TIMEOUT_SECONDS",
+)
+child_env = {name: os.environ[name] for name in setting_names if name in os.environ}
+child_env["PATH"] = os.environ.get("PATH", os.defpath)
+if not all(child_env.get(name) for name in setting_names[:3]):
+    pause("Memory configuration missing; task paused.")
+executable = shutil.which("pg-agmemory", path=child_env["PATH"])
+if executable is None:
+    pause("Memory executable unavailable; task paused.")
+
+event = {"event": "session_start", "query": ""}
+untrusted_memory_evidence = None
+try:
+    completed = subprocess.run(
+        [executable, "recall-hook"],
+        input=json.dumps(event, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        env=child_env,
+        timeout=30,
+        check=False,
+    )
+except (OSError, subprocess.TimeoutExpired):
+    pause("Memory subprocess failed or timed out; task paused.")
+
+# Never echo raw stderr or exception/response text.
+try:
+    envelope = json.loads(completed.stdout.decode("utf-8"))
+except (UnicodeDecodeError, ValueError):
+    pause("Memory output invalid; task paused.")
+if not isinstance(envelope, dict):
+    pause("Memory envelope invalid; task paused.")
+if completed.returncode != 0 or envelope.get("status") != "ok":
+    pause("Memory retrieval failed; task paused.")
+if (
+    set(envelope) != {"status", "event", "result", "error"}
+    or envelope.get("event") != event["event"]
+    or envelope.get("error") is not None
+    or not isinstance(envelope.get("result"), dict)
+):
+    pause("Memory success envelope invalid; task paused.")
+
+result = envelope["result"]
+coverage = result.get("coverage")
+empty_reason = result.get("empty_reason")
+if (
+    not isinstance(coverage, dict)
+    or type(coverage.get("retrieval_complete")) is not bool
+    or empty_reason not in (None, "not_found", "budget_exhausted", "index_incomplete")
+):
+    pause("Memory coverage invalid; task paused.")
+coverage_notice = {"retrieval_complete": coverage["retrieval_complete"]}
+for name in ("truncated", "lexical_incomplete"):
+    if name in coverage:
+        if type(coverage[name]) is not bool:
+            pause("Memory coverage invalid; task paused.")
+        coverage_notice[name] = coverage[name]
+print(json.dumps({
+    "memory_status": "ok",
+    "coverage": coverage_notice,
+    "empty_reason": empty_reason,
+}))
+if not coverage["retrieval_complete"]:
+    pause("Memory coverage incomplete; task paused.")
+
+# Keep the full Native result separate from trusted instructions and policy.
+untrusted_memory_evidence = result
+print("Memory is separate UNTRUSTED evidence; no model or tool was invoked.")
+PY
+```
+
+`subprocess.run(input=...)`はJSON documentを一つ送ってchildのstdinを閉じます。
+終了値と構造化statusの両方を確認し、raw stderrやqueryを含み得る例外を表示しません。
+hookが完全なNative RecallResultを検証し、この例はenvelope/coverageを検査してから別に保持します。
+logには固定coverage keyと検証済みboolean値、検証済みempty-reason enumだけを使い、
+raw response本文を出しません。完全なcoverageは別のresultに維持します。
+JSONなしの起動失敗、不正envelope、subprocess timeoutもraw本文をechoせず停止します。
+全Native evidence/coverage fieldを維持し、system指示、policy、
+検証済み外部事実に昇格させてはいけません。
+この例はvendor連携、model呼出し、host消去証明ではありません。
+
+### 失敗、coverage、削除
+
+検証対象のhook runtime結果はstdoutへJSON envelope一つと改行を出力し、
+stderrはsanitized診断に使用します。
+成功は`status: "ok"`、検証済み`event`、完全なNative `result`、`error: null`です。
+失敗は`status: "error"`、検証済み`event`またはnull、**`result: null`**と、
+`error: {code, retryable, outcome_unknown: false, native_status, request_id}`です。
+Native statusと検証済みrequest UUIDはnullの場合があります。
+
+| Runtime code | 終了値 | 対処 |
+|---|---|---|
+| `invalid_hook_configuration` | `2` | 信頼する起動設定を修正 |
+| `invalid_hook_input` | `2` | 入力をlogに残さずUTF-8/JSONやevent/query検査errorを修正 |
+| `hook_input_too_large` | `2` | stdinを32,768 byte以内にする |
+| `hook_input_unavailable` | `2` | 読取り可能なstdinを渡す |
+| `hook_deadline_exceeded` | `1` | 合算network deadline超過。`retryable: true` |
+| `native_api_unavailable` | `1` | Native API transport利用不能。`retryable: true` |
+| `native_version_mismatch` | `1` | 対応するservice/API/schema版を使う |
+| `invalid_native_response` | `1` | 不正protocol/responseを拒否し、fallbackしない |
+| `budget_too_small` | `1` | Native `422`。pack metadataが収まらないため信頼するbyte予算を調整 |
+| Mapping済みsanitized Native code | `1` | raw詳細を転送せずNative失敗を表示 |
+
+**起動方法のerrorは例外です。** CLI flag拒否（`--subject`/`--once`を含む）と
+`hook` extra未導入は、argparseのstderr診断と**終了値2で、JSON envelopeを返しません**。
+上記設定/入力codeを含む検証対象のhook runtime errorはすべてerror envelopeを返します。
+検査/parse前にstdoutをJSONと仮定せず、raw stderrや不正出力をechoしてはいけません。
+
+終了値**0**はNativeの正当な`not_found`、`budget_exhausted`、`index_incomplete`空理由も
+含みます。取得成功でもcoverageを確認してください。
+**2**は不正設定/入力、**1**はNative/network/version/protocol障害です。
+hostがkillしたprocessはenvelopeを返さない場合があります。
+**取得失敗を空の成功へ変換したり、古いcontextで隠したりしてはいけません。**
+error/coverageを表示し、停止かmemoryなし継続かを明示判断します。
+`retryable`はhintにすぎません。hookは自動retryやidempotency keyを持たず、
+`outcome_unknown: false`は読取り専用操作を反映し、MCP mutation動作を変更しません。
+
+Native tenant session advisory barrierは**信頼するlocal hook**へのHTTP配信で終了します。
+hook/stdout/pipe bufferやhost contextは原子的な対象ではありません。
+回収や削除通知はありません。
+forget/ACL変更後は以前のcontextの利用を停止/破棄し、現在の認可で新しくhookを呼び出します。
+変更前の転送中結果をfreshと仮定してはいけません。
+hookは権限を拡大せず、host/WAL/replica/backup/物理media消去を証明しません。
+技術検査は特定vendor連携、意味品質、性能の適格性を確認するものではありません。
+[全契約](../STATUS-jp.md#implicit-recall-hook)と
+[ADR 0009](../adr/0009-implicit-recall-hook-jp.md)を参照してください。
+
+<a id="v008のapplication更新schema変更なし"></a>
+
+## v0.0.9のapplication更新（schema変更なし）
+
+既存v0.0.7/v0.0.8のschema 7 DBには**migration 008/009も新backfillもありません**。
 application/schema版を記録し、backupと現在の削除/ACL記録を保全します。
-自動再起動を含む旧API/worker/MCP adapterを停止/drainし、対応するv0.0.8 imageへ置換します。
+自動再起動を含む旧API/worker/MCP adapterを停止/drainしてhook起動も止め、
+対応するv0.0.9 imageへ置換します。
 厳密なschema履歴`[1, 2, 3, 4, 5, 6, 7]`を確認後、制限付きNative API/workerを起動し、
-認証付きcapabilitiesを検査して各固定identity adapterを起動します。
+認証付きcapabilitiesを検査して各固定identity adapter/hookを起動します。
 schemaが同じでもrolling混在互換性や対応済みdowngradeの根拠にはなりません。
-package化したruntimeと既存schema契約の検証結果は
-[検証証拠](../STATUS-jp.md#検証証拠)に記録しています。
+v0.0.9のpackage化runtimeと既存schema契約はlocalとnative Docker両architectureで合格しました。
+過去の結果は[検証証拠](../STATUS-jp.md#検証証拠)に分けて記録しています。
 旧schemaには以下の既存schema 7 migration手順を現在のimageで適用します。
-reindexは別のoffline保守であり、MCP commandではありません。
+reindexは別のoffline保守であり、MCP/hook commandではありません。
 
 <a id="v003の保守migration"></a>
 <a id="v004の保守migration"></a>
@@ -205,7 +452,7 @@ reindexは別のoffline保守であり、MCP commandではありません。
 ## v0.0.7の保守migration
 
 旧DB用に残しているv0.0.7導入時のschema 7 migration手順であり、
-**v0.0.8の新migrationではありません**。
+**v0.0.8/v0.0.9の新migrationではありません**。
 
 **旧版/新版API/workerのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -235,7 +482,7 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
    固定したJanome 0.5.0依存と同梱辞書を使用します。
    v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
 5. 厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を確認してから、制限付きruntime資格情報と
-   意図した固定worker subjectで**対応するv0.0.8 API/workerだけを起動**します。
+   意図した固定worker subjectで**対応するv0.0.9 API/workerだけを起動**します。
    traffic再開前にcapabilities/schema、既定/opt-in recallとprojection coverage、
    過去revision選択、認可、purge、原子的publication、互換性を検査してください。
    health応答だけではこれらを検証できません。migration/rebuildの時間・resource使用量は
@@ -289,7 +536,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
 
 1. 自動再起動を含む**全API/workerを停止/drain**し、migration同様にbackupします。
    offline保守であり、稼働中の管理APIではありません。
-2. 対応するv0.0.8 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
+2. 対応するv0.0.9 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
    必要なtable権限を持つ管理者で次を実行します。
 
    ```bash
@@ -306,7 +553,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
    traffic停止を維持し、schema、権限、lock競合を調査します。
    index修復のためruntime bypassを付与したり、canonical本文、timestamp、receiptを
    編集したりしてはいけません。
-5. 対応するv0.0.8 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
+5. 対応するv0.0.9 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
    profile/coverageと認可された現在/過去recallを確認してください。
    正確な`known_at`境界にはhost/VMのwall-clock値でなく、
    serverが返すassertionの`recorded_at`を使います。
@@ -485,7 +732,7 @@ typed pending effectはsnapshot hintであり、durable ledgerは別に管理し
    `unknown → confirmed/failed`も有効です。opaque operation registry、run flag、
    tombstoneを維持してください。
 
-これは台帳であり、worker、harness adapter、provider照会client、承認サービス、
+これは台帳であり、worker、tool実行用harness adapter、provider照会client、承認サービス、
 外部exactly-once機構ではありません。[契約](../STATUS-jp.md#tool-effect-ledger)と
 [ADR 0004](../adr/0004-tool-effects-jp.md)を参照してください。
 
@@ -654,11 +901,11 @@ non-root production image内の実worker CLI smokeを実行します。
 non-root runtime image内で`東京都` → `東京` / `都`の分割も検査し、
 成功時に`Production Japanese tokenizer smoke passed`を出力します。
 同梱tokenizerの初期化/分割の検査であり、end-to-end recallや品質の評価ではありません。
-現在のrunnerはnon-root production image内で実`pg-agmemory mcp` childも起動します。
+過去のv0.0.8 runnerはnon-root production image内で実`pg-agmemory mcp` childも起動します。
 固定tokenとprovision済みscopeでloopback Native APIへ接続し、
 modern `2026-07-28`・legacy `2025-11-25`の**両mode**で4 tool列挙とrecallを検査します。
 既存の日本語/API/worker smokeも維持し、v0.0.8の3環境すべてで合格しています。
-現在のCI step名は`Test containers and smoke-test production API, worker, and MCP`です。
+v0.0.8のCI step名は`Test containers and smoke-test production API, worker, and MCP`です。
 idle-worker検査はpublicationテストや本番/DR適格性確認ではありません。
 過去のv0.0.7実装
 [678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
@@ -669,9 +916,33 @@ local Apple Containerと完全一致SHAのnative Docker
 過去の最終docs commit
 [aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)も、
 [CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899)で
-両native jobが合格しました。**v0.0.8**の実装
+両native jobが合格しました。**過去のv0.0.8**の実装
 [3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)は、
 ローカルと両native architectureの
 [CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)で、
 214テスト、Ruff、strict mypy（13ファイル）、全production smokeに合格しました。
-どちらの過去runもMCP adapterを検証していません。
+二つのv0.0.7 runはMCP adapterを検証していません。
+その後のv0.0.8 bilingual docs commit
+[0b0f695](https://github.com/rioriost/pg_agmemory/commit/0b0f695d8df63db0f70ddd1a277c497166698ac2)は、
+[CI run 35177260509](https://github.com/rioriost/pg_agmemory/actions/runs/35177260509)で
+**各native architectureで214テスト**に合格しました。
+これらの過去runはv0.0.9 hookや共有client抽出を検証していません。
+**v0.0.9の最終結果を2026-09-17 JSTに確認しました。**
+Apple Containerとnative Docker amd64/arm64の各環境で**274テスト、既存warning 1件**、
+Ruff、strict mypy（**source 15ファイル**）、真のcore-only/hook-only導入検査、
+non-root productionの日本語/API/worker、
+MCP **`2026-07-28`・`2025-11-25`**、
+hook **`session_start`・`task_switch`・`after_compaction`**の全smokeに合格しました。
+テスト所要時間はlocal **248.29秒**、native amd64 **482.21秒**、native arm64 **374.33秒**です。
+検査した最終local sourceは公開済み実装
+[3d52a8f](https://github.com/rioriost/pg_agmemory/commit/3d52a8fdf950e28fbbd30181850629021bd00050)と一致します。
+[CI run 35181334488](https://github.com/rioriost/pg_agmemory/actions/runs/35181334488)の
+両jobの実logで、job statusだけでなく完全一致SHAと全検査を確認しました。
+所要時間は性能benchmarkではありません。
+[v0.0.9証拠](../STATUS-jp.md#v009--schema-7)を参照してください。
+本番/DR受入の主張ではありません。
+実装済みのDocker **`adapter-extras-check`** targetは真のcore-only導入/extra未導入、
+続いて**MCPなし**のhook-only導入を検査し、HTTP失敗時の明示JSONも対象とします。
+container scriptはlocal Apple Containerとnative Docker両architectureでこのtargetをbuildします。
+**全3環境で合格**しました。
+元のmilestoneや受入gateの完了ではありません。

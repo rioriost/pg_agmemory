@@ -11,6 +11,11 @@
 - Acceptance: M0–M3, MVP, production, performance, memory quality, DR, and
   full-erasure gates remain incomplete
 
+**Historical scope:** this ADR records v0.0.8/schema 7 and its evidence, not
+v0.0.9 validation. [ADR 0009](0009-implicit-recall-hook.md) adds the recall hook
+and shared-client extraction; current startup versions are in
+[STATUS](../STATUS.md). Both MCP protocol eras and semantics remain required.
+
 ## Decision and scope
 
 Add `pg-agmemory mcp` as a **local stdio adapter to the authenticated Native
@@ -25,7 +30,7 @@ An optional `pg-agmemory[mcp]` extra pins official **mcp 2.2.0** and
 **httpx 0.28.1**. Both test and runtime Docker stages include it; base package
 users need not install the MCP extra. Local validation uses **Apple Container**,
 not Docker Desktop, and CI uses Docker on native **linux/amd64** and
-**linux/arm64**. Final results for this milestone are not yet recorded.
+**linux/arm64**. Historical final results for this milestone are recorded below.
 
 No remote MCP HTTP/Streamable HTTP/SSE listener, OAuth, caller identity
 delegation, arbitrary headers/URLs, agent harness execution, or generalized

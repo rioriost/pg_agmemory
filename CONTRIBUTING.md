@@ -19,9 +19,11 @@ container system start
 ./scripts/test-containers.sh
 ```
 
-The script builds the test image, runs Ruff, mypy, unit tests and PostgreSQL
-integration tests, then builds and starts the non-root runtime image and checks
-HTTP liveness. It uses separate disposable PostgreSQL containers for tests and
+The script builds the test image and runs Ruff, mypy, unit tests and PostgreSQL
+integration tests. It verifies actual core-only and hook-only installations
+without the MCP SDK, then starts the non-root runtime image and checks the
+Japanese tokenizer, API liveness, worker, both MCP protocol modes, and all three
+implicit recall hook events. It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.
 `PGAG_TEST_DATABASE_URL` is for disposable test data only; prefer letting the
