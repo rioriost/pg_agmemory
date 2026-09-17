@@ -31,6 +31,7 @@ from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
     AssertionExplanation,
+    CancelJob,
     Capture,
     CaptureResult,
     CheckpointEnvelope,
@@ -262,7 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-runtime-readiness",
+            "stage": "m2-job-cancellation",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -294,6 +295,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "automatic_capture": False,
             },
             "job_kinds": ["structured_remember"],
+            "job_cancellation": {
+                "endpoint": "/v1/jobs/{job_id}/cancel",
+                "compare_and_swap": ["state", "attempt"],
+                "terminal_state": "cancelled",
+                "provider_interruption": False,
+            },
             "checkpoints": True,
             "tool_effect_ledger": True,
             "temporal_revisions": True,
@@ -489,6 +496,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job_id: UUID, data: EnqueueJob, request: Request, idempotency_key: IdempotencyKey
     ) -> Any:
         return await Jobs(service(request)).enqueue(data, idempotency_key, retry_of=job_id)
+
+    @app.post("/v1/jobs/{job_id}/cancel", response_model=JobReceipt)
+    async def cancel_job(
+        job_id: UUID, data: CancelJob, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Jobs(service(request)).cancel(job_id, data, idempotency_key)
 
     @app.post("/v1/explain", response_model=EpisodeExplanation | AssertionExplanation)
     async def explain(data: Explain, request: Request) -> Any:

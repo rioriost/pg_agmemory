@@ -82,6 +82,22 @@ def process(env, index=0):
     return asyncio.run(run_once(env.settings.database_url, env.subjects[index]))
 
 
+def test_cancelled_capture_replays_original_pair_without_reviving_job(env):
+    body, headers = payload(env), env.headers()
+    stored = capture(env, body, headers).json()
+    cancelled = env.client.post(
+        "/v1/jobs/" + stored["synthesis_job_id"] + "/cancel",
+        json={"expected_state": "pending", "expected_attempt": 0},
+        headers=env.headers(),
+    )
+    assert cancelled.status_code == 200
+    assert capture(env, body, headers).json() == capture(env, body).json() == stored
+    assert job(env, stored).json()["state"] == "cancelled"
+    assert process(env) == {"outcome": "idle"}
+    assert [item["memory_id"] for item in env.recall().json()["items"]] == [stored["memory_id"]]
+    assert counts(env)["memory_ops.job"] == 1 and counts(env)["memory.episode"] == 1
+
+
 def claim(env):
     async def execute():
         async with job_transaction(env.settings.database_url, env.subjects[0]) as jobs:

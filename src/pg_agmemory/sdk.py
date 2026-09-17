@@ -14,6 +14,7 @@ except ModuleNotFoundError as exc:
 
 from pg_agmemory.models import (
     AssertionExplanation,
+    CancelJob,
     Capture,
     CaptureResult,
     CheckpointEnvelope,
@@ -84,6 +85,7 @@ SDK_NATIVE_CODES = frozenset(SAFE_NATIVE_CODES) | {
     "effect_transition_conflict",
     "job_invalidated",
     "job_retry_conflict",
+    "job_cancel_conflict",
     "job_intent_conflict",
     "job_limit_exceeded",
     "job_lease_conflict",
@@ -156,12 +158,12 @@ class AsyncMemoryClient:
         model: type[Q],
         response: TypeAdapter[R],
         *,
+        mutation: bool,
         status: int = 200,
         key: str | None = None,
         max_request_bytes: int = MAX_REQUEST_BYTES,
     ) -> R:
         native = self._connection()
-        mutation = status != 200
         if mutation and (
             not isinstance(key, str)
             or not 1 <= len(key) <= 256
@@ -187,6 +189,7 @@ class AsyncMemoryClient:
             request,
             Observe,
             TypeAdapter(ObserveResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -197,6 +200,7 @@ class AsyncMemoryClient:
             request,
             Capture,
             TypeAdapter(CaptureResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -207,6 +211,7 @@ class AsyncMemoryClient:
             request,
             Remember,
             TypeAdapter(RememberResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -219,16 +224,20 @@ class AsyncMemoryClient:
             request,
             ReviseAssertion,
             TypeAdapter(RevisionResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
 
     async def recall(self, request: Recall) -> RecallResult:
-        return await self._post("/v1/recall", request, Recall, TypeAdapter(RecallResult))
+        return await self._post(
+            "/v1/recall", request, Recall, TypeAdapter(RecallResult), mutation=False
+        )
 
     async def explain(self, request: Explain) -> EpisodeExplanation | AssertionExplanation:
         return await self._post(
-            "/v1/explain", request, Explain, TypeAdapter(EpisodeExplanation | AssertionExplanation)
+            "/v1/explain", request, Explain, TypeAdapter(EpisodeExplanation | AssertionExplanation),
+            mutation=False,
         )
 
     async def forget(
@@ -239,7 +248,7 @@ class AsyncMemoryClient:
             DeletionPreview if data.mode == "preview" else DeletionResult
         )
         return await self._post(
-            "/v1/forget", data, Forget, response, status=202, key=idempotency_key
+            "/v1/forget", data, Forget, response, mutation=True, status=202, key=idempotency_key
         )
 
     async def get_deletion(self, receipt_id: UUID) -> DeletionProgress:
@@ -247,7 +256,7 @@ class AsyncMemoryClient:
 
     async def embedding_input(self, request: Explain) -> EmbeddingInput:
         return await self._post(
-            "/v1/embedding-inputs", request, Explain, TypeAdapter(EmbeddingInput)
+            "/v1/embedding-inputs", request, Explain, TypeAdapter(EmbeddingInput), mutation=False
         )
 
     async def put_embedding(
@@ -258,6 +267,7 @@ class AsyncMemoryClient:
             request,
             PutEmbedding,
             TypeAdapter(EmbeddingReceipt),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -268,6 +278,7 @@ class AsyncMemoryClient:
             request,
             CreateEntity,
             TypeAdapter(EntityReceipt),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -283,6 +294,7 @@ class AsyncMemoryClient:
             request,
             CreateRelation,
             TypeAdapter(RememberResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -295,12 +307,15 @@ class AsyncMemoryClient:
             request,
             ReviseRelation,
             TypeAdapter(RevisionResult),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
 
     async def expand_graph(self, request: ExpandGraph) -> GraphResult:
-        return await self._post("/v1/graph/expand", request, ExpandGraph, TypeAdapter(GraphResult))
+        return await self._post(
+            "/v1/graph/expand", request, ExpandGraph, TypeAdapter(GraphResult), mutation=False
+        )
 
     async def enqueue_job(self, request: EnqueueJob, *, idempotency_key: str) -> JobReceipt:
         return await self._post(
@@ -308,6 +323,7 @@ class AsyncMemoryClient:
             request,
             EnqueueJob,
             TypeAdapter(JobReceipt),
+            mutation=True,
             status=202,
             key=idempotency_key,
         )
@@ -323,7 +339,20 @@ class AsyncMemoryClient:
             request,
             EnqueueJob,
             TypeAdapter(JobReceipt),
+            mutation=True,
             status=202,
+            key=idempotency_key,
+        )
+
+    async def cancel_job(
+        self, job_id: UUID, request: CancelJob, *, idempotency_key: str
+    ) -> JobReceipt:
+        return await self._post(
+            f"/v1/jobs/{_id(job_id)}/cancel",
+            request,
+            CancelJob,
+            TypeAdapter(JobReceipt),
+            mutation=True,
             key=idempotency_key,
         )
 
@@ -335,6 +364,7 @@ class AsyncMemoryClient:
             request,
             CreateCheckpoint,
             TypeAdapter(CheckpointReceipt),
+            mutation=True,
             status=201,
             key=idempotency_key,
             max_request_bytes=1048576,
@@ -351,6 +381,7 @@ class AsyncMemoryClient:
             request,
             RestoreCheckpoint,
             TypeAdapter(CheckpointEnvelope),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -363,6 +394,7 @@ class AsyncMemoryClient:
             request,
             PlanToolEffect,
             TypeAdapter(ToolEffectReceipt),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )
@@ -378,6 +410,7 @@ class AsyncMemoryClient:
             request,
             TransitionToolEffect,
             TypeAdapter(ToolEffectReceipt),
+            mutation=True,
             status=201,
             key=idempotency_key,
         )

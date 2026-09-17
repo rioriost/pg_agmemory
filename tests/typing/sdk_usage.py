@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pg_agmemory.models import (
     AssertionExplanation,
+    CancelJob,
     Capture,
     CaptureResult,
     CheckpointEnvelope,
@@ -61,6 +62,7 @@ async def typed_calls(
     revise_relation: ReviseRelation,
     graph: ExpandGraph,
     job: EnqueueJob,
+    cancellation: CancelJob,
     checkpoint: CreateCheckpoint,
     restore: RestoreCheckpoint,
     effect: PlanToolEffect,
@@ -93,6 +95,9 @@ async def typed_calls(
         assert_type(await memory.enqueue_job(job, idempotency_key=key), JobReceipt)
         assert_type(await memory.get_job(identity), JobDetail)
         assert_type(await memory.retry_job(identity, job, idempotency_key=key), JobReceipt)
+        assert_type(
+            await memory.cancel_job(identity, cancellation, idempotency_key=key), JobReceipt
+        )
         assert_type(
             await memory.create_checkpoint(checkpoint, idempotency_key=key), CheckpointReceipt
         )

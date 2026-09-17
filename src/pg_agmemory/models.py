@@ -452,6 +452,17 @@ class EnqueueJob(Contract):
     memory: Remember
 
 
+class CancelJob(Contract):
+    expected_state: Literal["pending", "running"]
+    expected_attempt: Annotated[int, Field(ge=0, le=5, strict=True)]
+
+    @model_validator(mode="after")
+    def running_attempt(self) -> "CancelJob":
+        if self.expected_state == "running" and self.expected_attempt == 0:
+            raise ValueError("a running job has at least one attempt")
+        return self
+
+
 class JobReceipt(BaseModel):
     job_id: UUID
     kind: Literal["structured_remember"] = "structured_remember"
@@ -460,7 +471,7 @@ class JobReceipt(BaseModel):
 
 class JobDetail(JobReceipt):
     retry_of: UUID | None
-    state: Literal["pending", "running", "succeeded", "failed"]
+    state: Literal["pending", "running", "succeeded", "failed", "cancelled"]
     attempt: int
     max_attempts: Literal[5] = 5
     available_at: datetime

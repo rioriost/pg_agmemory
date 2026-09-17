@@ -14,6 +14,7 @@ from pg_agmemory.database import SCHEMA_VERSION
 from pg_agmemory.jobs import job_transaction
 from pg_agmemory.models import (
     AssertionExplanation,
+    CancelJob,
     Capture,
     CapturedMemory,
     CheckpointEnvelope,
@@ -204,13 +205,19 @@ def test_maximum_key_and_body_exception_close(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("method", ["get", "forget_preview", "forget_purge"])
+@pytest.mark.parametrize(
+    "method", ["get", "forget_preview", "forget_purge", "cancel_status", "cancel_shape"]
+)
 def test_response_status_and_mode_are_not_silently_coerced(monkeypatch, method):
     def handler(request):
         if method == "get":
             assert request.method == "GET" and not request.content
             assert "idempotency-key" not in request.headers
             return response(201, {})
+        if method == "cancel_status":
+            return response(201, {"job_id": str(uuid4())})
+        if method == "cancel_shape":
+            return response(200, {})
         if method == "forget_preview":
             return response(
                 202,
@@ -232,6 +239,12 @@ def test_response_status_and_mode_are_not_silently_coerced(monkeypatch, method):
             with pytest.raises(MemoryClientError, match="invalid_native_response") as failure:
                 if method == "get":
                     await sdk.get_job(uuid4())
+                elif method.startswith("cancel_"):
+                    await sdk.cancel_job(
+                        uuid4(),
+                        CancelJob(expected_state="pending", expected_attempt=0),
+                        idempotency_key="key",
+                    )
                 else:
                     await sdk.forget(
                         Forget(
@@ -271,13 +284,21 @@ def test_incompatible_server_closes_before_any_operation(monkeypatch, capabiliti
 
 
 @pytest.mark.parametrize("key", ["", " ", " lead", "tail ", "\r\nsecret", "あ", "x" * 257, None, 1])
-def test_bad_keys_are_rejected_before_network(monkeypatch, key):
+@pytest.mark.parametrize("method", ["observe", "cancel"])
+def test_bad_keys_are_rejected_before_network(monkeypatch, key, method):
     _, calls = mock_client(monkeypatch, lambda _: pytest.fail("Invalid key reached API"))
 
     async def scenario():
         async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as client:
             with pytest.raises(MemoryClientError, match="invalid_request") as failure:
-                await client.observe(observation(), idempotency_key=key)
+                if method == "observe":
+                    await client.observe(observation(), idempotency_key=key)
+                else:
+                    await client.cancel_job(
+                        uuid4(),
+                        CancelJob(expected_state="pending", expected_attempt=0),
+                        idempotency_key=key,
+                    )
             assert not failure.value.error.outcome_unknown
         assert len(calls) == 1
 
@@ -503,6 +524,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/jobs",
         "/v1/jobs/{job_id}",
         "/v1/jobs/{job_id}/retry",
+        "/v1/jobs/{job_id}/cancel",
         "/v1/checkpoints",
         "/v1/checkpoints/{checkpoint_id}",
         "/v1/checkpoints/restore",
@@ -516,7 +538,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 24
+    assert len(methods) == len(expected) == 25
 
 
 @pytest.mark.integration
@@ -696,6 +718,20 @@ def test_real_sdk_graph_job_retry_checkpoints_and_effects(env, api_process):
                 retried = await client.retry_job(job.job_id, job_body, idempotency_key="retry")
                 assert retried.job_id != job.job_id
                 assert (await client.get_job(retried.job_id)).retry_of == job.job_id
+                cancel_body = job_body.model_copy(
+                    update={
+                        "memory": job_body.memory.model_copy(update={"predicate": "cancelled_sdk"}),
+                    }
+                )
+                cancelled = await client.enqueue_job(cancel_body, idempotency_key="cancel-source")
+                assert (
+                    await client.cancel_job(
+                        cancelled.job_id,
+                        CancelJob(expected_state="pending", expected_attempt=0),
+                        idempotency_key="cancel",
+                    )
+                ).job_id == cancelled.job_id
+                assert (await client.get_job(cancelled.job_id)).state == "cancelled"
                 assert (await run_once(env.settings.database_url, env.subjects[0]))[
                     "outcome"
                 ] == "succeeded"
@@ -832,6 +868,77 @@ def test_sdk_lost_committed_response_replays_same_reference(
                 assert (
                     conn.execute(
                         "SELECT count(*) FROM memory.episode WHERE tenant_id=%s", (env.tenants[0],)
+                    ).fetchone()[0]
+                    == 1
+                )
+
+        asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_sdk_lost_cancellation_response_replays_terminal_receipt(env, api_process, monkeypatch):
+    class LoseCancelResponse(httpx.AsyncHTTPTransport):
+        calls = 0
+        committed = None
+
+        async def handle_async_request(self, request):
+            response = await super().handle_async_request(request)
+            if request.url.path.endswith("/cancel"):
+                self.calls += 1
+                if self.calls == 1:
+                    await response.aread()
+                    assert response.status_code == 200
+                    self.committed = response.json()
+                    await response.aclose()
+                    raise httpx.ReadError("simulated committed cancellation response loss")
+            return response
+
+    transport = LoseCancelResponse()
+
+    def client(settings):
+        return httpx.AsyncClient(
+            base_url=settings.api_url,
+            transport=transport,
+            headers={"Authorization": f"Bearer {settings.api_token}"},
+            trust_env=False,
+            follow_redirects=False,
+        )
+
+    monkeypatch.setattr(NativeSettings, "client", client)
+    with api_process("sdk-cancel-loss.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                source = await sdk.observe(observation(env.scopes[0]), idempotency_key="source")
+                receipt = await sdk.enqueue_job(
+                    EnqueueJob(
+                        kind="structured_remember", memory=memory(env.scopes[0], source.memory_id)
+                    ),
+                    idempotency_key="job",
+                )
+                body = CancelJob(expected_state="pending", expected_attempt=0)
+                with pytest.raises(MemoryClientError) as failure:
+                    await sdk.cancel_job(receipt.job_id, body, idempotency_key="durable-cancel")
+                assert failure.value.error.outcome_unknown and transport.calls == 1
+                assert (await sdk.get_job(receipt.job_id)).state == "cancelled"
+                replay = await sdk.cancel_job(
+                    receipt.job_id, body, idempotency_key="durable-cancel"
+                )
+                assert replay.model_dump(mode="json") == transport.committed
+                assert transport.calls == 2
+                with pytest.raises(MemoryClientError) as conflict:
+                    await sdk.cancel_job(receipt.job_id, body, idempotency_key="different-key")
+                assert conflict.value.error.code == "job_cancel_conflict"
+                assert not conflict.value.error.outcome_unknown
+                assert await run_once(env.settings.database_url, env.subjects[0]) == {
+                    "outcome": "idle"
+                }
+            with psycopg.connect(env.admin_url) as conn:
+                assert (
+                    conn.execute(
+                        "SELECT count(*) FROM memory_ops.audit_event "
+                        "WHERE tenant_id=%s AND action='job_cancelled'",
+                        (env.tenants[0],),
                     ).fetchone()[0]
                     == 1
                 )

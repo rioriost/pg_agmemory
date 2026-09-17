@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from pg_agmemory.models import EnqueueJob, JobError, Remember
+from pg_agmemory.models import CancelJob, EnqueueJob, JobError, Remember
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
 RECIPE = "structured-remember-v1"
@@ -158,6 +158,34 @@ class Jobs:
             await self.memory.audit(operation, job_id)
             result = {"job_id": str(job_id)}
         await self.memory.save_result(operation, key_hash, request_hash, result)
+        return result
+
+    async def cancel(self, job_id: UUID, data: CancelJob, key: str) -> dict[str, Any]:
+        row = await self.load(job_id, "write")
+        if row["principal_id"] != self.memory.principal:
+            raise MemoryError("not_found", 404)
+        key_hash, request_hash, previous = await self.memory.replay(
+            "cancel_job", key,
+            json.dumps({"job_id": str(job_id), "request": data.model_dump(mode="json")},
+                       sort_keys=True),
+        )
+        if previous is not None:
+            return previous
+        cancelled = await (
+            await self.conn.execute(
+                """UPDATE memory_ops.job SET state = 'cancelled',payload = NULL,
+                   lease_token = NULL,lease_until = NULL,error_code = NULL
+                   WHERE tenant_id = %s AND id = %s AND principal_id = %s
+                     AND state = %s AND attempt = %s RETURNING id""",
+                (self.tenant, job_id, self.memory.principal,
+                 data.expected_state, data.expected_attempt),
+            )
+        ).fetchone()
+        if cancelled is None:
+            raise MemoryError("job_cancel_conflict", 409)
+        await self.memory.audit("job_cancelled", job_id)
+        result = {"job_id": str(job_id)}
+        await self.memory.save_result("cancel_job", key_hash, request_hash, result)
         return result
 
     async def claim(self, lease_seconds: int = 30) -> dict[str, Any] | None:

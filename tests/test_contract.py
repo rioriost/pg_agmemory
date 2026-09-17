@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from pg_agmemory.models import MemoryItem, Observe, Recall, Remember
+from pg_agmemory.models import CancelJob, MemoryItem, Observe, Recall, Remember
 from pg_agmemory.service import MemoryError, build_context
 
 
@@ -65,3 +65,22 @@ def test_pack_exact_byte_budget_and_whole_item_removal(content):
     assert f"recorded={item.recorded_at.isoformat()}" in pack["text"]
     with pytest.raises(MemoryError, match="budget_too_small"):
         build_context([], 64)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"expected_state": "pending"},
+        {"expected_state": "cancelled", "expected_attempt": 0},
+        {"expected_state": "running", "expected_attempt": 0},
+        {"expected_state": "pending", "expected_attempt": -1},
+        {"expected_state": "running", "expected_attempt": 6},
+        {"expected_state": "pending", "expected_attempt": False},
+        {"expected_state": "running", "expected_attempt": "1"},
+        {"expected_state": "pending", "expected_attempt": 0, "principal_id": "spoofed"},
+    ],
+)
+def test_cancel_requires_explicit_active_state_and_strict_attempt(data):
+    with pytest.raises(ValidationError):
+        CancelJob.model_validate(data)

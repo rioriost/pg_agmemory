@@ -291,7 +291,7 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
             == 0
         )
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["stage"] == "m2-runtime-readiness" and caps["schema_version"] == 9
+    assert caps["stage"] == "m2-job-cancellation" and caps["schema_version"] == 10
     assert caps["health_probes"] == {
         "liveness": "/healthz",
         "readiness": "/readyz",
@@ -364,7 +364,10 @@ def test_schema_drift_and_recovery_without_restarting(env, drift):
         elif drift == "gap":
             admin.execute("DELETE FROM public.pgag_schema_migration WHERE version=5")
         elif drift == "ahead":
-            admin.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (10)")
+            admin.execute(
+                "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)",
+                (database.SCHEMA_VERSION + 1,),
+            )
         else:
             admin.execute("REVOKE SELECT ON public.pgag_schema_migration FROM pgag_runtime")
         try:
@@ -378,7 +381,10 @@ def test_schema_drift_and_recovery_without_restarting(env, drift):
             elif drift == "gap":
                 admin.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (5)")
             elif drift == "ahead":
-                admin.execute("DELETE FROM public.pgag_schema_migration WHERE version=10")
+                admin.execute(
+                    "DELETE FROM public.pgag_schema_migration WHERE version=%s",
+                    (database.SCHEMA_VERSION + 1,),
+                )
             else:
                 admin.execute("GRANT SELECT ON public.pgag_schema_migration TO pgag_runtime")
     assert_probe(env.client.get("/readyz"), True)

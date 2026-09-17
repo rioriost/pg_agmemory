@@ -7,6 +7,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from threading import Barrier
 from uuid import uuid4
 
 import psycopg
@@ -71,6 +72,332 @@ def process(env, index=0):
 
 def assertions(env):
     return [item for item in env.recall().json()["items"] if item["type"] == "assertion"]
+
+
+def cancel(env, job, state="pending", attempt=0, headers=None, index=0):
+    return env.client.post(
+        "/v1/jobs/" + job["job_id"] + "/cancel",
+        json={"expected_state": state, "expected_attempt": attempt},
+        headers=headers or env.headers(index),
+    )
+
+
+def cancellation_count(env, job):
+    with psycopg.connect(env.admin_url) as conn:
+        return conn.execute(
+            "SELECT count(*) FROM memory_ops.audit_event "
+            "WHERE tenant_id=%s AND target_id=%s AND action='job_cancelled'",
+            (env.tenants[0], job["job_id"]),
+        ).fetchone()[0]
+
+
+def test_cancel_pending_is_terminal_replayable_and_not_forget(env):
+    body, key = payload(env), env.headers()
+    job = enqueue(env, body)
+    cancelled = cancel(env, job, headers=key)
+    assert cancelled.status_code == 200 and cancelled.json() == job
+    assert cancelled.headers["cache-control"] == "no-store"
+    detail = get(env, job).json()
+    assert detail["state"] == "cancelled" and detail["attempt"] == 0
+    assert detail["error_code"] is detail["result"] is detail["lease_until"] is None
+    assert detail["input_refs"] == [
+        {"memory_id": body["memory"]["evidence"][0]["memory_id"], "revision": 1},
+    ]
+    assert cancel(env, job, headers=key).json() == job
+    assert cancel(env, job, "running", 1, headers=key).json()["code"] == "idempotency_conflict"
+    assert cancel(env, job).json()["code"] == "job_cancel_conflict"
+    assert enqueue(env, body) == job
+    retry = env.client.post(
+        "/v1/jobs/" + job["job_id"] + "/retry", json=body, headers=env.headers()
+    )
+    assert retry.status_code == 409 and retry.json()["code"] == "job_retry_conflict"
+    assert process(env) == {"outcome": "idle"} and assertions(env) == []
+    assert len(env.recall().json()["items"]) == 1
+    assert not env.recall().json()["coverage"]["jobs_pending"]
+    assert cancellation_count(env, job) == 1
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(
+            "SELECT payload,lease_token,lease_until,error_code,result_id "
+            "FROM memory_ops.job WHERE id=%s",
+            (job["job_id"],),
+        ).fetchone() == (None, None, None, None, None)
+        assert conn.execute(
+            "SELECT result FROM memory_ops.idempotency "
+            "WHERE tenant_id=%s AND operation='cancel_job'",
+            (env.tenants[0],),
+        ).fetchall() == [({"job_id": job["job_id"]},)]
+        assert conn.execute(
+            "SELECT access_epoch,deletion_epoch FROM memory.tenant WHERE id=%s", (env.tenants[0],)
+        ).fetchone() == (1, 1)
+    other = enqueue(env)
+    assert cancel(env, other, headers=key).json()["code"] == "idempotency_conflict"
+    assert get(env, other).json()["state"] == "pending"
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_cancel_running_fences_publish_heartbeat_and_failure(env, expired):
+    job = enqueue(env)
+    lease = call(env, "claim", lease_seconds=1 if expired else 30)
+    if expired:
+        time.sleep(1.1)
+    assert cancel(env, job, "running", 1).status_code == 200
+    assert get(env, job).json()["attempt"] == 1
+    for method, args, kwargs in [
+        ("publish", (Remember.model_validate(lease["payload"]),), {}),
+        ("heartbeat", (), {}),
+        ("fail", ("dependency_unavailable",), {"retry": True}),
+    ]:
+        with pytest.raises(MemoryError, match="job_lease_conflict"):
+            call(env, method, lease["job_id"], lease["lease_token"], *args, **kwargs)
+    assert process(env) == {"outcome": "idle"} and not assertions(env)
+
+
+def test_cancel_cas_detects_claim_and_retry_but_not_heartbeat(env):
+    job = enqueue(env)
+    lease = call(env, "claim")
+    assert cancel(env, job).json()["code"] == "job_cancel_conflict"
+    assert cancel(env, job, "running", 2).json()["code"] == "job_cancel_conflict"
+    call(env, "fail", lease["job_id"], lease["lease_token"], "dependency_unavailable", retry=True)
+    assert cancel(env, job, "running", 1).json()["code"] == "job_cancel_conflict"
+    assert cancel(env, job, "pending", 0).json()["code"] == "job_cancel_conflict"
+    assert cancel(env, job, "pending", 1).status_code == 200
+    assert get(env, job).json()["error_code"] is None
+    second = enqueue(env)
+    lease = call(env, "claim")
+    call(env, "heartbeat", lease["job_id"], lease["lease_token"])
+    assert cancel(env, second, "running", 1).status_code == 200
+
+
+@pytest.mark.parametrize("terminal", ["failed", "succeeded"])
+def test_cancel_never_rewrites_existing_terminal_result(env, terminal):
+    job = enqueue(env)
+    lease = call(env, "claim")
+    if terminal == "failed":
+        call(env, "fail", lease["job_id"], lease["lease_token"], "invalid_input", retry=False)
+    else:
+        publish(env, lease)
+    before = get(env, job).json()
+    response = cancel(env, job, "running", 1)
+    assert response.status_code == 409 and response.json()["code"] == "job_cancel_conflict"
+    assert get(env, job).json() == before and cancellation_count(env, job) == 0
+    assert len(assertions(env)) == (1 if terminal == "succeeded" else 0)
+
+
+def test_cancel_requires_owner_even_for_same_scope_admin_and_non_job_is_private(env):
+    job = enqueue(env)
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            "INSERT INTO memory.scope_member(tenant_id,scope_id,principal_id,permissions) "
+            "VALUES (%s,%s,%s,ARRAY['admin'])",
+            (env.tenants[0], env.scopes[0], env.principals[2]),
+        )
+    assert get(env, job, 2).status_code == 200
+    for index, target in [
+        (2, job),
+        (1, job),
+        (0, {"job_id": str(uuid4())}),
+        (0, {"job_id": env.observe().json()["memory_id"]}),
+    ]:
+        denied = cancel(env, target, index=index)
+        assert denied.status_code == 404 and denied.json()["code"] == "not_found"
+    assert cancellation_count(env, job) == 0 and get(env, job).json()["state"] == "pending"
+
+
+def test_cancel_and_replay_recheck_current_write_access(env):
+    from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
+
+    job, key = enqueue(env), env.headers()
+
+    def access(epoch, permissions):
+        with scope_access(
+            env.admin_url,
+            ScopeAccessRequest(
+                operation="set",
+                tenant_id=env.tenants[0],
+                scope_id=env.scopes[0],
+                principal_id=env.principals[0],
+                expected_access_epoch=epoch,
+                permissions=permissions,
+                no_expiry=True,
+            ),
+        ):
+            pass
+
+    access(1, ("read",))
+    assert cancel(env, job, headers=key).status_code == 404
+    assert get(env, job).json()["state"] == "pending"
+    access(2, ("read", "write"))
+    assert cancel(env, job, headers=key).status_code == 200
+    access(3, ("read",))
+    assert cancel(env, job, headers=key).status_code == 404
+    access(4, ("read", "write"))
+    assert cancel(env, job, headers=key).json() == job
+    assert cancellation_count(env, job) == 1
+
+
+@pytest.mark.parametrize("cancel_first", [False, True])
+def test_source_purge_prevents_cancel_or_receipt_replay(env, cancel_first):
+    body, key = payload(env), env.headers()
+    job = enqueue(env, body)
+    if cancel_first:
+        assert cancel(env, job, headers=key).status_code == 200
+    source = body["memory"]["evidence"][0]["memory_id"]
+    removed = env.client.post(
+        "/v1/forget", json={"memory_ids": [source], "reason": "test"}, headers=env.headers()
+    )
+    assert removed.status_code == 202 and removed.json()["object_count"] == 2
+    assert cancel(env, job, headers=key).status_code == 404
+    assert get(env, job).status_code == 404 and process(env) == {"outcome": "idle"}
+    assert env.client.post("/v1/jobs", json=body, headers=env.headers()).status_code == 404
+    with psycopg.connect(env.admin_url) as conn:
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM memory_ops.job WHERE id=%s", (job["job_id"],)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM memory_ops.job_identity WHERE job_id=%s", (job["job_id"],)
+            ).fetchone()[0]
+            == 1
+        )
+
+
+def test_cancel_and_publish_race_has_one_terminal_winner(env):
+    job = enqueue(env)
+    lease = call(env, "claim")
+    barrier = Barrier(2)
+
+    def cancellation():
+        barrier.wait(timeout=5)
+        result = cancel(env, job, "running", 1)
+        return "cancelled" if result.status_code == 200 else result.json()["code"]
+
+    def publication():
+        barrier.wait(timeout=5)
+        try:
+            publish(env, lease)
+            return "succeeded"
+        except MemoryError as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(cancellation)
+        second = pool.submit(publication)
+        outcomes = {first.result(), second.result()}
+    assert outcomes in (
+        {"cancelled", "job_lease_conflict"},
+        {"succeeded", "job_cancel_conflict"},
+    )
+    state = get(env, job).json()["state"]
+    assert len(assertions(env)) == (1 if state == "succeeded" else 0)
+    assert cancellation_count(env, job) == (1 if state == "cancelled" else 0)
+
+
+@pytest.mark.parametrize("stage", ["audit", "receipt"])
+def test_cancellation_failure_rolls_back_state_audit_and_receipt(env, monkeypatch, stage):
+    job, key = enqueue(env), env.headers()
+    original = MemoryService.audit if stage == "audit" else MemoryService.save_result
+
+    async def fail(self, operation, *args):
+        if operation == ("job_cancelled" if stage == "audit" else "cancel_job"):
+            raise MemoryError("injected_failure", 503)
+        return await original(self, operation, *args)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(MemoryService, "audit" if stage == "audit" else "save_result", fail)
+        assert cancel(env, job, headers=key).status_code == 503
+    assert get(env, job).json()["state"] == "pending" and cancellation_count(env, job) == 0
+    with psycopg.connect(env.admin_url) as conn:
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM memory_ops.idempotency "
+                "WHERE tenant_id=%s AND operation='cancel_job'",
+                (env.tenants[0],),
+            ).fetchone()[0]
+            == 0
+        )
+    assert cancel(env, job, headers=key).status_code == 200
+    assert cancellation_count(env, job) == 1
+
+
+def test_database_enforces_cancelled_state_and_terminal_immutability(env):
+    job = enqueue(env)
+    lease = call(env, "claim")
+
+    async def guards():
+        for assignments in [
+            "payload=NULL,lease_token=NULL,lease_until=NULL,error_code=NULL,attempt=attempt+1",
+            "lease_token=NULL,lease_until=NULL,error_code=NULL",
+            "payload=NULL,error_code=NULL",
+            "payload=NULL,lease_token=NULL,lease_until=NULL,error_code='invalid_input'",
+        ]:
+            with pytest.raises(psycopg.errors.CheckViolation):
+                async with job_transaction(env.settings.database_url, env.subjects[0]) as jobs:
+                    await jobs.conn.execute(
+                        "UPDATE memory_ops.job SET state='cancelled',"
+                        + assignments
+                        + " WHERE id=%s",
+                        (job["job_id"],),
+                    )
+
+    asyncio.run(guards())
+    assert cancel(env, job, "running", lease["attempt"]).status_code == 200
+
+    async def terminal():
+        with pytest.raises(psycopg.errors.CheckViolation):
+            async with job_transaction(env.settings.database_url, env.subjects[0]) as jobs:
+                await jobs.conn.execute(
+                    "UPDATE memory_ops.job SET available_at=clock_timestamp() WHERE id=%s",
+                    (job["job_id"],),
+                )
+
+    asyncio.run(terminal())
+
+
+def test_actual_worker_reports_lease_lost_when_cancelled_after_claim(env, monkeypatch):
+    from pg_agmemory import worker
+
+    job = enqueue(env)
+
+    class CancelDuringPreparation:
+        @staticmethod
+        def model_validate(body):
+            assert cancel(env, job, "running", 1).status_code == 200
+            return Remember.model_validate(body)
+
+    monkeypatch.setattr(worker, "Remember", CancelDuringPreparation)
+    assert process(env) == {"job_id": job["job_id"], "outcome": "lease_lost"}
+    assert get(env, job).json()["state"] == "cancelled" and not assertions(env)
+
+
+def test_concurrent_cancel_replays_have_one_audit_and_terminal_outcome(env):
+    job, headers = enqueue(env), env.headers()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(lambda _: cancel(env, job, headers=headers), range(4)))
+    assert all(response.status_code == 200 and response.json() == job for response in responses)
+    assert cancellation_count(env, job) == 1 and get(env, job).json()["state"] == "cancelled"
+
+
+def test_cancel_route_requires_authentication_key_and_valid_body(env):
+    job = enqueue(env)
+    path = "/v1/jobs/" + job["job_id"] + "/cancel"
+    valid = {"expected_state": "pending", "expected_attempt": 0}
+    assert env.client.post(path, json=valid).status_code == 401
+    assert (
+        env.client.post(
+            path, json=valid, headers={"Authorization": f"Bearer {env.token()}"}
+        ).status_code
+        == 422
+    )
+    for body in [
+        {},
+        {"expected_state": "running", "expected_attempt": 0},
+        valid | {"reason": "private"},
+    ]:
+        assert env.client.post(path, json=body, headers=env.headers()).status_code == 422
+    assert get(env, job).json()["state"] == "pending" and cancellation_count(env, job) == 0
 
 
 def test_enqueue_publication_status_and_legacy_sync_behavior(env):
@@ -391,7 +718,7 @@ def test_expiring_during_publication_rolls_back_the_assertion(env, monkeypatch):
     publish(env, call(env, "claim"))
 
 
-def test_exact_scope_queue_limit_releases_capacity_only_on_completion(env):
+def test_exact_scope_queue_limit_releases_capacity_on_completion_or_cancellation(env):
     body = payload(env)
     first = None
     for index in range(100):
@@ -403,7 +730,9 @@ def test_exact_scope_queue_limit_releases_capacity_only_on_completion(env):
     assert response.status_code == 422 and response.json()["code"] == "job_limit_exceeded"
     assert enqueue(env, first[0]) == first[1]
     process(env)
-    assert enqueue(env, overflow)
+    replacement = enqueue(env, overflow)
+    assert cancel(env, replacement).status_code == 200
+    assert enqueue(env, {**body, "memory": {**body["memory"], "value": "after cancellation"}})
 
 
 def test_invalid_inputs_and_database_guards(env):

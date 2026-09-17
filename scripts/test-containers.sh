@@ -470,6 +470,47 @@ asyncio.run(smoke())
 print("Production Python SDK smoke passed: capture, replay, typed reads, vector recall, purge")
 ' "$scope_id"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import CancelJob, EnqueueJob, Evidence, Forget, Observe, Remember
+from pg_agmemory.sdk import AsyncMemoryClient
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-cancel", source_event_id="cancel-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic Gold evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="cancel-source")
+        job = await sdk.enqueue_job(EnqueueJob(kind="structured_remember", memory=Remember(
+            scope_id=scope, subject="Synthetic", predicate="tier", value="Gold",
+            evidence=[Evidence(memory_id=source.memory_id, quote="Gold")], explicit_intent=True,
+        )), idempotency_key="cancel-job")
+        before = await sdk.get_job(job.job_id)
+        assert before.state == "pending" and before.attempt == 0
+        body = CancelJob(expected_state="pending", expected_attempt=0)
+        receipt = await sdk.cancel_job(job.job_id, body, idempotency_key="cancel-once")
+        assert receipt == await sdk.cancel_job(job.job_id, body, idempotency_key="cancel-once")
+        after = await sdk.get_job(job.job_id)
+        assert after.state == "cancelled" and after.result is None and after.lease_until is None
+        result = subprocess.run(["pg-agmemory", "worker", "--subject", sys.argv[2], "--once"],
+                                check=True, capture_output=True, text=True, timeout=15)
+        assert json.loads(result.stdout) == {"outcome": "idle"}
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="cancel-purge")
+        assert purged.object_count == 2
+
+asyncio.run(smoke())
+print("Production job cancellation smoke passed: enqueue, cancel, replay, worker idle, source purge")
+' "$scope_id" "${run_id}-worker"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

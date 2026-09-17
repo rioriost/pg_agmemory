@@ -247,9 +247,50 @@ def database():
             admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
             == 8
         )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:9])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+
+        def fail_cancel_ledger(self, query, params=None, **kwargs):
+            if (
+                query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)"
+                and params == (10,)
+            ):
+                raise RuntimeError("simulated schema 10 ledger failure")
+            return execute(self, query, params, **kwargs)
+
+        patch.setattr(psycopg.Connection, "execute", fail_cancel_ledger)
+        with pytest.raises(RuntimeError, match="schema 10 ledger failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert (
+            admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
+            == 9
+        )
+        assert (
+            "cancelled"
+            not in admin.execute(
+                "SELECT pg_get_functiondef('memory.guard_job()'::regprocedure)"
+            ).fetchone()[0]
+        )
+        assert (
+            admin.execute(
+                "SELECT count(*) FROM pg_constraint WHERE conrelid='memory_ops.job'::regclass "
+                "AND conname='job_payload_state_check'"
+            ).fetchone()[0]
+            == 0
+        )
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT state,attempt,payload FROM memory_ops.job WHERE id=%s",
+            (legacy[0]["job"]["result"]["job_id"],),
+        ).fetchone() == ("pending", 0, legacy[0]["job"]["body"]["memory"])
     yield url, runtime_url, legacy
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
