@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/identity解決/記憶品質/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRはv0.0.21/schema 10のdocs run失敗と検証済みcode修正を記録しています。
+その後の最終docs CI 35259655219は別途合格しました。
+[過去の証拠](../STATUS-jp.md#v0021--schema-10)を参照してください。
+[ADR 0022](0022-batch-capture-jp.md)はv0.0.22/schema 10の明示batch captureを記録し、
+Native/SDK resourceは30です。localと両native architectureで検証済みです。
+以下の決定と検証境界は記録時の内容を維持します。
+
 ## 決定とrequest境界
 
 Native JWT認証付きread-only `POST /v1/entities/query`を追加し、

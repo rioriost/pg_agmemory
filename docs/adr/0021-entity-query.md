@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/identity-resolution/memory-quality/production/DR qualification
 
+**Historical version notice:** this ADR records v0.0.21/schema 10, including
+the failed docs run and qualified code fix. Subsequent final-docs CI 35259655219
+passed separately; see [historical evidence](../STATUS.md#v0021--schema-10).
+[ADR 0022](0022-batch-capture.md) records v0.0.22/schema 10 explicit batch capture
+with 30 Native/SDK resources, verified locally and on both native architectures.
+The decision and validation boundary below are preserved as recorded.
+
 ## Decision and request boundary
 
 Add Native JWT authenticated read-only `POST /v1/entities/query`, requiring

@@ -75,6 +75,10 @@ metadata pageに根拠引用は含めません。[ADR 0021](docs/adr/0021-entity
 graphのpath件数制限は実際のgeneric prepared planでも検査します。
 canonical metadataのjoinでRLS保護されたrelation scanが増幅しないよう、
 adjacencyのmaterialization境界を維持し、timeoutの延長で退行を隠してはいけません。
+batch-capture smokeでは1episodeから独立に公開する複数job、順序を維持した再送、
+source purgeを検査します。受付は原子的ですがworkerの公開は原子的ではありません。
+途中失敗時のrollbackと再送時の全jobの現在の可視性検査を維持してください。
+[ADR 0022](docs/adr/0022-batch-capture-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

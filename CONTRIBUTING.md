@@ -75,6 +75,10 @@ Metadata pages omit evidence quotes; see [ADR 0021](docs/adr/0021-entity-query.m
 Graph path-limit checks also exercise actual generic prepared plans. Preserve the
 materialized adjacency boundary so canonical metadata joins do not multiply
 RLS-protected relation scans; do not mask regressions by increasing timeouts.
+The batch-capture smoke checks one episode with multiple independently published
+jobs, ordered replay, and source purge. Admission is atomic, worker publication
+is not. Preserve late-failure rollback and current checks for every replayed job;
+see [ADR 0022](docs/adr/0022-batch-capture.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.
