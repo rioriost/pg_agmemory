@@ -33,6 +33,7 @@ from pg_agmemory.models import (
     EnqueueJob,
     EntityPage,
     EpisodeExplanation,
+    EpisodePage,
     Evidence,
     ExpandGraph,
     Explain,
@@ -43,6 +44,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     PutEmbedding,
     QueryEntities,
+    QueryEpisodes,
     QueryJobs,
     Recall,
     Remember,
@@ -534,6 +536,7 @@ def test_sdk_route_surface_covers_native_resources(env):
     paths = create_app(env.settings).openapi()["paths"]
     expected = {
         "/v1/observe",
+        "/v1/episodes/query",
         "/v1/captures",
         "/v1/captures/batch",
         "/v1/remember",
@@ -570,7 +573,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 30
+    assert len(methods) == len(expected) == 31
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
@@ -802,6 +805,131 @@ def test_real_sdk_assertion_history_exact_revisions_and_purge(env, api_process):
                 assert purged.object_count == 2
                 with pytest.raises(MemoryClientError, match="not_found"):
                     await sdk.get_assertion_history(request)
+
+        asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "outcome", ["page", "unavailable", "wrong_status", "bad_cursor", "too_many", "lost"]
+)
+def test_sdk_episode_query_is_read_only_bounded_and_never_auto_pages(monkeypatch, outcome):
+    body = QueryEpisodes(
+        scope_ids=[uuid4()], max_items=1, occurred_from=datetime(2026, 9, 1, tzinfo=UTC)
+    )
+    item = {
+        "memory_id": str(uuid4()),
+        "revision": 1,
+        "scope_id": str(body.scope_ids[0]),
+        "occurred_at": "2026-09-01T00:00:00Z",
+        "recorded_at": "2026-09-02T00:00:00Z",
+    }
+    page = {
+        "episodes": [item],
+        "next_cursor": {"recorded_at": item["recorded_at"], "memory_id": item["memory_id"]},
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/episodes/query"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        assert "idempotency-key" not in request.headers
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated episode query response loss")
+        if outcome == "unavailable":
+            return response(
+                503,
+                {
+                    "code": "dependency_unavailable",
+                    "request_id": str(uuid4()),
+                    "retryable": True,
+                },
+            )
+        if outcome == "bad_cursor":
+            return response(200, page | {"next_cursor": {}})
+        if outcome == "too_many":
+            return response(200, page | {"episodes": [item] * 101})
+        return response(201 if outcome == "wrong_status" else 200, page)
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            if outcome == "page":
+                result = await sdk.query_episodes(body)
+                assert isinstance(result, EpisodePage)
+                assert str(result.episodes[0].memory_id) == item["memory_id"]
+                assert result.next_cursor.memory_id == result.episodes[0].memory_id
+            else:
+                with pytest.raises(MemoryClientError) as error:
+                    await sdk.query_episodes(body)
+                assert not error.value.error.outcome_unknown and "PRIVATE" not in str(error.value)
+                if outcome == "unavailable":
+                    assert error.value.error.code == "dependency_unavailable"
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.query_episodes(body.model_copy(update={"max_items": 101}))
+            assert len(calls) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_real_sdk_episode_query_selects_explicit_evidence_and_obeys_purge(env, api_process):
+    with api_process("sdk-episode-query.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                source = await sdk.observe(
+                    observation(env.scopes[0]), idempotency_key="episode-query-source"
+                )
+                late = await sdk.observe(
+                    observation(env.scopes[0]).model_copy(
+                        update={"occurred_at": datetime(2026, 8, 31, tzinfo=UTC)}
+                    ),
+                    idempotency_key="episode-query-late",
+                )
+                request = QueryEpisodes(
+                    scope_ids=[env.scopes[0]],
+                    occurred_from=datetime(2026, 8, 31, tzinfo=UTC),
+                    occurred_to=datetime(2026, 9, 2, tzinfo=UTC),
+                    max_items=1,
+                )
+                first = await sdk.query_episodes(request)
+                assert isinstance(first, EpisodePage)
+                assert first.episodes[0].memory_id == late.memory_id and first.next_cursor
+                second = await sdk.query_episodes(
+                    request.model_copy(update={"before": first.next_cursor})
+                )
+                assert second.episodes[0].memory_id == source.memory_id
+                assert second.next_cursor is None
+                explained = await sdk.explain(
+                    Explain(memory_id=second.episodes[0].memory_id, revision=1)
+                )
+                assert (
+                    isinstance(explained, EpisodeExplanation) and "Gold" in explained.source.content
+                )
+                saved = await sdk.remember(
+                    memory(env.scopes[0], second.episodes[0].memory_id),
+                    idempotency_key="episode-query-remember",
+                )
+                detail = await sdk.explain(Explain(memory_id=saved.memory_id))
+                assert isinstance(detail, AssertionExplanation)
+                assert detail.evidence[0].memory_id == source.memory_id
+                purged = await sdk.forget(
+                    Forget(memory_ids=[source.memory_id], reason="test"),
+                    idempotency_key="episode-query-purge",
+                )
+                assert purged.object_count == 2
+                page = await sdk.query_episodes(request)
+                assert page.episodes[0].memory_id == late.memory_id and page.next_cursor is None
+                assert page.consistency.deletion_epoch == 2
+                assert not (
+                    await sdk.query_episodes(
+                        request.model_copy(update={"before": first.next_cursor})
+                    )
+                ).episodes
+                with pytest.raises(MemoryClientError, match="not_found"):
+                    await sdk.explain(Explain(memory_id=source.memory_id))
 
         asyncio.run(scenario())
 

@@ -73,6 +73,27 @@ class Observe(Contract):
     consent_reference: ShortText
 
 
+class EpisodeCursor(Contract):
+    recorded_at: AwareDatetime
+    memory_id: UUID
+
+
+class QueryEpisodes(Contract):
+    scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
+    occurred_from: AwareDatetime | None = None
+    occurred_to: AwareDatetime | None = None
+    max_items: Annotated[int, Field(ge=1, le=100, strict=True)] = 20
+    before: EpisodeCursor | None = None
+
+    @model_validator(mode="after")
+    def valid_filters(self) -> "QueryEpisodes":
+        if len(set(self.scope_ids)) != len(self.scope_ids):
+            raise ValueError("scope IDs must be unique")
+        if self.occurred_from and self.occurred_to and self.occurred_from >= self.occurred_to:
+            raise ValueError("occurred_from must precede occurred_to")
+        return self
+
+
 class Evidence(Contract):
     memory_id: UUID
     quote: Annotated[str, Field(min_length=1, max_length=4096)]
@@ -406,6 +427,20 @@ class Coverage(BaseModel):
 class Consistency(BaseModel):
     access_epoch: int
     deletion_epoch: int
+
+
+class EpisodeSummary(BaseModel):
+    memory_id: UUID
+    revision: Literal[1] = 1
+    scope_id: UUID
+    occurred_at: datetime
+    recorded_at: datetime
+
+
+class EpisodePage(BaseModel):
+    episodes: Annotated[list[EpisodeSummary], Field(max_length=100)]
+    next_cursor: EpisodeCursor | None
+    consistency: Consistency
 
 
 class RecallResult(BaseModel):

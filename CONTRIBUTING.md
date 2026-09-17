@@ -82,6 +82,12 @@ The batch-capture smoke checks one episode with multiple independently published
 jobs, ordered replay, and source purge. Admission is atomic, worker publication
 is not. Preserve late-failure rollback and current checks for every replayed job;
 see [ADR 0022](docs/adr/0022-batch-capture.md).
+The episode-query smoke checks metadata pages, explicit source selection through
+Explain and Remember, and source purge. Filter current readable scopes and
+half-open occurrence ranges before pagination; order by admission time, not
+occurrence time. Do not expose content or consent references in metadata pages,
+or treat the cursor as authority, a snapshot, or a compaction watermark;
+see [ADR 0023](docs/adr/0023-episode-query.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

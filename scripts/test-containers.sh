@@ -836,6 +836,55 @@ asyncio.run(smoke())
 print("Production batch capture smoke passed: atomic admission, independent worker publication, replay, purge")
 ' "$scope_id" "${run_id}-worker"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import EpisodeExplanation, Evidence, Explain, Forget, Observe, QueryEpisodes, Remember
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        sources = []
+        for number, day in enumerate((2, 1)):
+            sources.append(await sdk.observe(Observe(
+                scope_id=scope, source_namespace="production-episode-query",
+                source_event_id="episode-query-" + str(number),
+                occurred_at=datetime(2020, 1, day, tzinfo=UTC),
+                content="Synthetic Gold episode evidence", consent_reference="synthetic-smoke",
+            ), idempotency_key="episode-query-" + str(number)))
+        request = QueryEpisodes(scope_ids=[scope], max_items=1,
+                                occurred_from=datetime(2020, 1, 1, tzinfo=UTC),
+                                occurred_to=datetime(2020, 1, 3, tzinfo=UTC))
+        first = await sdk.query_episodes(request)
+        assert first.episodes[0].memory_id == sources[1].memory_id and first.next_cursor
+        second = await sdk.query_episodes(request.model_copy(update={"before": first.next_cursor}))
+        assert second.episodes[0].memory_id == sources[0].memory_id and not second.next_cursor
+        selected = second.episodes[0]
+        detail = await sdk.explain(Explain(memory_id=selected.memory_id, revision=1))
+        assert isinstance(detail, EpisodeExplanation) and "Gold" in detail.source.content
+        await sdk.remember(Remember(
+            scope_id=scope, subject="SyntheticEpisodeQuery", predicate="tier", value="Gold",
+            evidence=[Evidence(memory_id=selected.memory_id, quote="Gold")], explicit_intent=True,
+        ), idempotency_key="episode-query-remember")
+        purged = await sdk.forget(Forget(
+            memory_ids=[source.memory_id for source in sources], reason="synthetic-smoke",
+        ), idempotency_key="episode-query-purge")
+        assert purged.object_count == 3 and not (await sdk.query_episodes(request)).episodes
+        try:
+            await sdk.explain(Explain(memory_id=selected.memory_id))
+        except MemoryClientError as error:
+            assert error.error.code == "not_found" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Purged episode remained readable")
+
+asyncio.run(smoke())
+print("Production episode query smoke passed: metadata pages, explicit evidence selection, source purge")
+' "$scope_id"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

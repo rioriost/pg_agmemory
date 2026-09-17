@@ -26,6 +26,7 @@ from pg_agmemory.models import (
     EntityPage,
     EntityReceipt,
     EpisodeExplanation,
+    EpisodePage,
     ExpandGraph,
     Explain,
     Forget,
@@ -38,6 +39,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     PutEmbedding,
     QueryEntities,
+    QueryEpisodes,
     QueryJobs,
     Recall,
     RecallFilters,
@@ -81,6 +83,7 @@ async def typed_calls(
     async with client as memory:
         assert_type(memory, AsyncMemoryClient)
         assert_type(await memory.observe(observe, idempotency_key=key), ObserveResult)
+        assert_type(await memory.query_episodes(QueryEpisodes(scope_ids=[identity])), EpisodePage)
         assert_type(await memory.capture(capture, idempotency_key=key), CaptureResult)
         assert_type(
             await memory.capture_batch(

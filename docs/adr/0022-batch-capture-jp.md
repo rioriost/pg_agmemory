@@ -8,6 +8,14 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/記憶品質/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRはv0.0.22/schema 10のdocs CI失敗と、
+別途検証したgraph修正/方向別revisionを記録しています。
+その後の最終docs CI 35273848787は合格しました。
+[過去の証拠](../STATUS-jp.md#v0022--schema-10)を参照してください。
+[ADR 0023](0023-episode-query-jp.md)はv0.0.23/schema 10のread-only episode照会をdraft化し、
+Native/SDK resourceは31になります。適格性確認待ちです。
+以下の決定と検証境界は記録時の内容を維持します。
+
 ## 決定とrequest境界
 
 Native JWT認証付き`POST /v1/captures/batch`にcaller所有の`Idempotency-Key`を要求します。

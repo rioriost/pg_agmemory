@@ -8,6 +8,14 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
 
+**Historical version notice:** this ADR records v0.0.22/schema 10, including its
+failed docs CI and separately qualified graph-fix/directional revisions.
+Subsequent final-docs CI 35273848787 passed; see
+[historical evidence](../STATUS.md#v0022--schema-10).
+[ADR 0023](0023-episode-query.md) drafts v0.0.23/schema 10 read-only episode query
+with 31 Native/SDK resources; qualification is pending.
+The decision and validation boundary below are preserved as recorded.
+
 ## Decision and request boundary
 
 Add Native JWT authenticated `POST /v1/captures/batch` with a caller-owned

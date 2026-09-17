@@ -12,6 +12,7 @@ from pg_agmemory.database import Connection, connect
 from pg_agmemory.lexical import JAPANESE_PROFILE, segment
 from pg_agmemory.models import (
     AssertionHistory,
+    EpisodeSummary,
     Evidence,
     Explain,
     Forget,
@@ -19,6 +20,7 @@ from pg_agmemory.models import (
     MemoryItem,
     MemoryReference,
     Observe,
+    QueryEpisodes,
     Recall,
     RelationEndpoints,
     Remember,
@@ -270,6 +272,40 @@ class MemoryService:
         result = {"memory_id": str(object_id), "revision": 1, "synthesis_job_id": None}
         await self.save_result("observe", key_hash, payload_hash, result)
         return result
+
+    async def query_episodes(self, data: QueryEpisodes) -> dict[str, Any]:
+        rows = await (
+            await self.conn.execute(
+                """SELECT e.id AS memory_id,e.scope_id,e.occurred_at,o.created_at AS recorded_at
+                   FROM memory.episode e JOIN memory.object o USING (tenant_id,id)
+                   WHERE e.tenant_id=%(tenant)s AND e.scope_id=ANY(%(scopes)s)
+                     AND (%(from)s::timestamptz IS NULL OR e.occurred_at>=%(from)s)
+                     AND (%(to)s::timestamptz IS NULL OR e.occurred_at<%(to)s)
+                     AND (%(before_time)s::timestamptz IS NULL
+                          OR (o.created_at,e.id)<(%(before_time)s,%(before_id)s::uuid))
+                   ORDER BY o.created_at DESC,e.id DESC LIMIT %(limit)s""",
+                {
+                    "tenant": self.tenant,
+                    "scopes": data.scope_ids,
+                    "from": data.occurred_from,
+                    "to": data.occurred_to,
+                    "before_time": data.before.recorded_at if data.before else None,
+                    "before_id": data.before.memory_id if data.before else None,
+                    "limit": data.max_items + 1,
+                },
+            )
+        ).fetchall()
+        episodes = [EpisodeSummary.model_validate(row) for row in rows[: data.max_items]]
+        return {
+            "episodes": episodes,
+            "next_cursor": {
+                "recorded_at": episodes[-1].recorded_at,
+                "memory_id": episodes[-1].memory_id,
+            }
+            if len(rows) > data.max_items
+            else None,
+            "consistency": await self.epochs(),
+        }
 
     async def remember(self, data: Remember, key: str) -> dict[str, Any]:
         await self.scope(data.scope_id, "write")

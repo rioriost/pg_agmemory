@@ -36,5 +36,5 @@ jobs:
             *) echo "Unsupported native architecture"; exit 1 ;;
           esac
           test "$actual" = "$EXPECTED_ARCH"
-      - name: Test containers and production batch capture, entity query, assertion history, job query, checkpoint head, recall filters, required context, cancellation, readiness, admin, SDK, vector, capture, API, worker, MCP, and hook
+      - name: Test containers and production episode query, batch capture, entity query, assertion history, job query, checkpoint head, recall filters, required context, cancellation, readiness, admin, SDK, vector, capture, API, worker, MCP, and hook
         run: bash scripts/test-containers.sh docker

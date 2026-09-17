@@ -55,6 +55,7 @@ from pg_agmemory.models import (
     EntityReceipt,
     EntityType,
     EpisodeExplanation,
+    EpisodePage,
     ErrorBody,
     ExpandGraph,
     Explain,
@@ -68,6 +69,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     PutEmbedding,
     QueryEntities,
+    QueryEpisodes,
     QueryJobs,
     ReadinessStatus,
     Recall,
@@ -272,9 +274,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-batch-capture",
+            "stage": "m2-episode-query",
             "features": [
                 "observe",
+                "episode_query",
                 "atomic_structured_capture",
                 "atomic_batch_structured_capture",
                 "structured_remember",
@@ -295,6 +298,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "durable_jobs",
             ],
             "graph_backend": "sql",
+            "episode_query": {
+                "endpoint": "/v1/episodes/query",
+                "order": ["recorded_at_desc", "memory_id_desc"],
+                "pagination": "exclusive_keyset",
+                "occurred_time_bounds": "half_open",
+                "max_items": 100,
+                "includes_content": False,
+            },
             "entity_types": list(get_args(EntityType)),
             "relation_types": list(get_args(RelationType)),
             "entity_query": {
@@ -445,6 +456,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/observe", status_code=201, response_model=ObserveResult)
     async def observe(data: Observe, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await service(request).observe(data, idempotency_key)
+
+    @app.post("/v1/episodes/query", response_model=EpisodePage)
+    async def query_episodes(data: QueryEpisodes, request: Request) -> Any:
+        return await service(request).query_episodes(data)
 
     @app.post("/v1/captures", status_code=201, response_model=CaptureResult)
     async def capture(data: Capture, request: Request, idempotency_key: IdempotencyKey) -> Any:

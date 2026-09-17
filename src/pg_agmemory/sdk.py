@@ -37,6 +37,7 @@ from pg_agmemory.models import (
     EntityPage,
     EntityReceipt,
     EpisodeExplanation,
+    EpisodePage,
     ExpandGraph,
     Explain,
     Forget,
@@ -49,6 +50,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     PutEmbedding,
     QueryEntities,
+    QueryEpisodes,
     QueryJobs,
     Recall,
     RecallResult,
@@ -202,6 +204,11 @@ class AsyncMemoryClient:
             mutation=True,
             status=201,
             key=idempotency_key,
+        )
+
+    async def query_episodes(self, request: QueryEpisodes) -> EpisodePage:
+        return await self._post(
+            "/v1/episodes/query", request, QueryEpisodes, TypeAdapter(EpisodePage), mutation=False
         )
 
     async def capture(self, request: Capture, *, idempotency_key: str) -> CaptureResult:

@@ -82,6 +82,12 @@ batch-capture smokeでは1episodeから独立に公開する複数job、順序�
 source purgeを検査します。受付は原子的ですがworkerの公開は原子的ではありません。
 途中失敗時のrollbackと再送時の全jobの現在の可視性検査を維持してください。
 [ADR 0022](docs/adr/0022-batch-capture-jp.md)を参照してください。
+episode-query smokeではmetadata page、ExplainとRememberによる明示的な
+source選択、source purgeを検査します。現在読取り可能なscopeと発生日時の半開区間を
+page件数制限より前に適用し、発生日時ではなく受付日時で並べます。
+metadata pageに本文や同意参照を含めず、cursorを権限・snapshot・
+compaction watermarkとみなさないでください。
+[ADR 0023](docs/adr/0023-episode-query-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

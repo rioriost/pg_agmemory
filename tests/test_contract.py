@@ -13,6 +13,7 @@ from pg_agmemory.models import (
     MemoryItem,
     Observe,
     QueryEntities,
+    QueryEpisodes,
     QueryJobs,
     Recall,
     Remember,
@@ -228,6 +229,63 @@ def test_job_query_default_states_bounds_and_duplicate_scopes():
 def test_entity_query_filters_and_cursor_are_closed_and_bounded(changes):
     with pytest.raises(ValidationError):
         QueryEntities(**{"scope_ids": [uuid4()], **changes})
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"scope_ids": []},
+        {"scope_ids": [uuid4() for _ in range(33)]},
+        {"max_items": 0},
+        {"max_items": 101},
+        {"max_items": True},
+        {"max_items": "2"},
+        {"max_items": 1.5},
+        {"occurred_from": "2026-09-01T00:00:00"},
+        {"occurred_to": "2026-09-02T00:00:00"},
+        {"occurred_from": "invalid"},
+        {"occurred_from": "2026-09-02T00:00:00Z", "occurred_to": "2026-09-01T00:00:00Z"},
+        {"occurred_from": "2026-09-01T00:00:00Z", "occurred_to": "2026-09-01T09:00:00+09:00"},
+        {"before": {}},
+        {"before": {"recorded_at": "2026-09-01T00:00:00", "memory_id": str(uuid4())}},
+        {"before": {"recorded_at": "2026-09-01T00:00:00Z", "memory_id": "invalid"}},
+        {
+            "before": {
+                "recorded_at": "2026-09-01T00:00:00Z",
+                "memory_id": str(uuid4()),
+                "scope_id": str(uuid4()),
+            }
+        },
+        {"before": {"memory_id": str(uuid4())}},
+        {"before": {"recorded_at": "2026-09-01T00:00:00Z"}},
+        {"source_namespace": "not-stored"},
+        {"source_event_id": "not-stored"},
+        {"principal_id": str(uuid4())},
+        {"offset": 1},
+        {"known_at": "2026-09-01T00:00:00Z"},
+        {"as_of": "2026-09-01T00:00:00Z"},
+        {"include_content": True},
+        {"query": "fuzzy"},
+    ],
+)
+def test_episode_query_filters_and_cursor_are_closed_and_bounded(changes):
+    with pytest.raises(ValidationError):
+        QueryEpisodes.model_validate({"scope_ids": [uuid4()], **changes})
+
+
+def test_episode_query_defaults_bounds_and_duplicate_scopes():
+    scope = uuid4()
+    body = QueryEpisodes(scope_ids=[scope])
+    assert body.occurred_from is None and body.occurred_to is None
+    assert body.before is None and body.max_items == 20
+    assert QueryEpisodes(scope_ids=[uuid4() for _ in range(32)], max_items=100)
+    assert QueryEpisodes(
+        scope_ids=[scope],
+        occurred_from="2026-11-01T01:30:00-04:00",
+        occurred_to="2026-11-01T01:30:00-05:00",
+    )
+    with pytest.raises(ValidationError):
+        QueryEpisodes(scope_ids=[scope, scope])
 
 
 def test_entity_query_defaults_bounds_and_duplicate_scopes():
