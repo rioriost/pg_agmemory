@@ -256,7 +256,7 @@ class SqlGraph:
     ) -> list[dict[str, Any]]:
         return await (
             await self.conn.execute(
-                """WITH adjacent AS (
+                """WITH adjacent AS MATERIALIZED (
                     SELECT r.id,v.revision,r.source_id,v.target_id,v.target_id AS next_id
                     FROM memory.relation r JOIN memory.relation_revision v
                       ON v.tenant_id = r.tenant_id AND v.assertion_id = r.id

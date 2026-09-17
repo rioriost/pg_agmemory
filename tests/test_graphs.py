@@ -764,7 +764,29 @@ def test_entity_erasure_purges_historical_links_checkpoints_and_effects(env, del
         )
 
 
-def test_exact_graph_path_seed_and_entity_evidence_limits(env):
+@pytest.mark.parametrize("generic_plan", [False, True])
+def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, generic_plan):
+    checked = False
+    neighbors = SqlGraph.neighbors
+
+    async def generic_neighbors(self, *args):
+        nonlocal checked
+        self.conn.prepare_threshold = 0
+        await self.conn.execute("SET LOCAL plan_cache_mode='force_generic_plan'")
+        result = await neighbors(self, *args)
+        if not checked:
+            row = await (
+                await self.conn.execute(
+                    """SELECT count(*) AS total FROM pg_prepared_statements
+                       WHERE statement LIKE 'WITH adjacent%' AND generic_plans > 0"""
+                )
+            ).fetchone()
+            assert row["total"] > 0
+            checked = True
+        return result
+
+    if generic_plan:
+        monkeypatch.setattr(SqlGraph, "neighbors", generic_neighbors)
     a, b = create_entity(env, "A"), create_entity(env, "B")
     body = relation_body(env, a, b)
     for _ in range(100):
@@ -773,6 +795,7 @@ def test_exact_graph_path_seed_and_entity_evidence_limits(env):
     exact = expand(env, a, max_paths=100)
     assert len(exact["paths"]) == len(exact["edges"]) == 100
     assert exact["coverage"]["truncated"] is False
+    assert checked == generic_plan
     assert env.client.post("/v1/relations", json=body, headers=env.headers()).status_code == 201
     overflow = expand(env, a)
     assert len(overflow["paths"]) == 100 and overflow["coverage"]["truncated"] is True
