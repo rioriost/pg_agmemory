@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from importlib.resources import files
-from typing import Any
+from typing import Any, Literal
 
 import psycopg
 from psycopg.rows import dict_row
@@ -53,8 +53,22 @@ async def connect(url: str) -> Connection:
     )
 
 
+class RuntimeValidationError(RuntimeError):
+    def __init__(
+        self,
+        code: Literal[
+            "runtime_role_invalid", "schema_unavailable",
+            "schema_version_mismatch", "extension_version_mismatch",
+        ],
+        message: str,
+    ) -> None:
+        self.code = code
+        super().__init__(message)
+
+
 async def validate_runtime(url: str) -> None:
     async with await connect(url) as conn:
+        await conn.execute("SET default_transaction_read_only = on")
         cursor = await conn.execute(
             """SELECT rolsuper, rolbypassrls,
                 EXISTS (
@@ -66,7 +80,9 @@ async def validate_runtime(url: str) -> None:
         )
         role = await cursor.fetchone()
         if not role or role["rolsuper"] or role["rolbypassrls"] or role["owns_tables"]:
-            raise RuntimeError("Runtime database role must not own tables or bypass RLS")
+            raise RuntimeValidationError(
+                "runtime_role_invalid", "Runtime database role must not own tables or bypass RLS"
+            )
         try:
             versions = await (
                 await conn.execute(
@@ -74,12 +90,19 @@ async def validate_runtime(url: str) -> None:
                 )
             ).fetchall()
         except (psycopg.errors.UndefinedTable, psycopg.errors.InsufficientPrivilege) as exc:
-            raise RuntimeError("Database schema is unavailable; run pg-agmemory migrate") from exc
+            raise RuntimeValidationError(
+                "schema_unavailable", "Database schema is unavailable; run pg-agmemory migrate"
+            ) from exc
         if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
-            raise RuntimeError("Database schema version mismatch; run matching migrations and API")
+            raise RuntimeValidationError(
+                "schema_version_mismatch",
+                "Database schema version mismatch; run matching migrations and API",
+            )
         extension = await (await conn.execute(VECTOR_QUERY)).fetchone()
         if not extension or extension != {"extversion": VECTOR_VERSION, "nspname": "public"}:
-            raise RuntimeError("pgvector 0.8.6 in public is required")
+            raise RuntimeValidationError(
+                "extension_version_mismatch", "pgvector 0.8.6 in public is required"
+            )
 
 
 def migrate(url: str) -> None:

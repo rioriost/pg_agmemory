@@ -510,7 +510,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/tool-effects/{memory_id}",
         "/v1/tool-effects/{memory_id}/transitions",
     }
-    assert set(paths) - {"/healthz", "/v1/capabilities"} == expected
+    assert set(paths) - {"/healthz", "/readyz", "/v1/capabilities"} == expected
     methods = {
         name
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)

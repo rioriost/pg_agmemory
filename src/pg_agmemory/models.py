@@ -21,6 +21,10 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class ReadinessStatus(Contract):
+    status: Literal["ready", "not_ready"]
+
+
 class EmbeddingModel(Contract):
     name: ShortText
     revision: ShortText

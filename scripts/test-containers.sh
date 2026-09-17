@@ -202,6 +202,40 @@ for attempt in range(60):
         time.sleep(1)
 ' "http://${api_host}:8000/healthz"
 
+"$engine" exec \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$api_name" python -c '
+import json
+import os
+import urllib.error
+import urllib.request
+from uuid import UUID
+import psycopg
+
+def probe(ready):
+    try:
+        response = urllib.request.urlopen("http://127.0.0.1:8000/readyz", timeout=10)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        assert response.status == (200 if ready else 503)
+        assert json.load(response) == {"status": "ready" if ready else "not_ready"}
+        assert response.headers["Cache-Control"] == "no-store"
+        assert UUID(response.headers["X-Request-ID"]).version == 4
+
+probe(True)
+with psycopg.connect(os.environ["PGAG_ADMIN_DATABASE_URL"], autocommit=True) as admin:
+    admin.execute("ALTER TABLE public.pgag_schema_migration RENAME TO smoke_schema_unavailable")
+    try:
+        probe(False)
+        with urllib.request.urlopen("http://127.0.0.1:8000/healthz", timeout=2) as live:
+            assert live.status == 200 and json.load(live) == {"status": "ok"}
+    finally:
+        admin.execute("ALTER TABLE public.smoke_schema_unavailable RENAME TO pgag_schema_migration")
+probe(True)
+print("Production readiness smoke passed: ready, schema unavailable, live, recovered")
+'
+
 provisioned="$("$engine" run --name "$provision_name" --network "$network" \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     "$runtime_image" pg-agmemory provision --subject "${run_id}-worker")"

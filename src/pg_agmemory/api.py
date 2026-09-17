@@ -17,7 +17,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pg_agmemory import __version__
 from pg_agmemory.capture import Captures
 from pg_agmemory.checkpoints import Checkpoints
-from pg_agmemory.database import SCHEMA_VERSION, VECTOR_VERSION, Settings, validate_runtime
+from pg_agmemory.database import (
+    SCHEMA_VERSION,
+    VECTOR_VERSION,
+    RuntimeValidationError,
+    Settings,
+    validate_runtime,
+)
 from pg_agmemory.effects import ToolEffects
 from pg_agmemory.embeddings import Embeddings
 from pg_agmemory.graphs import SqlGraph
@@ -53,6 +59,7 @@ from pg_agmemory.models import (
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    ReadinessStatus,
     Recall,
     RecallResult,
     RelationType,
@@ -69,6 +76,7 @@ from pg_agmemory.models import (
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
 logger = logging.getLogger("pg_agmemory")
+READINESS_TIMEOUT_SECONDS = 5.0
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=256)]
 
 
@@ -186,6 +194,7 @@ def service(request: Request) -> MemoryService:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     configured = settings or Settings.from_env()
+    readiness_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -221,13 +230,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get(
+        "/readyz", response_model=ReadinessStatus,
+        responses={503: {"model": ReadinessStatus, "description": "Runtime is not ready"}},
+    )
+    async def ready() -> JSONResponse:
+        request_id = str(uuid4())
+        failure = None
+        if readiness_lock.locked():
+            failure = "probe_busy"
+        else:
+            async with readiness_lock:
+                try:
+                    async with asyncio.timeout(READINESS_TIMEOUT_SECONDS):
+                        await validate_runtime(configured.database_url)
+                except RuntimeValidationError as exc:
+                    failure = exc.code
+                except (psycopg.Error, TimeoutError) as exc:
+                    failure = type(exc).__name__
+        if failure is not None:
+            logger.warning("readiness_unavailable request_id=%s reason=%s", request_id, failure)
+        return JSONResponse(
+            ReadinessStatus(status="not_ready" if failure else "ready").model_dump(),
+            status_code=503 if failure else 200,
+            headers={"Cache-Control": "no-store", "X-Request-ID": request_id},
+        )
+
     @app.get("/v1/capabilities")
     async def capabilities() -> dict[str, Any]:
         return {
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-scope-access",
+            "stage": "m2-runtime-readiness",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -293,6 +328,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "command": "scope-access",
                 "compare_and_swap": "tenant_access_epoch",
                 "audit": "database_role",
+            },
+            "health_probes": {
+                "liveness": "/healthz",
+                "readiness": "/readyz",
+                "readiness_timeout_seconds": READINESS_TIMEOUT_SECONDS,
+                "readiness_max_in_flight_per_process": 1,
             },
             "recall_hook": {
                 "installation": "hook-extra",
