@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL integration tests, and production API/worker smoke tests."
+    echo "Build and run lint, types, PostgreSQL tests, and production API/worker/MCP smoke tests."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -20,11 +20,11 @@ if ! command -v "$engine" >/dev/null 2>&1; then
     echo "Required container engine not found: $engine (there is no host-test fallback)." >&2
     exit 1
 fi
+command -v jq >/dev/null 2>&1 || {
+    echo "jq is required to read container addresses and disposable smoke credentials." >&2
+    exit 1
+}
 if [[ "$engine" == "container" ]]; then
-    command -v jq >/dev/null 2>&1 || {
-        echo "jq is required to read Apple Container IP addresses." >&2
-        exit 1
-    }
     container system status >/dev/null
 else
     docker info >/dev/null
@@ -137,10 +137,13 @@ smoke_host="$(container_host "$smoke_db")"
 "$engine" exec "$smoke_db" psql -U postgres -d pgag_test -v ON_ERROR_STOP=1 \
     -c "CREATE ROLE pgag_smoke LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD '${runtime_password}' IN ROLE pgag_runtime;"
 
-public_key="$("$engine" run --name "$key_name" --network "$network" "$runtime_image" python -c '
+key_bundle="$("$engine" run --name "$key_name" --network "$network" "$runtime_image" python -c '
 import importlib.util
+import json
 import os
 import sys
+import time
+import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from pg_agmemory.lexical import segment
@@ -150,10 +153,21 @@ for package in ("pytest", "ruff", "mypy"):
     assert importlib.util.find_spec(package) is None, f"Development dependency in runtime: {package}"
 assert segment("\u6771\u4eac\u90fd").split() == ["\u6771\u4eac", "\u90fd"]
 print("Production Japanese tokenizer smoke passed", file=sys.stderr)
-print(rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
-    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-).decode(), end="")
-')"
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+now = int(time.time())
+token = jwt.encode({
+    "sub": sys.argv[1], "iss": "pgag-container-smoke", "aud": "pgag-container-smoke",
+    "iat": now, "exp": now + 600,
+}, key, algorithm="RS256")
+print(json.dumps({
+    "public_key": key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode(),
+    "token": token,
+}))
+' "${run_id}-worker")"
+public_key="$(printf '%s' "$key_bundle" | jq -er .public_key)"
+mcp_token="$(printf '%s' "$key_bundle" | jq -er .token)"
 "$engine" run -d --name "$api_name" --network "$network" \
     -e "PGAG_DATABASE_URL=postgresql://pgag_smoke:${runtime_password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_JWT_PUBLIC_KEY=$public_key" \
@@ -184,9 +198,9 @@ for attempt in range(60):
         time.sleep(1)
 ' "http://${api_host}:8000/healthz"
 
-"$engine" run --name "$provision_name" --network "$network" \
+provisioned="$("$engine" run --name "$provision_name" --network "$network" \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
-    "$runtime_image" pg-agmemory provision --subject "${run_id}-worker" >/dev/null
+    "$runtime_image" pg-agmemory provision --subject "${run_id}-worker")"
 "$engine" run --name "$worker_name" --network "$network" \
     -e "PGAG_DATABASE_URL=postgresql://pgag_smoke:${runtime_password}@${smoke_host}:5432/pgag_test" \
     "$runtime_image" python -c '
@@ -202,4 +216,33 @@ assert json.loads(result.stdout) == {"outcome": "idle"}, result.stdout
 print("Production worker smoke passed: --once -> {outcome: idle}")
 ' "${run_id}-worker"
 
-echo "Container tests and production API/worker smoke passed ($engine)."
+scope_id="$(printf '%s' "$provisioned" | jq -er .scope_id)"
+"$engine" exec -e "PGAG_MCP_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from mcp import Client
+from mcp.client.stdio import StdioServerParameters
+
+async def smoke():
+    parameters = StdioServerParameters(
+        command="pg-agmemory", args=["mcp"],
+        env={"PGAG_MCP_API_URL": "http://127.0.0.1:8000",
+             "PGAG_MCP_API_TOKEN": os.environ["PGAG_MCP_API_TOKEN"]},
+    )
+    for mode, version in [("auto", "2026-07-28"), ("legacy", "2025-11-25")]:
+        async with Client(parameters, mode=mode, read_timeout_seconds=20) as client:
+            assert client.protocol_version == version
+            assert [tool.name for tool in (await client.list_tools()).tools] == [
+                "memory_recall", "memory_remember", "memory_explain", "memory_forget"
+            ]
+            result = await client.call_tool("memory_recall", {
+                "request": {"scope_ids": [sys.argv[1]], "purpose": "production smoke"}
+            })
+            assert not result.is_error and result.structured_content["result"]["items"] == []
+        print("Production MCP stdio smoke passed: " + version)
+
+asyncio.run(smoke())
+' "$scope_id"
+
+echo "Container tests and production API/worker/MCP smoke passed ($engine)."

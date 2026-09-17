@@ -36,5 +36,5 @@ jobs:
             *) echo "Unsupported native architecture"; exit 1 ;;
           esac
           test "$actual" = "$EXPECTED_ARCH"
-      - name: Test containers and smoke-test production API and worker
+      - name: Test containers and smoke-test production API, worker, and MCP
         run: bash scripts/test-containers.sh docker

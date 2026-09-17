@@ -220,7 +220,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-japanese-fts",
+            "stage": "m2-local-mcp",
             "features": [
                 "observe",
                 "structured_remember",
@@ -246,6 +246,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "tool_effect_ledger": True,
             "temporal_revisions": True,
             "vector_search": False,
+            "mcp_adapter": {
+                "installation": "mcp-extra",
+                "transport": "stdio",
+                "remote": False,
+                "tools": ["memory_recall", "memory_remember", "memory_explain", "memory_forget"],
+            },
             "search_profiles": SEARCH_PROFILES,
             "default_search_profile": "simple-v1",
             "japanese_fts": {

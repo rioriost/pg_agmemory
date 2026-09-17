@@ -16,7 +16,7 @@ from pg_agmemory.worker import run
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
-        "command", choices=["serve", "migrate", "provision", "worker", "reindex-lexical"]
+        "command", choices=["serve", "migrate", "provision", "worker", "reindex-lexical", "mcp"]
     )
     parser.add_argument(
         "--subject", help="Trusted issuer subject for provisioning or fixed-principal worker"
@@ -29,7 +29,17 @@ def main() -> None:
         parser.error("--once is only supported by worker")
     if args.command == "reindex-lexical" and args.subject is not None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
-    if args.command == "migrate":
+    if args.command == "mcp":
+        if args.subject is not None:
+            parser.error("mcp uses its fixed startup token; --subject is not supported")
+        try:
+            from pg_agmemory.mcp_adapter import main as mcp_main
+        except ModuleNotFoundError as exc:
+            if exc.name not in ("mcp", "httpx"):
+                raise
+            parser.error("mcp requires the pg-agmemory[mcp] extra")
+        mcp_main()
+    elif args.command == "migrate":
         migrate(os.environ["PGAG_ADMIN_DATABASE_URL"])
     elif args.command == "reindex-lexical":
         print(json.dumps(reindex_lexical(os.environ["PGAG_ADMIN_DATABASE_URL"])))

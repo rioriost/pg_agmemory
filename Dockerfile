@@ -13,13 +13,13 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
 
 FROM build AS test
-RUN uv sync --frozen --extra dev \
+RUN uv sync --frozen --extra dev --extra mcp \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 CMD ["sh", "-c", "ruff check . && mypy && pytest"]
 
 FROM build AS runtime-deps
-RUN uv sync --frozen --no-dev --no-editable \
+RUN uv sync --frozen --no-dev --no-editable --extra mcp \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 
 FROM base AS runtime
