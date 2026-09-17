@@ -3,7 +3,7 @@
 [日本語](0023-episode-query-jp.md) | [Contract](../STATUS.md#episode-query-and-pagination) | [Operations](../operations/README.md#episode-query-and-pagination)
 
 - Date: 2026-09-18
-- Status: draft for bounded v0.0.23/schema 10; implementation qualification pending
+- Status: implemented and qualified for bounded v0.0.23/schema 10
 - Extends: [Initial slice](0001-initial-slice.md) and [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
@@ -83,12 +83,21 @@ and use matching versions; no mixed-version promise.
 
 ## Validation boundary
 
-V23 qualification is pending. No v23 test count, implementation SHA, local/native
-result, or production-smoke success is recorded. Validation objectives include
-closed models, timezone/range boundaries, 100/101-row tied timestamps, late
-historical ordering, shared-scope ACL/purge/epochs, metadata-only read-only SQL
-without audit writes, typed SDK pages, and explicit select/Explain/Remember.
-These are objectives, not passing results.
-See [pending evidence](../STATUS.md#v0023--schema-10).
+V23 implementation
+[`bf53a30625ffcfb0f23f986abcec5e2d608dcb68`](https://github.com/rioriost/pg_agmemory/commit/bf53a30625ffcfb0f23f986abcec5e2d608dcb68)
+passed the full Apple Container `./scripts/test-containers.sh`:
+**821 passed, 1 warning, 499.94 s**.
+Exact-SHA [CI 35280254044](https://github.com/rioriost/pg_agmemory/actions/runs/35280254044)
+passed: amd64 **821 passed, 1 warning, 821.33 s**;
+arm64 **821 passed, 1 warning, 823.87 s**.
+All three environments passed Ruff, mypy **19 source files + 1 strict SDK consumer**,
+all optional installation checks, and all production smokes, including episode query.
+**821 = 780 retained + 41 new cases**: 27 contract, 7 Native episodes,
+7 SDK (6 mock + 1 real workflow).
+Verified coverage includes closed models, timezone/range boundaries,
+100/101-row tied timestamps, late historical ordering, shared-scope ACL/purge/epochs,
+metadata-only read-only SQL without audit writes, typed SDK pages, and explicit
+select/Explain/Remember. See [qualification evidence](../STATUS.md#v0023--schema-10).
+These are implementation results; final-docs CI for this update has not run.
 V22's initial implementation, failed docs run, qualified graph fixes, and separate
 final-docs CI remain [historical evidence](../STATUS.md#v0022--schema-10), not v23 qualification.

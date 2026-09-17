@@ -3,7 +3,7 @@
 [English](0023-episode-query.md) | [契約](../STATUS-jp.md#episode-query-and-pagination) | [運用](../operations/README-jp.md#episode-query-and-pagination)
 
 - 日付: 2026-09-18
-- 状態: 上限付きv0.0.23/schema 10のdraft。実装の適格性確認待ち
+- 状態: 上限付きv0.0.23/schema 10として実装済み・適格性確認済み
 - 拡張対象: [初期slice](0001-initial-slice-jp.md)、[Python SDK](0012-python-sdk-jp.md)
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/記憶品質/本番/DRの適格性確認ではない
@@ -81,11 +81,19 @@ SQL migrationや依存/provider変更はありません。
 
 ## 検証境界
 
-v23は適格性確認待ちです。v23テスト件数、実装SHA、local/native結果、
-production smoke成功は未記録です。検証目標はclosed model、timezone/range境界、
-同時刻100/101行、遅い過去eventの順序、共有scopeのACL/purge/epoch、
-audit書込みのないmetadata専用read-only SQL、typed SDK page、
-明示select/Explain/Rememberです。目標であり合格結果ではありません。
-[未確認の証拠](../STATUS-jp.md#v0023--schema-10)を参照してください。
+v23実装
+[`bf53a30625ffcfb0f23f986abcec5e2d608dcb68`](https://github.com/rioriost/pg_agmemory/commit/bf53a30625ffcfb0f23f986abcec5e2d608dcb68)は
+Apple Containerのfull `./scripts/test-containers.sh`で**821合格、warning 1件、499.94秒**でした。
+完全一致SHAの[CI 35280254044](https://github.com/rioriost/pg_agmemory/actions/runs/35280254044)は、
+amd64 **821合格、warning 1件、821.33秒**、arm64 **821合格、warning 1件、823.87秒**でした。
+全3環境でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全optional導入検査、episode照会を含む全production smokeも合格しました。
+**821 = 既存780 + 新規41 case**で、contract 27、Native episode 7、
+SDK 7（mock 6 + 実workflow 1）です。
+検証済みcoverageはclosed model、timezone/range境界、同時刻100/101行、
+遅い過去eventの順序、共有scopeのACL/purge/epoch、
+audit書込みのないmetadata専用read-only SQL、typed SDK page、明示select/Explain/Rememberです。
+[適格性確認の証拠](../STATUS-jp.md#v0023--schema-10)を参照してください。
+これは実装の結果で、この更新の最終docs CIはまだ実行していません。
 v22の初期実装、docs run失敗、検証済みgraph修正、別の最終docs CIは
 [過去の証拠](../STATUS-jp.md#v0022--schema-10)であり、v23の適格性確認ではありません。

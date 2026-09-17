@@ -2,8 +2,8 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**次の上限付きmilestoneはv0.0.23/schema 10のepisode照会とpaginationです。
-v0.0.23は文書draft、適格性確認待ちです。
+**現在の上限付き実装はv0.0.23/schema 10のepisode照会とpaginationです。
+実装済みで、localと両native architectureで適格性を確認しました。
 検証済みv0.0.22以前の結果は過去の証拠であり、v0.0.23の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
@@ -19,7 +19,7 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 | Endpoint | 現在の動作 |
 |---|---|
 | `POST /v1/observe` | caller指定の発生時刻・同意参照とともにepisodeを1件保存。revisionは`1`、`synthesis_job_id`は`null`で、job enqueueは行わない |
-| `POST /v1/episodes/query` | 現在読取り可能scopeのepisode metadataをread-only照会。半開occurred-time境界とrecorded-time keyset page。v23適格性確認待ち |
+| `POST /v1/episodes/query` | 現在読取り可能scopeのepisode metadataをread-only照会。半開occurred-time境界とrecorded-time keyset page。v23適格性確認済み |
 | `POST /v1/captures` | episode一つと明示構造化publication job一つを原子的にcommit/再利用。`201`はepisode/job組でありassertion公開済みではない |
 | `POST /v1/captures/batch` | episode一つと同一scopeの明示proposal 1〜16件を原子的受付。順序付きjob参照で公開は独立 |
 | `POST /v1/remember` | 同一scopeの読取り可能なepisodeからの原文引用を根拠とし、明示的に要求された構造化assertionを保存 |
@@ -59,7 +59,7 @@ PostgreSQLへの継続的なreadiness検査ではありません。
 
 ## Episode query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 Native JWT認証付き`POST /v1/episodes/query`はread-onlyで現在read権限を要求し、
 write権限や`Idempotency-Key`は不要です。closedな`QueryEpisodes`は次だけを受け付けます。
 
@@ -148,11 +148,11 @@ SQL migrationや依存/provider変更はありません。
 旧componentを停止/drainして対応版を使い、混在versionは保証しません。
 [運用](operations/README-jp.md#episode-query-and-pagination)、
 [ADR 0023](adr/0023-episode-query-jp.md)、
-[未確認の証拠](#v0023--schema-10)を参照してください。
+[適格性確認の証拠](#v0023--schema-10)を参照してください。
 
 ## Explicit batch capture
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求し、
 既存の現在tenant/scope read/write権限、RLS、response-drain barrierを適用します。
 closedな`CaptureBatch`は`episode: Observe`と
@@ -239,7 +239,7 @@ SQL migration、依存、backend、provider変更はありません。
 
 ## Exact entity query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 Native JWT認証付き`POST /v1/entities/query`はread-onlyで、現在のread権限が必要ですが、
 write権限や`Idempotency-Key`は不要です。closedな`QueryEntities`は次だけを受け付けます。
 
@@ -329,7 +329,7 @@ SQL migration、依存/provider、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 read-only `POST /v1/assertions/history`にはNative JWT認証と現在のread権限が必要で、
 `Idempotency-Key`やwrite権限は不要です。
 closedな`AssertionHistory` modelは次だけを受け付けます。
@@ -421,7 +421,7 @@ SQL migrationや依存/provider変更はありません。
 
 ## Owned-job query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 read-only `POST /v1/jobs/query`にはNative JWT認証が必要で、
 `Idempotency-Key`やwrite権限は不要です。closedな`QueryJobs`のfieldは次だけです。
 
@@ -502,7 +502,7 @@ v22→v23にはSQL migration、依存/provider/artifact固定値変更はあり�
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.23は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.23は適格性確認済みです。**
 `POST /v1/checkpoints/head`はNative JWT認証とscopeの現在のread権限を要求し、
 write権限は不要です。`Idempotency-Key`も不要です。
 closedな型付き`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
@@ -570,7 +570,7 @@ harness連携、compaction、MVP、汎用復旧/本番/DRの適格性確認で�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.23は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.23は適格性確認済みです。**
 既存requestへ`Recall.filters: RecallFilters | None = None`を追加します。
 `RecallFilters`は共有の型付きclosed nested契約で、未知fieldを拒否します。
 
@@ -637,7 +637,7 @@ MVP、意味品質、性能、本番、DRの適格性確認は主張しません
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.23は適格性確認済みです。**
 既存`Recall`への追加fieldであり、新routeやSDK methodではありません。
 
 | Request規則 | 契約 |
@@ -715,7 +715,7 @@ stageは`m2-episode-query`で、capabilitiesに`required_context`を維持しま
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.23は適格性確認済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative JWT認証とcallerの`Idempotency-Key`を要求します。
 `CancelJob`が受け付けるのは次のfieldだけです。
 
@@ -805,7 +805,7 @@ capabilitiesは`job_cancellation` metadataを維持します。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.23/schema 10は適格性確認済みです。**
 health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
 `GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
 v0.0.14で導入した`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
@@ -884,7 +884,7 @@ readiness動作は維持しますが、job取消のschema 10にはmigration 010�
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.23は適格性確認済みです。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
@@ -1009,7 +1009,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**SDKはread-only episode照会を追加し31 methodです。v0.0.23は適格性確認待ちです。**
+**SDKはread-only episode照会を追加し31 methodです。v0.0.23は適格性確認済みです。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -1026,7 +1026,7 @@ HTTPXがない場合のSDK importは固定の明確な`ImportError`となり、
 `mcp`/`hook`が提供するHTTPXでも動作します。extraの選択名でなく依存の存在を検出します。
 Docker test/runtimeは`mcp`・`hook`とともに`sdk`を含みます。
 core-only/hook-only/sdk-only検査と、hook-only/sdk-only導入にMCP SDKがないことの検査を実装しています。
-真のnoneditable wheel導入3検査と同梱`py.typed`検査を引き続き要求し、v0.0.23導入の適格性確認待ちです。
+真のnoneditable wheel導入3検査と同梱`py.typed`検査は821件のv0.0.23適格性確認でlocalと両native architectureとも合格しました。
 Python依存のupgradeはありません。
 
 `AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
@@ -2487,19 +2487,28 @@ rolling共存やdowngradeは非対応です。
 
 <a id="v0023--schema-10"></a>
 
-### v0.0.23 / schema 10 — 適格性確認待ち
+### v0.0.23 / schema 10 — 実装の適格性確認済み
 
-**Episode照会文書はdraft、適格性確認待ちです。**
-v23テスト件数、実装SHA、local/native結果、optional導入結果、
-production smoke成功は未記録で、最終docs CIも未確認です。
-適格性確認にはlocal、実装SHA、native証拠をまとめて記録する必要があります。
+**Episode照会は実装済みで、2026-09-18 JSTに適格性を確認しました。**
+実装
+[`bf53a30625ffcfb0f23f986abcec5e2d608dcb68`](https://github.com/rioriost/pg_agmemory/commit/bf53a30625ffcfb0f23f986abcec5e2d608dcb68)
+（`feat: discover scoped episode metadata`）はApple Containerのfull
+`./scripts/test-containers.sh`で**821合格、warning 1件、499.94秒**でした。
+targeted検査も**333合格、warning 1件、55.66秒**でした。
+完全一致SHAの[CI 35280254044](https://github.com/rioriost/pg_agmemory/actions/runs/35280254044)は両native architectureで合格し、
+amd64 **821合格、warning 1件、821.33秒**、arm64 **821合格、warning 1件、823.87秒**でした。
+全3環境でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全optional導入検査、episode照会を含む全production smokeも合格しました。
 
-計画中のcoverageはclosed request/cursor model、timezone/range検証、
+**821 = 既存780 + 新規41 case**で、内訳はcontract 27、Native episode照会7、
+SDK 7（mock 6 + 実workflow 1）です。以前の780-case基準は不変です。
+検証済みcoverageはclosed request/cursor model、timezone/range検証、
 100/101行のtimestamp/UUID同値境界、半開区間、recorded-time順の遅い過去event、
 共有scope可視性、現在ACL/purge/epoch、audit書込みのないmetadata専用read-only SQL、
 typed SDK mock/実workflow、production SDKでの明示query/select/Explain/Rememberです。
-既存検査、optional導入、production smokeもv23としての適格性確認が必要です。
-目標であり合格結果ではありません。
+service 0.0.23 / API v1 / schema 10、Native/SDKの31 resource、MCPの4 tool、
+closed hookは記載の契約を維持し、依存やmigrationの変更はありません。
+これは実装の適格性確認結果で、この更新の最終docs CIはまだ実行していません。
 [契約](#episode-query-and-pagination)と[ADR 0023](adr/0023-episode-query-jp.md)を参照してください。
 MVP、本番、性能、記憶品質、DRの受入は主張しません。
 

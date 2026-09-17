@@ -2,8 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Next bounded milestone: v0.0.23/schema 10 episode query and pagination.
-Documentation draft; v0.0.23 qualification pending.
+**Current bounded implementation: v0.0.23/schema 10 episode query and pagination.
+Implemented and qualified locally and on both native architectures.
 Verified v0.0.22 and earlier results remain historical evidence, not v0.0.23 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -21,7 +21,7 @@ software dependency, not stored application memory.
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
-| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v23 qualification pending |
+| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v23 qualified |
 | `POST /v1/captures` | Atomically commits/reuses one episode and one explicit structured-publication job; `201` returns the episode/job pair, not a published assertion |
 | `POST /v1/captures/batch` | Atomically admits one episode and 1–16 explicit same-scope proposals; ordered job references, independent publication |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
@@ -60,7 +60,7 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Episode query and pagination
 
-**v0.0.23/schema 10 draft; qualification pending.**
+**v0.0.23/schema 10 implemented and qualified.**
 Native JWT authenticated `POST /v1/episodes/query` is read-only, requiring current
 read access but no write permission or `Idempotency-Key`.
 Closed `QueryEpisodes` accepts only:
@@ -153,11 +153,11 @@ v22→v23 is application-only: schema 10/history 1–10 and pinned artifacts rem
 without SQL migration or dependency/provider changes. Stop/drain old components
 and use matching versions; no mixed-version promise.
 See [operations](operations/README.md#episode-query-and-pagination),
-[ADR 0023](adr/0023-episode-query.md), and [pending evidence](#v0023--schema-10).
+[ADR 0023](adr/0023-episode-query.md), and [qualification evidence](#v0023--schema-10).
 
 ## Explicit batch capture
 
-**v0.0.23/schema 10 draft; qualification pending.** Native JWT and caller-owned
+**v0.0.23/schema 10 implemented and qualified.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -249,7 +249,7 @@ See [operations](operations/README.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.23/schema 10 draft; qualification pending.**
+**v0.0.23/schema 10 implemented and qualified.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -344,7 +344,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.23/schema 10 draft; qualification pending.**
+**v0.0.23/schema 10 implemented and qualified.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -438,7 +438,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.23/schema 10 draft; qualification pending.**
+**v0.0.23/schema 10 implemented and qualified.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -526,7 +526,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.23 qualification pending.**
+**Retained checkpoint-head contract; v0.0.23 qualified.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -604,7 +604,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.23 qualification pending.**
+**Retained recall-filter contract; v0.0.23 qualified.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -675,7 +675,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.23 qualification pending.**
+**Retained required-context contract; v0.0.23 qualified.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -757,7 +757,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.23 qualification pending.**
+**Retained job-cancellation contract; v0.0.23 qualified.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -850,7 +850,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.23/schema 10 draft; qualification pending.**
+**Retained readiness contract; v0.0.23/schema 10 qualified.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -933,7 +933,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.23 qualification pending.**
+**Retained scope-access contract; v0.0.23 qualified.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -1064,7 +1064,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds read-only episode query: 31 methods; v0.0.23 qualification pending.**
+**SDK adds read-only episode query: 31 methods; v0.0.23 qualified.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -1082,7 +1082,8 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification remain required; v0.0.23 installation qualification is pending.
+verification passed in the 821-test v0.0.23 qualification, locally and on both
+native architectures.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -2634,20 +2635,30 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0023--schema-10"></a>
 
-### v0.0.23 / schema 10 — qualification pending
+### v0.0.23 / schema 10 — implementation qualified
 
-**Episode-query documentation draft; qualification pending.**
-No v23 test count, implementation SHA, local/native result, optional-installation
-result, or production-smoke success is recorded. Final-docs CI is also pending.
-Combined local, implementation-SHA, and native evidence must be recorded before qualification.
+**Episode query implemented and qualified, 2026-09-18 JST.**
+Implementation
+[`bf53a30625ffcfb0f23f986abcec5e2d608dcb68`](https://github.com/rioriost/pg_agmemory/commit/bf53a30625ffcfb0f23f986abcec5e2d608dcb68)
+(`feat: discover scoped episode metadata`) passed the full Apple Container
+`./scripts/test-containers.sh`: **821 passed, 1 warning, 499.94 s**.
+Targeted checks also passed: **333 passed, 1 warning, 55.66 s**.
+Exact-SHA [CI 35280254044](https://github.com/rioriost/pg_agmemory/actions/runs/35280254044)
+passed on both native architectures: amd64 **821 passed, 1 warning, 821.33 s**;
+arm64 **821 passed, 1 warning, 823.87 s**.
+All three environments passed Ruff, mypy **19 source files + 1 strict SDK consumer**,
+all optional installation checks, and all production smokes, including episode query.
 
-Planned coverage includes closed request/cursor models, timezone/range validation,
+**821 = 780 retained + 41 new cases**: 27 contract, 7 Native episode-query,
+and 7 SDK cases (6 mock + 1 real workflow). The prior 780-case baseline is unchanged.
+Verified coverage includes closed request/cursor models, timezone/range validation,
 100/101-row timestamp/UUID ties, half-open bounds, late historical events in
 recorded-time order, shared-scope visibility, current ACL/purge/epochs,
 metadata-only read-only SQL without audit writes, typed SDK mock/real workflows,
 and production SDK explicit query/select/Explain/Remember.
-Retained checks, optional installations, and production smokes require v23
-qualification too. These are objectives, not passing results.
+Service 0.0.23 / API v1 / schema 10, 31 Native/SDK resources, four MCP tools,
+and the closed hook retain the documented contract, with no dependency or migration change.
+These are implementation qualification results; final-docs CI for this update has not run.
 See [the contract](#episode-query-and-pagination) and [ADR 0023](adr/0023-episode-query.md).
 No MVP, production, performance, memory-quality, or DR acceptance is claimed.
 

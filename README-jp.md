@@ -7,8 +7,8 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**次の上限付きmilestoneはv0.0.23/schema 10のepisode照会とpaginationです。
-v0.0.23は文書draft、適格性確認待ちです。
+**現在の上限付き実装はv0.0.23/schema 10のepisode照会とpaginationです。
+実装済みで、localと両native architectureで適格性を確認しました。
 以下の検証済みv0.0.22以前の結果は過去の証拠であり、v0.0.23の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
@@ -33,7 +33,7 @@ postgresem連携は今後の実装対象です。
 
 ## Episode query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 認証付きread-only `POST /v1/episodes/query`は`Idempotency-Key`不要です。
 closedな`QueryEpisodes`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableなtimezone付き`occurred_from`/`occurred_to`、strictな`max_items`
@@ -73,11 +73,11 @@ stage `m2-episode-query`は`episode_query`を追加し、schema 10にmigration�
 [契約](docs/STATUS-jp.md#episode-query-and-pagination)、
 [paging例](docs/operations/README-jp.md#episode-query-and-pagination)、
 [ADR 0023](docs/adr/0023-episode-query-jp.md)、
-[未確認の証拠](docs/STATUS-jp.md#v0023--schema-10)を参照してください。
+[適格性確認の証拠](docs/STATUS-jp.md#v0023--schema-10)を参照してください。
 
 ## Explicit batch capture
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 認証付き`POST /v1/captures/batch`にcaller所有の`Idempotency-Key`を要求します。
 closedな`CaptureBatch`は既存`episode: Observe`と
 **1〜16件**の`memories: list[CapturedMemory]`を持ちます。
@@ -116,7 +116,7 @@ schema 10にmigration、依存、backend、provider変更はありません。
 
 ## Exact entity query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
 closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
@@ -167,7 +167,7 @@ schema 10にはmigration、依存/provider、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -215,7 +215,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**v0.0.23/schema 10は実装済み・適格性確認済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -261,7 +261,7 @@ Native/SDKは**31 resource method**となり、MCPの4 toolとhookは不変でjo
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.23は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.23は適格性確認済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -303,7 +303,7 @@ v20からのSQL migration、依存/provider/artifact固定値の変更はあり�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.23は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.23は適格性確認済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -339,7 +339,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.23は適格性確認済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -374,7 +374,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.23は適格性確認済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -404,7 +404,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.23/schema 10はdraft、適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.23/schema 10は適格性確認済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -433,7 +433,7 @@ readinessはSDK/MCP/hook probe methodを追加せず、episode照会による現
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.23は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.23は適格性確認済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -461,7 +461,7 @@ PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
 
 ## Python SDK
 
-**SDKはread-only episode照会を追加し31 methodです。v0.0.23は適格性確認待ちです。** 対応checkoutから導入します。
+**SDKはread-only episode照会を追加し31 methodです。v0.0.23は適格性確認済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -573,9 +573,17 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.23は適格性確認待ちです。** Episode照会文書はdraftで、
-v23のテスト件数、実装SHA、local/native結果、production smoke成功は未記録です。
-[計画中の検査](docs/STATUS-jp.md#v0023--schema-10)は結果ではありません。
+**v0.0.23実装の適格性確認はlocalと両native architectureで合格しました。**
+実装
+[`bf53a30625ffcfb0f23f986abcec5e2d608dcb68`](https://github.com/rioriost/pg_agmemory/commit/bf53a30625ffcfb0f23f986abcec5e2d608dcb68)は
+Apple Containerのfull `./scripts/test-containers.sh`で**821合格、warning 1件、499.94秒**でした。
+完全一致SHAの[CI 35280254044](https://github.com/rioriost/pg_agmemory/actions/runs/35280254044)は、
+amd64 **821合格、warning 1件、821.33秒**、arm64 **821合格、warning 1件、823.87秒**でした。
+全3環境でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全optional導入検査、episode照会を含む全production smokeも合格しました。
+**821 = 既存780 + 新規41 case**です。
+[適格性確認の証拠](docs/STATUS-jp.md#v0023--schema-10)を参照してください。
+これは実装の結果で、この更新の最終docs CIはまだ実行していません。
 
 **過去のv0.0.22のgraph修正と全方向の回帰は検証済みです。**
 方向別追加検証の
