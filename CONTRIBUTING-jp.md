@@ -72,9 +72,11 @@ entity-query smokeではscope内のlabel/type完全一致、同名の異なるid
 明示的なgraph seed選択、source purgeを検査します。共有scopeの可視性を
 所有者限定のjob検索と区別し、同名でidentityを統合してはいけません。
 metadata pageに根拠引用は含めません。[ADR 0021](docs/adr/0021-entity-query-jp.md)を参照してください。
-graphのpath件数制限は実際のgeneric prepared planでも検査します。
-canonical metadataのjoinでRLS保護されたrelation scanが増幅しないよう、
-adjacencyのmaterialization境界を維持し、timeoutの延長で退行を隠してはいけません。
+graphのpath件数制限は自動選択と実際のgeneric prepared planで検査し、
+nested-loop-onlyの計画も含めます。100path境界では実行計画のassertionで
+保護されたmetadataとendpoint根拠の再scan回数を制限します。
+adjacency・assertion・revision・重複除去したendpointのmaterialization境界と
+事前計算したID配列を維持し、timeoutの延長で退行を隠してはいけません。
 batch-capture smokeでは1episodeから独立に公開する複数job、順序を維持した再送、
 source purgeを検査します。受付は原子的ですがworkerの公開は原子的ではありません。
 途中失敗時のrollbackと再送時の全jobの現在の可視性検査を維持してください。

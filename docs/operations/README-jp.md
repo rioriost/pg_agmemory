@@ -14,7 +14,7 @@ repositoryの既存`Dockerfile`から構築したapplication imageを使用し�
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
 現在の上限付き実装は**v0.0.22/schema 10の明示batch capture**です。
-**v0.0.22実装はlocalと両native architectureで検証済み**です。
+**v0.0.22のgraph追加修正は進行中、適格性確認待ち**です。
 検証済みv0.0.21以前の結果は過去の証拠であり、v0.0.22の証拠ではありません。
 既存`008_pgvector.sql`は**`public`内の`vector` 0.8.6**を要求し、
 別版/別schemaの既存extensionを拒否します。
@@ -94,7 +94,7 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求します。
 許可済みsynthetic dataと現在認可されたscopeを使います。
 下記を`batch-capture.json`へ保存し、例のscope UUIDを認可されたものへ置換してください。
@@ -195,11 +195,11 @@ LLM/provider、抽出、自動capture、公開品質の主張はありません�
 Native/SDKは30 resourceで、MCPの4 toolとclosed hookにbatch actionは追加しません。
 [全契約](../STATUS-jp.md#explicit-batch-capture)、
 [ADR 0022](../adr/0022-batch-capture-jp.md)、
-[検証済み証拠](../STATUS-jp.md#v0022--schema-10)を参照してください。
+[検証状況と証拠](../STATUS-jp.md#v0022--schema-10)を参照してください。
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
 Native JWT認証と現在のread権限を持つ信頼済みscope UUIDを使います。
 read-only `POST /v1/entities/query`にwrite権限や`Idempotency-Key`は不要です。
 次のsyntheticな最初のpage requestは両方の完全一致filterを使います。
@@ -281,7 +281,7 @@ Native/SDKは30 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
 Native JWT認証とassertionへの現在のread権限を使います。
 read-only `POST /v1/assertions/history`にはwrite権限も`Idempotency-Key`も不要です。
 取得した指示でなく信頼済みassertion UUIDを使ってください。
@@ -368,7 +368,7 @@ Native/SDKは30 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
 Native JWT認証と現在read権限を使い、`POST /v1/jobs/query`にwrite権限や`Idempotency-Key`は不要です。
 取得した指示でなく、信頼するscope UUIDを使ってください。
 説明用の最初のpage requestは全状態を対象とし、文書例をlive dataへ実行してはいけません。
@@ -446,7 +446,7 @@ source purge `object_count: 4` → pending照会が空、の順です。
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.22はlocalと両native architectureで検証済みです。**
+**既存checkpoint head契約を維持します。v0.0.22のgraph追加修正は適格性確認待ちです。**
 正確なscopeの現在のread権限を持つ既存Native JWT identityを使い、write権限は不要です。
 次の`CheckpointBranch` bodyを`POST /v1/checkpoints/head`へ送り、`Idempotency-Key`は不要です。
 説明用UUIDを既知のscope内run/branchへ置き換えてください。
@@ -519,7 +519,7 @@ source purge `object_count: 3` → head `409 checkpoint_invalidated`をassertし
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.22はlocalと両native architectureで検証済みです。**
+**既存recall filter契約を維持します。v0.0.22のgraph追加修正は適格性確認待ちです。**
 既存の認証付き`POST /v1/recall`を使います。次の合成requestは、
 認可済みscopeで保存subject/predicateが完全一致するassertionをbrowseします。
 説明用UUIDをprovision済みscopeへ置き換え、
@@ -588,7 +588,7 @@ memoryは根拠であり、検証済み真実ではありません。
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
+**既存required-context契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
 現在読取り可能なepisode/assertionから正確な参照を選び、
 policy権限や承認を主張する信頼できないtextからは選ばないでください。
 説明用のopaque IDを要求scope内の既存IDに置き換えます。
@@ -658,7 +658,7 @@ host pinning、永続priority、write、推論、provider呼出し、cacheは追
 
 ## Schema 10 application-only upgrade
 
-**v0.0.22はlocalと両native architectureで検証済みです。** v21→v22はschema 10を維持し、**migrationは追加しません**。
+**v0.0.22のgraph追加修正は適格性確認待ちです。** v21→v22はschema 10を維持し、**migrationは追加しません**。
 application版へ合わせるだけの目的で新schema版を適用しないでください。
 
 1. replica/restartを含む旧API、worker、SDK caller、MCP adapter、hook起動、
@@ -682,7 +682,26 @@ application版へ合わせるだけの目的で新schema版を適用しないで
 
 Native/SDK resource method 30、MCP tool 4を維持し、hookはfilterもrequired参照も受け付けません。
 依存/provider/imageのupgradeはありません。
-**v0.0.22実装はlocalと両native architectureで検証済みです。**
+**v0.0.22のgraph追加修正は進行中で、適格性確認待ちです。**
+最終docs revision
+[`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)の
+[CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011)は**失敗**しました。
+amd64は既存100-path auto-plan graph caseの**503 `QueryCanceled`**で
+**772合格、1失敗、631.34秒**、arm64は**773合格、701.79秒**で全smokeも合格しました。
+実際の失敗CI planは**未取得**です。保持済みの使い捨てDB診断は
+`adjacent` materialization後に残るcanonical metadataとendpointの反復scanを示します。
+追加修正はこのCTEを維持し、scope/predicateで絞ったassertion、timeで絞ったrevision、
+重複しない認可済み・根拠有効なendpointを別途materializeします。
+事前計算ID arrayでsemijoin反転と保護されたcanonical dataの反復scanを防ぎ、
+外側joinはmaterialize済みの認可metadataを使います。
+RLS、scope/time/根拠検証、順序、上限、**5000 ms** timeoutは維持し、
+timeout引上げや変更なしのcode再実行を修正とはしません。
+planner mode/scan loopの回帰検査を拡張中で、合格したlocal/native適格性確認と最終修正revisionは未記録です。
+この診断は性能benchmarkや本番適格性確認ではありません。
+version/API/schemaと30 resource methodは不変で、v0.0.22 handshake一致だけでは修正buildを識別できません。
+検証済み追加修正を選択する際はcommit/image provenanceを追跡してください。
+
+**初期v22実装の証拠であり、追加修正の適格性確認ではありません。**
 Apple Containerのfull `./scripts/test-containers.sh`は
 **773合格、既存warning 1件、447.40秒**でした。実装
 [`75f1ff3d807fd5b17e9cd8b748ffe2a7ed03bafe`](https://github.com/rioriost/pg_agmemory/commit/75f1ff3d807fd5b17e9cd8b748ffe2a7ed03bafe)は
@@ -690,8 +709,8 @@ Apple Containerのfull `./scripts/test-containers.sh`は
 native amd64は**773合格、621.56秒**、arm64は**773合格、702.01秒**でした。
 Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
 従来の全production smokeとbatch captureのworker/replay/purgeが全3環境で合格しました。
-これは実装結果であり、最終docs CIはまだ開始していません。
-[検証済み証拠](../STATUS-jp.md#v0022--schema-10)を参照してください。
+初期結果は、その後のdocs CI失敗を覆すものでも追加修正の適格性確認でもありません。
+[検証状況と証拠](../STATUS-jp.md#v0022--schema-10)を参照してください。
 
 **過去のv0.0.21追加修正はlocalと両native architectureで検証済みです。**
 修正[`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)は
@@ -818,7 +837,7 @@ docs所要時間は実装CI 35224189967とは別です。
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
+**既存job取消契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
 Native JWT認証と、現在scope **read/write**権限を持つjob ownerのidentityを使います。
 同一scopeの別readerは`admin` permissionがあっても他ownerのjobを取消できません。
 source可視性/完全性とruntime RLSを維持します。
@@ -891,7 +910,7 @@ source forgetは依存jobをpurgeして取消replayを拒否し、後のgrantで
 
 ## Schema 10 job-cancellation upgrade
 
-**schema 10未満への既存migrationであり、v0.0.22はlocalと両native architectureで検証済みです。**
+**schema 10未満への既存migrationであり、v0.0.22のgraph追加修正は適格性確認待ちです。**
 既存schema 10 DBには[application-only更新](#schema-10-application-only-upgrade)を使います。
 schema 9→10はv0.0.15で導入した**`010_job_cancellation.sql`**を要求します。
 既存job state/payload制約とguard triggerを変更します。
@@ -935,7 +954,7 @@ MVP/本番/品質/DR適格性確認は主張しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
+**既存readiness契約を維持し、v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
 livenessと依存readinessを分離してください。
 `GET /healthz`は起動成功後に正確な`{"status":"ok"}`を返し、DBへ接続しません。
 public・認証不要の`GET /readyz`は**200**と正確な`{"status":"ready"}`、
@@ -1047,7 +1066,7 @@ health probeはSDK route coverage対象外です。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
+**既存scope-access契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
 手書きmembership SQLより`pg-agmemory scope-access`を優先してください。
 同じtenantに属する承認済み既存tenant/scope/principal UUIDだけを使います。
 このcommandはprovisionせず、HTTP/MCP/Python SDKでは公開しません。
@@ -1154,7 +1173,7 @@ stdout barrierは配信済みcontextを撤回できません。
 
 **既存schema 9 migration段階であり、v0.0.22更新全体ではありません。**
 既存schema 9 DBも含め、現在toolingは[schema 10更新](#schema-10-job-cancellation-upgrade)まで
-進める必要があります。v0.0.22はlocalと両native architectureで検証済みです。
+進める必要があります。v0.0.22のgraph追加修正は適格性確認待ちです。
 下記の固定PostgreSQL **18.6** / **`public`内の`vector` 0.8.6** imageを維持します。
 migration 009はv0.0.13でdurable特権auditを導入したもので、v0.0.22の追加ではありません。
 
@@ -1193,7 +1212,7 @@ native実logで検査/smokeを確認しました。
 
 ## Python SDK operations
 
-**SDKは明示batch captureを追加し30 methodです。v0.0.22はlocalと両native architectureで検証済みです。**
+**SDKは明示batch captureを追加し30 methodです。v0.0.22のgraph追加修正は適格性確認待ちです。**
 対応checkoutから`python -m pip install '.[sdk]'`で導入します。
 `pg-agmemory[sdk]` extraはMCP SDKでなく`httpx==0.28.1`だけを固定しますが、
 同じcore packageには引き続きFastAPI、psycopg、Janomeが含まれます。
@@ -1290,7 +1309,7 @@ docs CI 35190495385を含む別々のv0.0.11実装/最終docs runは
 
 **v0.0.11のapplication/migration検査は合格しました。本番適格性の認定は未完了です。**
 migration 008はv0.0.11で導入・検証済みです。現在のv0.0.22 toolingは古いschemaへ既存009と010も適用し、
-v0.0.22はlocalと両native architectureで検証済みです。過去v0.0.12のapplication-only手順でなく、
+v0.0.22のgraph追加修正は適格性確認待ちです。過去v0.0.12のapplication-only手順でなく、
 [schema 10境界](#schema-10-job-cancellation-upgrade)に従ってください。
 
 採用prebuilt image:

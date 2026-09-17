@@ -268,26 +268,33 @@ class SqlGraph:
                       ON v.tenant_id = r.tenant_id AND v.assertion_id = r.id
                     WHERE r.tenant_id = %(tenant)s AND v.target_id = %(node)s
                       AND %(direction)s IN ('incoming','both')
+                ), assertions AS MATERIALIZED (
+                    SELECT id,predicate FROM memory.assertion
+                    WHERE tenant_id=%(tenant)s AND scope_id=ANY(%(scopes)s)
+                      AND predicate=ANY(%(predicates)s)
+                      AND id=ANY(ARRAY(SELECT id FROM adjacent))
+                ), revisions AS MATERIALIZED (
+                    SELECT assertion_id,revision,lower(valid_time) AS valid_from,
+                           upper(valid_time) AS valid_to,lower(system_time) AS recorded_at
+                    FROM memory.assertion_revision
+                    WHERE tenant_id=%(tenant)s AND valid_time @> %(as_of)s
+                      AND system_time @> %(known)s
+                      AND assertion_id=ANY(ARRAY(SELECT id FROM adjacent))
+                ), endpoints AS MATERIALIZED (
+                    SELECT e.id FROM memory.entity e JOIN memory.object o USING (tenant_id,id)
+                    WHERE e.tenant_id=%(tenant)s AND e.scope_id=ANY(%(scopes)s)
+                      AND o.created_at<=%(known)s
+                      AND e.id=ANY(ARRAY(
+                          SELECT source_id FROM adjacent UNION SELECT target_id FROM adjacent
+                      ))
+                      AND (SELECT count(*) FROM memory.entity_evidence ee
+                           WHERE ee.tenant_id=e.tenant_id AND ee.entity_id=e.id)=e.reference_count
                 )
-                SELECT x.*,a.predicate,lower(v.valid_time) AS valid_from,
-                       upper(v.valid_time) AS valid_to,lower(v.system_time) AS recorded_at
-                FROM adjacent x
-                JOIN memory.assertion a ON a.tenant_id = %(tenant)s AND a.id = x.id
-                JOIN memory.assertion_revision v ON v.tenant_id = a.tenant_id
-                  AND v.assertion_id = a.id AND v.revision = x.revision
-                JOIN memory.entity s ON s.tenant_id = a.tenant_id AND s.id = x.source_id
-                JOIN memory.entity t ON t.tenant_id = a.tenant_id AND t.id = x.target_id
-                JOIN memory.object so ON so.tenant_id = s.tenant_id AND so.id = s.id
-                JOIN memory.object ot ON ot.tenant_id = t.tenant_id AND ot.id = t.id
-                WHERE a.scope_id = ANY(%(scopes)s) AND a.predicate = ANY(%(predicates)s)
-                  AND s.scope_id = ANY(%(scopes)s) AND t.scope_id = ANY(%(scopes)s)
-                  AND so.created_at <= %(known)s AND ot.created_at <= %(known)s
-                  AND (SELECT count(*) FROM memory.entity_evidence ee
-                       WHERE ee.tenant_id = s.tenant_id AND ee.entity_id = s.id) = s.reference_count
-                  AND (SELECT count(*) FROM memory.entity_evidence ee
-                       WHERE ee.tenant_id = t.tenant_id AND ee.entity_id = t.id) = t.reference_count
-                  AND v.valid_time @> %(as_of)s AND v.system_time @> %(known)s
-                  AND NOT x.next_id = ANY(%(visited)s)
+                SELECT x.*,a.predicate,v.valid_from,v.valid_to,v.recorded_at
+                FROM adjacent x JOIN assertions a ON a.id=x.id
+                JOIN revisions v ON v.assertion_id=x.id AND v.revision=x.revision
+                JOIN endpoints s ON s.id=x.source_id JOIN endpoints t ON t.id=x.target_id
+                WHERE NOT x.next_id = ANY(%(visited)s)
                 ORDER BY x.id,x.revision,x.next_id LIMIT %(limit)s""",
                 {
                     "tenant": self.tenant,

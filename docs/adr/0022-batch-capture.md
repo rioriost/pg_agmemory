@@ -3,7 +3,7 @@
 [日本語](0022-batch-capture-jp.md) | [Contract](../STATUS.md#explicit-batch-capture) | [Operations](../operations/README.md#explicit-batch-capture)
 
 - Date: 2026-09-18
-- Status: accepted and verified in bounded v0.0.22/schema 10, locally and on both native architectures
+- Status: accepted in bounded v0.0.22/schema 10; graph follow-up qualification pending
 - Extends: [atomic capture](0010-atomic-capture.md), [durable jobs](0006-durable-jobs.md), and [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
@@ -79,7 +79,34 @@ promise; stop/drain old components and use matching versions.
 
 ## Validation boundary
 
-**Final local and native implementation validation passed.** The full Apple
+**Current graph follow-up: qualification pending.**
+Final-docs revision
+[`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)
+**failed** [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011):
+amd64 **772 passed, 1 failed, 631.34 s**; arm64 **773 passed, 701.79 s**, with all smokes.
+The existing 100-path auto-plan graph limit case again received **503**
+with `QueryCanceled` / statement timeout. The actual failed CI plan was **not captured**.
+The retained disposable diagnostic `graph-materialized-plan.json`, not that CI
+plan, shows residual canonical-metadata and endpoint rescans after `adjacent`
+materialization. The follow-up retains that CTE and separately materializes
+scope/predicate-filtered assertions, time-filtered revisions, and distinct
+authorized/evidence-valid endpoints. Precomputed ID arrays are intended to
+prevent semijoin reversal and repeated protected canonical scans; the outer join
+uses materialized authorized metadata.
+RLS, scope/time/evidence semantics, ordering, limits, and the **5000 ms** timeout
+remain unchanged, as do version/API/schema and 30 resource methods.
+
+Regression extensions cover `auto`, `generic`, and `nested_loop`, retaining
+the actual generic-prepared-usage assertion. Runtime-role `EXPLAIN ANALYZE`
+of the actual SQL and parameters must return 100 rows at 100 paths with
+`assertion`/`assertion_revision` scan loops **<= 1** and
+`entity`/`entity_evidence` scan loops **<= 2**.
+One additional mode means **774 expected tests**, not an observed passing count.
+The fix revision and completed local/native qualification are not recorded yet.
+These are regression requirements, not a performance benchmark or production
+completion claim.
+
+**Initial v22 implementation evidence, not qualification of the follow-up.** The full Apple
 Container `./scripts/test-containers.sh` completed with **773 passed,
 1 existing warning, 447.40 s**: **730 retained + 43 new cases**
 (8 contract, 18 capture, 17 SDK).
@@ -102,7 +129,7 @@ and conflicts, legacy capture/Observe interoperability, independent terminal
 jobs, source/job/result purge, all-child replay validation, and old-lease fencing.
 Actual committed response loss produces SDK `outcome_unknown: true`; explicit
 same-key/body recovery and the 256 KiB body bound are checked.
-These are implementation results; final-docs CI has not started.
+The initial results do not override the failed final-docs CI or qualify the follow-up.
 Elapsed time is not a benchmark; no M0–M3/MVP, performance, memory-quality,
 production, or DR qualification is claimed.
 See [verified evidence](../STATUS.md#v0022--schema-10).

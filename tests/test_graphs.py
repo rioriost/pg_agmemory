@@ -764,17 +764,35 @@ def test_entity_erasure_purges_historical_links_checkpoints_and_effects(env, del
         )
 
 
-@pytest.mark.parametrize("generic_plan", [False, True])
-def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, generic_plan):
+@pytest.mark.parametrize("plan_mode", ["auto", "generic", "nested_loop"])
+def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, plan_mode):
     checked = False
     neighbors = SqlGraph.neighbors
 
-    async def generic_neighbors(self, *args):
+    async def inspect_neighbors(self, *args):
         nonlocal checked
-        self.conn.prepare_threshold = 0
-        await self.conn.execute("SET LOCAL plan_cache_mode='force_generic_plan'")
-        result = await neighbors(self, *args)
-        if not checked:
+        if plan_mode != "auto":
+            self.conn.prepare_threshold = 0
+            await self.conn.execute("SET LOCAL plan_cache_mode='force_generic_plan'")
+        if plan_mode == "nested_loop":
+            await self.conn.execute("SET LOCAL enable_hashjoin=off")
+            await self.conn.execute("SET LOCAL enable_mergejoin=off")
+            await self.conn.execute("SET LOCAL enable_material=off")
+        if checked:
+            return await neighbors(self, *args)
+        execute = self.conn.execute
+        statement, parameters = None, None
+
+        async def record_execute(query, params=None, **kwargs):
+            nonlocal statement, parameters
+            if isinstance(query, str) and query.startswith("WITH adjacent"):
+                statement, parameters = query, params
+            return await execute(query, params, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(self.conn, "execute", record_execute)
+            result = await neighbors(self, *args)
+        if plan_mode != "auto":
             row = await (
                 await self.conn.execute(
                     """SELECT count(*) AS total FROM pg_prepared_statements
@@ -782,11 +800,32 @@ def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, gene
                 )
             ).fetchone()
             assert row["total"] > 0
-            checked = True
+        assert statement is not None
+        row = await (
+            await execute(
+                "EXPLAIN (ANALYZE, FORMAT JSON, TIMING OFF) " + statement,
+                parameters,
+                prepare=False,
+            )
+        ).fetchone()
+        plan = row["QUERY PLAN"][0]["Plan"]
+        assert plan["Actual Rows"] == 100
+        nodes = [plan]
+        scans = []
+        while nodes:
+            node = nodes.pop()
+            nodes.extend(node.get("Plans", []))
+            relation = node.get("Relation Name")
+            if relation in {"assertion", "assertion_revision", "entity", "entity_evidence"}:
+                scans.append(relation)
+                assert node["Actual Loops"] <= (
+                    1 if relation in {"assertion", "assertion_revision"} else 2
+                ), json.dumps(row["QUERY PLAN"])
+        assert set(scans) == {"assertion", "assertion_revision", "entity", "entity_evidence"}
+        checked = True
         return result
 
-    if generic_plan:
-        monkeypatch.setattr(SqlGraph, "neighbors", generic_neighbors)
+    monkeypatch.setattr(SqlGraph, "neighbors", inspect_neighbors)
     a, b = create_entity(env, "A"), create_entity(env, "B")
     body = relation_body(env, a, b)
     for _ in range(100):
@@ -795,7 +834,7 @@ def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, gene
     exact = expand(env, a, max_paths=100)
     assert len(exact["paths"]) == len(exact["edges"]) == 100
     assert exact["coverage"]["truncated"] is False
-    assert checked == generic_plan
+    assert checked
     assert env.client.post("/v1/relations", json=body, headers=env.headers()).status_code == 201
     overflow = expand(env, a)
     assert len(overflow["paths"]) == 100 and overflow["coverage"]["truncated"] is True

@@ -3,7 +3,7 @@
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
 **Current bounded implementation: v0.0.22/schema 10 explicit batch capture.
-Implementation verified locally and on both native architectures.
+Graph follow-up in progress; qualification pending.
 Verified v0.0.21 and earlier results remain historical evidence, not v0.0.22 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -59,7 +59,7 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10 verified locally and on both native architectures.** Native JWT and caller-owned
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -147,11 +147,11 @@ v21→v22 is application-only: schema 10/history 1–10 and pinned artifacts rem
 no SQL migration, dependency, backend, or provider change. Stop/drain old
 components and use matching versions; no mixed-version promise.
 See [operations](operations/README.md#explicit-batch-capture),
-[ADR 0022](adr/0022-batch-capture.md), and [verified evidence](#v0022--schema-10).
+[ADR 0022](adr/0022-batch-capture.md), and [qualification evidence](#v0022--schema-10).
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -246,7 +246,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -340,7 +340,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -428,7 +428,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.22 verified locally and on both native architectures.**
+**Retained checkpoint-head contract; v0.0.22 graph follow-up qualification pending.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -506,7 +506,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.22 verified locally and on both native architectures.**
+**Retained recall-filter contract; v0.0.22 graph follow-up qualification pending.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -577,7 +577,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.22 verified locally and on both native architectures.**
+**Retained required-context contract; v0.0.22 graph follow-up qualification pending.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -659,7 +659,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.22 verified locally and on both native architectures.**
+**Retained job-cancellation contract; v0.0.22 graph follow-up qualification pending.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -752,7 +752,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.22/schema 10 verified locally and on both native architectures.**
+**Retained readiness contract; v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -835,7 +835,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.22 verified locally and on both native architectures.**
+**Retained scope-access contract; v0.0.22 graph follow-up qualification pending.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -966,7 +966,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds explicit batch capture: 30 methods; v0.0.22 verified locally and on both native architectures.**
+**SDK adds explicit batch capture: 30 methods; v0.0.22 graph follow-up qualification pending.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -984,7 +984,8 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification passed for v0.0.22 locally and on both native architectures.
+verification passed for the initial v0.0.22 implementation; graph follow-up
+qualification is pending.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -2535,9 +2536,42 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0022--schema-10"></a>
 
-### v0.0.22 / schema 10 — verified
+### v0.0.22 / schema 10 — graph follow-up qualification pending
 
-**Final local and native implementation results verified, 2026-09-18 JST:**
+**Current graph follow-up, 2026-09-18 JST: qualification pending.**
+Final-docs revision
+[`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)
+**failed** [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011):
+amd64 **772 passed, 1 failed, 631.34 s**; arm64 **773 passed, 701.79 s**, with all smokes.
+The existing 100-path auto-plan case of
+`test_exact_graph_path_seed_and_entity_evidence_limits` again received **503**
+with `QueryCanceled` / statement timeout. Its actual CI execution plan was **not captured**.
+
+The retained disposable diagnostic `graph-materialized-plan.json` shows that
+`adjacent` materialization alone left `assertion` and `assertion_revision` scans
+at 100 loops each, with endpoint/entity-evidence scans repeated 100 times per
+endpoint. This is evidence from that diagnostic, not the failed runner's plan.
+The follow-up keeps `adjacent` **MATERIALIZED** and separately materializes
+scope/predicate-filtered assertions, time-filtered revisions, and distinct
+authorized/evidence-valid endpoints. Precomputed ID arrays are intended to prevent
+semijoin reversal and repeated scans of protected canonical tables; the outer
+join uses materialized authorized metadata. Current RLS, scope, time, evidence,
+ordering, limits, and the **5000 ms** statement timeout are unchanged.
+This is a code follow-up, not an unchanged-code rerun or timeout increase.
+Version v0.0.22, API v1, schema 10, and 30 Native/SDK resource methods remain unchanged.
+
+The existing limit regression is being extended to `auto`, `generic`, and
+`nested_loop` modes, preserving the actual generic-prepared-usage assertion.
+The new checks use `EXPLAIN ANALYZE` on the actual SQL and parameters under the
+runtime role at 100 paths: require 100 returned rows, `assertion` and
+`assertion_revision` scan loops **<= 1**, and `entity` and `entity_evidence`
+scan loops **<= 2**. These are regression requirements, not passing results.
+One added planner-mode case would make **774 expected tests**, not an observed
+passing count. Follow-up fix revision and completed local/native qualification
+results are not recorded yet. No performance benchmark or production completion
+is claimed.
+
+**Initial v22 implementation evidence, not qualification of the follow-up:**
 the full Apple Container `./scripts/test-containers.sh` completed with
 **773 passed, 1 existing warning, 447.40 s**.
 The total is **730 retained + 43 new cases**: **8 contract**, **18 capture**
@@ -2568,8 +2602,8 @@ explicit recovery with the original stable key/body; the 256 KiB body bound is c
 
 The contract, 30 Native/SDK resource methods, four MCP tools, and closed hook
 remain as documented. Schema 10/history 1–10 and dependencies/backend/providers
-are unchanged; no SQL migration. These are implementation results;
-final-docs CI has not started.
+are unchanged; no SQL migration. These initial results remain distinct from the
+later failed final-docs CI and the pending graph follow-up.
 Elapsed time is not a benchmark; no M0–M3/MVP, performance, memory-quality,
 production, or DR qualification is claimed.
 

@@ -7,7 +7,7 @@ is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local 
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 **Current bounded implementation: v0.0.22/schema 10 explicit batch capture.
-Implementation verified locally and on both native architectures.
+Graph follow-up in progress; qualification pending.
 Verified v0.0.21 and earlier results below are historical, not v0.0.22 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
@@ -37,7 +37,7 @@ before using the service.
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Authenticated `POST /v1/captures/batch` requires a caller-owned `Idempotency-Key`.
 Closed `CaptureBatch` contains unchanged `episode: Observe` and **1–16**
 `memories: list[CapturedMemory]`. Every proposal is explicit, same-scope, and
@@ -74,11 +74,11 @@ Schema 10 has no migration, dependency, backend, or provider change.
 See [the contract](docs/STATUS.md#explicit-batch-capture),
 [the async example](docs/operations/README.md#explicit-batch-capture),
 [ADR 0022](docs/adr/0022-batch-capture.md), and
-[verified evidence](docs/STATUS.md#v0022--schema-10).
+[qualification evidence](docs/STATUS.md#v0022--schema-10).
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Authenticated read-only `POST /v1/entities/query` requires no `Idempotency-Key`.
 Closed `QueryEntities` accepts distinct `scope_ids` (1–32 UUIDs), nullable
 `entity_type` (one of the existing eight `EntityType` values), nullable
@@ -131,7 +131,7 @@ and [ADR 0021](docs/adr/0021-entity-query.md).
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Authenticated read-only `POST /v1/assertions/history` requires no `Idempotency-Key`.
 Closed `AssertionHistory` accepts only required UUID `memory_id`, strict integer
 `max_items` (1–100, default 20), and nullable strict integer `before_revision`
@@ -179,7 +179,7 @@ and [ADR 0020](docs/adr/0020-assertion-history.md).
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10 verified locally and on both native architectures.**
+**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 Authenticated read-only `POST /v1/jobs/query` requires no `Idempotency-Key`.
 Closed `QueryJobs` accepts distinct `scope_ids` (1–32 UUIDs), distinct `states`
 (at most five; `[]`/omitted means all), strict integer `max_items` (1–100,
@@ -230,7 +230,7 @@ and [ADR 0019](docs/adr/0019-job-query.md).
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.22 verified locally and on both native architectures.**
+**Retained checkpoint-head contract; v0.0.22 graph follow-up qualification pending.**
 Authenticated `POST /v1/checkpoints/head` is read-only and requires no
 `Idempotency-Key`. Its closed `CheckpointBranch` body contains exactly three
 required UUIDs: `scope_id`, `run_id`, and `branch_id`. It selects only that exact,
@@ -279,7 +279,7 @@ and [ADR 0018](docs/adr/0018-checkpoint-head.md).
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.22 verified locally and on both native architectures.**
+**Retained recall-filter contract; v0.0.22 graph follow-up qualification pending.**
 Existing Native `POST /v1/recall`, typed SDK `recall`, and MCP `memory_recall`
 accept `Recall.filters: RecallFilters | None = None`. The closed nested model has
 only nullable `kind` (`"episode"` or `"assertion"`), `subject` (`ShortText`,
@@ -318,7 +318,7 @@ and [ADR 0017](docs/adr/0017-recall-filters.md).
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.22 verified locally and on both native architectures.**
+**Retained required-context contract; v0.0.22 graph follow-up qualification pending.**
 Existing Native `POST /v1/recall`, SDK `recall`, and MCP `memory_recall` accept
 `Recall.required_memory_refs`: omitted or `[]` by default, at most **16**
 `MemoryReference` entries. Each selects a UUID and exact revision **1–1000**;
@@ -357,7 +357,7 @@ and [ADR 0016](docs/adr/0016-required-context.md).
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.22 verified locally and on both native architectures.**
+**Retained job-cancellation contract; v0.0.22 graph follow-up qualification pending.**
 `POST /v1/jobs/{job_id}/cancel` requires Native authentication, a caller-retained
 `Idempotency-Key`, and exactly `expected_state` (`pending` or `running`) plus
 strict integer `expected_attempt` (0–5; running requires at least 1).
@@ -390,7 +390,7 @@ and [ADR 0015](docs/adr/0015-job-cancellation.md).
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.22/schema 10 verified locally and on both native architectures.**
+**Retained readiness contract; v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
 `GET /healthz` remains process liveness after successful startup:
 `{"status":"ok"}`, without DB calls. Public, unauthenticated `GET /readyz`
 returns HTTP **200** with exactly `{"status":"ready"}` or an expected-failure
@@ -422,7 +422,7 @@ and [ADR 0014](docs/adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.22 verified locally and on both native architectures.**
+**Retained scope-access contract; v0.0.22 graph follow-up qualification pending.**
 The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
 for existing same-tenant scope/principal UUIDs. It requires
 `PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
@@ -452,7 +452,7 @@ and [ADR 0013](docs/adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds explicit batch capture: 30 methods; v0.0.22 verified locally and on both native architectures.** From the matching checkout:
+**SDK adds explicit batch capture: 30 methods; v0.0.22 graph follow-up qualification pending.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -564,7 +564,24 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.22 implementation verified locally and on both native architectures.**
+**v0.0.22 graph follow-up is in progress; qualification pending.**
+Final-docs revision
+[`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)
+**failed** [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011):
+amd64 **772 passed, 1 failed, 631.34 s**, with **503 `QueryCanceled`** at the
+existing 100-path auto-plan graph case; arm64 **773 passed, 701.79 s**, with all smokes.
+A retained disposable diagnostic shows residual canonical-metadata and endpoint
+rescans after `adjacent` materialization; the actual failed CI plan was **not captured**.
+The follow-up retains `adjacent` materialization and separately materializes
+scope/predicate-filtered assertions, time-filtered revisions, and distinct
+authorized/evidence-valid endpoints. Precomputed ID arrays are intended to
+prevent reversed semijoins and repeated protected canonical scans.
+RLS, scope/time/evidence checks, ordering, limits, and the **5000 ms** timeout
+remain unchanged. Planner-mode and scan-loop regression checks are being extended;
+no follow-up fix revision or passing qualification results are recorded yet.
+This is not a performance benchmark or production qualification.
+
+**Initial v22 implementation evidence, not qualification of the follow-up:**
 The full Apple Container `./scripts/test-containers.sh` completed with
 **773 passed, 1 existing warning, 447.40 s**. Implementation
 [`75f1ff3d807fd5b17e9cd8b748ffe2a7ed03bafe`](https://github.com/rioriost/pg_agmemory/commit/75f1ff3d807fd5b17e9cd8b748ffe2a7ed03bafe)
@@ -574,8 +591,8 @@ arm64 **773 passed, 702.01 s**.
 Ruff, mypy **19 source files + 1 strict SDK consumer**, core/hook/sdk-only
 installations, and all previous production smokes plus batch capture
 worker/replay/purge passed in all three environments.
-These are implementation results; final-docs CI has not started.
-See [verified evidence](docs/STATUS.md#v0022--schema-10).
+These initial results do not override the later failed docs CI or qualify the follow-up.
+See [qualification evidence](docs/STATUS.md#v0022--schema-10).
 
 **Historical v0.0.21 follow-up verified locally and on both native architectures.**
 Fix [`956b232f38caeeb7d0421a2d6fd3d8340206bcbc`](https://github.com/rioriost/pg_agmemory/commit/956b232f38caeeb7d0421a2d6fd3d8340206bcbc)
