@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/production/performance/quality/DR/full-erasure qualification
 
+**Historical version notice:** this ADR records verified v0.0.15/schema 10 job
+cancellation. [ADR 0016](0016-required-context.md) records v0.0.16 required-context
+recall on the same schema and 25-resource surface, with application-only
+v15→v16 deployment. The implementation is verified locally and on both native architectures.
+Separate final v0.0.15 docs CI 35218254940 is recorded in [historical evidence](../STATUS.md#v0015--schema-10).
+
 ## Decision and authority
 
 Add authenticated `POST /v1/jobs/{job_id}/cancel` with caller-owned

@@ -48,6 +48,10 @@ state/attempt CAS、所有者と現在の権限、audit/receiptの原子的更�
 古いworkerの公開防止を維持してください。HTTP 200のcancelもmutationであり、
 SDKのkey検証と結果不明の扱いを省略してはいけません。
 [ADR 0015](docs/adr/0015-job-cancellation-jp.md)を参照してください。
+required-context smokeでは必須の参照を通常のkeyword検索結果より先に格納し、
+件数制限、必須内容がbyte予算に収まらない場合の明示エラー、source purgeを確認します。
+必須指定でもscope・現在の認可・時間条件を迂回してはいけません。
+[ADR 0016](docs/adr/0016-required-context-jp.md)を参照してください。schema 10は変更しません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

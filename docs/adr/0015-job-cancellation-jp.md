@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/本番/性能/品質/DR/完全消去の適格性確認ではない
 
+**過去版の注記:** このADRは検証済みv0.0.15/schema 10のjob取消を記録します。
+[ADR 0016](0016-required-context-jp.md)は同じschemaと25-resource surfaceで
+v0.0.16 required-context recallを記録し、v15→v16はapplication-only導入です。
+v0.0.16はlocalと両native architectureで検証済みです。別の最終v0.0.15 docs CI 35218254940は
+[過去の証拠](../STATUS-jp.md#v0015--schema-10)に記録します。
+
 ## 決定と権限
 
 認証付き`POST /v1/jobs/{job_id}/cancel`を追加し、caller管理の`Idempotency-Key`と

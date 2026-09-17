@@ -2,9 +2,9 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Bounded milestone: v0.0.15/schema 10 explicit job cancellation.
-The implementation is verified locally and on both native Linux architectures.
-Verified v0.0.14 and earlier results remain historical evidence, not v0.0.15 results.
+**Current bounded implementation: v0.0.16/schema 10 required-context recall.
+Verified locally and on native Docker amd64/arm64.
+Verified v0.0.15 and earlier results remain historical evidence, not v0.0.16 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -39,7 +39,7 @@ software dependency, not stored application memory.
 | `POST /v1/tool-effects` | Records/deduplicates an intent within an existing checkpoint run; returns its initial revision reference |
 | `POST /v1/tool-effects/{memory_id}/transitions` | Appends a CAS-checked ledger transition; does not call the tool |
 | `GET /v1/tool-effects/{memory_id}` | Returns current state, immutable event history, references, HMAC identifiers, and the run-invalidated flag |
-| `POST /v1/recall` | Preserves default lexical recall and byte-budgeted packs; v0.0.11 adds opt-in exact vector/hybrid modes with explicit coverage |
+| `POST /v1/recall` | Lexical/vector/hybrid recall with byte-budgeted packs; optional exact required refs form an all-or-error prefix in lexical mode |
 | `POST /v1/embedding-inputs` | HTTP 200 read-only canonical embedding input for an authorized episode/assertion revision; no idempotency key |
 | `POST /v1/embeddings` | HTTP 201 explicit immutable vector upload under the canonical parent's scope; mandatory caller-owned idempotency key |
 | `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
@@ -52,9 +52,90 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
+## Required-context recall
+
+**v0.0.16/schema 10 verified locally and on both native architectures.**
+This is an additive field on existing `Recall`, not a new route or SDK method.
+
+| Request rule | Contract |
+|---|---|
+| `required_memory_refs` | Omitted or `[]` by default; at most 16 `MemoryReference` entries |
+| Reference | `memory_id` UUID and revision 1–1000; omitted revision is **1, not latest** |
+| Identity/count | Unique memory IDs, even across revisions; count must be at most `max_items` |
+| Retrieval | Nonempty references require `retrieval_mode: "lexical"`; vector/hybrid reject them |
+| Recall mode | Both explicit and implicit; the existing implicit 2,000-byte cap remains |
+
+Invalid field combinations, duplicate IDs, excessive count, or invalid reference shapes/ranges
+return **422 `invalid_request`**. Omitting the field or supplying `[]` retains
+baseline lexical/vector/hybrid ordering, results, and pack semantics.
+No new read writes, idempotency requirement, priority metadata, persistent cache,
+model inference, or provider call is introduced.
+
+### Candidate eligibility and ordering
+
+Required references use the **same currently authorized, materialized
+episode/assertion candidate relation** as normal recall, with the requested
+`scope_ids` and frozen `as_of`/`known_at`. They do not expand scopes, override
+ownership/ACLs, bypass time filters, select latest, or fall back to another revision.
+Existing bitemporal rules select one revision per object at a given `known_at`.
+Relation assertions remain eligible under the same filters; entity objects are
+wrong-kind references, not recall candidates.
+Any missing/unreadable/purged/wrong-kind/out-of-request-scope/time-ineligible or
+wrong-revision reference fails the **whole request with generic 404 `not_found`**.
+No partial context or names of missing references are disclosed.
+
+Required references bypass **query keyword matching and ranking cutoff only**.
+They appear first in **request order**, followed by normal lexical-ranked optional
+items. Required IDs are excluded from optional candidates to prevent duplicates.
+Both groups count within `max_items`; the extra optional overflow candidate still
+signals `coverage.truncated`.
+Both `simple-v1` and `ja-janome-0.5.0-v1` work. Exact canonical references may be
+included when Japanese projections are missing, but `coverage.lexical_incomplete`
+and the existing incomplete-coverage metadata remain; this is not index repair.
+
+### Whole required prefix or error
+
+The budget still covers the **entire compact `ContextPack` JSON in UTF-8 bytes**,
+including citations, quoting, and the warning/`refresh_required` marker.
+Relation entity UUIDs and citation overhead remain inside that same byte budget.
+`token_budget` is not a promise of exact model-token accounting.
+If any whole required item cannot fit, Native returns **422** with
+`ErrorBody.code` equal to `budget_exhausted`: no successful empty, omitted-required,
+or partial-required context. This can occur at the minimum budget 64 even when
+the empty envelope itself would not fit.
+Optional items retain greedy whole-item omission and `coverage.truncated`.
+Without required references, the existing empty-envelope **422 `budget_too_small`**
+and successful-empty `empty_reason: "budget_exhausted"` behavior are unchanged.
+The new error code and that existing successful-empty reason are distinct.
+
+Native SDK and MCP propagate safe `budget_exhausted` without raw content.
+SDK recall remains read-only: errors have `outcome_unknown: false`, with no
+automatic retry. Explicitly reconsider the caller-selected refs/budget; do not
+silently weaken the required prefix or widen access.
+A selected reference is **not policy authority, verified approval, trusted
+instructions, or a current-fact guarantee**. There is no automatic essential-
+constraint detection, semantic-quality/performance qualification, or MVP claim.
+
+### Surfaces and compatibility
+
+Existing typed SDK `recall(Recall)` and MCP `memory_recall` accept the field;
+there are still **25 Native/SDK resource methods and four MCP tools**.
+The hook input does **not** accept `required_memory_refs`: extra fields are rejected,
+and its internally constructed `Recall` defaults to `[]`. No host pinning is added.
+The shared restricted safe-code catalog adds `budget_exhausted`; SDK retains its
+broader Native error catalog.
+Require exact **service 0.0.16 / API v1 / schema 10** across adapters.
+API/worker/readiness retain exact schema history 1–10. v15→v16 adds **no migration**,
+dependency upgrade, or pinned-image change; older schemas still migrate after stop/drain.
+Stage is `m2-required-context`; capabilities add `required_context` with
+`retrieval_modes: ["lexical"]`, `max_refs: 16`, `order: "request_order"`,
+and `budget_policy: "all_required_or_error"`.
+See [operations](operations/README.md#required-context-recall),
+[ADR 0016](adr/0016-required-context.md), and [verified evidence](#v0016--schema-10).
+
 ## Explicit job cancellation
 
-**v0.0.15/schema 10 is verified locally and on both native architectures.**
+**Retained job-cancellation contract; v0.0.16 verified locally and on both native architectures.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -136,8 +217,9 @@ revalidates models, expects exactly HTTP 200, and includes `job_cancel_conflict`
 in its safe Native error catalog. This brings the Native resource/SDK surface
 to **25 methods**. MCP's four tools and the read-only hook are unchanged.
 Cancelling a Python task does not invoke this job-cancellation endpoint.
-All adapters require **service 0.0.15 / API v1 / schema 10**; readiness checks
-exact history 1–10. Capabilities use stage `m2-job-cancellation` and add
+All adapters require **service 0.0.16 / API v1 / schema 10**; readiness checks
+exact history 1–10. The historical v0.0.15 stage was `m2-job-cancellation`;
+the current stage is `m2-required-context`. Capabilities retain
 `job_cancellation` metadata: `endpoint: "/v1/jobs/{job_id}/cancel"`,
 `compare_and_swap: ["state", "attempt"]`, `terminal_state: "cancelled"`,
 `provider_interruption: false`.
@@ -146,7 +228,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; verified in v0.0.15/schema 10.**
+**Retained readiness contract; v0.0.16/schema 10 verified locally and on both native architectures.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -216,12 +298,12 @@ storms. Configure orchestrator failure/recovery thresholds, including for busy
 No Kubernetes, Compose, or Docker `HEALTHCHECK` configuration is added.
 
 The historical v0.0.14 stage was `m2-runtime-readiness`; the current stage is
-`m2-job-cancellation`. Authenticated capabilities retain
+`m2-required-context`. Authenticated capabilities retain
 `health_probes` metadata: `liveness: "/healthz"`, `readiness: "/readyz"`,
 `readiness_timeout_seconds: 5.0`, `readiness_max_in_flight_per_process: 1`.
 Job cancellation brings the public memory surface to **25 resource methods**; health paths are
 excluded from SDK resource-route coverage. No SDK/MCP/hook probe method is added.
-All matching adapters require **service 0.0.15 / API v1 / schema 10**.
+All matching adapters require **service 0.0.16 / API v1 / schema 10**.
 Readiness behavior is retained, but schema 10 requires migration 010 for job
 cancellation; no dependency or pinned-image changes are added.
 See [operations](operations/README.md#runtime-readiness) and
@@ -229,7 +311,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; verified in v0.0.15.**
+**Retained scope-access contract; v0.0.16 verified locally and on both native architectures.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -350,7 +432,7 @@ using the freshly observed epoch. There is no automatic retry.
 The barrier cannot retract already-delivered context. Restoring latest ACL and
 deletion records remains manual; granting access cannot resurrect purged data.
 The historical v0.0.13 stage was `m2-scope-access`; the current stage is
-`m2-job-cancellation`. Capabilities retain
+`m2-required-context`. Capabilities retain
 `scope_access_administration` metadata:
 `transport: "admin-cli"`, `command: "scope-access"`,
 `compare_and_swap: "tenant_access_epoch"`, `audit: "database_role"`.
@@ -360,7 +442,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds typed job cancellation, verified in v0.0.15.**
+**SDK retains 25 methods and accepts required recall refs; v0.0.16 verified locally and on both native architectures.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -378,7 +460,7 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification passed locally and on both native architectures for v0.0.15.
+verification passed for v0.0.16 locally and on both native architectures.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -391,7 +473,7 @@ never select another identity or grant access.
 
 Use `async with ... as memory:` exactly once per client instance. Entry creates
 an owned HTTP client and performs a mandatory authenticated capabilities probe
-requiring exact **service `0.0.15` / API `v1` / schema `10`** before resource use.
+requiring exact **service `0.0.16` / API `v1` / schema `10`** before resource use.
 Failed entry closes owned resources in `finally`. Calls before entry or after exit
 raise `client_not_open`; re-entry raises `client_already_used`.
 Exit releases connections only: **it does not forget data**.
@@ -458,8 +540,9 @@ MCP/hook request limits.
 `MemoryClientError` is an alias of existing `AdapterFailure`. Inspect
 `exc.error.code`, `.retryable`, `.outcome_unknown`, `.native_status`, and
 `.request_id`; diagnostics are sanitized, never raw response/input/token content.
-The SDK allows the catalog of current Native domain errors; MCP/hook keep their
-existing restricted safe-code set. Unknown server codes become `native_api_error`.
+The SDK allows the catalog of current Native domain errors; the restricted
+shared MCP/hook safe-code set adds `budget_exhausted` for required-context errors.
+Unknown server codes become `native_api_error`.
 Invalid call-time request models, path UUIDs, and idempotency keys fail **before
 dispatch** as sanitized `invalid_request`, with `outcome_unknown: false`.
 Validation snapshots the request before the first outbound network await;
@@ -580,6 +663,10 @@ selects a retrieval path, not identity or authority.
 | `vector` | Must be empty | Required | Exact cosine distance |
 | `hybrid` | Must be nonempty | Required | Lexical/vector reciprocal-rank fusion |
 
+Nonempty `required_memory_refs` are lexical-only and prepend the
+[required prefix](#required-context-recall); the table's lexical ranking then
+applies to optional items. Empty/omitted refs preserve all modes unchanged.
+
 Do not silently ignore text, select a different model, or fall back to another mode.
 Existing scopes, `as_of`, `known_at`, byte budget, item limits, and `search_profile`
 rules remain. Historical revision vectors may be populated separately; a vector
@@ -609,8 +696,10 @@ Existing Japanese `lexical_incomplete` applies only to the lexical/hybrid path.
 `retrieval_complete` is false if either active path is incomplete.
 For an empty selection with no candidates, missing active-index coverage yields
 `index_incomplete`; a truly empty authorized corpus yields `not_found`.
-Candidates that cannot fit retain `budget_exhausted`; nonempty results retain
-null `empty_reason` while still exposing incomplete coverage.
+Without required refs, if no candidates fit, success retains
+`empty_reason: "budget_exhausted"`; a required item that cannot fit instead gives
+`422 budget_exhausted`. Nonempty results retain null `empty_reason` while still
+exposing incomplete coverage.
 Never turn missing-index retrieval into an unqualified empty success.
 
 The additive defaults are `MemoryItem.retrieval: null`,
@@ -673,7 +762,7 @@ The fixed-startup hook stays **lexical-only and read-only**; event JSON cannot p
 `coverage.vector_incomplete`; it does not silently downgrade unexpected vector output.
 Observe, capture, jobs, and workers do not generate
 embeddings or call providers. Both MCP protocol eras remain; startup matching is
-**service `0.0.15` / API `v1` / schema `10`** for v0.0.15.
+**service `0.0.16` / API `v1` / schema `10`** for v0.0.16.
 Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
 `default_retrieval_mode: "lexical"`. The v0.0.11 stage was `m2-pgvector-retrieval`;
 embedding input returns HTTP 200 and upload/replay returns HTTP 201. Full M0–M3/MVP/production/DR/erasure/
@@ -801,7 +890,7 @@ The stage label does not complete M2 or any other acceptance gate.
 
 Capture is a **Native resource also covered by the SDK**, not a fifth MCP tool. Recall-hook stays read-only;
 neither adapter automatically captures. MCP/hook startup requires exact
-**service `0.0.15` / API `v1` / schema `10`**. The retained schema-8 migration is separate
+**service `0.0.16` / API `v1` / schema `10`**. The retained schema-8 migration is separate
 from the retained capture semantics. Capture does not generate embeddings,
 invoke LLM/providers, extract intent, perform natural-language/automatic synthesis,
 or establish semantic quality.
@@ -815,7 +904,7 @@ See [ADR 0010](adr/0010-atomic-capture.md) and the
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.15 Docker test/runtime stages retain `mcp`, `hook`, and `sdk` extras.
+v0.0.16 Docker test/runtime stages retain `mcp`, `hook`, and `sdk` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
 below. Historical v0.0.9 checks passed locally and on both native Docker
 architectures. Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
@@ -836,6 +925,9 @@ models rather than maintaining a separate handwritten request contract:
 | `memory_forget` | `{request: <Forget>, idempotency_key: "..."}` | `POST /v1/forget` / preview and purge both `202` (unchanged) |
 
 `request` contains the existing Native body, not a new natural-language format.
+For `memory_recall`, this includes `required_memory_refs` under the
+[required-context contract](#required-context-recall). A required-prefix budget
+failure is a tool error with safe `budget_exhausted`, not a successful empty pack.
 Remember still requires `explicit_intent: true`, structured fields, and literal
 same-scope episode evidence. Episode capture remains Native `observe`; it is
 not an MCP tool. Jobs, graph, revisions, checkpoint/effect execution, and deletion
@@ -898,9 +990,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.15"`, and `schema_version: 10`.
+`api_version: "v1"`, `service_version: "0.0.16"`, and `schema_version: 10`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. v0.0.15 requires schema 10; the adapter itself performs no migration.
+sanitized diagnostics. v0.0.16 retains schema 10; the adapter itself performs no migration.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -949,6 +1041,11 @@ See [ADR 0008](adr/0008-local-mcp.md) and
 [operations](operations/README.md#local-stdio-mcp-operations).
 
 ## Implicit recall hook
+
+Unlike Native/SDK/MCP recall, hook input rejects `required_memory_refs`.
+Its constructed `Recall` retains `[]`: no host pinning is added.
+Its `200` / `empty_reason: "budget_exhausted"` remains an optional-only success,
+distinct from required-context Native `422 budget_exhausted`.
 
 **Retained read-only, lexical-only contract, verified in v0.0.11.**
 `pg-agmemory recall-hook` is an optional, vendor-neutral **harness-side** local
@@ -1007,7 +1104,7 @@ and invalid IDNA before transport. These invalid-origin cases are covered by
 the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.15` / API `v1` / schema `10`**, then sends `POST /v1/recall`
+exact **service `0.0.16` / API `v1` / schema `10`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -1259,21 +1356,28 @@ requested scopes, not query relevance, historical queue state, or completed
 synthesis. `synthesis_pending: false` and `graph_used: false` remain unchanged.
 Jobs themselves are excluded from recall/explain and checkpoint/effect references.
 
+Nonempty [required references](#required-context-recall) prepend eligible exact
+items in request order, bypassing only lexical matching/ranking, not scope/time/ACLs.
+The ordinary lexical ordering applies to optional items after that prefix.
+
 Despite the request field name `token_budget`, `utf8-bytes-v1` budgets the
 entire compact JSON-serialized context pack in **UTF-8 bytes**, including its
 metadata and citations, with `ensure_ascii=False` and `separators=(",", ":")`.
 The response declares `budget_unit: "utf8_bytes"`, `token_count: null`, and
 `exact_token_count: false`. This is a conservative fallback, not an exact model
 tokenizer or a size limit for the entire HTTP response. This context
-`tokenizer_id` is unrelated to Japanese search segmentation. Items are omitted whole;
-if even pack metadata will not fit, the request returns `422 budget_too_small`,
+`tokenizer_id` is unrelated to Japanese search segmentation.
+Only optional items may be omitted whole. A required item that cannot fit gives
+`422 budget_exhausted`, with no partial context. Without required refs, if even
+pack metadata will not fit, the request retains `422 budget_too_small`,
 not a successful empty result.
 
 Limits include a 1 MiB body for checkpoint creation and 256 KiB for other
 endpoints, 100 returned recall items at most, and budget
 values of 64–8,000 (implicit mode at most 2,000). `coverage.truncated` signals
-item/budget omissions. An empty selection is `not_found`, `budget_exhausted`, or
-`index_incomplete` as defined below;
+optional item/budget omissions. A successful empty selection without required
+refs uses `empty_reason` of `not_found`, `budget_exhausted`, or `index_incomplete`
+as defined below;
 `retrieval_complete` does not mean complete knowledge of the world. Native implicit
 mode remains a request option. The retained [hook](#implicit-recall-hook) invokes it
 only when a trusted harness launches the command; no host is automatically registered.
@@ -1330,9 +1434,11 @@ requested-scope, time-eligible canonical candidates sets
 This check is independent of query relevance and the item limit. There is **no
 silent fallback** to simple search or automatic repair worker. Available matches
 may still be returned with the incomplete flag; in lexical mode an empty query still browses
-canonical items. No query candidates plus missing projections gives
-`empty_reason: "index_incomplete"`; candidates that cannot fit the context retain
-`"budget_exhausted"`, and a nonempty result has null `empty_reason`.
+canonical items. Eligible required refs also use canonical items despite missing
+projections, without repairing them. No query/required candidates plus missing
+projections gives `empty_reason: "index_incomplete"`. If no optional-only
+candidates fit, success retains `"budget_exhausted"`; required items
+that cannot fit instead give `422 budget_exhausted`. A nonempty result has null `empty_reason`.
 Without missing projections, `lexical_incomplete` is false and ordinary
 `not_found`/budget rules apply. Projection coverage is not query relevance,
 queue state, or knowledge/quality completeness; `jobs_pending` remains separate.
@@ -1803,16 +1909,17 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.15 requires schema 10 and `010_job_cancellation.sql`.**
-The migration changes job-state/payload constraints and the terminal guard,
-adding no table. Follow the [schema-10 upgrade](operations/README.md#schema-10-job-cancellation-upgrade),
-not the historical v13→v14 application-only procedure.
+**v0.0.16 retains schema 10 and adds no migration.**
+Existing schema-10 databases use the [application-only upgrade](operations/README.md#schema-10-application-only-upgrade).
+Older schemas still apply `010_job_cancellation.sql`, introduced in v0.0.15 for
+job-state/payload constraints and the terminal guard, via the
+[retained migration sequence](operations/README.md#schema-10-job-cancellation-upgrade).
 Historical v0.0.13 introduced `009_scope_access.sql` for durable admin audit.
 The retained privileged-only `memory_ops.scope_access_event` table uses forced RLS,
 no runtime policy/grant, and atomic membership/epoch/audit changes.
 Retain the pinned PostgreSQL 18.6/pgvector 0.8.6 images.
 Stop/drain old APIs, workers, adapters, hooks, and SDK callers, then deploy only
-matching v0.0.15 components; no mixed-version/rolling-compatibility claim is made.
+matching v0.0.16 components; no mixed-version/rolling-compatibility claim is made.
 All older schemas need the retained migrations through 010.
 Older databases still need v0.0.11's `008_pgvector.sql`.
 Migration requires **`vector` 0.8.6 in `public`** and rejects
@@ -1823,7 +1930,7 @@ The retained episode/assertion-revision projections use forced RLS, canonical
 `ON DELETE CASCADE`, and runtime SELECT/INSERT only. **No embedding backfill**
 runs for existing data; generation/rebuild/provider calls remain explicit and external.
 The MCP adapter, hook, and SDK use HTTP only, perform no DDL, and require matching
-service `0.0.15`, API `v1`, schema `10`.
+service `0.0.16`, API `v1`, schema `10`.
 The retained migration history below still applies to databases older than schema 7.
 
 Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
@@ -1836,7 +1943,7 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.15 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`
+The v0.0.16 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`
 and extension `vector` 0.8.6 in schema `public`, rejecting mismatches and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
@@ -1844,25 +1951,71 @@ rights; migration also requires DDL rights, `btree_gist`, and the matching pgvec
 extension installed on the PostgreSQL server. `row_security = off`
 fails closed if RLS would filter backfill; it does not grant bypass privileges.
 `pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
-selected database. Use matching v0.0.15/schema-10 tooling with `PGAG_ADMIN_DATABASE_URL`.
+selected database. Use matching v0.0.16/schema-10 tooling with `PGAG_ADMIN_DATABASE_URL`.
 It atomically replaces only lexical projections under the migration lock, emitting the
 `profile` and `episodes`/`assertion_revisions` counts, not source content.
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.15 processes. Stop adapters, hook launches, SDK callers, and admin commands during maintenance too.
+then start only matching v0.0.16 processes. Stop adapters, hook launches, SDK callers, and admin commands during maintenance too.
 Lexical reindex does not generate, populate, or rebuild vectors.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
-[schema-10 operations](operations/README.md#schema-10-job-cancellation-upgrade).
+[current schema-10 operations](operations/README.md#schema-10-application-only-upgrade).
 
 ## Validation evidence
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
+<a id="v0016--schema-10"></a>
+
+### v0.0.16 / schema 10 — verified
+
+**Final local and native implementation results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **566 tests,
+1 existing warning**. Local `./scripts/test-containers.sh` exited **0**.
+The total is **535 retained + 31 new tests**: **29 `test_required_context` cases**,
+**1 real hook-rejection case**, and **1 SDK safe-code parameter case**.
+Ruff, strict mypy (**19 source files + 1 strict SDK consumer**), and genuine
+core-only/hook-only/sdk-only installation checks passed in all three environments.
+Published implementation:
+[`b6f0cf5a4f2525e9064667aa0e33e1b28ac57b57`](https://github.com/rioriost/pg_agmemory/commit/b6f0cf5a4f2525e9064667aa0e33e1b28ac57b57)
+(`feat: preserve required recall references within context budgets`).
+[CI 35224189967](https://github.com/rioriost/pg_agmemory/actions/runs/35224189967)
+passed on that exact SHA on both native Linux architectures. **Actual logs**,
+not only job status, verified each architecture's counts, checks, and smokes.
+
+| Environment | Test elapsed |
+|---|---|
+| Local Apple Container | **298.15 s (4:58)** |
+| Docker, native `linux/amd64` | **601.73 s** |
+| Docker, native `linux/arm64` | **565.34 s** |
+
+Test elapsed is not a performance benchmark. This evidence belongs to the
+implementation revision, not a later final-documentation commit or CI run.
+
+Passing checks include actual SQL with exactly 16 refs, the exact byte boundary
+and one byte below it, scope/ACL filtering, default revision 1 with historical
+time, revision 2 without latest fallback, source purge, and missing Japanese
+projections with `lexical_incomplete`.
+Native/SDK and MCP auto/legacy exact parity and error propagation passed.
+Required-relation preservation includes entity-UUID/citation byte overhead;
+entity wrong-kind `404` and real hook-CLI rejection of well-formed
+`required_memory_refs` as an unknown field also passed.
+
+All non-root production smokes passed in all three environments: Japanese tokenizer, HTTP,
+readiness, worker, both MCP modes, all three hook events, capture, pgvector,
+Python SDK, required-context recall, job cancellation, and scope access.
+The required-context smoke ran after SDK and before cancellation, using its own
+source and an optional `Gold` match. Required query bypass with `max_items: 1`
+and truncation passed; explicit budget 64 produced `budget_exhausted` with
+read-only `outcome_unknown: false`, followed by source purge returning `object_count: 2`.
+Only the project version advances to 0.0.16: schema 10, dependencies, and pinned
+artifacts are unchanged. MVP/semantic-quality/performance/production/DR limitations remain.
+
 <a id="v0015--schema-10"></a>
 
-### v0.0.15 / schema 10 — verified
+### Historical v0.0.15 / schema 10 — verified
 
 **Final local and native implementation results verified, 2026-09-17 JST:**
 Apple Container and native Docker amd64/arm64 each passed **535 tests,
@@ -1883,8 +2036,14 @@ not only job status, verified each architecture's counts, checks, and smokes.
 | Docker, native `linux/amd64` | **406.88 s** |
 | Docker, native `linux/arm64` | **490.57 s** |
 
-Test elapsed is not a performance benchmark. This is implementation qualification;
-no later final-docs publication or CI result is claimed.
+Test elapsed is not a performance benchmark. Separate final v0.0.15 docs
+[`9d34d5329c9db580e7de0459b743511235ad6fb8`](https://github.com/rioriost/pg_agmemory/commit/9d34d5329c9db580e7de0459b743511235ad6fb8)
+passed [CI 35218254940](https://github.com/rioriost/pg_agmemory/actions/runs/35218254940).
+Actual native logs verified **535 tests, 1 warning** per architecture,
+**605.83 s amd64 / 473.57 s arm64**, Ruff, strict mypy **19 source files + 1 consumer**,
+genuine optional installs, and all production smokes.
+These docs results are distinct from implementation CI 35216770999 above.
+Neither v0.0.15 run validates v0.0.16.
 All production smokes passed in all three environments: Japanese tokenizer, HTTP, readiness,
 worker, modern/legacy MCP, all three hook events, capture, pgvector, Python SDK,
 explicit job cancellation, and scope access.
