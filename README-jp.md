@@ -7,9 +7,9 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**現在の上限付き実装はv0.0.17/schema 10の構造化recall完全一致filterです。
+**現在の上限付き実装はv0.0.18/schema 10のcheckpoint head照会です。
 localとnative Docker amd64/arm64で検証済みです。
-以下の検証済みv0.0.16以前の結果は過去の証拠であり、v0.0.17の証拠ではありません。
+以下の検証済みv0.0.17以前の結果は過去の証拠であり、v0.0.18の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -31,9 +31,51 @@ postgresem連携は今後の実装対象です。
 性能・記憶品質・災害復旧・完全消去の受入は未測定または未認定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
 
+## Checkpoint-head lookup
+
+**v0.0.18/schema 10はlocalと両native architectureで検証済みです。**
+認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
+closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
+現在読取り可能な正確なscope/run/branchだけを選び、identity override、
+`expected_head`、harness selector、`as_of`、branch横断のlatest選択、履歴一覧は受け付けません。
+
+既存APIのtenant session-lock/drain barrierを使い、SQLは`FOR UPDATE`なしの`SELECT`です。
+branch/run作成、state変更、audit event、idempotency receiptはありません。
+不在、非公開、異なるscope、別tenant、失効していない空branchは、
+ID/内容や空成功でなく汎用**404 `not_found`**です。
+sourceの`forget`は対象branchを`invalidated=true`とし、canonical checkpoint/参照payloadを削除しますが、
+opaqueな`head_id`と`sequence`、`memory.object` anchor、tombstoneは保持します。
+照会は失効を先に確認し、読取り可能な失効branchには**409 `checkpoint_invalidated`**を返し、
+保持head IDは返しません。アクセス権の取消後はbranchを404で隠します。
+**ancestor、sibling、default branchへのfallbackはありません**。
+
+成功は正確な**200 `CheckpointEnvelope`**で、既存load/envelope検査を再利用します。
+保存state/HMAC/参照/epochと現在epoch、`tool_effects`、`requires_reconciliation`、
+`untracked_effects`、`resume_allowed`、`automatic_reexecution: false`を返します。
+runの`effects_invalidated`、HMAC/state/参照不正、非公開headは既存の拒否動作を維持します。
+読んだscope/run/branch/sequenceが選択pointerと一致しなければ409です。
+
+checkpoint IDを失っても安定したbranch IDから現在headを取得できますが、
+latestは**照会時点のpointer**であり、watch、予約、後続headの保証ではありません。
+`CreateCheckpoint.expected_head`は必須のcaller CASを維持し、読取り後に別writerが進められます。
+head照会は**結果不明writeのcommit証明ではありません**。
+その変更の元key/bodyを再送して元receiptを取得し、その後headを確認します。
+新head/keyによる自動retry、restore、effect遷移、実行、承認をしてはいけません。
+checkpoint ID指定GETは既存検査下で生存ancestorも読めますがlatestではなく、
+restore先forkのbranch headは独立しています。
+
+SDK `get_checkpoint_head(CheckpointBranch) -> CheckpointEnvelope`はasync/read-only
+（`mutation=False`）で、通常の**request 256 KiB / response 2 MiB**上限、
+sanitized error、`outcome_unknown: false`、自動retryなしを維持します。
+Native/SDK resourceは**26 method**となり、MCPの**4 tool**とhookは不変でcheckpoint toolはありません。
+v17からのSQL migration、依存/provider/artifact固定値の変更はありません。
+[契約](docs/STATUS-jp.md#checkpoint-head-lookup)、
+[照会例と更新](docs/operations/README-jp.md#checkpoint-head-lookup)、
+[ADR 0018](docs/adr/0018-checkpoint-head-jp.md)を参照してください。
+
 ## Exact structured recall filters
 
-**v0.0.17/schema 10はlocalと両native architectureで検証済みです。**
+**既存recall filter契約を維持します。v0.0.18はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -59,9 +101,9 @@ required参照は別契約のlexical専用keyword迂回とrequest順を維持し
 filterにも一致が必要です。一つでも不一致ならIDや部分contextを返さず
 request全体を**404 `not_found`**にします。既存byte予算/error動作は不変です。
 
-**Native/SDK resource method 25、MCP tool 4**を維持し、safe error codeの追加はありません。
+**Native/SDK resource method 26、MCP tool 4**を維持し、safe error codeの追加はありません。
 hook入力は`filters`を拒否し、内部既定`None`で信頼する起動時境界を維持します。
-v16からのSQL migration、依存/provider/index変更、永続priority、cacheは追加しません。
+v17からのSQL migration、依存/provider/index変更、永続priority、cacheは追加しません。
 filterはcallerの選択条件であり、信頼する指示や検証済み真実ではありません。
 [契約](docs/STATUS-jp.md#exact-structured-recall-filters)、
 [例と更新](docs/operations/README-jp.md#exact-structured-recall-filters)、
@@ -69,7 +111,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
+**既存required-context契約を維持し、v0.0.18はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -95,7 +137,7 @@ optional itemは従来のgreedyなitem単位除外と`coverage.truncated`を維�
 `lexical_incomplete`は欠落coverageを引き続き示します。
 index修復や必須制約の自動検出ではありません。caller指定参照は**policy権限や検証済み承認ではなく**、
 memoryは根拠であって信頼する指示ではありません。
-**Native/SDK resource method 25、MCP tool 4**を維持します。
+**Native/SDK resource method 26、MCP tool 4**を維持します。
 hookはこの入力fieldを拒否し、参照なしのrecallを構築するためhost pinningは追加しません。
 write、idempotency、永続priority、cache、推論、provider呼出し、schema migrationは追加しません。
 [契約](docs/STATUS-jp.md#required-context-recall)、
@@ -104,7 +146,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
+**既存job取消契約を維持し、v0.0.18はlocalと両native architectureで検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -126,7 +168,7 @@ source episode、dedup anchor、worker準備memory、WAL、backupは取消で消
 応答喪失時は**同じkey/body**か新しいGETで照合し、CAS値を盲目的に更新しません。
 failed専用retryはcancelled jobを拒否し、enqueue/captureのdedupは復活させずcancelled jobを返します。
 source purgeは引き続きjobを失効させ、取消replayを拒否します。
-SDKは`cancel_job`を追加してmemory surfaceを**25 method**とし、
+SDKは`cancel_job`を維持し、checkpoint head照会による現在のsurfaceは**26 method**です。
 MCPの4 toolとread-only hookは変更しません。
 [完全な契約](docs/STATUS-jp.md#explicit-job-cancellation)、
 [運用とschema 10 migration](docs/operations/README-jp.md#explicit-job-cancellation)、
@@ -134,7 +176,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.17/schema 10はlocalと両native architectureで検証済みです。**
+**既存readiness契約を維持し、v0.0.18/schema 10はlocalと両native architectureで検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -156,14 +198,14 @@ resource routeはprobeを呼ばず、新たな永続readiness gateも取得し�
 readinessはtraffic制御に使い、依存障害でrestart stormを起こすlivenessとして使わないでください。
 失敗/復旧thresholdとperimeter制限/rate limitを設定します。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
-readinessはSDK/MCP/hook probe methodを追加せず、別の取消methodによりNative/SDK memory surfaceは25になります。
+readinessはSDK/MCP/hook probe methodを追加せず、checkpoint head照会による現在のNative/SDK memory surfaceは26です。
 [完全な契約](docs/STATUS-jp.md#runtime-readiness)、
 [probe運用](docs/operations/README-jp.md#runtime-readiness)、
 [ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
+**既存scope-access契約を維持し、v0.0.18はlocalと両native architectureで検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -185,13 +227,13 @@ purge済みdataも復活しません。auditは改ざん耐性の証明やDR sol
 
 `009_scope_access.sql`はschema 9でscope-access auditを導入し、schema 10も維持します。
 PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
-現在stageは`m2-structured-recall`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
+現在stageは`m2-checkpoint-head`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
 [get → set → revoke例とmigration](docs/operations/README-jp.md#scope-access-administration)、
 [ADR 0013](docs/adr/0013-scope-access-jp.md)を参照してください。
 
 ## Python SDK
 
-**SDKは25 methodを維持してrecall filterとrequired参照を受け付け、v0.0.17はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
+**SDKはread-only checkpoint head照会を追加し26 methodとなります。v0.0.18はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -247,7 +289,7 @@ SDK call時の検証はsanitized SDK errorを返します。
 
 `AsyncMemoryClient`は固定HTTPS originまたはloopback HTTP originとtokenの形を検査し、
 実際のtoken認証はserverが行います。context entryで所有HTTP clientを作成し、
-認証付きcapabilitiesの**service 0.0.17 / API v1 / schema 10**完全一致を要求します。
+認証付きcapabilitiesの**service 0.0.18 / API v1 / schema 10**完全一致を要求します。
 一つのcontext内だけで使い、再entryや自動retryはありません。
 未完了taskはawaitするかcancel後にawaitして、**contextをexitする前に完了を確認**してください。
 client closeはrequestのschedule/cancel管理でもDB rollbackでもありません。
@@ -255,7 +297,7 @@ exitで閉じるのは接続であり、**保存memoryは消去しません**。
 scopeはserver ACLを狭めるだけです。返されたmemoryは根拠であって、
 信頼する指示や現在の事実の保証ではありません。
 
-明示job取消、embedding、job、graph、checkpoint、tool effectを含む全25 public memory resource
+明示job取消、embedding、job、graph、checkpoint、tool effectを含む全26 public memory resource
 methodを対象とし、CLI管理やworker実行は対象外です。
 すべての変更にはcallerが保持するkeyword-onlyの`idempotency_key`が必須です。
 処理中のcancelを含む変更結果不明時は**同じkeyとbody**で照合し、
@@ -303,7 +345,19 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.17実装の適格性確認はlocalと両native architectureで合格しました。**
+**v0.0.18実装はlocalと両native architectureで検証済みです。** Apple Containerの
+`./scripts/test-containers.sh`は**exit 0**で、**630合格、既存warning 1件、
+369.39秒（6:09）**でした。Ruff、strict mypy **source 19 + SDK consumer 1ファイル**、
+真のcore/hook/sdk-only導入、checkpoint head照会を含む全non-root production smokeが全3環境で合格しました。
+実装
+[`4accd38408a8384b4376f6250d953bb2fa480ec8`](https://github.com/rioriost/pg_agmemory/commit/4accd38408a8384b4376f6250d953bb2fa480ec8)
+は[CI 35235315016](https://github.com/rioriost/pg_agmemory/actions/runs/35235315016)で
+両native Docker architectureとも合格しました。実logで各**630合格、warning 1件**、
+**amd64 663.91秒 / arm64 544.14秒**を確認しました。
+これは実装結果であり、後続最終docs CI結果ではありません。
+[検証済み証拠](docs/STATUS-jp.md#v0018--schema-10)を参照してください。
+
+**過去のv0.0.17実装の適格性確認はlocalと両native architectureで合格しました。**
 実装
 [`22a64461475d4cd5666a842dbbe6afe83ab36894`](https://github.com/rioriost/pg_agmemory/commit/22a64461475d4cd5666a842dbbe6afe83ab36894)は
 完全一致SHAの[CI 35230044140](https://github.com/rioriost/pg_agmemory/actions/runs/35230044140)に合格しました。
@@ -311,8 +365,13 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 native Docker amd64は**638.66秒**、arm64は**544.33秒**でした。
 Ruff、strict mypy **source 19ファイル + strict SDK consumer 1ファイル**、
 真のcore/hook/sdk-only導入、構造化recall filterを含む全non-root production smokeが全3環境で合格しました。
-これは実装の結果であり、後続の最終docs CI結果ではありません。
-[検証済み証拠](docs/STATUS-jp.md#v0017--schema-10)を参照してください。
+別の最終v0.0.17 docs
+[`5226c81fae7a50a5668109478d5d9f23fc4d7761`](https://github.com/rioriost/pg_agmemory/commit/5226c81fae7a50a5668109478d5d9f23fc4d7761)は
+[CI 35232139680](https://github.com/rioriost/pg_agmemory/actions/runs/35232139680)に合格しました。
+native amd64は**465.50秒**、arm64は**557.08秒**で、各**604テスト、warning 1件**、
+Ruff、strict mypy **source 19 + consumer 1ファイル**、optional導入、全production smokeが合格しました。
+docs所要時間は実装CI 35230044140とは別です。
+両runともv0.0.18の適格性確認ではありません。[過去の証拠](docs/STATUS-jp.md#v0017--schema-10)を参照してください。
 
 **過去のv0.0.16実装の適格性確認はlocalと両native architectureで合格しました。**
 実装
@@ -328,7 +387,7 @@ Ruff、strict mypy **source 19ファイル + strict SDK consumer 1ファイル**
 native amd64は**476.15秒**、arm64は**478.08秒**で、各**566テスト、warning 1件**、
 全検査、optional導入、production smokeが合格しました。
 docs所要時間は実装CI 35224189967とは別です。
-両runともv0.0.17の適格性確認ではありません。[過去の証拠](docs/STATUS-jp.md#v0016--schema-10)を参照してください。
+両runともv0.0.18の適格性確認ではありません。[過去の証拠](docs/STATUS-jp.md#v0016--schema-10)を参照してください。
 
 **過去のv0.0.15実装の適格性確認はlocalと両native architectureで合格しました。**
 実装
@@ -343,7 +402,7 @@ native実logでRuff、strict mypy **source 19ファイル + SDK consumer 1ファ
 [CI 35218254940](https://github.com/rioriost/pg_agmemory/actions/runs/35218254940)に合格しました。
 native実logで各**535テスト、warning 1件**、**amd64 605.83秒 / arm64 473.57秒**、
 Ruff、strict mypy **source 19 + consumer 1ファイル**、optional導入、全smokeを確認しています。
-docs所要時間は実装CI 35216770999とは別です。両v0.0.15 runともv0.0.17の検証ではありません。
+docs所要時間は実装CI 35216770999とは別です。両v0.0.15 runともv0.0.18の検証ではありません。
 [過去の証拠](docs/STATUS-jp.md#v0015--schema-10)を参照してください。
 
 **過去のv0.0.14最終localとnative結果を2026-09-17 JSTに検証しました。**
@@ -537,7 +596,7 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.17はschema 10を維持し、migrationを追加しません。** 既存schema 10 DBには
+**v0.0.18はschema 10を維持し、migrationを追加しません。** 既存schema 10 DBには
 [application-only更新](docs/operations/README-jp.md#schema-10-application-only-upgrade)を使います。
 古いschemaにはv0.0.15で導入した`010_job_cancellation.sql`が引き続き必要です。
 [既存migration sequence](docs/operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
@@ -550,7 +609,7 @@ API、worker、`migrate`はschema 10記録済みでもこれを検査します�
 SDK caller、管理commandを停止/drain**し、backupと現在の削除/ACL記録を保全してoffline migrationを行います。
 古いDBにはmigration 007のlexical backfillを含む既存migrationも適用します。
 **embedding backfillや自動embedding再構築はありません**。
-対応するv0.0.17 processだけを再起動し、API/workerは厳密な履歴
+対応するv0.0.18 processだけを再起動し、API/workerは厳密な履歴
 `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`とschema `public`内のextension `vector` 0.8.6を要求します。
 古いschemaのprocessとschema 10のrolling混在互換性はありません。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
@@ -680,6 +739,8 @@ Native HTTP response-drainとhost消去の境界は変更しません。
 
 ## Local stdio MCP
 
+checkpoint head照会はNative/SDK専用で、この4 bindingへcheckpoint toolは追加しません。
+
 `memory_recall`は型付き`filters`も受け付けます。ranking前の完全一致選択と
 required参照との共通条件は[filter契約](#exact-structured-recall-filters)に従います。
 toolやsafe error codeは追加しません。
@@ -694,7 +755,7 @@ Python SDKには`pg-agmemory[sdk]`を選択してください。
 repositoryのDocker test/runtime imageは意図的に3 extraすべてを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.17のtest/runtime両stageに
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.18のtest/runtime両stageに
 `mcp`・`hook`・`sdk`を含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
@@ -708,7 +769,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.17`、schema `10`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.18`、schema `10`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -751,6 +812,8 @@ v0.0.11はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP
 過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
 
 ## Implicit recall hook
+
+checkpoint head照会用のhook fieldやcheckpoint操作は追加しません。
 
 hook入力は`filters`を未知fieldとして拒否し、内部`Recall.filters`は既定`None`です。
 信頼する起動時設定をeventごとに上書きする機能は追加しません。
@@ -795,7 +858,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.17` / API `v1` / schema `10`**を検査し、
+**service `0.0.18` / API `v1` / schema `10`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -870,7 +933,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-lexical projectionを再構築して、対応するv0.0.17 processだけを再起動します。
+lexical projectionを再構築して、対応するv0.0.18 processだけを再起動します。
 embeddingの投入/再構築は行いません。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
@@ -981,12 +1044,14 @@ relationが消えただけで他の生存entityを削除しません。
 `POST /v1/checkpoints`はscope内のrun/branchにschema 1のtyped stateを保存します。
 `expected_head`は必須（最初は`null`）で、非減少のevent watermark、
 正確なmemory参照、HMAC checksumを使います。
-`GET /v1/checkpoints/{checkpoint_id}`は現在の認可と検査を通したenvelopeを返します。
+`GET /v1/checkpoints/{checkpoint_id}`は現在の認可と検査を通した指定IDのenvelopeを返し、現headとは限りません。
+[head照会](#checkpoint-head-lookup)は作成やrestoreをせず、
+正確なscope/run/branchから同じ検査済みenvelopeを取得します。
 checkpointは`recall`や`explain`には出しません。
 
 `POST /v1/checkpoints/restore`はharness/versionの完全一致と新しいbranchを要求し、
 元branchを巻き戻しません。run台帳のdispatched effectはfork作成と原子的にunknownになります。
-GET/restoreはsnapshot後に追加されたものも含め、runの生存effect全件を統合します。
+GET/head/restoreはsnapshot後に追加されたものも含め、runの生存effect全件を統合します。
 未追跡hintはplannedでも再開を阻止します。旧動作を意図的に厳格化しています。
 `automatic_reexecution`は常にfalseです。
 保存済みassertion参照は正確な過去revisionを維持し、
@@ -1049,6 +1114,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Job取消](docs/adr/0015-job-cancellation-jp.md) | [Job cancellation](docs/adr/0015-job-cancellation.md) |
 | [Required-context recall](docs/adr/0016-required-context-jp.md) | [Required-context recall](docs/adr/0016-required-context.md) |
 | [構造化recallの完全一致filter](docs/adr/0017-recall-filters-jp.md) | [Exact structured recall filters](docs/adr/0017-recall-filters.md) |
+| [Checkpoint headの照会](docs/adr/0018-checkpoint-head-jp.md) | [Checkpoint-head lookup](docs/adr/0018-checkpoint-head.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

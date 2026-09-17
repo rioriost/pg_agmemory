@@ -56,6 +56,10 @@ structured-recall smokeではkind/subject/predicateの完全一致と必須参�
 filterはすべてのrankingとprojection coverage計算より前に適用し、
 現在のACL・時間条件を迂回してはいけません。
 [ADR 0017](docs/adr/0017-recall-filters-jp.md)を参照してください。hook入力は変更しません。
+checkpoint-head smokeではscope内のhead取得、branch更新、過去IDのGET、
+source purge後のfail-closed動作を検査します。head読取りでも完全性・照合要否を検査し、
+branch作成や過去のancestorへのfallbackをしてはいけません。
+[ADR 0018](docs/adr/0018-checkpoint-head-jp.md)を参照してください。読取りはCASの予約ではありません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

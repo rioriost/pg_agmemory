@@ -56,6 +56,10 @@ The structured-recall smoke checks exact kind/subject/predicate filtering and
 required-reference mismatches. Apply filters before every ranking and projection-
 coverage calculation, without bypassing current ACLs or temporal eligibility;
 see [ADR 0017](docs/adr/0017-recall-filters.md). Hook input remains unchanged.
+The checkpoint-head smoke checks scoped head discovery, branch advancement,
+historical GET, and fail-closed lookup after source purge. Head reads must reuse
+integrity/reconciliation checks, never create branches or fall back to an ancestor;
+see [ADR 0018](docs/adr/0018-checkpoint-head.md). A head read does not reserve the CAS.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.
