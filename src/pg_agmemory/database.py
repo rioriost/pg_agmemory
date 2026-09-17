@@ -17,8 +17,12 @@ MIGRATIONS = (
     "005_relational_graph.sql",
     "006_durable_jobs.sql",
     "007_japanese_fts.sql",
+    "008_pgvector.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
+VECTOR_VERSION = "0.8.6"
+VECTOR_QUERY = """SELECT e.extversion,n.nspname FROM pg_extension e
+                  JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'vector'"""
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,9 @@ async def validate_runtime(url: str) -> None:
             raise RuntimeError("Database schema is unavailable; run pg-agmemory migrate") from exc
         if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
             raise RuntimeError("Database schema version mismatch; run matching migrations and API")
+        extension = await (await conn.execute(VECTOR_QUERY)).fetchone()
+        if not extension or extension != {"extversion": VECTOR_VERSION, "nspname": "public"}:
+            raise RuntimeError("pgvector 0.8.6 in public is required")
 
 
 def migrate(url: str) -> None:
@@ -100,6 +107,10 @@ def migrate(url: str) -> None:
             conn.execute(
                 "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)", (version,)
             )
+        if "008_pgvector.sql" in MIGRATIONS:
+            extension = conn.execute(VECTOR_QUERY).fetchone()
+            if extension != (VECTOR_VERSION, "public"):
+                raise RuntimeError("pgvector 0.8.6 in public is required")
 
 
 def reindex_lexical(url: str) -> dict[str, str | int]:

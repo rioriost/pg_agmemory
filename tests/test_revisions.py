@@ -284,7 +284,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
     with psycopg.connect(admin_url) as conn:
         assert conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,)]
         for record in records:
             row = conn.execute(
                 """SELECT value, lower(valid_time), lower(system_time), revision
@@ -308,7 +308,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
             )
             assert response.json()["evidence"][0]["memory_id"] == str(record["source"])
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 7 and capabilities["temporal_revisions"] is True
+    assert capabilities["schema_version"] == 8 and capabilities["temporal_revisions"] is True
     schema = env.client.get("/openapi.json").json()
     contract = schema["paths"]["/v1/assertions/{memory_id}/revisions"]["post"]
     assert contract["security"] == [{"BearerAuth": []}]

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and production capture/API/worker/MCP/hook smokes."
+    echo "Build and run lint, types, PostgreSQL tests, and vector/capture/API/worker/MCP/hook smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -33,7 +33,7 @@ fi
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # This multiarchitecture manifest includes native linux/amd64 and linux/arm64.
-postgres_image="docker.io/library/postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af"
+postgres_image="docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a"
 run_id="pgag-$(date +%s)-$$-${RANDOM}-${RANDOM}"
 test_image="pg-agmemory-test:${run_id}"
 runtime_image="pg-agmemory-runtime:${run_id}"
@@ -108,6 +108,8 @@ start_database() {
     for ((attempt = 0; attempt < 90; attempt++)); do
         if "$engine" exec "$1" pg_isready -h 127.0.0.1 -U postgres -d pgag_test \
             >/dev/null 2>&1; then
+            test "$("$engine" exec "$1" psql -U postgres -d pgag_test -Atc \
+                'SHOW server_version_num')" = 180006
             return 0
         fi
         sleep 1
@@ -327,4 +329,58 @@ with httpx.Client(
 print("Production atomic capture smoke passed: capture, worker, recall, replay, purge")
 ' "$scope_id" "${run_id}-worker"
 
-echo "Container tests and production capture/API/worker/MCP/hook smoke passed ($engine)."
+"$engine" exec -e "PGAG_VECTOR_API_TOKEN=$mcp_token" "$api_name" python -c '
+import hashlib
+import os
+import sys
+import httpx
+
+model = {"name": "synthetic-basis", "revision": "production-v1"}
+basis = [1, 0] + [0] * 766
+with httpx.Client(
+    base_url="http://127.0.0.1:8000", timeout=10, trust_env=False,
+    headers={"Authorization": "Bearer " + os.environ["PGAG_VECTOR_API_TOKEN"]},
+) as api:
+    observed = api.post("/v1/observe", json={
+        "scope_id": sys.argv[1], "source_namespace": "production-smoke",
+        "source_event_id": "vector-smoke", "occurred_at": "2026-09-01T00:00:00Z",
+        "content": "Synthetic Gold", "consent_reference": "synthetic-smoke",
+    }, headers={"Idempotency-Key": "vector-source"})
+    assert observed.status_code == 201
+    source = observed.json()["memory_id"]
+    saved = api.post("/v1/remember", json={
+        "scope_id": sys.argv[1], "subject": "ACME", "predicate": "contract_tier", "value": "Gold",
+        "explicit_intent": True, "evidence": [{"memory_id": source, "quote": "Gold"}],
+    }, headers={"Idempotency-Key": "vector-assertion"})
+    assert saved.status_code == 201
+    assertion = saved.json()["memory_id"]
+    for memory_id, values in [(source, basis), (assertion, [0, 1] + [0] * 766)]:
+        prepared = api.post("/v1/embedding-inputs", json={"memory_id": memory_id})
+        assert prepared.status_code == 200
+        canonical = prepared.json()
+        assert canonical["input_digest"] == hashlib.sha256(canonical["text"].encode()).hexdigest()
+        body = {"memory_id": memory_id, "input_digest": canonical["input_digest"],
+                "model": model, "values": values}
+        assert api.post("/v1/embeddings", json=body,
+                        headers={"Idempotency-Key": memory_id}).status_code == 201
+    query = {"scope_ids": [sys.argv[1]], "purpose": "synthetic smoke",
+             "retrieval_mode": "vector", "vector_query": {"model": model, "values": basis}}
+    exact = api.post("/v1/recall", json=query)
+    assert exact.status_code == 200
+    assert [item["memory_id"] for item in exact.json()["items"]] == [source, assertion]
+    assert [item["retrieval"]["vector_distance"] for item in exact.json()["items"]] == [0.0, 1.0]
+    assert exact.json()["coverage"]["retrieval_complete"]
+    hybrid = api.post("/v1/recall", json={**query, "query": "Gold", "retrieval_mode": "hybrid"})
+    assert hybrid.status_code == 200
+    assert {item["memory_id"] for item in hybrid.json()["items"]} == {source, assertion}
+    assert all(item["retrieval"]["method"] == "rrf-60" for item in hybrid.json()["items"])
+    assert api.post("/v1/forget", json={"memory_ids": [source], "reason": "synthetic smoke"},
+                    headers={"Idempotency-Key": "vector-purge"}).status_code == 202
+    assert api.post("/v1/embeddings", json=body,
+                    headers={"Idempotency-Key": assertion}).status_code == 404
+    after = api.post("/v1/recall", json=query).json()
+    assert after["items"] == [] and after["coverage"]["retrieval_complete"]
+print("Production pgvector smoke passed: exact/hybrid, episode/assertion, purge")
+' "$scope_id"
+
+echo "Container tests and production vector/capture/API/worker/MCP/hook smoke passed ($engine)."

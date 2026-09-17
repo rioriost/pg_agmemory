@@ -587,7 +587,8 @@ def test_native_request_byte_limit_before_network():
 
 
 @pytest.mark.parametrize(
-    "changes", [{"service_version": "0.0.7"}, {"schema_version": 8}, {"api_version": "v2"}]
+    "changes",
+    [{"service_version": "0.0.7"}, {"schema_version": SCHEMA_VERSION + 1}, {"api_version": "v2"}],
 )
 def test_startup_requires_matching_native_api(changes):
     async def scenario():

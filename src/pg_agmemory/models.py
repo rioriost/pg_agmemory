@@ -1,3 +1,5 @@
+import json
+import math
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -12,10 +14,44 @@ EntityType = Literal[
 ]
 RelationType = Literal["depends_on", "part_of", "affects", "works_for", "decides"]
 SearchProfile = Literal["simple-v1", "ja-janome-0.5.0-v1"]
+RetrievalMode = Literal["lexical", "vector", "hybrid"]
 
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class EmbeddingModel(Contract):
+    name: ShortText
+    revision: ShortText
+    dimensions: Literal[768] = 768
+    distance_metric: Literal["cosine"] = "cosine"
+    normalization: Literal["l2-f32-v1"] = "l2-f32-v1"
+
+
+class VectorQuery(Contract):
+    model: EmbeddingModel
+    values: Annotated[
+        list[Annotated[float, Field(strict=True, allow_inf_nan=False)]],
+        Field(min_length=768, max_length=768),
+    ]
+
+    @model_validator(mode="after")
+    def nonzero_vector(self) -> "VectorQuery":
+        norm = math.hypot(*self.values)
+        if norm == 0 or not math.isfinite(norm):
+            raise ValueError("vector must have a finite nonzero norm")
+        return self
+
+    def vector_literal(self) -> str:
+        norm = math.hypot(*self.values)
+        return json.dumps([value / norm for value in self.values], separators=(",", ":"))
+
+
+class PutEmbedding(VectorQuery):
+    memory_id: UUID
+    revision: Revision = 1
+    input_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class Observe(Contract):
@@ -115,11 +151,19 @@ class Recall(Contract):
     max_items: Annotated[int, Field(ge=1, le=100)] = 20
     tokenizer_id: Literal["utf8-bytes-v1"] = "utf8-bytes-v1"
     search_profile: SearchProfile = "simple-v1"
+    retrieval_mode: RetrievalMode = "lexical"
+    vector_query: VectorQuery | None = None
 
     @model_validator(mode="after")
     def implicit_budget(self) -> "Recall":
         if self.mode == "implicit" and self.token_budget > 2000:
             raise ValueError("implicit recall is limited to 2000 budget units")
+        if (self.retrieval_mode == "lexical") != (self.vector_query is None):
+            raise ValueError("vector_query is required only for vector or hybrid recall")
+        if self.retrieval_mode == "vector" and self.query:
+            raise ValueError("vector recall requires an empty text query")
+        if self.retrieval_mode == "hybrid" and not self.query:
+            raise ValueError("hybrid recall requires a text query")
         return self
 
 
@@ -213,6 +257,14 @@ class RelationEndpoints(BaseModel):
     target_entity: UUID
 
 
+class RetrievalEvidence(BaseModel):
+    method: Literal["exact_cosine", "rrf-60"]
+    lexical_rank: int | None = None
+    vector_rank: int | None = None
+    vector_distance: float | None = None
+    fusion_score: float | None = None
+
+
 class MemoryItem(BaseModel):
     memory_id: UUID
     revision: int = 1
@@ -229,6 +281,23 @@ class MemoryItem(BaseModel):
     source: list[UUID] = Field(default_factory=list)
     requires_refresh: bool = True
     relation: RelationEndpoints | None = None
+    retrieval: RetrievalEvidence | None = None
+
+
+class EmbeddingInput(BaseModel):
+    memory_id: UUID
+    revision: Revision
+    type: Literal["episode", "assertion"]
+    text: str
+    input_digest: str
+    input_format: Literal["memory-content-v1"] = "memory-content-v1"
+
+
+class EmbeddingReceipt(BaseModel):
+    memory_id: UUID
+    revision: Revision
+    model: EmbeddingModel
+    input_digest: str
 
 
 class ErrorBody(BaseModel):
@@ -277,6 +346,7 @@ class Coverage(BaseModel):
     synthesis_pending: Literal[False]
     jobs_pending: bool = False
     lexical_incomplete: bool = False
+    vector_incomplete: bool = False
     graph_used: Literal[False]
     truncated: bool
 
@@ -292,6 +362,8 @@ class RecallResult(BaseModel):
     coverage: Coverage
     consistency: Consistency
     search_profile: SearchProfile
+    retrieval_mode: RetrievalMode = "lexical"
+    embedding_model: EmbeddingModel | None = None
     empty_reason: Literal["budget_exhausted", "not_found", "index_incomplete"] | None
 
 

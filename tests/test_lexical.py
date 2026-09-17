@@ -653,11 +653,11 @@ def test_v6_job_replay_and_historical_backfill_survive_migration(env, database):
 
 def test_japanese_profile_contract_and_limits(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 7
+    assert capabilities["schema_version"] == 8
     assert capabilities["search_profiles"] == ["simple-v1", JAPANESE_PROFILE]
     assert capabilities["default_search_profile"] == "simple-v1"
     assert capabilities["japanese_fts"]["normalization"] == "none"
-    assert capabilities["vector_search"] is False
+    assert capabilities["vector_search"] is True
     assert env.recall(search_profile="unknown").status_code == 422
     assert env.recall(search_profile=JAPANESE_PROFILE, query="東" * 4097).status_code == 422
     assert (

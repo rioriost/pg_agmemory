@@ -379,6 +379,9 @@ def empty_result():
         ("budget", "invalid_native_response"),
         ("byte_count", "invalid_native_response"),
         ("profile", "invalid_native_response"),
+        ("vector_mode", "invalid_native_response"),
+        ("vector_model", "invalid_native_response"),
+        ("vector_coverage", "invalid_native_response"),
         ("transport", "native_api_unavailable"),
         ("native", "dependency_unavailable"),
         ("unknown_native", "native_api_error"),
@@ -415,6 +418,12 @@ def test_hook_safe_native_errors_and_response_limits(fault, code):
             result["context_pack"]["byte_count"] = 1
         elif fault == "profile":
             result["search_profile"] = "ja-janome-0.5.0-v1"
+        elif fault == "vector_mode":
+            result["retrieval_mode"] = "vector"
+        elif fault == "vector_model":
+            result["embedding_model"] = {"name": "unexpected", "revision": "v1"}
+        elif fault == "vector_coverage":
+            result["coverage"]["vector_incomplete"] = True
         return response(result, 201 if fault == "wrong_status" else 200)
 
     async def scenario():

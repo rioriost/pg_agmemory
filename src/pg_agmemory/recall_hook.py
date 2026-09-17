@@ -113,6 +113,10 @@ async def recall(settings: HookSettings, data: HookInput, native: NativeHTTPClie
         or byte_count > settings.token_budget
         or len(result.items) > settings.max_items
         or result.search_profile != settings.search_profile
+        or result.retrieval_mode != "lexical"
+        or result.embedding_model is not None
+        or result.coverage.vector_incomplete
+        or any(item.retrieval is not None for item in result.items)
     ):
         raise failure("invalid_native_response")
     return result

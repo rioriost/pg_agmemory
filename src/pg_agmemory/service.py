@@ -21,6 +21,7 @@ from pg_agmemory.models import (
     Recall,
     RelationEndpoints,
     Remember,
+    RetrievalEvidence,
     ReviseAssertion,
 )
 
@@ -380,17 +381,24 @@ class MemoryService:
         return result
 
     async def recall(self, data: Recall) -> dict[str, Any]:
+        clock = await (await self.conn.execute("SELECT statement_timestamp() AS at")).fetchone()
+        if clock is None:
+            raise MemoryError("database_error", 503)
         # Scope IDs only narrow access; invisible scopes never contribute candidates.
-        candidates = """WITH candidates AS (
+        candidates = """WITH candidates AS MATERIALIZED (
                     SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
                            NULL::uuid AS source_entity, NULL::uuid AS target_entity,
                            CASE WHEN %(profile)s = 'simple-v1' THEN e.search_text
-                                ELSE lex.search_text END AS search_text
+                                ELSE lex.search_text END AS search_text, vec.embedding
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
                     LEFT JOIN memory.episode_lexical lex
                       ON lex.tenant_id = e.tenant_id AND lex.episode_id = e.id
                      AND lex.profile = %(profile)s
+                    LEFT JOIN memory.episode_embedding vec
+                      ON vec.tenant_id = e.tenant_id AND vec.episode_id = e.id
+                     AND vec.model_name = %(model_name)s
+                     AND vec.model_revision = %(model_revision)s
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
                       AND o.created_at <= COALESCE(%(known)s, statement_timestamp())
                       AND e.occurred_at <= COALESCE(%(as_of)s, statement_timestamp())
@@ -400,13 +408,18 @@ class MemoryService:
                            lower(r.valid_time), upper(r.valid_time),
                            link.source_id, endpoint.target_id,
                            CASE WHEN %(profile)s = 'simple-v1'
-                                THEN a.search_text || r.search_text ELSE lex.search_text END
+                                THEN a.search_text || r.search_text ELSE lex.search_text END,
+                           vec.embedding
                     FROM memory.object o JOIN memory.assertion a USING (tenant_id, id)
                     JOIN memory.assertion_revision r
                       ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
                     LEFT JOIN memory.assertion_lexical lex
                       ON lex.tenant_id = r.tenant_id AND lex.assertion_id = r.assertion_id
                      AND lex.revision = r.revision AND lex.profile = %(profile)s
+                    LEFT JOIN memory.assertion_embedding vec
+                      ON vec.tenant_id = r.tenant_id AND vec.assertion_id = r.assertion_id
+                     AND vec.revision = r.revision AND vec.model_name = %(model_name)s
+                     AND vec.model_revision = %(model_revision)s
                     LEFT JOIN memory.relation link
                       ON link.tenant_id = a.tenant_id AND link.id = a.id
                     LEFT JOIN memory.relation_revision endpoint ON endpoint.tenant_id = r.tenant_id
@@ -422,33 +435,66 @@ class MemoryService:
             "profile": data.search_profile,
             "tenant": self.tenant,
             "scopes": data.scope_ids,
-            "as_of": data.as_of,
-            "known": data.known_at,
+            "as_of": data.as_of if data.as_of is not None else clock["at"],
+            "known": data.known_at if data.known_at is not None else clock["at"],
             "limit": data.max_items + 1,
+            "model_name": data.vector_query.model.name if data.vector_query else None,
+            "model_revision": data.vector_query.model.revision if data.vector_query else None,
+            "vector": data.vector_query.vector_literal() if data.vector_query else None,
+            "retrieval_mode": data.retrieval_mode,
         }
-        rows = await (
-            await self.conn.execute(
-                candidates
-                + """SELECT *, CASE WHEN %(browse)s THEN 0::real
+        ranking = """SELECT *, CASE WHEN %(browse)s THEN 0::real
                             ELSE ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
                             END AS rank
                      FROM candidates WHERE %(browse)s
                        OR search_text @@ plainto_tsquery('simple',%(query)s)
-                     ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s""",
-                parameters,
-            )
-        ).fetchall()
-        incomplete = False
-        if data.search_profile == JAPANESE_PROFILE:
+                     ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s"""
+        if data.vector_query is not None:
+            ranking = """, lexical AS (
+                         SELECT id,revision,row_number() OVER (
+                             ORDER BY ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
+                                      DESC,created_at DESC,id) AS lexical_rank
+                         FROM candidates WHERE %(retrieval_mode)s = 'hybrid'
+                           AND search_text @@ plainto_tsquery('simple',%(query)s)
+                     ), distances AS MATERIALIZED (
+                         SELECT id,revision,
+                                embedding OPERATOR(public.<=>) %(vector)s::public.vector(768)
+                                AS vector_distance
+                         FROM candidates WHERE embedding IS NOT NULL
+                     ), vectors AS (
+                         SELECT *,row_number() OVER (ORDER BY vector_distance,id) AS vector_rank
+                         FROM distances
+                     )
+                     SELECT c.*,l.lexical_rank,v.vector_rank,v.vector_distance,
+                            COALESCE(1.0/(60+l.lexical_rank),0)
+                            + COALESCE(1.0/(60+v.vector_rank),0) AS fusion_score
+                     FROM candidates c LEFT JOIN lexical l USING (id,revision)
+                     LEFT JOIN vectors v USING (id,revision)
+                     WHERE l.lexical_rank IS NOT NULL OR v.vector_rank IS NOT NULL
+                     ORDER BY fusion_score DESC,c.id LIMIT %(limit)s"""
+        rows = await (await self.conn.execute(candidates + ranking, parameters)).fetchall()
+        lexical_incomplete = vector_incomplete = False
+        if data.search_profile == JAPANESE_PROFILE or data.vector_query is not None:
             coverage = await (
                 await self.conn.execute(
                     candidates
                     + """SELECT EXISTS(SELECT 1 FROM candidates WHERE search_text IS NULL)
-                         AS incomplete""",
+                         AS lexical_incomplete,
+                         EXISTS(SELECT 1 FROM candidates WHERE embedding IS NULL)
+                         AS vector_incomplete""",
                     parameters,
                 )
             ).fetchone()
-            incomplete = bool(coverage and coverage["incomplete"])
+            lexical_incomplete = bool(
+                data.retrieval_mode != "vector"
+                and data.search_profile == JAPANESE_PROFILE
+                and coverage
+                and coverage["lexical_incomplete"]
+            )
+            vector_incomplete = bool(
+                data.vector_query is not None and coverage and coverage["vector_incomplete"]
+            )
+        incomplete = lexical_incomplete or vector_incomplete
         items = []
         for row in rows[: data.max_items]:
             sources = await (
@@ -475,6 +521,17 @@ class MemoryService:
                     )
                     if row["source_entity"] is not None
                     else None,
+                    retrieval=RetrievalEvidence(
+                        method="rrf-60" if data.retrieval_mode == "hybrid" else "exact_cosine",
+                        lexical_rank=row["lexical_rank"],
+                        vector_rank=row["vector_rank"],
+                        vector_distance=row["vector_distance"],
+                        fusion_score=row["fusion_score"]
+                        if data.retrieval_mode == "hybrid"
+                        else None,
+                    )
+                    if data.vector_query is not None
+                    else None,
                 )
             )
         context, selected, budget_exhausted = build_context(items, data.token_budget)
@@ -495,11 +552,16 @@ class MemoryService:
             "items": [item.model_dump(mode="json") for item in selected],
             "context_pack": context,
             "search_profile": data.search_profile,
+            "retrieval_mode": data.retrieval_mode,
+            "embedding_model": data.vector_query.model.model_dump(mode="json")
+            if data.vector_query
+            else None,
             "coverage": {
                 "retrieval_complete": not incomplete,
                 "synthesis_pending": False,
                 "jobs_pending": bool(pending and pending["pending"]),
-                "lexical_incomplete": incomplete,
+                "lexical_incomplete": lexical_incomplete,
+                "vector_incomplete": vector_incomplete,
                 "graph_used": False,
                 "truncated": budget_exhausted or len(rows) > data.max_items,
             },

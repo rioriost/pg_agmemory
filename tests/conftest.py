@@ -25,6 +25,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from pg_agmemory import database as database_module
 from pg_agmemory import lexical
 from pg_agmemory.api import create_app
 from pg_agmemory.database import Settings, migrate, validate_runtime
@@ -189,6 +190,35 @@ def database():
         assert (
             admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
             == 6
+        )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:7])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    execute = psycopg.Connection.execute
+    with pytest.MonkeyPatch.context() as patch:
+
+        def fail_vector_ledger(self, query, params=None, **kwargs):
+            if (
+                query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)"
+                and params == (8,)
+            ):
+                raise RuntimeError("simulated schema 8 ledger failure")
+            return execute(self, query, params, **kwargs)
+
+        patch.setattr(psycopg.Connection, "execute", fail_vector_ledger)
+        with pytest.raises(RuntimeError, match="schema 8 ledger failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute("SELECT to_regclass('memory.episode_embedding')").fetchone()[0] is None
+        assert (
+            admin.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'").fetchone()
+            is None
+        )
+        assert (
+            admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
+            == 7
         )
     migrate(url)
     migrate(url)

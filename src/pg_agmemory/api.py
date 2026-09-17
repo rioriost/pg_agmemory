@@ -17,8 +17,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pg_agmemory import __version__
 from pg_agmemory.capture import Captures
 from pg_agmemory.checkpoints import Checkpoints
-from pg_agmemory.database import SCHEMA_VERSION, Settings, validate_runtime
+from pg_agmemory.database import SCHEMA_VERSION, VECTOR_VERSION, Settings, validate_runtime
 from pg_agmemory.effects import ToolEffects
+from pg_agmemory.embeddings import Embeddings
 from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
@@ -34,6 +35,8 @@ from pg_agmemory.models import (
     DeletionPreview,
     DeletionProgress,
     DeletionResult,
+    EmbeddingInput,
+    EmbeddingReceipt,
     EnqueueJob,
     EntityDetail,
     EntityReceipt,
@@ -49,6 +52,7 @@ from pg_agmemory.models import (
     Observe,
     ObserveResult,
     PlanToolEffect,
+    PutEmbedding,
     Recall,
     RecallResult,
     RelationType,
@@ -223,7 +227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-atomic-capture",
+            "stage": "m2-pgvector-retrieval",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -231,6 +235,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "assertion_revisions",
                 "fts_recall",
                 "japanese_fts",
+                "explicit_embeddings",
+                "exact_vector_recall",
+                "hybrid_recall",
                 "explain",
                 "forget",
                 "checkpoints",
@@ -255,7 +262,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "checkpoints": True,
             "tool_effect_ledger": True,
             "temporal_revisions": True,
-            "vector_search": False,
+            "vector_search": True,
+            "retrieval_modes": ["lexical", "vector", "hybrid"],
+            "default_retrieval_mode": "lexical",
+            "embeddings": {
+                "extension": "pgvector",
+                "extension_version": VECTOR_VERSION,
+                "dimensions": 768,
+                "distance_metric": "cosine",
+                "normalization": "l2-f32-v1",
+                "input_format": "memory-content-v1",
+                "generation": "caller_supplied",
+                "model_versions_per_revision": 8,
+                "approximate_search": False,
+                "hybrid_fusion": "rrf-60",
+            },
             "mcp_adapter": {
                 "installation": "mcp-extra",
                 "transport": "stdio",
@@ -366,6 +387,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/recall", response_model=RecallResult)
     async def recall(data: Recall, request: Request) -> Any:
         return await service(request).recall(data)
+
+    @app.post("/v1/embedding-inputs", response_model=EmbeddingInput)
+    async def embedding_input(data: Explain, request: Request) -> Any:
+        return await Embeddings(service(request)).input(data)
+
+    @app.post("/v1/embeddings", status_code=201, response_model=EmbeddingReceipt)
+    async def embedding(
+        data: PutEmbedding, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Embeddings(service(request)).put(data, idempotency_key)
 
     @app.post("/v1/entities", status_code=201, response_model=EntityReceipt)
     async def entity(data: CreateEntity, request: Request, idempotency_key: IdempotencyKey) -> Any:
