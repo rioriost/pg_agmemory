@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pg_agmemory import __version__
+from pg_agmemory.capture import Captures
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, Settings, validate_runtime
 from pg_agmemory.effects import ToolEffects
@@ -23,6 +24,8 @@ from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
     AssertionExplanation,
+    Capture,
+    CaptureResult,
     CheckpointEnvelope,
     CheckpointReceipt,
     CreateCheckpoint,
@@ -220,9 +223,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-implicit-recall-hook",
+            "stage": "m2-atomic-capture",
             "features": [
                 "observe",
+                "atomic_structured_capture",
                 "structured_remember",
                 "assertion_revisions",
                 "fts_recall",
@@ -241,6 +245,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "entity_types": list(get_args(EntityType)),
             "relation_types": list(get_args(RelationType)),
             "auto_synthesis": False,
+            "atomic_capture": {
+                "endpoint": "/v1/captures",
+                "max_jobs": 1,
+                "recipe_version": "structured-remember-v1",
+                "automatic_capture": False,
+            },
             "job_kinds": ["structured_remember"],
             "checkpoints": True,
             "tool_effect_ledger": True,
@@ -297,6 +307,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/observe", status_code=201, response_model=ObserveResult)
     async def observe(data: Observe, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await service(request).observe(data, idempotency_key)
+
+    @app.post("/v1/captures", status_code=201, response_model=CaptureResult)
+    async def capture(data: Capture, request: Request, idempotency_key: IdempotencyKey) -> Any:
+        return await Captures(service(request)).create(data, idempotency_key)
 
     @app.post("/v1/remember", status_code=201, response_model=RememberResult)
     async def remember(data: Remember, request: Request, idempotency_key: IdempotencyKey) -> Any:

@@ -136,6 +136,8 @@ class MemoryService:
             await self.object(UUID(result["checkpoint_id"]), "write")
         if "job_id" in result:
             await self.object(UUID(result["job_id"]), "write")
+        if result.get("synthesis_job_id") is not None:
+            await self.object(UUID(result["synthesis_job_id"]), "write")
         if "deletion_id" in result:
             for scope in result["scope_ids"]:
                 await self.scope(UUID(scope), "delete")

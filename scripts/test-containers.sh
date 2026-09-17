@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and production API/worker/MCP/hook smokes."
+    echo "Build and run lint, types, PostgreSQL tests, and production capture/API/worker/MCP/hook smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -273,4 +273,58 @@ for event in ("session_start", "task_switch", "after_compaction"):
     print("Production implicit recall hook smoke passed: " + event)
 ' "$scope_id"
 
-echo "Container tests and production API/worker/MCP/hook smoke passed ($engine)."
+"$engine" exec -e "PGAG_CAPTURE_API_TOKEN=$mcp_token" "$api_name" python -c '
+import json
+import os
+import subprocess
+import sys
+import httpx
+
+with httpx.Client(
+    base_url="http://127.0.0.1:8000", timeout=10, trust_env=False,
+    headers={"Authorization": "Bearer " + os.environ["PGAG_CAPTURE_API_TOKEN"]},
+) as api:
+    body = {
+        "episode": {
+            "scope_id": sys.argv[1], "source_namespace": "production-smoke",
+            "source_event_id": "atomic-capture", "occurred_at": "2026-09-01T00:00:00Z",
+            "content": "Synthetic ACME contract is Gold", "consent_reference": "synthetic-smoke",
+        },
+        "memory": {
+            "subject": "ACME", "predicate": "contract_tier", "value": "Gold",
+            "evidence_quote": "Gold", "explicit_intent": True,
+        },
+    }
+    headers = {"Idempotency-Key": "production-capture"}
+    created = api.post("/v1/captures", json=body, headers=headers)
+    assert created.status_code == 201, "Atomic capture failed"
+    pair = created.json()
+    pending = api.get("/v1/jobs/" + pair["synthesis_job_id"])
+    assert pending.status_code == 200 and pending.json()["state"] == "pending"
+    worker = subprocess.run(
+        ["pg-agmemory", "worker", "--subject", sys.argv[2], "--once"],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": os.environ["PATH"], "PGAG_DATABASE_URL": os.environ["PGAG_DATABASE_URL"]},
+    )
+    assert worker.returncode == 0, "Capture worker failed"
+    outcome = json.loads(worker.stdout)
+    assert outcome["outcome"] == "succeeded" and outcome["job_id"] == pair["synthesis_job_id"]
+    replay = api.post("/v1/captures", json=body, headers=headers)
+    assert replay.status_code == 201 and replay.json() == pair
+    recalled = api.post("/v1/recall", json={
+        "scope_ids": [sys.argv[1]], "query": "Gold", "purpose": "production smoke",
+    })
+    assert recalled.status_code == 200
+    assert {item["memory_id"] for item in recalled.json()["items"]} == {
+        pair["memory_id"], outcome["result"]["memory_id"],
+    }
+    erased = api.post("/v1/forget", json={
+        "memory_ids": [pair["memory_id"]], "mode": "purge", "reason": "synthetic smoke",
+    }, headers={"Idempotency-Key": "production-capture-purge"})
+    assert erased.status_code == 202
+    assert api.get("/v1/jobs/" + pair["synthesis_job_id"]).status_code == 404
+    assert api.post("/v1/captures", json=body, headers=headers).status_code == 404
+print("Production atomic capture smoke passed: capture, worker, recall, replay, purge")
+' "$scope_id" "${run_id}-worker"
+
+echo "Container tests and production capture/API/worker/MCP/hook smoke passed ($engine)."

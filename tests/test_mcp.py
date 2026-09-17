@@ -719,27 +719,16 @@ def test_read_transport_failure_does_not_claim_mutation_uncertainty():
     asyncio.run(scenario())
 
 
-def test_lost_http_response_after_commit_replays_one_result(env, api_process):
+def test_lost_http_response_after_commit_replays_one_result(
+    env, api_process, lose_first_response_transport
+):
     source = env.observe().json()["memory_id"]
-    calls = 0
-
-    class LoseFirstResponse(httpx.AsyncHTTPTransport):
-        async def handle_async_request(self, request):
-            nonlocal calls
-            response = await super().handle_async_request(request)
-            calls += 1
-            if calls == 1:
-                await response.aread()
-                assert response.status_code == 201
-                await response.aclose()
-                raise httpx.ReadError("simulated post-commit disconnect")
-            return response
 
     with api_process("mcp-lost-response.log") as (api, _):
 
         async def scenario():
             async with httpx.AsyncClient(
-                transport=LoseFirstResponse(),
+                transport=lose_first_response_transport,
                 base_url=str(api.base_url),
                 headers={"Authorization": f"Bearer {env.token()}"},
             ) as http:
@@ -750,13 +739,13 @@ def test_lost_http_response_after_commit_replays_one_result(env, api_process):
                     }
                     failed = await client.call_tool("memory_remember", arguments)
                     assert failed.is_error and failed.structured_content["error"]["outcome_unknown"]
-                    assert calls == 1
+                    assert lose_first_response_transport.calls == 1
                     retried = await client.call_tool("memory_remember", arguments)
                     assert (
                         not retried.is_error
                         and retried.structured_content["result"]["revision"] == 1
                     )
-                    assert calls == 2
+                    assert lose_first_response_transport.calls == 2
             with psycopg.connect(env.admin_url) as conn:
                 assert (
                     conn.execute(

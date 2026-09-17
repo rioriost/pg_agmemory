@@ -30,6 +30,26 @@ from pg_agmemory.api import create_app
 from pg_agmemory.database import Settings, migrate, validate_runtime
 
 
+@pytest.fixture
+def lose_first_response_transport():
+    class LoseFirstResponse(httpx.AsyncHTTPTransport):
+        calls = 0
+        committed_response = None
+
+        async def handle_async_request(self, request):
+            response = await super().handle_async_request(request)
+            self.calls += 1
+            if self.calls == 1:
+                await response.aread()
+                assert response.status_code == 201
+                self.committed_response = response.json()
+                await response.aclose()
+                raise httpx.ReadError("simulated post-commit disconnect")
+            return response
+
+    return LoseFirstResponse()
+
+
 @dataclass
 class Environment:
     client: TestClient

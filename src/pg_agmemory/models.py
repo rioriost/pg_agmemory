@@ -57,6 +57,38 @@ class Remember(Contract):
         return self
 
 
+class CapturedMemory(Contract):
+    subject: ShortText
+    predicate: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+    value: Content
+    evidence_quote: Annotated[str, Field(min_length=1, max_length=4096)]
+    explicit_intent: Literal[True]
+    valid_from: AwareDatetime | None = None
+    valid_to: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def valid_interval(self) -> "CapturedMemory":
+        validate_assertion_content(self.valid_from, self.valid_to, [])
+        return self
+
+    def remember(self, scope_id: UUID, episode_id: UUID) -> Remember:
+        return Remember(
+            scope_id=scope_id,
+            subject=self.subject,
+            predicate=self.predicate,
+            value=self.value,
+            evidence=[Evidence(memory_id=episode_id, quote=self.evidence_quote)],
+            explicit_intent=self.explicit_intent,
+            valid_from=self.valid_from,
+            valid_to=self.valid_to,
+        )
+
+
+class Capture(Contract):
+    episode: Observe
+    memory: CapturedMemory
+
+
 class ReviseAssertion(Contract):
     expected_revision: Revision
     value: Content
@@ -210,6 +242,12 @@ class ObserveResult(BaseModel):
     memory_id: UUID
     revision: Literal[1]
     synthesis_job_id: None = None
+
+
+class CaptureResult(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    synthesis_job_id: UUID
 
 
 class RememberResult(BaseModel):
