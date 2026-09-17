@@ -11,18 +11,26 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
-ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
-v0.0.7 opt-in日本語lexical FTS milestoneにはschema 7が必要です。
-Apple Containerとnative Docker amd64/arm64の各環境で**144テスト**（既存warning 2件）、
+ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
+v0.0.8 local stdio MCP milestoneはschema 7を維持し、
+**Apple Containerとnative Docker amd64/arm64で214テストとproduction smokeに合格**しています。
+v0.0.7への追加migrationはありません。
+M0〜M3、MVP、本番、性能、品質、DR、完全消去の受入は未完了です。
+**過去のv0.0.7だけの証拠:** Apple Containerとnative Docker amd64/arm64の各環境で
+**144テスト**（既存warning 2件）、
 Ruff、strict mypy（source 12ファイル）、non-root productionの日本語tokenizer、
 API HTTP、実worker CLI `--once` idle実行という全3種のsmokeが合格しました。
 最終SHA、CI log、所要時間は[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 
-既存package-feed registryを維持した最終lockを使ってください。
+過去のv0.0.7最終lockは既存package-feed registryを維持しました。
 全36 packageのversion、依存metadata、artifact hashはテスト済みPyPI解決lockと
 byte単位で同一です。v6との差分はJanome 0.5.0の追加とprojectのv0.0.7へのversion更新だけで、
 無関係なupgradeやregistry移行はありません。native CIはこのretained-registry lockから
-buildしました。
+buildしました。v0.0.8のpackage件数や検証についての主張ではありません。
+現在のlock済みbuildを使用してください。任意のMCP extraは`mcp==2.2.0`と
+`httpx==0.28.1`を固定し、Docker test/runtime両stageに含めます。
+container検査scriptは使い捨てsmoke設定を含め、**Apple ContainerとDockerの両方**で
+runner側の`jq`を必須とします。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
@@ -31,6 +39,8 @@ buildしました。
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | 2048 bit以上の静的PEM RSA検証公開鍵。署名用秘密鍵は渡さない |
 | `PGAG_JWT_ISSUER` | API runtime | 信頼するissuerの完全一致値 |
 | `PGAG_JWT_AUDIENCE` | API runtime | 本サービスのaudienceの完全一致値 |
+| `PGAG_MCP_API_URL` | Local MCP adapterのみ | 信頼する固定Native API HTTPS originまたはloopback HTTP origin。URL credential/application path/query/fragmentは禁止 |
+| `PGAG_MCP_API_TOKEN` | Local MCP adapterのみ | Native API audience用の固定bearer token。callごとでなく起動時に安全に渡す |
 
 1. admin URLが、意図した空の使い捨てMemory DBを指すことを確認します。
    アプリimageから`pg-agmemory migrate`を実行します。migrationはtransactionalで、
@@ -68,12 +78,134 @@ logへ残さず、不要なものをruntime環境へ渡さないでください�
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
+## Local stdio MCPの運用
+
+### 一つの信頼identityで導入・起動
+
+1. 上記role分離に従ってNative APIを準備し、意図したsubject/scopeをprovisionします。
+   adapterには**DB URL、admin資格情報、署名key、workerの`--subject`は不要**です。
+   全callでNative API認証と現在のACL/削除検査を正とします。
+2. `pg-agmemory[mcp]`を導入するか、extra導入済みrepository imageを使います。
+   source checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備します。
+   固定版は公式`mcp==2.2.0`と`httpx==0.28.1`で、類似名の第三者MCP packageではありません。
+3. 信頼するlocal hostのprocess環境に`PGAG_MCP_API_URL`と`PGAG_MCP_API_TOKEN`を
+   安全に渡します。tokenをhost設定にcommitしたり、command-line引数、例、log、
+   issue報告に残したりしないでください。tokenはMCP host用でなく**Native API audience用**
+   で、Native APIが検証します。固定された信頼Native clientであり、
+   MCP caller identityの転送ではありません。
+4. `https://memory.example.com`のようなHTTPS origin、または`http://127.0.0.1:8000`の
+   ようなloopback HTTP originを指定します。credential、`/v1`等のapplication path、
+   query、fragmentは禁止です。root `/`は許可します。非loopbackの平文HTTPは拒否します。
+   loopbackはadapterのprocess/container基準であり、自動的にMac hostや別containerを
+   指すものではありません。container内adapterではAPIが同じloopback境界を共有する場合を
+   除き、到達可能な信頼HTTPS originが必要です。TLS検証は有効を維持し、
+   redirectとproxy環境設定は使いません。
+5. hostからinstall済み実行fileを引数`mcp`で起動するよう設定します。
+
+   ```bash
+   pg-agmemory mcp
+   ```
+
+   checkout環境でvirtualenv実行fileがPATHにない場合は、
+   `uv run --frozen --extra mcp pg-agmemory mcp`を使えます。
+   `--subject`と`--once`は両方拒否するため付けません。
+   stdin/stdoutは人間用promptや通常logでなくMCP message用に接続を維持します。
+   診断にはsanitized stderrを使います。
+6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.8`、schema `7`の
+   一致を確認してからtoolを提供します。不正設定/token、API到達不能、version不一致は
+   secretをlogに出さず非zero終了します。`/healthz`合格だけでは不十分です。
+   信頼する設定を修正し再起動してください。検査を回避したり、
+   tool引数でidentity/URLを上書きしたりしてはいけません。
+
+remote MCP HTTP/SSE transport、OAuth、identity委譲、callごとのheader/URL/token上書きは
+ありません。**信頼identityごとにadapterを一つ**起動し、trust domainをまたいで接続を
+共有したり、network wrapperから公開したりしないでください。
+token更新時は安全に渡した置換tokenで再起動します。自動refreshはありません。
+前の操作を復旧する際は同じ認可済みsubjectを維持してください。
+
+### 誤った重複書込みを避ける呼出しと復旧
+
+toolは`memory_recall`、`memory_remember`、`memory_explain`、`memory_forget`だけです。
+各toolは**Native Pydantic request body**を`{request: ...}`で包みます。
+remember/forgetはpreviewも含め、**1〜256文字のvisible ASCII
+（`0x21`〜`0x7e`、空白不可）**の`idempotency_key`を追加で要求します。
+keyはtrim/書換えせず、256文字は許可、257文字は拒否します。
+Native forgetは従来どおりpreview/purgeとも**HTTP 202**です。
+statusだけをpurgeの証拠にせず、Native resultのvariantを確認してください。
+host/callerは**dispatch前**にkeyと正確なbodyを安全に保持し、
+応答中断やstdio再起動後に再利用できるようにしてください。
+MCP session/request IDはmemory run IDでもNative HTTP idempotency keyでもありません。
+host再接続だけを理由に新keyを使わないでください。
+
+成功は`structuredContent: {result: <Native result>, error: null}`です。
+失敗は`isError: true`と`structuredContent`内の
+`{result: null, error: {code, retryable, outcome_unknown, native_status, request_id}}`
+で、Native status/request UUIDはnullの場合があります。短いtextは根拠payloadを
+重複収録しません。textだけでなく構造化出力を確認してください。
+transport障害、timeout、5xx、不正mutation応答は結果不明の可能性を意味し、
+**書込みがrollbackしたことを意味しません**。結果不明後はtoken置換後も含め、
+同じkey/bodyと意図したidentityだけで再試行してください。
+retryもkeyも自動生成しません。`retryable`はbody変更の許可や未commitの証明ではありません。
+現在の認可/削除によりreplayが拒否される場合があります。
+過去参照は現在の根拠でも削除本文を復元する許可でもありません。
+
+HTTP clientの上限は**合計20秒 / I/O 10秒 / connect 5秒**、**4 connection**、
+**serialize済みrequest 256 KiB**、**response 2 MiB**です。
+response/semantic cacheは維持しません。throughputや全host buffer sizeの適格性を示す上限では
+ありません。recall予算は引き続き**UTF-8 byteでありmodel tokenではなく**、
+日本語recallには明示`ja-janome-0.5.0-v1`選択が必要です。
+rememberはNative episode根拠による明示structured assertion publicationだけを行います。
+episode captureはMCPでなくNative `observe`を使います。
+explainのrevision省略時は引き続き最新ではなく1を要求します。
+
+### 削除とhost contextの扱い
+
+取得textは指示でなく信頼できない根拠として扱います。adapterは信頼するNative HTTP受信者で、
+API response-drain barrierはそのHTTP配信で終了し、**stdio配信・host UI・LLM context消費まで
+原子的に続くものではありません**。hostはpurge/ACL失効前の応答をまだ保持している場合が
+あります。転送中bufferや配信済みcontextは回収できません。
+forget/権限変更後はhostがcached contextを破棄し、古い出力を再利用せず、
+新しく認可済みdataを取得する必要があります。これを自動実行する**MCP削除通知はありません**。
+purgeはhost context、backup、WAL、replica、物理mediaの消去を証明しません。
+
+実stdio SDK `Client`接続とraw JSON fixtureで次を検査しました。
+
+- Modern `2026-07-28`: `Client(mode="auto")`と`server/discover`。
+  raw requestの`params._meta`に`io.modelcontextprotocol/protocolVersion`、
+  `io.modelcontextprotocol/clientInfo`、`io.modelcontextprotocol/clientCapabilities`を含めます。
+- Legacy `2025-11-25`: `Client(mode="legacy")`、`initialize`、
+  `notifications/initialized`の順で進み、その後toolを呼び出します。
+
+応答喪失regressionは**rememberのcommit後**に実HTTP応答を失わせ、
+同じkey/bodyで再送してassertionが一つだけ残ることを検査します。
+caller主導の復旧の検査であり、自動retryではありません。
+最終local/native CI証拠をSTATUSに記録しています。
+これらの特定経路の検査は、未検証の旧clientや特定hostとの互換性を証明しません。
+[全契約](../STATUS-jp.md#local-stdio-mcp)と
+[ADR 0008](../adr/0008-local-mcp-jp.md)を参照してください。
+
+## v0.0.8のapplication更新（schema変更なし）
+
+既存v0.0.7/schema 7 DBには**migration 008も新backfillもありません**。
+application/schema版を記録し、backupと現在の削除/ACL記録を保全します。
+自動再起動を含む旧API/worker/MCP adapterを停止/drainし、対応するv0.0.8 imageへ置換します。
+厳密なschema履歴`[1, 2, 3, 4, 5, 6, 7]`を確認後、制限付きNative API/workerを起動し、
+認証付きcapabilitiesを検査して各固定identity adapterを起動します。
+schemaが同じでもrolling混在互換性や対応済みdowngradeの根拠にはなりません。
+package化したruntimeと既存schema契約の検証結果は
+[検証証拠](../STATUS-jp.md#検証証拠)に記録しています。
+旧schemaには以下の既存schema 7 migration手順を現在のimageで適用します。
+reindexは別のoffline保守であり、MCP commandではありません。
+
 <a id="v003の保守migration"></a>
 <a id="v004の保守migration"></a>
 <a id="v005の保守migration"></a>
 <a id="v006の保守migration"></a>
 
 ## v0.0.7の保守migration
+
+旧DB用に残しているv0.0.7導入時のschema 7 migration手順であり、
+**v0.0.8の新migrationではありません**。
 
 **旧版/新版API/workerのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -103,7 +235,7 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
    固定したJanome 0.5.0依存と同梱辞書を使用します。
    v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
 5. 厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を確認してから、制限付きruntime資格情報と
-   意図した固定worker subjectで**対応するv7 API/workerだけを起動**します。
+   意図した固定worker subjectで**対応するv0.0.8 API/workerだけを起動**します。
    traffic再開前にcapabilities/schema、既定/opt-in recallとprojection coverage、
    過去revision選択、認可、purge、原子的publication、互換性を検査してください。
    health応答だけではこれらを検証できません。migration/rebuildの時間・resource使用量は
@@ -157,7 +289,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
 
 1. 自動再起動を含む**全API/workerを停止/drain**し、migration同様にbackupします。
    offline保守であり、稼働中の管理APIではありません。
-2. 対応するv7 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
+2. 対応するv0.0.8 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
    必要なtable権限を持つ管理者で次を実行します。
 
    ```bash
@@ -174,7 +306,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
    traffic停止を維持し、schema、権限、lock競合を調査します。
    index修復のためruntime bypassを付与したり、canonical本文、timestamp、receiptを
    編集したりしてはいけません。
-5. 対応するv7 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
+5. 対応するv0.0.8 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
    profile/coverageと認可された現在/過去recallを確認してください。
    正確な`known_at`境界にはhost/VMのwall-clock値でなく、
    serverが返すassertionの`recorded_at`を使います。
@@ -522,11 +654,24 @@ non-root production image内の実worker CLI smokeを実行します。
 non-root runtime image内で`東京都` → `東京` / `都`の分割も検査し、
 成功時に`Production Japanese tokenizer smoke passed`を出力します。
 同梱tokenizerの初期化/分割の検査であり、end-to-end recallや品質の評価ではありません。
-CI step名は`Test containers and smoke-test production API and worker`です。
+現在のrunnerはnon-root production image内で実`pg-agmemory mcp` childも起動します。
+固定tokenとprovision済みscopeでloopback Native APIへ接続し、
+modern `2026-07-28`・legacy `2025-11-25`の**両mode**で4 tool列挙とrecallを検査します。
+既存の日本語/API/worker smokeも維持し、v0.0.8の3環境すべてで合格しています。
+現在のCI step名は`Test containers and smoke-test production API, worker, and MCP`です。
 idle-worker検査はpublicationテストや本番/DR適格性確認ではありません。
-最終v7実装
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
+過去のv0.0.7実装
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
 local Apple Containerと完全一致SHAのnative Docker
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)で合格し、
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)で合格し、
 各環境で全3種のproduction smokeも合格しました。
 詳細は[STATUS](../STATUS-jp.md#検証証拠)に記録していますが、本番/DR受入の主張ではありません。
+過去の最終docs commit
+[aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)も、
+[CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899)で
+両native jobが合格しました。**v0.0.8**の実装
+[3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)は、
+ローカルと両native architectureの
+[CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)で、
+214テスト、Ruff、strict mypy（13ファイル）、全production smokeに合格しました。
+どちらの過去runもMCP adapterを検証していません。

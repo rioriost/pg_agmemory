@@ -7,7 +7,7 @@
 - 拡張対象: [ADR 0002](0002-assertion-revisions-jp.md)、
   [ADR 0003](0003-checkpoints-jp.md)、[ADR 0004](0004-tool-effects-jp.md)の
   assertion revision、宣言済みcheckpoint/effect依存、purge
-- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
+- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pg_agmemory`
 
 過去の範囲: 以下のschema 5要件と証拠はv5時点のものです。
 [ADR 0006](0006-durable-jobs-jp.md)がdurable jobとschema 6を追加します。

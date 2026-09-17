@@ -4,7 +4,7 @@
 
 - 日付: 2026-09-16
 - 状態: M1の初期sliceに採用。M0/M1 gate全体の完了証拠ではない
-- プロジェクト/repository: `pgag_memory`、Python package/service: `pg_agmemory`
+- プロジェクト/repository: `pg_agmemory`、Python package/service: `pg_agmemory`
 - License: MIT。依存ライブラリのlicenseは別途適用
 
 **v0.0.1当時の決定記録です。** revision 1のみの時間モデルと

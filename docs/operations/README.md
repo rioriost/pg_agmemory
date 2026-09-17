@@ -12,19 +12,27 @@ databases or real user histories.
 
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
-The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
-The v0.0.7 opt-in Japanese lexical FTS milestone requires schema 7.
-Apple Container and native Docker amd64/arm64 each passed **144 tests**
+The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
+The v0.0.8 local stdio MCP milestone retains schema 7; **214 tests and production
+smokes passed in Apple Container and native Docker amd64/arm64**.
+No migration is added to v0.0.7. M0–M3, MVP, production, performance,
+quality, DR, and full-erasure acceptance remain incomplete.
+**Historical v0.0.7 only:** Apple Container and native Docker amd64/arm64 each passed **144 tests**
 (2 existing warnings), Ruff, strict mypy (12 source files), and all three non-root
 production smokes: Japanese tokenizer, API HTTP, and actual worker CLI `--once`
 idle execution. Final SHA, CI logs, and timings are in
 [validation evidence](../STATUS.md#validation-evidence).
 
-Use the final lock, which retains the existing package-feed registry. All
+The historical v0.0.7 final lock retained the existing package-feed registry. All
 36 packages' versions, dependency metadata, and artifact hashes are byte-for-byte
 equivalent to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0 was
 added and the project version became v0.0.7; no unrelated upgrades or registry
-migration occurred. Native CI built this retained-registry lock.
+migration occurred. Native CI built that retained-registry lock. This is not a
+package-count or validation claim about v0.0.8. Use the current locked build;
+the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
+both Docker test and runtime stages.
+The container-check script requires runner-side `jq` for **both Apple Container
+and Docker**, including disposable smoke configuration.
 
 | Setting | Consumer | Purpose |
 |---|---|---|
@@ -33,6 +41,8 @@ migration occurred. Native CI built this retained-registry lock.
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | Static PEM RSA verification key, at least 2048 bits; never the signing private key |
 | `PGAG_JWT_ISSUER` | API runtime | Exact trusted issuer |
 | `PGAG_JWT_AUDIENCE` | API runtime | Exact audience for this service |
+| `PGAG_MCP_API_URL` | Local MCP adapter only | Fixed trusted Native API HTTPS origin or loopback HTTP origin; no URL credentials, application path, query, or fragment |
+| `PGAG_MCP_API_TOKEN` | Local MCP adapter only | Fixed Native API audience bearer token; supplied securely at startup, never per call |
 
 1. Confirm that the admin URL identifies the intended empty, disposable Memory
    DB. Run `pg-agmemory migrate` from the application image. The migration is
@@ -75,12 +85,143 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
+## Local stdio MCP operations
+
+### Install and start with one trusted identity
+
+1. Bootstrap the Native API and provision the intended subject/scope using the
+   role separation above. The adapter needs **no database URL, admin credentials,
+   signing key, or worker `--subject`**. Native API authentication and current
+   ACL/deletion checks remain authoritative on every call.
+2. Install `pg-agmemory[mcp]`, or use the repository image with the extra already
+   present. For the source checkout, prepare the lock with
+   `uv sync --frozen --extra mcp`. The pins are official `mcp==2.2.0` and
+   `httpx==0.28.1`, not a similarly named third-party MCP package.
+3. In the trusted local host's process environment, securely supply
+   `PGAG_MCP_API_URL` and `PGAG_MCP_API_TOKEN`. Do not commit tokens into a host
+   configuration or put them in command-line arguments, examples, logs, or
+   issue reports. The token targets the **Native API audience**, not the MCP
+   host; the Native API validates it. This is a fixed trusted Native client,
+   not forwarding of an MCP caller's identity.
+4. Use an HTTPS origin such as `https://memory.example.com`, or a loopback
+   HTTP origin such as `http://127.0.0.1:8000`. Do not include credentials,
+   `/v1` or another application path, query, or fragment; a root `/` is accepted.
+   Non-loopback plain HTTP is rejected. Loopback is relative to the adapter's
+   process/container, not automatically the Mac host or a sibling container.
+   Container-hosted adapters therefore need a reachable trusted HTTPS origin
+   unless the API shares their loopback boundary. TLS verification stays on;
+   redirects and proxy environment settings are not used.
+5. Configure the host to launch the installed executable with argument `mcp`:
+
+   ```bash
+   pg-agmemory mcp
+   ```
+
+   Use `uv run --frozen --extra mcp pg-agmemory mcp` in a checkout environment
+   if the virtualenv executable is not on PATH. Do not add `--subject` or
+   `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
+   not human prompts or ordinary log output. Diagnostics use sanitized stderr.
+6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
+   `0.0.8`, schema `7` before serving tools. A bad setting/token, unreachable API,
+   or version mismatch exits nonzero without logging secrets. A passing
+   `/healthz` alone is insufficient. Fix trusted configuration and restart;
+   do not bypass the check or change tool arguments to override identity/URL.
+
+There is no remote MCP HTTP/SSE transport, OAuth, delegated identity, or
+per-call header/URL/token override. Run **one adapter per trust identity**;
+do not share the connection across trust domains or expose it through a network
+wrapper. Restart with a securely supplied replacement token to refresh it;
+no automatic token refresh is provided. Preserve the same authorized subject
+when recovering a previous operation.
+
+### Invoke and recover without accidental duplicate writes
+
+Only `memory_recall`, `memory_remember`, `memory_explain`, and `memory_forget`
+are tools. Each wraps the **Native Pydantic request body** as `{request: ...}`.
+Remember and forget additionally require `idempotency_key`, **1–256 visible
+ASCII characters (`0x21`–`0x7e`, no whitespace)**, even for forget preview.
+Keys are not trimmed or rewritten: 256 characters is allowed and 257 is rejected.
+Native forget preview and purge both return **HTTP 202**, unchanged; inspect the
+Native result variant rather than treating the status as proof of purge.
+Have the host/caller retain the key and exact body securely **before dispatch**,
+so it can reuse them after an interrupted response or stdio restart.
+MCP session/request IDs are not memory run IDs or Native HTTP idempotency keys.
+Do not use a new key just because the host reconnects.
+
+Success has `structuredContent: {result: <Native result>, error: null}`.
+Failure has `isError: true` and `{result: null, error: {code, retryable,
+outcome_unknown, native_status, request_id}}` in `structuredContent`;
+the Native status/request UUID can be null. Short text does not duplicate
+the evidence payload. Inspect structured output, not text alone.
+Transport errors, timeouts, 5xx, and invalid mutation responses mean the outcome
+may be unknown, **not that the write rolled back**. After uncertainty, retry
+only with the same key/body and intended identity, including after token
+replacement. Neither retries nor keys are generated automatically.
+`retryable` does not authorize changing the body or prove non-commit.
+Current authorization/deletion may deny a replay; historical references are
+not current evidence or permission to restore deleted content.
+
+The HTTP client has a **20 s total / 10 s I/O / 5 s connect** bound,
+**4 connections**, **256 KiB serialized request**, and **2 MiB response** limits.
+No response/semantic cache is maintained. These limits do not qualify throughput
+or all host buffer sizes. Recall budgets remain **UTF-8 bytes, not model tokens**;
+Japanese recall still needs explicit `ja-janome-0.5.0-v1` selection.
+Remember only publishes explicitly requested structured assertions with Native
+episode evidence; capture episodes with Native `observe`, not MCP. Explain
+without a revision still requests revision 1, not latest.
+
+### Deletion and host-context handling
+
+Treat retrieved text as untrusted evidence, not instructions. The adapter is
+the trusted Native HTTP recipient: the API's response-drain barrier ends at
+HTTP delivery to it, **not atomically at stdio delivery, the host UI, or LLM
+context consumption**. A host may still hold a response that predates purge or
+ACL revocation. In-flight buffers/already-delivered context cannot be retracted.
+After forget or permission changes, the host must discard cached context and
+obtain fresh authorized data rather than reuse old output. There is **no MCP
+deletion notification** that does this automatically. Purge does not certify
+host-context, backup, WAL, replica, or physical-media erasure.
+
+Actual stdio SDK `Client` connections and raw JSON fixtures have exercised:
+
+- Modern `2026-07-28`: `Client(mode="auto")` and `server/discover`. Raw requests
+  carry `params._meta` keys `io.modelcontextprotocol/protocolVersion`,
+  `io.modelcontextprotocol/clientInfo`, and `io.modelcontextprotocol/clientCapabilities`.
+- Legacy `2025-11-25`: `Client(mode="legacy")`, `initialize`, then
+  `notifications/initialized`, before tool calls.
+
+The response-loss regression drops an actual HTTP response **after remember
+commits**, then retries the same key/body and checks that only one assertion
+persists. This tests caller-driven recovery, not an automatic retry.
+Final local/native CI evidence is recorded in STATUS.
+These specific checks do not prove compatibility with untested
+older clients or a named host.
+See [the full contract](../STATUS.md#local-stdio-mcp) and
+[ADR 0008](../adr/0008-local-mcp.md).
+
+## v0.0.8 application update (schema unchanged)
+
+For an existing v0.0.7/schema-7 database there is **no migration 008 or new
+backfill**. Record the application/schema versions and preserve a backup and
+current deletion/ACL records. Stop/drain old APIs, workers, and MCP adapters,
+including auto-restarts; replace them with matching v0.0.8 images. Confirm exact
+schema history `[1, 2, 3, 4, 5, 6, 7]`, then start the restricted Native API/workers,
+check authenticated capabilities, and start each fixed-identity adapter.
+Same schema does not establish rolling mixed-version compatibility or a
+supported downgrade. Packaged runtime and retained schema-contract results are
+recorded in [validation evidence](../STATUS.md#validation-evidence).
+For older schemas, apply the retained schema-7 migration procedure below using
+the current image. Reindex remains separate offline maintenance, not an MCP command.
+
 <a id="v003-maintenance-migration"></a>
 <a id="v004-maintenance-migration"></a>
 <a id="v005-maintenance-migration"></a>
 <a id="v006-maintenance-migration"></a>
 
 ## v0.0.7 maintenance migration
+
+This is the retained schema-7 migration introduced in v0.0.7, for older
+databases; it is **not a new v0.0.8 migration**.
 
 **No rolling old/new API/worker coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -112,7 +253,7 @@ Follow this maintenance protocol:
    JSON/HMAC ordering. Use the pinned Janome 0.5.0 dependency and bundled dictionary.
    The v4 ledger's stricter resume rules remain: untracked hints, even planned
    ones, block resumption.
-5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v7 APIs/workers**
+5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v0.0.8 APIs/workers**
    with restricted runtime credentials and the intended fixed worker subjects.
    Check capabilities/schema, default/opt-in recall and projection coverage,
    historical revision selection, authorization, purge, atomic publication, and
@@ -172,7 +313,7 @@ To rebuild an existing schema-7 database from canonical data:
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v7 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.8 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
@@ -190,7 +331,7 @@ To rebuild an existing schema-7 database from canonical data:
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v7 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.8 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.
@@ -571,11 +712,25 @@ asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
 It also checks `東京都` → `東京` / `都` segmentation in the non-root runtime image
 and emits `Production Japanese tokenizer smoke passed` on success. This tests
 packaged tokenizer initialization/segmentation, not end-to-end recall or quality.
-The CI step is `Test containers and smoke-test production API and worker`.
+The current runner also launches an actual `pg-agmemory mcp` child in the
+non-root production image. Its fixed token and provisioned scope access the
+loopback Native API; it lists all four tools and calls recall in **both**
+modern `2026-07-28` and legacy `2025-11-25` modes. Existing Japanese/API/worker
+smokes remain. These checks passed in all three v0.0.8 environments.
+The current CI step is `Test containers and smoke-test production API, worker, and MCP`.
 This idle-worker check is not a publication test or production/DR qualification.
-Final v7 implementation
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)
+Historical v0.0.7 implementation
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)
 passed local Apple Container and exact-SHA native Docker
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029);
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029);
 all three production smokes passed in each environment. Detailed results are in
 [STATUS](../STATUS.md#validation-evidence), not a production/DR acceptance claim.
+Historical final-docs commit
+[aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)
+also passed both native jobs in
+[CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899).
+**v0.0.8:** implementation
+[3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)
+passed 214 tests, Ruff, strict mypy (13 files), and all production smokes locally
+and in [CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)
+on both native architectures. Neither historical run validates the MCP adapter.

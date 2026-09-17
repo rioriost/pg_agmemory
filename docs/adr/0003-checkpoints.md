@@ -6,7 +6,7 @@
 - Status: v0.0.3/schema 3 implemented; local/native Docker checks passed; M1 incomplete
 - Extends: [ADR 0001](0001-initial-slice.md) and [ADR 0002](0002-assertion-revisions.md)
 - Naming: local directory/package/service `pg_agmemory`; public repository
-  remains `rioriost/pgag_memory`
+  is `rioriost/pg_agmemory`
 
 **Historical v0.0.3 record.** [ADR 0004](0004-tool-effects.md) supersedes the
 ledger deferral and snapshot-only reconciliation/resume decisions below.
@@ -113,10 +113,10 @@ downgrade; v0.0.1 has no schema guard. Follow the
 [maintenance procedure](../operations/README.md#v003-maintenance-migration).
 Checkpoint restore is not PostgreSQL backup recovery.
 
-For v0.0.3 commit [8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a),
+For v0.0.3 commit [8adb40a](https://github.com/rioriost/pg_agmemory/commit/8adb40a),
 Apple Container and native Docker linux/amd64 and linux/arm64 each passed
 54 tests, Ruff, strict mypy (7 source files), and production HTTP health smoke.
-See [CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)
+See [CI run 35088907082](https://github.com/rioriost/pg_agmemory/actions/runs/35088907082)
 and the reported [validation evidence](../STATUS.md#validation-evidence).
 Separate working snapshots/
 compaction, durable effect ledgers, harness adapters, workers, vector/graph

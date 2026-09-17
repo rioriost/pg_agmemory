@@ -1,14 +1,14 @@
-# pgag_memory
+# pg_agmemory
 
 [English](README.md) | [実装プラン](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 **MITライセンスのPostgreSQLベースAgent Memory Serviceです。**
-公開リポジトリは引き続き`rioriost/pgag_memory`、
+公開リポジトリは[`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory)、
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.7/schema 7のopt-in日本語lexical FTSを実装済み。
-ローカルとnative Dockerの検査は合格しています。
+**v0.0.8/schema 7のlocal stdio MCPを実装しました。
+ローカル/native Docker検証に合格しています。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -17,13 +17,15 @@ PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
 assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
 typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳を提供します。
 明示entityとrevision付きrelation assertionは上限付きの読取り専用SQL graph探索を提供します。
-固定principal workerによる明示queue型の構造化publicationも提供します。
-新milestoneはopt-inのversion付き日本語lexical search profileを追加します。
-vector/hybrid retrieval、自動synthesis、分割/recall品質の測定済み改善ではありません。
+固定principal workerによる明示queue型の構造化publicationと、
+opt-inのversion付き日本語lexical searchも提供します。
+新milestoneはNative API上のlocal・固定identity MCP adapterを追加します。
+remote MCP、自動synthesis、検索品質の測定済み改善ではありません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、harness adapter、
 自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、
-AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
+AGE/SQL/PGQ、remote MCP HTTP/SSE/OAuth/delegation、application SDK、
+postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
 
@@ -37,6 +39,9 @@ container system start
 ./scripts/test-containers.sh
 ```
 
+runnerには`jq`も導入してください。使い捨てsmoke設定を含め、
+scriptは**Apple ContainerとDockerの両方**で`jq`を必須とします。
+
 このスクリプトは固定したPython依存関係をビルドし、Ruff、mypy、unitテスト、
 PostgreSQL integrationテスト後にproduction APIのHTTP healthを確認し、
 **non-root production image**内で実際の`pg-agmemory worker --subject ... --once`を実行します。
@@ -45,13 +50,17 @@ worker smokeは使い捨てのprovision済みprincipalとruntime専用資格情�
 non-root runtime imageのtokenizer smokeは`東京都` → `東京` / `都`も検査し、
 成功時に`Production Japanese tokenizer smoke passed`を出力します。
 end-to-end recallや分割品質の評価ではありません。
+v0.0.8 runnerはnon-root production image内で実`pg-agmemory mcp` childも実行します。
+固定tokenとprovision済みscopeでloopback Native APIへ接続し、4 toolの列挙とrecallを
+modern `2026-07-28`・legacy `2025-11-25`の**両mode**で検査します。
+日本語/API/worker smokeも維持しています。
 専用の使い捨てPostgreSQLコンテナを利用し、
 自分が作ったコンテナ・ネットワークだけを片付けます。
 既存のDBやコンテナは変更しません。Python/PostgreSQL/uvのimage版とdigestは固定しています。
 
 GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDockerで
 同じスクリプトを実行します。
-step名は`Test containers and smoke-test production API and worker`です。
+step名は`Test containers and smoke-test production API, worker, and MCP`です。
 
 ```bash
 ./scripts/test-containers.sh docker
@@ -59,20 +68,33 @@ step名は`Test containers and smoke-test production API and worker`です。
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.7/schema 7**の実装commit
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
+**v0.0.8/schema 7:** 実装
+[3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)は、
+Apple Containerとnative Docker amd64/arm64で各**214テスト**（既存warning 1件）、
+Ruff、strict mypy（source 13ファイル）、全production smokeに合格しました。
+上記MCPの両protocol modeも合格しています。
+[CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)と
+[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+
+**過去のv0.0.7/schema 7限定の証拠です。** 実装commit
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
 Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
 それぞれ**144テスト**（既存warning 2件）、Ruff、strict mypy（source 12ファイル）、
 non-root productionの日本語tokenizer、API HTTP、実CLI worker `--once` idle実行という
 全3種のsmokeが合格しました。最終結果は**2026-09-17 JST**に確認しました。
 両CI jobは同じ完全一致SHAで実行し、実logで全検査を確認しています。
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)と、
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)と、
 [検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+最終bilingual docs commit
+[aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)も
+[CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899)で
+両native jobが合格しました。これらの過去runはv0.0.8の結果ではありません。
 
-最終lockは既存package-feed registryを維持し、全**36 package**のversion、依存metadata、
+**過去のv0.0.7**最終lockは既存package-feed registryを維持し、全**36 package**のversion、依存metadata、
 artifact hashはテスト済みPyPI解決lockとbyte単位で同一です。v6との差分はJanome 0.5.0の
 追加とprojectのv0.0.7へのversion更新だけで、無関係なupgradeやregistry移行はありません。
-native CIはこの最終retained-registry lockからbuildしました。
+native CIはこのretained-registry lockからbuildしました。v0.0.8 MCP extraには追加依存があり、
+旧package件数とlock比較は新lockを説明するものではありません。
 
 ## APIの起動
 
@@ -103,10 +125,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.7への更新には保守停止とbackupが必要です。**
+**v0.0.8はschema 7を維持し、v0.0.7からの新migrationはありません。**
+旧API/worker/adapterを停止/drainしてから、対応するv0.0.8 processに置換してください。
+異なるversionの混在互換性を想定しないでください。
+schema 7より古いDBには保守停止とbackupが必要です。
 旧版・新版すべてのAPI**とworker**を停止/drainし、`007_japanese_fts.sql`までの
 未適用migrationと原子的Python lexical backfillを適用してから、
-対応するv7 API/workerだけを起動します。
+対応するv0.0.8 API/workerだけを起動します。
 両者とも厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 rolling共存やdowngradeは非対応です。
@@ -134,6 +159,59 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 検証やsecret/PIIの自動除去は行いません。保存が許可され、除去処理済みのdataだけを送ってください。
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
+
+## Local stdio MCP
+
+任意の`pg-agmemory[mcp]` package extraを導入するか、test/runtime両stageにextraを含む
+repository imageを使用します。公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
+checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
+信頼するlocal MCP hostから次を起動します。
+
+```bash
+pg-agmemory mcp
+```
+
+**`PGAG_MCP_API_URL`**と**`PGAG_MCP_API_TOKEN`**は信頼する起動設定から渡し、
+tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
+originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
+Native APIが検査します。MCP caller identityを転送するものではありません。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.8`、schema `7`の一致を要求します。
+設定/認証/versionの失敗はsecretを出さず非zero終了します。
+固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
+
+Native Pydantic model由来のschemaを持つ次の4 toolだけを公開します。
+
+| Tool | 引数 | Native操作 |
+|---|---|---|
+| `memory_recall` | `{request: <Recall body>}` | `POST /v1/recall` |
+| `memory_remember` | `{request: <Remember body>, idempotency_key: "..."}` | `POST /v1/remember` |
+| `memory_explain` | `{request: <Explain body>}` | `POST /v1/explain` |
+| `memory_forget` | `{request: <Forget body>, idempotency_key: "..."}` | `POST /v1/forget` |
+
+両mutation toolはforget previewも含め、caller管理の**1〜256文字のvisible ASCII key**
+（空白不可）を必須とします。keyのtrim/書換えはせず、正確に256文字は許可、257文字は拒否します。
+Native forgetは従来どおり**preview/purgeともHTTP 202**です。
+結果不明時は**stdio再起動をまたいでも同じkeyとbodyを再利用**
+してください。自動retryやkey生成はありません。mutationのtransport障害、5xx、不正応答は
+`outcome_unknown`であり、**rollbackではありません**。成功は
+`structuredContent: {result: <Native result>, error: null}`、失敗は`isError: true`と
+`{result: null, error: {code, retryable, outcome_unknown, native_status, request_id}}`
+を返します。短いtextには根拠を重複収録しません。
+
+rememberは明示structured publication専用です。episode captureにはMCPでなくNative `observe`を
+使います。UTF-8 byte予算（model tokenではない）、日本語recallのopt-in、現在のNative認証/ACL、
+削除検査、過去のidempotency参照は維持します。MCP session/request IDはmemory run IDでも
+HTTP idempotency keyでもありません。
+
+**信頼identityごとにadapterを一つ使い、共有やnetwork公開はしないでください。**
+callごとのheader/identity/URL上書き、remote MCP HTTP/SSE、OAuth、delegationはありません。
+adapterは信頼するlocal Native API clientです。Native response-drain barrierはadapterへのHTTP
+配信で終了し、**stdio・host UI・LLM contextまでの原子的barrierではありません**。
+buffer済み/配信済みcontextは回収できません。forget/ACL変更後はhostがcached contextを破棄する
+必要があり、MCP削除通知やadapterのresponse/semantic cacheはありません。
+protocol検証の制限を含む[全契約](docs/STATUS-jp.md#local-stdio-mcp)、
+[起動と復旧](docs/operations/README-jp.md#local-stdio-mcpの運用)、
+[ADR 0008](docs/adr/0008-local-mcp-jp.md)を参照してください。
 
 ## Opt-inの日本語lexical recall
 
@@ -167,7 +245,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-対応するv7だけを再起動します。
+対応するv0.0.8 processだけを再起動します。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
 [保守](docs/operations/README-jp.md#lexical-profileとreindexの運用)、
@@ -332,6 +410,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) |
 | [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) | [Durable-job decisions](docs/adr/0006-durable-jobs.md) |
 | [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) | [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) |
+| [Local MCPの決定](docs/adr/0008-local-mcp-jp.md) | [Local MCP decisions](docs/adr/0008-local-mcp.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

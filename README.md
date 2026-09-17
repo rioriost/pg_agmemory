@@ -1,12 +1,12 @@
-# pgag_memory
+# pg_agmemory
 
 [日本語](README-jp.md) | [Implementation plan](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
 **PostgreSQL-backed agent memory, licensed under MIT.** The public repository
-remains `rioriost/pgag_memory`; the local checkout directory, Python package,
+is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.7/schema 7 opt-in Japanese lexical FTS implemented;
+**Status: v0.0.8/schema 7 local stdio MCP implemented;
 local and native Docker checks passed.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
@@ -18,13 +18,13 @@ server-controlled system-time history and revision-specific evidence.
 Typed checkpoints support restore-to-new-branch envelopes and a durable
 tool-effect ledger. Explicit entities and revisioned relation assertions support
 bounded, read-only SQL graph traversal, alongside explicitly queued structured
-publication through a fixed-principal worker. The new milestone adds an opt-in,
-versioned Japanese lexical search profile—not vector/hybrid retrieval, automatic
-synthesis, or a measured segmentation/recall-quality improvement.
+publication through a fixed-principal worker and opt-in, versioned Japanese lexical
+search. The new milestone adds a local, fixed-identity MCP adapter over the Native
+API—not remote MCP, automatic synthesis, or a measured retrieval-quality improvement.
 
 Cross-assertion supersession/fact arbitration, provider receipt verification, harness adapters,
 automatic enqueue/extraction, general multi-tenant scheduling,
-pgvector, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
+pgvector, AGE/SQL/PGQ, remote MCP HTTP/SSE/OAuth/delegation, application SDKs, and postgresem adapters
 remain roadmap work. No performance or memory-quality acceptance targets have
 been measured. Consult [the current contract and limitations](docs/STATUS.md)
 before using the service.
@@ -39,6 +39,9 @@ container system start
 ./scripts/test-containers.sh
 ```
 
+Install `jq` on the runner too: the script requires it for **both Apple Container
+and Docker**, including disposable smoke configuration.
+
 The script builds locked Python dependencies, runs Ruff, mypy, and unit and
 PostgreSQL integration tests, then checks production API HTTP health and runs
 the actual `pg-agmemory worker --subject ... --once` in the **non-root production
@@ -47,13 +50,17 @@ credentials, asserts `{"outcome":"idle"}`, and logs `Production worker smoke pas
 The non-root runtime-image tokenizer smoke also checks `東京都` → `東京` / `都`
 and emits `Production Japanese tokenizer smoke passed` on success; this is not
 an end-to-end recall or segmentation-quality assessment.
+The v0.0.8 runner also executes an actual `pg-agmemory mcp` child in the non-root
+production image. It connects to the loopback Native API with a fixed token and
+provisioned scope, lists all four tools, and calls recall in **both** modern
+`2026-07-28` and legacy `2025-11-25` modes. Japanese/API/worker smokes remain.
 It uses isolated disposable PostgreSQL containers and removes only its
 own containers/networks. Existing databases and containers are not touched.
 Python/PostgreSQL/uv image versions and digests are pinned in the container files.
 
 GitHub Actions executes the same script with Docker on native **linux/amd64**
 and **linux/arm64** runners. The step is
-`Test containers and smoke-test production API and worker`:
+`Test containers and smoke-test production API, worker, and MCP`:
 
 ```bash
 ./scripts/test-containers.sh docker
@@ -61,21 +68,35 @@ and **linux/arm64** runners. The step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For **v0.0.7/schema 7**, implementation commit
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
+**v0.0.8/schema 7:** implementation
+[3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)
+passed **214 tests** (1 existing warning), Ruff, strict mypy (13 source files),
+and all production smokes in Apple Container and native Docker amd64/arm64.
+Both MCP protocol modes above passed. See
+[CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)
+and [validation evidence](docs/STATUS.md#validation-evidence).
+
+**Historical v0.0.7/schema 7 evidence only:** implementation commit
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
 Apple Container and native Docker **linux/amd64** and **linux/arm64** each passed
 **144 tests** (2 existing warnings), Ruff, strict mypy (12 source files), and all
 three non-root production smokes: Japanese tokenizer, API HTTP, and actual CLI
 worker `--once` idle execution. Final results were verified **2026-09-17 JST**.
 Both CI jobs ran that exact SHA; their actual logs confirm all checks. See
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)
 and the [validation evidence](docs/STATUS.md#validation-evidence).
+The final bilingual documentation commit
+[aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)
+also passed both native jobs in
+[CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899).
+These older runs are not v0.0.8 results.
 
-The final lock retains the existing package-feed registry. All **36 packages'**
+The **historical v0.0.7** final lock retained the existing package-feed registry. All **36 packages'**
 versions, dependency metadata, and artifact hashes are byte-for-byte equivalent
 to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0 was added and
 the project version became v0.0.7: no unrelated upgrades or registry migration.
-Native CI built this final retained-registry lock.
+Native CI built that retained-registry lock. The v0.0.8 MCP extra adds dependencies;
+the old package count and lock comparison do not describe the new lock.
 
 ## Run the API
 
@@ -106,9 +127,12 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading to v0.0.7 requires a maintenance stop and backup.** Stop/drain all
+**v0.0.8 retains schema 7; there is no new migration from v0.0.7.**
+Stop/drain old APIs, workers, and adapters before replacing them with matching
+v0.0.8 processes; do not assume mixed-version compatibility.
+For databases older than schema 7, a maintenance stop and backup are required. Stop/drain all
 old/new APIs **and workers**, apply pending migrations through `007_japanese_fts.sql`
-with its atomic Python lexical backfill, then start only matching v7 APIs/workers.
+with its atomic Python lexical backfill, then start only matching v0.0.8 APIs/workers.
 Both require exact history `[1, 2, 3, 4, 5, 6, 7]`.
 Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling coexistence or downgrade is supported. Follow the
@@ -137,6 +161,64 @@ service does **not** verify an external consent registry or automatically
 redact secrets/PII. Only send approved, already-sanitized data.
 Interactive schema documentation is at `/docs`; OpenAPI is at `/openapi.json`.
 `/healthz` is process liveness after startup validation, not continuous DB readiness.
+
+## Local stdio MCP
+
+Install the optional `pg-agmemory[mcp]` package extra, or use the repository image,
+whose test and runtime stages include it. It pins the official **mcp 2.2.0** SDK
+and **httpx 0.28.1**. From this checkout, `uv sync --frozen --extra mcp` prepares
+the locked environment. A trusted local MCP host launches:
+
+```bash
+pg-agmemory mcp
+```
+
+Supply **`PGAG_MCP_API_URL`** and **`PGAG_MCP_API_TOKEN`** through trusted startup
+configuration, not tool arguments or checked-in host configuration. The URL must
+be an HTTPS origin or loopback HTTP origin, with no credentials, path, query, or
+fragment. The token is for the **Native API audience**, which the Native API
+checks; it is not forwarded MCP caller identity. Startup makes an authenticated
+capabilities request and requires API `v1`, service `0.0.8`, and schema `7`.
+Configuration/authentication/version failures exit nonzero without secrets.
+Restart to refresh the fixed token. `--subject` and `--once` are rejected.
+
+Exactly four tools expose schemas from the Native Pydantic models:
+
+| Tool | Arguments | Native operation |
+|---|---|---|
+| `memory_recall` | `{request: <Recall body>}` | `POST /v1/recall` |
+| `memory_remember` | `{request: <Remember body>, idempotency_key: "..."}` | `POST /v1/remember` |
+| `memory_explain` | `{request: <Explain body>}` | `POST /v1/explain` |
+| `memory_forget` | `{request: <Forget body>, idempotency_key: "..."}` | `POST /v1/forget` |
+
+Both mutation tools require a caller-owned key of **1–256 visible ASCII
+characters** (no whitespace), including forget preview. Keys are not trimmed or
+rewritten: exactly 256 characters is allowed, 257 is rejected.
+Native forget preview and purge **both return HTTP 202**, unchanged.
+After uncertainty, reuse the
+**same key and body, even across stdio restarts**. No automatic retries or
+generated keys are provided. Transport failures, 5xx, or invalid mutation
+responses mean `outcome_unknown`, **not rollback**. Results use
+`structuredContent: {result: <Native result>, error: null}`; failures use
+`isError: true` and `{result: null, error: {code, retryable, outcome_unknown,
+native_status, request_id}}`. Short text does not duplicate evidence.
+
+Remember is explicit structured publication only; capture episodes through Native
+`observe`, not MCP. UTF-8 byte budgeting (not model tokens), opt-in Japanese
+recall, current Native authentication/ACLs, deletion checks, and historical
+idempotency references are unchanged. MCP session/request IDs are neither memory
+run IDs nor HTTP idempotency keys.
+
+**One adapter per trusted identity; do not share it or expose it over a network.**
+There are no per-call headers, identity, or URL overrides, remote MCP HTTP/SSE,
+OAuth, or delegation. The adapter is a trusted local Native API client. The
+Native response-drain barrier ends at HTTP delivery to that adapter, **not an
+atomic barrier through stdio, host UI, or LLM context**. Buffered/already-delivered
+context cannot be retracted. The host must discard cached context after forget or
+ACL changes; there is no MCP deletion notification or adapter response/semantic cache.
+See [the full contract](docs/STATUS.md#local-stdio-mcp),
+[startup and recovery](docs/operations/README.md#local-stdio-mcp-operations), and
+[ADR 0008](docs/adr/0008-local-mcp.md), including protocol validation limits.
 
 ## Opt-in Japanese lexical recall
 
@@ -172,7 +254,7 @@ cascade in the same barrier, without child DELETE grants; they are not separate
 memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
 selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
 not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
-back up, rebuild, then restart matching v7 only. There is no automatic
+back up, rebuild, then restart matching v0.0.8 processes only. There is no automatic
 repair worker, external model/provider, or file-based memory index.
 See [the contract](docs/STATUS.md#japanese-lexical-profile),
 [maintenance](docs/operations/README.md#lexical-profile-and-reindex-operations),
@@ -340,6 +422,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) |
 | [Durable-job decisions](docs/adr/0006-durable-jobs.md) | [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) |
 | [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) | [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) |
+| [Local MCP decisions](docs/adr/0008-local-mcp.md) | [Local MCPの決定](docs/adr/0008-local-mcp-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

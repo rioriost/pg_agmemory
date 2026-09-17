@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md) | [README](README-jp.md) | [現在の契約](docs/STATUS-jp.md)
 
-`pgag_memory`への貢献にはプロジェクトの[MIT license](LICENSE)を適用します。
+`pg_agmemory`への貢献にはプロジェクトの[MIT license](LICENSE)を適用します。
 Python package/service名は`pg_agmemory`です。Gitは初期化済みなので、
 repositoryを再初期化せずbranchで作業してください。MVP完成版ではなくM1の初期sliceです。
 認可・根拠・transaction・削除を変更する前に

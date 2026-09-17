@@ -6,7 +6,12 @@
 - 状態: v0.0.7/schema 7を実装済み。ローカルとnative Dockerの検査は合格。M0/M1/M2/M3全体は未完了
 - 拡張対象: lexical recallと派生index。graph/job/checkpoint/effect契約を維持し、
   [ADR 0006](0006-durable-jobs-jp.md)も継承
-- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
+- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pg_agmemory`
+
+**過去の範囲:** このADRはv0.0.7/schema 7とその検証/lock証拠の記録であり、
+現在の依存一式やMCP結果ではありません。v0.0.8 local stdio MCP milestoneもschema 7を維持します。
+[ADR 0008](0008-local-mcp-jp.md)を参照してください。
+そのlocal/native CI結果は[STATUS](../STATUS-jp.md#検証証拠)に記録しています。
 
 ## 決定と範囲
 
@@ -161,7 +166,7 @@ native CIはこの最終retained-registry lockからbuildしました。
 ## 証拠と対象外
 
 実装commit
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)について、
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)について、
 **2026-09-17 JST**にv7最終結果を確認しました。
 
 | 環境 | テスト | テスト所要時間 |
@@ -172,7 +177,7 @@ native CIはこの最終retained-registry lockからbuildしました。
 
 3環境すべてで**Ruff、strict mypy（source 12ファイル）、non-root productionの
 日本語tokenizer、API HTTP、実CLI worker `--once` idle実行という全3種のsmoke**が合格しました。
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)の
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)の
 両native Docker jobの実logで完全一致SHA、件数、各検査を確認しています。
 所要時間はテスト実行の観測値であり、性能benchmarkではありません。
 suiteはprofile/時間/RLS動作、projection欠落と予算、正確な入力上限、初期化guard、

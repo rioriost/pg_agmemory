@@ -2,7 +2,7 @@
 
 [日本語](CONTRIBUTING-jp.md) | [README](README.md) | [Current contract](docs/STATUS.md)
 
-Contributions to `pgag_memory` are made under the project's [MIT license](LICENSE).
+Contributions to `pg_agmemory` are made under the project's [MIT license](LICENSE).
 The Python package/service is `pg_agmemory`. Git is already initialized; work
 on a branch rather than reinitializing the repository. This is an initial M1
 slice, not a completed MVP. Read [ADR 0001](docs/adr/0001-initial-slice.md) before

@@ -5,7 +5,7 @@
 - Date: 2026-09-16
 - Status: v0.0.4/schema 4 implemented; local and native Docker checks passed; M1 incomplete
 - Supersedes: the ledger deferral and snapshot-only resume rules in [ADR 0003](0003-checkpoints.md)
-- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
+- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pg_agmemory`
 
 Historical scope: schema-4 requirements and evidence below remain v4-specific.
 [ADR 0005](0005-relational-graph.md) adds entity references and schema 5;
@@ -127,11 +127,11 @@ old-version compatibility or automatic downgrade is supported.
 Follow [maintenance](../operations/README.md#v004-maintenance-migration).
 
 For v0.0.4 implementation
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8),
+[4a7d3f8](https://github.com/rioriost/pg_agmemory/commit/4a7d3f8),
 Apple Container and native Docker amd64/arm64 each passed 73 tests
 (2 existing warnings), Ruff, strict mypy (8 source files), and production HTTP
 health smoke. See
-[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)
+[CI run 35098507356](https://github.com/rioriost/pg_agmemory/actions/runs/35098507356)
 and the [validation evidence](../STATUS.md#validation-evidence).
 SQL/graph oracle, workers, MCP, harness integration, separate working-snapshot
 compaction, and automated backup/DR remain future work; this is not full M1.

@@ -6,7 +6,12 @@
 - Status: v0.0.7/schema 7 implemented; local and native Docker checks passed; M0/M1/M2/M3 incomplete
 - Extends: lexical recall and derived indexing; preserves the graph, job,
   checkpoint, and effect contracts, including [ADR 0006](0006-durable-jobs.md)
-- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
+- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pg_agmemory`
+
+**Historical scope:** this ADR records v0.0.7/schema 7 and its validation/lock
+evidence, not the current dependency set or MCP results. The v0.0.8 local stdio
+MCP milestone retains schema 7; see [ADR 0008](0008-local-mcp.md).
+Its local/native CI validation is recorded in [STATUS](../STATUS.md#validation-evidence).
 
 ## Decision and scope
 
@@ -173,7 +178,7 @@ registry migration occurred. Native CI built this final retained-registry lock.
 ## Evidence and non-goals
 
 For implementation commit
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
 final v7 results were verified **2026-09-17 JST**:
 
 | Environment | Tests | Test elapsed |
@@ -185,7 +190,7 @@ final v7 results were verified **2026-09-17 JST**:
 All three runs passed **Ruff, strict mypy (12 source files), and all three
 non-root production smokes: Japanese tokenizer, API HTTP, and actual CLI worker
 `--once` idle execution**. Actual logs for both native Docker jobs in
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)
 confirm the exact SHA, counts, and checks. Timings are test-run observations,
 not performance benchmarks. The suite covers profile/temporal/RLS behavior,
 missing projections and budgets, exact input bounds, initialization guards,

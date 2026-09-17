@@ -6,7 +6,7 @@
 - 状態: v0.0.3/schema 3を実装済み。ローカル/native Docker検査は合格。M1全体は未完了
 - 拡張対象: [ADR 0001](0001-initial-slice-jp.md)、[ADR 0002](0002-assertion-revisions-jp.md)
 - 命名: ローカルdirectory/package/serviceは`pg_agmemory`、
-  公開repositoryは引き続き`rioriost/pgag_memory`
+  公開repositoryは`rioriost/pg_agmemory`
 
 **v0.0.3当時の記録です。** [ADR 0004](0004-tool-effects-jp.md)は下記の
 ledger延期とsnapshot-onlyの照合/再開判断を置き換えます。
@@ -110,11 +110,11 @@ v0.0.1にはschema guardがありません。
 [保守手順](../operations/README-jp.md#v003の保守migration)に従ってください。
 checkpoint restoreはPostgreSQL backupからの復旧ではありません。
 
-v0.0.3のcommit [8adb40a](https://github.com/rioriost/pgag_memory/commit/8adb40a)は、
+v0.0.3のcommit [8adb40a](https://github.com/rioriost/pg_agmemory/commit/8adb40a)は、
 Apple Containerとnative Dockerのlinux/amd64・linux/arm64で、
 それぞれ54テスト、Ruff、strict mypy（source 7ファイル）、
 production HTTP health smokeが合格しました。
-[CI run 35088907082](https://github.com/rioriost/pgag_memory/actions/runs/35088907082)と、
+[CI run 35088907082](https://github.com/rioriost/pg_agmemory/actions/runs/35088907082)と、
 報告された[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 別のworking snapshot/compaction、durable effect ledger、harness adapter、
 worker、vector/graph検索、M1全体/DR適格性確認はこのsliceの対象外です。

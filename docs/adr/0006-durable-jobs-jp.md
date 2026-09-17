@@ -6,7 +6,7 @@
 - 状態: v0.0.6/schema 6を実装済み。ローカルとnative Dockerの検査は合格。M0/M1/M2/M3全体は未完了
 - 拡張対象: 明示assertion publicationと依存purge。
   [ADR 0005](0005-relational-graph-jp.md)のgraph/checkpoint/effect履歴を維持
-- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
+- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pg_agmemory`
 
 過去の範囲: 下記schema 6の要件と証拠はv0.0.6だけを記述します。
 schema 7のlexical indexと現在の保守要件は[ADR 0007](0007-japanese-fts-jp.md)を参照し、
@@ -137,11 +137,11 @@ rolling共存やdowngradeは非対応です。旧v0.0.1には起動schema guard�
 ## 証拠の境界
 
 実装commit
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8)について、
+[a4aa7f6](https://github.com/rioriost/pg_agmemory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8)について、
 Apple Containerとnative Docker amd64/arm64の各環境で114テスト（既存warning 2件）、
 Ruff、strict mypy（source 11ファイル）、non-root production API HTTPと
 実CLI worker smokeの両方が合格しました。
-[run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
+[run 35168437396](https://github.com/rioriost/pg_agmemory/actions/runs/35168437396)
 の両CI jobはこのSHAと完全一致し、実logで結果を確認しています。
 
 job identity/retry/上限、lease引継ぎ/期限切れrollback、現在の認可/epoch、

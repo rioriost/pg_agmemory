@@ -630,7 +630,7 @@ schema変更はexpand -> backfill -> read切替 -> contractの順とし、破壊
 
 ## 16. OSSモジュール構成と成果物
 
-実際のローカルプロジェクトディレクトリは`pg_agmemory`、公開GitHub repository名は引き続き`pgag_memory`とする。Python packageおよびサービス名は`pg_agmemory`である。実装前にGitを初期化し、原案を初期commit済みである。MIT licenseの公開GitHub repositoryとして実装を進め、README・本計画・利用手順を日本語と英語で提供する。公開完了や下記の全moduleの実装完了を示すものではない。
+ローカルプロジェクトディレクトリと公開GitHub repository名は`pg_agmemory`とする。Python packageおよびサービス名も`pg_agmemory`である。実装前にGitを初期化し、原案を初期commit済みである。MIT licenseの公開GitHub repositoryとして実装を進め、README・本計画・利用手順を日本語と英語で提供する。公開完了や下記の全moduleの実装完了を示すものではない。
 
 ```text
 pg_agmemory/

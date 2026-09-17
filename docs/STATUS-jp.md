@@ -2,8 +2,8 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**v0.0.7/schema 7のopt-in日本語lexical FTSを実装済み。
-ローカルとnative Dockerの検査は合格しています。
+**v0.0.8/schema 7のlocal stdio MCPを実装しました。
+ローカル/native Docker検証に合格しています。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -44,6 +44,124 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 `/docs`と`/openapi.json`で公開します。schemaの生成済みファイルは不要です。
 `/healthz`は起動検証後のprocess livenessであり、
 PostgreSQLへの継続的なreadiness検査ではありません。
+
+## Local stdio MCP
+
+このmilestoneは`pg-agmemory mcp`を追加します。**stdio専用の信頼するlocal Native API
+client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、repositoryのDocker test/runtime両stageにextraを
+含めます。remote MCP HTTP/SSE listener、OAuth、caller identity委譲、
+semantic cache、response cacheは提供しません。
+
+### ToolとNative semantics
+
+次の4 toolだけを公開し、input/output JSON Schemaは別の手書きrequest契約でなく、
+Native Pydantic modelから生成します。
+
+| Tool | Input wrapper | Native route / 成功status |
+|---|---|---|
+| `memory_recall` | `{request: <Recall>}` | `POST /v1/recall` / `200` |
+| `memory_remember` | `{request: <Remember>, idempotency_key: "..."}` | `POST /v1/remember` / `201` |
+| `memory_explain` | `{request: <Explain>}` | `POST /v1/explain` / `200` |
+| `memory_forget` | `{request: <Forget>, idempotency_key: "..."}` | `POST /v1/forget` / preview・purgeとも`202`（変更なし） |
+
+`request`は既存Native bodyであり、新しい自然言語形式ではありません。rememberは引き続き
+`explicit_intent: true`、構造化field、同一scopeのepisode原文根拠を要求します。
+episode captureはNative `observe`に残し、MCP toolにはしません。
+job、graph、revision、checkpoint/effect実行、削除receipt照会も追加MCP toolではありません。
+recallは現在のscope/ACL、時間選択、根拠/coverage、既定`search_profile: "simple-v1"`、
+明示`"ja-janome-0.5.0-v1"` opt-inを維持します。`tokenizer_id: "utf8-bytes-v1"`と
+Native `token_budget` fieldは引き続き**UTF-8 byteであり、model tokenではありません**。
+explainのrevision省略時は**最新ではなく1**です。memory本文は信頼できない根拠資料であり、
+指示や検証済みの現在の外部事実ではありません。
+
+両mutation wrapperはforget previewも含め、**1〜256文字のvisible ASCII
+（`0x21`〜`0x7e`、空白不可）**の`idempotency_key`を要求します。
+空白はtrimせず拒否し、keyを書き換えません。正確に256文字は許可、257文字は拒否します。
+adapterはNative `Idempotency-Key`として転送します。callerは結果不明時に**stdio再起動や
+token更新をまたいでも同じkeyと同じbodyを保持/再利用**しなければなりません。
+key自動生成、自動retry、adapter側のdurable retry storeはありません。
+同じkeyでbodyを変えるとconflictし得ます。新keyは結果不明からの復旧手段ではありません。
+Native idempotency参照はfresh readでなく過去の記録で、現在の認可と削除がreplayに優先します。
+replayでpurge済みdataを復活させてはいけません。
+MCP session/request IDはdurable memory run IDでもHTTP idempotency keyでもありません。
+
+### 結果、失敗、上限付きtransport
+
+成功時は`structuredContent: {result: <検証済みNative result>, error: null}`を返します。
+tool失敗時は`isError: true`と
+`structuredContent: {result: null, error: {code, retryable, outcome_unknown,
+native_status, request_id}}`を返します。`native_status`と検証済みNative UUIDの
+`request_id`はnullableで、後者はMCP request IDではありません。
+短いtextを添えますが、根拠を重複収録したりraw request/response body、URL、credentialを
+echoしたりしません。Native errorは安全なcodeに限定し、不正応答を根拠として転送しません。
+
+mutation時のtransport障害/timeout、Native 5xx、不正または予期しない応答は、
+保守的に**`outcome_unknown: true`**とします。APIは既にcommitしているかもしれず、
+rollback済みと記述してはいけません。`retryable`はhintにすぎず、自動retry、rollback証明、
+key/body変更の許可ではありません。local validation失敗はHTTP送信前に発生します。
+stdio切断によりNative APIの書込み完了後にacknowledgementだけが失われる場合もあります。
+
+各HTTP交換は**合計20秒**、**I/O 10秒**、**connect 5秒**、poolは**4 connection**に制限します。
+serializeしたNative request bodyは**256 KiB**、受信HTTP responseは**2 MiB**が上限です。
+HTTP上の上限であり、model token予算や全host/stdio bufferに同じ上限があるという主張では
+ありません。redirectとproxy環境設定を無効にし、TLS検証は有効のままです。
+semantic/response cacheはありません。
+
+### 固定identityと削除境界
+
+`PGAG_MCP_API_URL`と`PGAG_MCP_API_TOKEN`は信頼する起動設定だけから渡します。
+URLはHTTPS originまたはloopback HTTP originに限定し、URL credential、application path、
+query、fragmentは禁止です（root `/`は許可）。
+bearer tokenは**Native API audience用**で、Native APIがissuer/audience/署名/時刻を検証し、
+subjectを解決します。MCP caller tokenの転送やidentity委譲の仕組みではありません。
+tool引数でURL/header/token/identityを上書きできません。`mcp`の`--subject`と`--once`は
+拒否します。固定subjectのDB workerと混同しないでください。
+
+stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
+`service_version: "0.0.8"`、`schema_version: 7`を要求します。
+設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
+**migration 008はありません**。v0.0.8はschema 7を維持します。
+固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
+起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
+
+**信頼identityごとにadapterを一つ**動かし、異なるtrust domainとstdio接続を共有したり、
+network serviceで包んだりしないでください。local hostを制御できる者は、
+設定Native identityの権限を行使できます。Native response-drain barrierはadapterへのHTTP
+配信で終了し、**stdio・host UI・LLMまでの原子的配信barrierではありません**。
+adapterにresponse cacheがなくても、転送中bufferや配信済みcontextは回収できません。
+forget/ACL変更後はhostがcached contextを破棄する必要があり、それを代行するMCP削除通知は
+ありません。active-store purgeはhost context、WAL、replica、backupの完全消去ではありません。
+
+### Protocol証拠の境界
+
+公式[Python SDK v2.2.0 release](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.2.0)
+は**2026-09-07**公開です。上流の
+[protocol文書](https://py.sdk.modelcontextprotocol.io/protocol-versions/)は、
+`2026-07-28`の`server/discover`と`2025-11-25`までのlegacy `initialize`を説明します。
+これはSDKについての事実であり、**adapter/clientの適格性確認結果ではありません**。
+限定的な検査では、実stdio SDK `Client`接続とraw JSON fixtureで両modeを実行しました。
+
+- **Modern `2026-07-28`:** `Client(mode="auto")`は`server/discover`を使います。
+  raw requestは毎回`params._meta`に`io.modelcontextprotocol/protocolVersion`、
+  `io.modelcontextprotocol/clientInfo`、`io.modelcontextprotocol/clientCapabilities`を
+  含め、version値は`"2026-07-28"`です。legacy初期化handshakeではありません。
+- **Legacy `2025-11-25`:** `Client(mode="legacy")`とraw fixtureは
+  `protocolVersion`、`clientInfo`、`capabilities`付きの`initialize`を送り、
+  `notifications/initialized`後にtoolを呼び出します。
+
+runtime smokeはnon-root production image内で実`pg-agmemory mcp` childを起動し、
+固定tokenとprovision済みscopeで同じloopbackのNative APIへ接続して、
+**両mode**で4 tool一覧とrecallを検査します。regression coverageには、
+**rememberのcommit後**の実HTTP応答喪失、その後のsame-key/body再送、
+assertionが一つだけであることの検査を含めます。自動retryはありません。
+正確な256/257文字のkey境界と、空白をtrimせず拒否することも対象です。
+
+最終local/native CI結果を以下に記録しています。
+実行済み経路から、未検証の旧client、特定host application、
+全protocol versionの適格性を主張してはいけません。
+[ADR 0008](adr/0008-local-mcp-jp.md)と
+[運用](operations/README-jp.md#local-stdio-mcpの運用)を参照してください。
 
 ## Identityと認可
 
@@ -675,6 +793,11 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
+**v0.0.8はschema 7を維持し、v0.0.7への追加migrationはありません。**
+MCP adapterはHTTPだけを使い、DDL/backfillは行いません。
+認証付き起動検査は単なるDB版互換ではなく、対応するv0.0.8/schema 7 Native APIを要求します。
+以下のmigration履歴はschema 7より古いDBに引き続き適用します。
+
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
 二つのlexical projection tableを作成し、migration runnerがschema 7記録前の
 **同一transaction**内でPython backfillを行います。全保持episode/assertion revisionを
@@ -684,7 +807,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.7のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、
+追加しません。v0.0.8のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、
 旧版・将来版・不完全な履歴と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -696,16 +819,47 @@ filterされる場合にfail-closedにする設定であり、bypass権限を与
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv7 processだけを起動してください。
+対応するv0.0.8 processだけを起動してください。保守中はadapterも停止します。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
 [運用](operations/README-jp.md#v007の保守migration)に従ってください。
 
 ## 検証証拠
 
-公開repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory)。
-**v0.0.7/schema 7**の実装commit
-[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)について、
+公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
+
+### v0.0.8 / schema 7
+
+実装
+[3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)を
+**2026-09-17 JST**に検証しました。
+
+| 環境 | Command | テスト | テスト所要時間 |
+|---|---|---|---|
+| ローカルApple Container | `./scripts/test-containers.sh` | 214合格、既存warning 1件 | 240.83秒 |
+| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 214合格、既存warning 1件 | 415.46秒 |
+| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 214合格、既存warning 1件 | 389.47秒 |
+
+3環境で**Ruff、strict mypy（source 13ファイル）、non-root productionの
+日本語tokenizer、API HTTP、worker CLI、MCP stdio smoke**も合格しました。
+MCPはSDK 2.2.0と独立したraw wire fixtureで`2026-07-28`・`2025-11-25`の両方を検査しています。
+[CI run 35176469004](https://github.com/rioriost/pg_agmemory/actions/runs/35176469004)の
+両jobは上記SHAと完全一致し、実logで件数とsmokeを確認しました。
+所要時間はテストの観測値であり、性能benchmarkではありません。
+残るwarningは既存のanyio BlockingPortal aliasに関するものです。
+
+別途Apple Containerでfreshなcore-only install
+（`uv sync --frozen --no-dev --no-editable`）も検証しました。
+`mcp`・`httpx`なしでNative APIをimportでき、`pg-agmemory mcp`は
+extra未導入の明示的な診断付きで終了しました。この追加検査はローカルだけであり、
+別のDocker CI検査の主張ではありません。
+M0〜M3/MVP/本番/性能/品質/DR/完全消去の全受入gateは未完了です。
+以下の過去結果をMCP検証として扱ってはいけません。
+
+### 過去のv0.0.7 / schema 7
+
+**v0.0.7/schema 7だけ**の実装commit
+[678ba24](https://github.com/rioriost/pg_agmemory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)について、
 **2026-09-17 JST**に最終結果を確認しました。
 
 | 環境 | Command | テスト | テスト所要時間 |
@@ -716,9 +870,14 @@ rolling共存やdowngradeは非対応です。
 
 3環境の最終実行で**Ruff、strict mypy（source 12ファイル）、
 non-root productionの日本語tokenizer、API HTTP、実CLI workerという全3種のsmoke**も合格しました。
-[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
+[CI run 35173023029](https://github.com/rioriost/pg_agmemory/actions/runs/35173023029)
 の両native Docker jobは上記SHAと完全一致し、job状態だけでなく実logで件数と各検査を確認しました。
 所要時間はテスト実行の観測値であり、性能benchmarkではありません。
+最終bilingual docs commit
+[aaea6ef](https://github.com/rioriost/pg_agmemory/commit/aaea6ef7df747e6632b0d132b36fb7cfa85193f2)も、
+[CI run 35174122899](https://github.com/rioriost/pg_agmemory/actions/runs/35174122899)で
+両native jobが合格しました。これは過去の最終docs CIであり、上記実装runの所要時間とは別です。
+どちらのrunもv0.0.8を検証していません。
 
 既定/opt-in lexical動作、日本語/ASCII処理、正確な65,536文字のindex化と65,537文字の拒否、
 lazy load/fresh Linux初期化guard、時間/RLSとindex不完全/予算動作、
@@ -737,11 +896,12 @@ CI step名は`Test containers and smoke-test production API and worker`です。
 end-to-end recall品質やqueue済みpublicationの正しさを認定しません。
 publication動作は別途test suiteの検査対象です。
 
-最終lockは従来のpackage-feed registryを維持しています。全**36 package**のversion、
+v0.0.7最終lockは従来のpackage-feed registryを維持しました。全**36 package**のversion、
 依存metadata、artifact hashはテスト済みPyPI解決lockとbyte単位で同一と確認しました。
 v6との差分はJanome 0.5.0の追加とprojectのv0.0.7へのversion更新だけで、
 無関係なupgradeやregistry移行はありません。
 native CIは最終retained-registry lockからbuildしました。
+このpackage件数/比較は過去のもので、v0.0.8 MCP lockについての主張ではありません。
 
 それ以前のv5証拠は[ADR 0005](adr/0005-relational-graph-jp.md)に過去のものとして残し、
 v6の決定/証拠は[ADR 0006](adr/0006-durable-jobs-jp.md)に保持します。
@@ -754,8 +914,10 @@ backup/DR、完全消去の適格性を示すものではありません。
 公平性/cost pool、別のworking snapshot/compaction、
 embedding/pgvector、vector/hybrid retrieval、AGE、SQL/PGQ、
 provider receipt検証、実際のharness連携/実行/recovery、
-別assertion間のsupersession/fact調停、MCP、SDK、postgresem連携はありません。
-opt-in lexical分割、明示structured job、上限付きSQL graph oracle、typed checkpoint envelopeだけで、
+別assertion間のsupersession/fact調停、remote MCP HTTP/SSE/OAuth/delegation、
+application SDK、postgresem連携はありません。
+local stdio MCP、opt-in lexical分割、明示structured job、上限付きSQL graph oracle、
+typed checkpoint envelopeだけで、
 計画上の二時点・graph・provenance・削除architectureが完了したとは扱いません。
 
 選択理由は[ADR 0001](adr/0001-initial-slice-jp.md)、

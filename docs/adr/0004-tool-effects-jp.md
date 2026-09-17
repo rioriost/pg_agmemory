@@ -5,7 +5,7 @@
 - 日付: 2026-09-16
 - 状態: v0.0.4/schema 4を実装済み。ローカルとnative Dockerの検査は合格。M1全体は未完了
 - 置換対象: [ADR 0003](0003-checkpoints-jp.md)のledger延期とsnapshot-onlyの再開規則
-- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
+- 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pg_agmemory`
 
 過去の範囲: 以下のschema 4要件と証拠はv4時点のものです。
 [ADR 0005](0005-relational-graph-jp.md)がentity参照とschema 5を追加します。
@@ -119,10 +119,10 @@ backup、未適用migrationの原子的適用後に対応APIだけを起動し�
 [保守手順](../operations/README-jp.md#v004の保守migration)に従ってください。
 
 v0.0.4の実装
-[4a7d3f8](https://github.com/rioriost/pgag_memory/commit/4a7d3f8)は、
+[4a7d3f8](https://github.com/rioriost/pg_agmemory/commit/4a7d3f8)は、
 Apple Containerとnative Docker amd64/arm64で、それぞれ73テスト（既存warning 2件）、
 Ruff、strict mypy（source 8ファイル）、production HTTP health smokeが合格しました。
-[CI run 35098507356](https://github.com/rioriost/pgag_memory/actions/runs/35098507356)と
+[CI run 35098507356](https://github.com/rioriost/pg_agmemory/actions/runs/35098507356)と
 [検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 SQL/graph oracle、worker、MCP、harness連携、別のworking snapshot compaction、
 自動backup/DRは将来課題であり、M1全体の完了ではありません。

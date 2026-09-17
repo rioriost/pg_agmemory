@@ -4,7 +4,7 @@
 
 - Date: 2026-09-16
 - Status: Adopted for the initial M1 slice; not evidence of completed M0/M1 gates
-- Project/repository: `pgag_memory`; Python package/service: `pg_agmemory`
+- Project/repository: `pg_agmemory`; Python package/service: `pg_agmemory`
 - License: MIT; dependency licenses remain separate
 
 **Historical v0.0.1 decision record.** The revision-1-only time model and

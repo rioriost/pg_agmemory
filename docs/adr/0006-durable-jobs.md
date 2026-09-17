@@ -6,7 +6,7 @@
 - Status: v0.0.6/schema 6 implemented; local and native Docker checks passed; M0/M1/M2/M3 incomplete
 - Extends: explicit assertion publication and dependency purge; preserves the
   graph, checkpoint, and effect histories from [ADR 0005](0005-relational-graph.md)
-- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
+- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pg_agmemory`
 
 Historical scope: schema-6 requirements and evidence below describe v0.0.6 only.
 Schema-7 lexical indexing and current maintenance requirements are in
@@ -148,11 +148,11 @@ quarantined from APIs/workers until deletion/ACL state is reapplied.
 ## Evidence boundary
 
 For implementation
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
+[a4aa7f6](https://github.com/rioriost/pg_agmemory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
 Apple Container and native Docker amd64/arm64 each passed 114 tests (2 existing
 warnings), Ruff, strict mypy (11 source files), and both non-root production API
 HTTP and actual CLI worker smoke. Both CI jobs ran that exact SHA in
-[run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396);
+[run 35168437396](https://github.com/rioriost/pg_agmemory/actions/runs/35168437396);
 actual logs verified the results.
 
 Coverage includes job identity/retry/caps, lease takeover and expiry rollback,

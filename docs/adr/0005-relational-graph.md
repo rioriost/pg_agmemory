@@ -7,7 +7,7 @@
 - Extends: assertion revisions, declared checkpoint/effect dependencies, and purge
   in [ADR 0002](0002-assertion-revisions.md), [ADR 0003](0003-checkpoints.md),
   and [ADR 0004](0004-tool-effects.md)
-- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
+- Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pg_agmemory`
 
 Historical scope: schema-5 requirements and evidence below remain v5-specific.
 [ADR 0006](0006-durable-jobs.md) adds durable jobs and schema 6; use current
