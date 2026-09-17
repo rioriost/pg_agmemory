@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 from pg_agmemory.database import Connection, connect
 from pg_agmemory.lexical import JAPANESE_PROFILE, segment
 from pg_agmemory.models import (
+    AssertionHistory,
     Evidence,
     Explain,
     Forget,
@@ -669,6 +670,70 @@ class MemoryService:
             "epistemic_status": "reported",
             "confidence": {"score": None, "method": "uncalibrated"},
             "relation": relation,
+        }
+
+    async def assertion_history(self, data: AssertionHistory) -> dict[str, Any]:
+        obj = await self.object(data.memory_id)
+        if obj["kind"] != "assertion":
+            raise MemoryError("not_found", 404)
+        anchor = await (
+            await self.conn.execute(
+                """SELECT subject,predicate,current_revision,is_relation
+                   FROM memory.assertion WHERE tenant_id=%s AND id=%s""",
+                (self.tenant, data.memory_id),
+            )
+        ).fetchone()
+        if anchor is None:
+            raise MemoryError("assertion_invalidated", 409)
+        highest = min(anchor["current_revision"], (data.before_revision or 1001) - 1)
+        rows = await (
+            await self.conn.execute(
+                """SELECT r.revision,lower(r.valid_time) AS valid_from,
+                          upper(r.valid_time) AS valid_to,
+                          lower(r.system_time) AS recorded_at,
+                          upper(r.system_time) AS known_until,r.correction_reason,
+                          r.epistemic_status,l.source_id,v.target_id,
+                          (SELECT jsonb_agg(
+                              jsonb_build_object('memory_id',p.parent_id,'revision',1)
+                              ORDER BY p.parent_id)
+                           FROM memory.provenance_edge p JOIN memory.episode e
+                             ON e.tenant_id=p.tenant_id AND e.id=p.parent_id
+                           WHERE p.tenant_id=r.tenant_id AND p.child_id=r.assertion_id
+                             AND p.child_revision=r.revision) AS evidence_refs
+                   FROM memory.assertion_revision r
+                   LEFT JOIN memory.relation l
+                     ON l.tenant_id=r.tenant_id AND l.id=r.assertion_id
+                   LEFT JOIN memory.relation_revision v
+                     ON v.tenant_id=r.tenant_id AND v.assertion_id=r.assertion_id
+                       AND v.revision=r.revision
+                   WHERE r.tenant_id=%s AND r.assertion_id=%s AND r.revision<=%s
+                   ORDER BY r.revision DESC LIMIT %s""",
+                (self.tenant, data.memory_id, highest, data.max_items + 1),
+            )
+        ).fetchall()
+        expected = list(range(highest, max(0, highest - data.max_items - 1), -1))
+        if [row["revision"] for row in rows] != expected:
+            raise MemoryError("assertion_invalidated", 409)
+        selected = rows[: data.max_items]
+        for row in selected:
+            if not row["evidence_refs"] or not 1 <= len(row["evidence_refs"]) <= 32:
+                raise MemoryError("assertion_invalidated", 409)
+            source, target = row.pop("source_id"), row.pop("target_id")
+            row["relation"] = None
+            if anchor["is_relation"]:
+                if source is None or target is None:
+                    raise MemoryError("relation_invalidated", 409)
+                row["relation"] = {"source_entity": source, "target_entity": target}
+        anchor.pop("is_relation")
+        return {
+            "memory_id": data.memory_id,
+            "scope_id": obj["scope_id"],
+            **anchor,
+            "revisions": selected,
+            "next_before_revision": selected[-1]["revision"]
+            if len(rows) > data.max_items
+            else None,
+            "consistency": await self.epochs(),
         }
 
     async def forget(self, data: Forget, key: str) -> dict[str, Any]:

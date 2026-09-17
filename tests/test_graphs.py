@@ -252,6 +252,16 @@ def test_relation_corrections_filter_every_hop_at_both_times(env):
     assert expand(env, a, known_at="2000-01-01T00:00:00Z")["nodes"] == []
     assert explain(env, first).json()["relation"]["target_entity"] == b["memory_id"]
     assert explain(env, first, 2).json()["relation"]["target_entity"] == d["memory_id"]
+    timeline = env.client.post(
+        "/v1/assertions/history", headers=env.headers(), json={"memory_id": first["memory_id"]}
+    )
+    assert timeline.status_code == 200
+    assert [row["revision"] for row in timeline.json()["revisions"]] == [2, 1]
+    for row in timeline.json()["revisions"]:
+        full = explain(env, first, row["revision"]).json()
+        assert row["relation"] == full["relation"]
+        assert row["valid_from"] == full["assertion"]["valid_from"]
+        assert row["known_until"] == full["assertion"]["known_until"]
     forbidden = env.client.post(
         "/v1/assertions/" + first["memory_id"] + "/revisions",
         headers=env.headers(),
@@ -264,6 +274,27 @@ def test_relation_corrections_filter_every_hop_at_both_times(env):
         },
     )
     assert forbidden.status_code == 409 and forbidden.json()["code"] == "relation_revision_required"
+
+
+def test_relation_history_missing_endpoint_fails_whole_page(env, monkeypatch):
+    source, target = [create_entity(env, name) for name in ("A", "B")]
+    relation = create_relation(env, source, target)
+    original = psycopg.AsyncCursor.fetchall
+
+    async def damaged(cursor):
+        rows = await original(cursor)
+        if rows and isinstance(rows[0], dict) and "evidence_refs" in rows[0]:
+            rows[0]["target_id"] = None
+        return rows
+
+    monkeypatch.setattr(psycopg.AsyncCursor, "fetchall", damaged)
+    result = env.client.post(
+        "/v1/assertions/history",
+        headers=env.headers(),
+        json={"memory_id": relation["memory_id"]},
+    )
+    assert result.status_code == 409 and result.json()["code"] == "relation_invalidated"
+    assert "revisions" not in result.json() and relation["memory_id"] not in result.text
 
 
 def test_parallel_entity_relation_dedup_and_revision_cas(env):

@@ -31,6 +31,8 @@ from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
     AssertionExplanation,
+    AssertionHistory,
+    AssertionHistoryPage,
     CancelJob,
     Capture,
     CaptureResult,
@@ -266,7 +268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-job-query",
+            "stage": "m2-assertion-history",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -320,6 +322,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "tool_effect_ledger": True,
             "temporal_revisions": True,
+            "assertion_history": {
+                "endpoint": "/v1/assertions/history",
+                "order": "revision_desc",
+                "pagination": "exclusive_revision",
+                "max_items": 100,
+                "includes_values": False,
+                "includes_evidence_quotes": False,
+            },
             "vector_search": True,
             "retrieval_modes": ["lexical", "vector", "hybrid"],
             "default_retrieval_mode": "lexical",
@@ -542,6 +552,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/explain", response_model=EpisodeExplanation | AssertionExplanation)
     async def explain(data: Explain, request: Request) -> Any:
         return await service(request).explain(data)
+
+    @app.post("/v1/assertions/history", response_model=AssertionHistoryPage)
+    async def assertion_history(data: AssertionHistory, request: Request) -> Any:
+        return await service(request).assertion_history(data)
 
     @app.post("/v1/forget", status_code=202, response_model=DeletionResult | DeletionPreview)
     async def forget(data: Forget, request: Request, idempotency_key: IdempotencyKey) -> Any:

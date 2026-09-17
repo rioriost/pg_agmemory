@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pg_agmemory.models import (
     AssertionExplanation,
+    AssertionHistory,
+    AssertionHistoryPage,
     CancelJob,
     Capture,
     CaptureResult,
@@ -92,6 +94,10 @@ async def typed_calls(
             RecallResult,
         )
         assert_type(await memory.explain(explain), EpisodeExplanation | AssertionExplanation)
+        assert_type(
+            await memory.get_assertion_history(AssertionHistory(memory_id=identity)),
+            AssertionHistoryPage,
+        )
         assert_type(
             await memory.forget(forget, idempotency_key=key), DeletionPreview | DeletionResult
         )

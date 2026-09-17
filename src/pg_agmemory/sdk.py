@@ -14,6 +14,8 @@ except ModuleNotFoundError as exc:
 
 from pg_agmemory.models import (
     AssertionExplanation,
+    AssertionHistory,
+    AssertionHistoryPage,
     CancelJob,
     Capture,
     CaptureResult,
@@ -68,6 +70,7 @@ from pg_agmemory.native_client import AdapterFailure as MemoryClientError
 __all__ = ["AsyncMemoryClient", "MemoryClientError"]
 
 SDK_NATIVE_CODES = frozenset(SAFE_NATIVE_CODES) | {
+    "assertion_invalidated",
     "source_event_conflict",
     "relation_revision_required",
     "revision_conflict",
@@ -235,6 +238,15 @@ class AsyncMemoryClient:
     async def recall(self, request: Recall) -> RecallResult:
         return await self._post(
             "/v1/recall", request, Recall, TypeAdapter(RecallResult), mutation=False
+        )
+
+    async def get_assertion_history(self, request: AssertionHistory) -> AssertionHistoryPage:
+        return await self._post(
+            "/v1/assertions/history",
+            request,
+            AssertionHistory,
+            TypeAdapter(AssertionHistoryPage),
+            mutation=False,
         )
 
     async def explain(self, request: Explain) -> EpisodeExplanation | AssertionExplanation:

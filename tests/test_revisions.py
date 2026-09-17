@@ -1,3 +1,5 @@
+import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -7,7 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pg_agmemory.api import create_app
-from pg_agmemory.database import migrate
+from pg_agmemory.database import connect, migrate
+from pg_agmemory.models import AssertionHistory, AssertionHistoryPage, Identity
 from pg_agmemory.service import MemoryError, MemoryService
 
 pytestmark = pytest.mark.integration
@@ -40,6 +43,202 @@ def assertions(env, **kwargs):
     response = env.recall(**kwargs)
     assert response.status_code == 200, response.text
     return [item for item in response.json()["items"] if item["type"] == "assertion"]
+
+
+def history(env, memory, index=0, **changes):
+    headers = env.headers(index)
+    headers.pop("Idempotency-Key")
+    return env.client.post(
+        "/v1/assertions/history",
+        headers=headers,
+        json={"memory_id": str(memory), **changes},
+    )
+
+
+def test_history_metadata_matches_exact_explanations_without_values_or_quotes(env):
+    sources = [env.observe("Gold Silver").json()["memory_id"] for _ in range(32)]
+    evidence = [{"memory_id": source, "quote": "Gold"} for source in reversed(sources)]
+    saved = env.remember(sources[0], evidence=evidence, value="Gold" + "x" * 65532)
+    assert saved.status_code == 201
+    memory = saved.json()["memory_id"]
+    assert (
+        revise(
+            env,
+            memory,
+            sources[1],
+            valid_from="2030-01-01T00:00:00Z",
+            valid_to="2031-01-01T00:00:00Z",
+        ).status_code
+        == 201
+    )
+    page = history(env, memory).json()
+    assert set(page) == {
+        "memory_id",
+        "scope_id",
+        "subject",
+        "predicate",
+        "current_revision",
+        "revisions",
+        "next_before_revision",
+        "consistency",
+    }
+    assert page["memory_id"] == memory and page["scope_id"] == str(env.scopes[0])
+    assert page["subject"] == "ACME" and page["predicate"] == "contract_tier"
+    assert page["current_revision"] == 2 and page["next_before_revision"] is None
+    assert page["consistency"] == {"access_epoch": 1, "deletion_epoch": 1}
+    assert [row["revision"] for row in page["revisions"]] == [2, 1]
+    for row in page["revisions"]:
+        full = explain(env, memory, row["revision"]).json()
+        assert row == {
+            **{
+                field: full["assertion"][field]
+                for field in (
+                    "valid_from",
+                    "valid_to",
+                    "recorded_at",
+                    "known_until",
+                    "correction_reason",
+                )
+            },
+            "revision": full["revision"],
+            "epistemic_status": "reported",
+            "relation": None,
+            "evidence_refs": [
+                {"memory_id": source["memory_id"], "revision": 1} for source in full["evidence"]
+            ],
+        }
+    assert len(page["revisions"][1]["evidence_refs"]) == 32
+    assert len(json.dumps(page).encode()) < 5000
+    assert "Gold" not in json.dumps(page)
+
+
+def test_history_cursor_is_exclusive_not_a_snapshot_or_a_head_reservation(env):
+    source = env.observe("Gold Silver").json()["memory_id"]
+    memory = env.remember(source).json()["memory_id"]
+    for revision in range(1, 4):
+        assert revise(env, memory, source, expected=revision).status_code == 201
+    first = history(env, memory, max_items=2).json()
+    assert [r["revision"] for r in first["revisions"]] == [4, 3]
+    assert first["next_before_revision"] == 3
+    assert first["revisions"][0]["known_until"] is None
+    assert revise(env, memory, source, expected=4).status_code == 201
+    second = history(env, memory, max_items=2, before_revision=3).json()
+    assert [r["revision"] for r in second["revisions"]] == [2, 1]
+    assert second["current_revision"] == 5 and second["next_before_revision"] is None
+    assert history(env, memory, before_revision=1).json()["revisions"] == []
+    restarted = history(env, memory, before_revision=1001).json()
+    assert [r["revision"] for r in restarted["revisions"]] == [5, 4, 3, 2, 1]
+    assert restarted["revisions"][1]["known_until"] == restarted["revisions"][0]["recorded_at"]
+    assert history(env, memory, before_revision=4).json()["revisions"][0]["revision"] == 3
+
+
+def test_history_current_acl_and_wrong_kind_are_not_historical_authority(env):
+    source = env.observe("Gold Silver").json()["memory_id"]
+    memory = env.remember(source).json()["memory_id"]
+    for target in (source, uuid4()):
+        assert history(env, target).status_code == 404
+    for index in (1, 2):
+        assert history(env, memory, index=index).status_code == 404
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            """UPDATE memory.scope_member SET permissions=ARRAY['read']
+               WHERE tenant_id=%s AND principal_id=%s""",
+            (env.tenants[0], env.principals[0]),
+        )
+    assert history(env, memory).status_code == 200
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            """UPDATE memory.scope_member SET expires_at=clock_timestamp()-interval '1 second'
+               WHERE tenant_id=%s AND principal_id=%s""",
+            (env.tenants[0], env.principals[0]),
+        )
+    hidden = history(env, memory, before_revision=1001)
+    assert hidden.status_code == 404 and memory not in hidden.text
+
+
+def test_history_is_read_only_and_does_not_write_receipts_or_audit(env):
+    source = env.observe().json()["memory_id"]
+    memory = env.remember(source).json()["memory_id"]
+    statement = """SELECT
+        (SELECT count(*) FROM memory_ops.audit_event WHERE tenant_id=%s),
+        (SELECT count(*) FROM memory_ops.idempotency WHERE tenant_id=%s)"""
+    with psycopg.connect(env.admin_url) as conn:
+        before = conn.execute(statement, (env.tenants[0],) * 2).fetchone()
+
+    async def read_only():
+        async with await connect(env.settings.database_url) as conn:
+            async with conn.transaction():
+                await conn.execute("SET TRANSACTION READ ONLY")
+                await conn.execute(
+                    """SELECT set_config('pgag.tenant_id',%s,true),
+                              set_config('pgag.principal_id',%s,true)""",
+                    (str(env.tenants[0]), str(env.principals[0])),
+                )
+                return await MemoryService(
+                    conn, Identity(tenant_id=env.tenants[0], principal_id=env.principals[0])
+                ).assertion_history(AssertionHistory(memory_id=memory))
+
+    direct = AssertionHistoryPage.model_validate(asyncio.run(read_only())).model_dump(mode="json")
+    assert direct == history(env, memory).json()
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(statement, (env.tenants[0],) * 2).fetchone() == before
+
+
+@pytest.mark.parametrize("damage", ["gap", "evidence"])
+def test_history_invalid_selected_metadata_fails_whole_page(env, monkeypatch, damage):
+    source = env.observe("Gold Silver").json()["memory_id"]
+    memory = env.remember(source).json()["memory_id"]
+    assert revise(env, memory, source).status_code == 201
+    original = psycopg.AsyncCursor.fetchall
+
+    async def damaged(cursor):
+        rows = await original(cursor)
+        if rows and isinstance(rows[0], dict) and "evidence_refs" in rows[0]:
+            if damage == "gap":
+                return rows[:-1]
+            rows[-1]["evidence_refs"] = None
+        return rows
+
+    monkeypatch.setattr(psycopg.AsyncCursor, "fetchall", damaged)
+    result = history(env, memory)
+    assert result.status_code == 409 and result.json()["code"] == "assertion_invalidated"
+    assert "revisions" not in result.json() and memory not in result.text
+
+
+def test_history_openapi_authentication_body_limit_and_closed_input(env):
+    source = env.observe().json()["memory_id"]
+    memory = env.remember(source).json()["memory_id"]
+    body = {"memory_id": memory}
+    assert env.client.post("/v1/assertions/history", json=body).status_code == 401
+    raw = json.dumps(body).encode()
+    padded = raw + b" " * (262144 - len(raw))
+    headers = {**env.headers(), "Content-Type": "application/json"}
+    assert (
+        env.client.post("/v1/assertions/history", content=padded, headers=headers).status_code
+        == 200
+    )
+    assert (
+        env.client.post(
+            "/v1/assertions/history", content=padded + b" ", headers=headers
+        ).status_code
+        == 413
+    )
+    invalid = history(env, memory, principal_id="PRIVATE")
+    assert invalid.status_code == 422 and "PRIVATE" not in invalid.text
+    capability = env.client.get("/v1/capabilities", headers=env.headers()).json()
+    assert capability["assertion_history"] == {
+        "endpoint": "/v1/assertions/history",
+        "order": "revision_desc",
+        "pagination": "exclusive_revision",
+        "max_items": 100,
+        "includes_values": False,
+        "includes_evidence_quotes": False,
+    }
+    operation = env.client.get("/openapi.json").json()["paths"]["/v1/assertions/history"]["post"]
+    assert operation["security"] == [{"BearerAuth": []}]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AssertionHistoryPage",
+    }
 
 
 def test_bitemporal_correction_keeps_historical_value_evidence_and_boundaries(env):
@@ -143,6 +342,7 @@ def test_purge_removes_all_revision_text_and_replay_after_historical_source_loss
     )
     assert deleted.status_code == 202, deleted.text
     assert deleted.json()["object_count"] == (2 if delete_source else 1)
+    assert history(env, memory, before_revision=2).status_code == 404
     for revision in (1, 2):
         assert explain(env, memory, revision).status_code == 404
     assert assertions(env, known_at=known_at) == []
@@ -446,3 +646,22 @@ def test_exact_revision_limit_preserves_replay_and_history(env, typed):
     assert append(999, headers=key).json() == final.json()
     assert explain(env, memory, 1000).status_code == 200
     assert assertions(env)[0]["revision"] == 1000
+    before_revision = 1001
+    observed = []
+    for offset in range(0, 1000, 100):
+        result = history(env, memory, max_items=100, before_revision=before_revision)
+        assert result.status_code == 200, result.text
+        page = result.json()
+        assert page["current_revision"] == 1000 and len(page["revisions"]) == 100
+        assert len(result.content) < 2 * 1024 * 1024
+        numbers = [row["revision"] for row in page["revisions"]]
+        assert numbers == list(range(1000 - offset, 900 - offset, -1))
+        for row in page["revisions"]:
+            assert row["evidence_refs"] == [{"memory_id": source, "revision": 1}]
+            assert row["relation"] == (
+                {"source_entity": entities[0], "target_entity": entities[1]} if typed else None
+            )
+        observed.extend(numbers)
+        before_revision = page["next_before_revision"]
+        assert before_revision == (numbers[-1] if offset < 900 else None)
+    assert observed == list(range(1000, 0, -1))

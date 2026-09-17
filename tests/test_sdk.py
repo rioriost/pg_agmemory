@@ -14,6 +14,8 @@ from pg_agmemory.database import SCHEMA_VERSION
 from pg_agmemory.jobs import job_transaction
 from pg_agmemory.models import (
     AssertionExplanation,
+    AssertionHistory,
+    AssertionHistoryPage,
     CancelJob,
     Capture,
     CapturedMemory,
@@ -513,6 +515,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/captures",
         "/v1/remember",
         "/v1/assertions/{memory_id}/revisions",
+        "/v1/assertions/history",
         "/v1/recall",
         "/v1/explain",
         "/v1/forget",
@@ -543,7 +546,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 27
+    assert len(methods) == len(expected) == 28
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
@@ -657,6 +660,126 @@ def test_sdk_job_query_is_read_only_bounded_and_never_auto_pages(monkeypatch, ou
             assert len(calls) == 2
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "outcome", ["page", "invalidated", "wrong_status", "bad_cursor", "too_many", "lost"]
+)
+def test_sdk_assertion_history_is_read_only_bounded_and_never_auto_pages(monkeypatch, outcome):
+    body = AssertionHistory(memory_id=uuid4(), max_items=1)
+    page = {
+        "memory_id": str(body.memory_id),
+        "scope_id": str(uuid4()),
+        "subject": "ACME",
+        "predicate": "tier",
+        "current_revision": 2,
+        "revisions": [
+            {
+                "revision": 2,
+                "valid_from": None,
+                "valid_to": None,
+                "recorded_at": "2026-09-01T00:00:00Z",
+                "known_until": None,
+                "correction_reason": "Correction",
+                "epistemic_status": "reported",
+                "evidence_refs": [{"memory_id": str(uuid4()), "revision": 1}],
+                "relation": None,
+            }
+        ],
+        "next_before_revision": 2,
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/assertions/history"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        assert "idempotency-key" not in request.headers
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated history response loss")
+        if outcome == "invalidated":
+            return response(
+                409,
+                {
+                    "code": "assertion_invalidated",
+                    "request_id": str(uuid4()),
+                    "retryable": False,
+                },
+            )
+        if outcome == "bad_cursor":
+            return response(200, page | {"next_before_revision": True})
+        if outcome == "too_many":
+            return response(200, page | {"revisions": page["revisions"] * 101})
+        return response(201 if outcome == "wrong_status" else 200, page)
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            if outcome == "page":
+                result = await sdk.get_assertion_history(body)
+                assert isinstance(result, AssertionHistoryPage)
+                assert result.memory_id == body.memory_id and result.next_before_revision == 2
+            else:
+                with pytest.raises(MemoryClientError) as error:
+                    await sdk.get_assertion_history(body)
+                assert not error.value.error.outcome_unknown and "PRIVATE" not in str(error.value)
+                if outcome == "invalidated":
+                    assert error.value.error.code == "assertion_invalidated"
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.get_assertion_history(body.model_copy(update={"before_revision": True}))
+            assert len(calls) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_real_sdk_assertion_history_exact_revisions_and_purge(env, api_process):
+    with api_process("sdk-assertion-history.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                source = await sdk.observe(
+                    observation(env.scopes[0]), idempotency_key="history-source"
+                )
+                saved = await sdk.remember(
+                    memory(env.scopes[0], source.memory_id),
+                    idempotency_key="history-memory",
+                )
+                await sdk.revise_assertion(
+                    saved.memory_id,
+                    ReviseAssertion(
+                        expected_revision=1,
+                        value="Silver",
+                        evidence=[Evidence(memory_id=source.memory_id, quote="Silver")],
+                        explicit_intent=True,
+                        reason="Correction",
+                    ),
+                    idempotency_key="history-revision",
+                )
+                request = AssertionHistory(memory_id=saved.memory_id, max_items=1)
+                first = await sdk.get_assertion_history(request)
+                assert isinstance(first, AssertionHistoryPage)
+                assert first.current_revision == 2 and first.revisions[0].revision == 2
+                second = await sdk.get_assertion_history(
+                    request.model_copy(
+                        update={"before_revision": first.next_before_revision},
+                    )
+                )
+                assert second.revisions[0].revision == 1 and second.next_before_revision is None
+                assert second.revisions[0].known_until == first.revisions[0].recorded_at
+                original = await sdk.explain(Explain(memory_id=saved.memory_id))
+                assert isinstance(original, AssertionExplanation)
+                assert original.assertion.value == "Gold" and original.revision == 1
+                purged = await sdk.forget(
+                    Forget(memory_ids=[source.memory_id], reason="test"),
+                    idempotency_key="history-purge",
+                )
+                assert purged.object_count == 2
+                with pytest.raises(MemoryClientError, match="not_found"):
+                    await sdk.get_assertion_history(request)
+
+        asyncio.run(scenario())
 
 
 @pytest.mark.integration

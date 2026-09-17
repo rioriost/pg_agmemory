@@ -684,6 +684,55 @@ asyncio.run(smoke())
 print("Production job query smoke passed: owned pages, state change, source purge")
 ' "$scope_id"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import AssertionHistory, Evidence, Explain, Forget, Observe, Remember, ReviseAssertion
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-history", source_event_id="history-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic Gold Silver evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="history-source")
+        saved = await sdk.remember(Remember(
+            scope_id=scope, subject="SyntheticHistory", predicate="tier", value="Gold",
+            evidence=[Evidence(memory_id=source.memory_id, quote="Gold")], explicit_intent=True,
+        ), idempotency_key="history-memory")
+        await sdk.revise_assertion(saved.memory_id, ReviseAssertion(
+            expected_revision=1, value="Silver", reason="Synthetic correction",
+            evidence=[Evidence(memory_id=source.memory_id, quote="Silver")], explicit_intent=True,
+        ), idempotency_key="history-revision")
+        request = AssertionHistory(memory_id=saved.memory_id, max_items=1)
+        first = await sdk.get_assertion_history(request)
+        assert first.current_revision == 2 and first.next_before_revision == 2
+        assert first.revisions[0].revision == 2 and first.revisions[0].known_until is None
+        second = await sdk.get_assertion_history(request.model_copy(
+            update={"before_revision": first.next_before_revision}))
+        assert second.revisions[0].revision == 1 and second.next_before_revision is None
+        assert second.revisions[0].known_until == first.revisions[0].recorded_at
+        original = await sdk.explain(Explain(memory_id=saved.memory_id, revision=1))
+        assert original.assertion.value == "Gold"
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="history-purge")
+        assert purged.object_count == 2
+        try:
+            await sdk.get_assertion_history(request)
+        except MemoryClientError as error:
+            assert error.error.code == "not_found" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Purged assertion history remained readable")
+
+asyncio.run(smoke())
+print("Production assertion history smoke passed: metadata pages, exact explanation, source purge")
+' "$scope_id"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

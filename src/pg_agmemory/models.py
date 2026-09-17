@@ -443,6 +443,35 @@ class AssertionExplanation(BaseModel):
     relation: RelationEndpoints | None = None
 
 
+class AssertionHistory(Contract):
+    memory_id: UUID
+    max_items: Annotated[int, Field(ge=1, le=100, strict=True)] = 20
+    before_revision: Annotated[int, Field(ge=1, le=1001, strict=True)] | None = None
+
+
+class AssertionRevisionMetadata(BaseModel):
+    revision: Revision
+    valid_from: datetime | None
+    valid_to: datetime | None
+    recorded_at: datetime
+    known_until: datetime | None
+    correction_reason: str | None
+    epistemic_status: Literal["reported"]
+    evidence_refs: Annotated[list[MemoryReference], Field(min_length=1, max_length=32)]
+    relation: RelationEndpoints | None
+
+
+class AssertionHistoryPage(BaseModel):
+    memory_id: UUID
+    scope_id: UUID
+    subject: str
+    predicate: str
+    current_revision: Revision
+    revisions: Annotated[list[AssertionRevisionMetadata], Field(max_length=100)]
+    next_before_revision: Revision | None
+    consistency: Consistency
+
+
 class DeletionResult(BaseModel):
     deletion_id: UUID
     state: Literal["active_store_purged"]

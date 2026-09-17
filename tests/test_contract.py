@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from pg_agmemory.models import (
+    AssertionHistory,
     CancelJob,
     CheckpointBranch,
     MemoryItem,
@@ -15,6 +16,38 @@ from pg_agmemory.models import (
     Remember,
 )
 from pg_agmemory.service import MemoryError, build_context
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"max_items": value} for value in (0, 101, True, "20", 1.5, None)]
+    + [{"before_revision": value} for value in (0, 1002, False, "2", 2.5)]
+    + [
+        {"scope_id": str(uuid4())},
+        {"known_at": "2026-09-01T00:00:00Z"},
+        {"as_of": "2026-09-01T00:00:00Z"},
+        {"include_values": True},
+    ],
+)
+def test_assertion_history_closed_strict_bounds(changes):
+    with pytest.raises(ValidationError):
+        AssertionHistory.model_validate({"memory_id": str(uuid4()), **changes})
+
+
+def test_assertion_history_defaults_and_exact_cursor_bounds():
+    memory = uuid4()
+    assert AssertionHistory(memory_id=memory).model_dump() == {
+        "memory_id": memory,
+        "max_items": 20,
+        "before_revision": None,
+    }
+    for limit, before in ((1, 1), (100, 1001)):
+        assert (
+            AssertionHistory(
+                memory_id=memory, max_items=limit, before_revision=before
+            ).before_revision
+            == before
+        )
 
 
 def test_requires_timezone_and_rejects_identity_spoofing():
