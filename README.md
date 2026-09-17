@@ -6,9 +6,9 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Current bounded milestone: v0.0.13/schema 9 privileged scope-access administration.
+**Current bounded milestone: v0.0.14/schema 9 runtime readiness.
 Implementation is verified locally with Apple Container and on both native CI architectures.
-Verified v0.0.12 and earlier results below are historical, not v0.0.13 evidence.
+Verified v0.0.13 and earlier results below are historical, not v0.0.14 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -35,9 +35,40 @@ full-erasure acceptance remain unmeasured or unqualified.
 Consult [the current contract and limitations](docs/STATUS.md)
 before using the service.
 
+## Runtime readiness
+
+**v0.0.14/schema 9: verified locally and on native Linux amd64/arm64. No new migration.**
+`GET /healthz` remains process liveness after successful startup:
+`{"status":"ok"}`, without DB calls. New public, unauthenticated `GET /readyz`
+returns HTTP **200** with exactly `{"status":"ready"}` or an expected-failure
+**503** with exactly `{"status":"not_ready"}`. Both readiness responses carry
+`Cache-Control: no-store` and a generated UUID `X-Request-ID`, with no private
+details. Supplied authorization is ignored; no tenant/principal is selected.
+
+Each admitted check opens a fresh **runtime** DB connection and reads only the
+role/schema/extension contract: no privileged runtime role or application-table
+ownership, exact migration history 1–9, and `vector` 0.8.6 in `public`.
+Validation sessions are explicitly read-only. No memory payload, tenant lock,
+audit/epoch/job/receipt write, migration, retry, cache, or background check is involved.
+One check is admitted per API app/process; concurrent probes immediately return
+503 without another connection. The **5.0 s active-check budget is not a hard
+wall-clock SLA**: cancellation/connection cleanup may add latency.
+
+Readiness is a point-in-time signal, **not proof of writability, complete
+authorization, JWT/tokenizer/provider health, capacity, or production readiness**.
+A SELECT-only DB may pass. Resource routes do not invoke this probe or acquire
+a new permanent readiness gate; existing Native authorization remains enforced.
+Use readiness to control traffic, not as dependency-based liveness that creates
+restart storms. Configure failure/recovery thresholds and perimeter restrictions/
+rate limits; no Kubernetes, Compose, or Docker `HEALTHCHECK` wiring is added.
+The 24 memory resource methods and SDK/MCP/hook interfaces are unchanged.
+See [the full contract](docs/STATUS.md#runtime-readiness),
+[probe example and application-only upgrade](docs/operations/README.md#runtime-readiness),
+and [ADR 0014](docs/adr/0014-runtime-readiness.md).
+
 ## Scope-access administration
 
-**v0.0.13/schema 9: verified locally and on native Linux amd64/arm64.**
+**Retained scope-access contract; v0.0.14 local and native checks passed.**
 The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
 for existing same-tenant scope/principal UUIDs. It requires
 `PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
@@ -59,15 +90,15 @@ with `get` and privileged audit before an explicit new CAS operation—no blind
 retry or idempotency receipt. It cannot retract delivered context or resurrect
 purged data. The audit is not tamper-proof or a DR solution.
 
-New `009_scope_access.sql` requires schema 9; PostgreSQL 18.6/pgvector 0.8.6
-pinned images and dependency versions stay unchanged. The stage is
-`m2-scope-access`. See [the full contract](docs/STATUS.md#scope-access-administration),
+`009_scope_access.sql` introduced schema 9 in v0.0.13; v0.0.14 retains it.
+PostgreSQL 18.6/pgvector 0.8.6 pinned images and dependency versions stay unchanged.
+The current stage is `m2-runtime-readiness`. See [the full contract](docs/STATUS.md#scope-access-administration),
 [get → set → revoke example and migration](docs/operations/README.md#scope-access-administration),
 and [ADR 0013](docs/adr/0013-scope-access.md).
 
 ## Python SDK
 
-**Retained SDK contract; v0.0.13 local and native checks passed.** From the matching checkout:
+**Retained SDK contract; v0.0.14 local and native checks passed.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -124,7 +155,7 @@ SDK call-time validation produces sanitized SDK errors.
 
 `AsyncMemoryClient` validates a fixed HTTPS origin or loopback HTTP origin and
 token shape; the server authenticates the token. Context entry owns the HTTP
-client and requires authenticated **service 0.0.13 / API v1 / schema 9**
+client and requires authenticated **service 0.0.14 / API v1 / schema 9**
 capabilities. Use only inside one context; no re-entry or automatic retries.
 Await outstanding tasks, or cancel and await them, **before exiting the context**.
 Client close is not a request scheduler/cancellation manager or a DB rollback.
@@ -179,7 +210,21 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.13 final local and native results verified, 2026-09-17 JST:**
+**v0.0.14 final local and native results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **495 tests,
+1 existing warning**, Ruff, strict mypy (**19 source files + 1 SDK consumer**),
+genuine core/hook/sdk-only installs, and all non-root production smokes,
+including readiness fault/liveness/recovery. The total is **464 retained +
+16 readiness unit + 15 integration tests (31 new)**. Schema 9 is unchanged.
+Implementation
+[`71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277`](https://github.com/rioriost/pg_agmemory/commit/71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277)
+passed [CI 35201615965](https://github.com/rioriost/pg_agmemory/actions/runs/35201615965).
+Actual native logs verified that exact SHA, counts, and all checks/smokes.
+Test elapsed: **295.67 s local / 385.41 s amd64 / 470.16 s arm64**—not
+performance benchmarks. See [validation evidence](docs/STATUS.md#v0014--schema-9).
+These are implementation results, not a subsequent final-docs CI run.
+
+**Historical v0.0.13 final local and native results verified, 2026-09-17 JST:**
 Apple Container and native Docker amd64/arm64 each passed **464 tests,
 1 existing warning**, Ruff, strict mypy (**19 source files + 1 SDK consumer**),
 genuine core/hook/sdk-only install checks, and all non-root production smokes,
@@ -191,7 +236,11 @@ passed [CI 35196930448](https://github.com/rioriost/pg_agmemory/actions/runs/351
 Actual native logs verified that exact SHA, counts, and all checks/smokes.
 Test elapsed: **297.52 s local / 539.86 s amd64 / 460.73 s arm64**—not
 performance benchmarks. See [validation evidence](docs/STATUS.md#v0013--schema-9).
-These are implementation results, not a subsequent final-docs CI run.
+The separate final v0.0.13 docs
+[185f433](https://github.com/rioriost/pg_agmemory/commit/185f433aa49479810b8955f1bec2e856f2715f7b)
+passed [CI 35198499967](https://github.com/rioriost/pg_agmemory/actions/runs/35198499967):
+actual logs verified 464 tests/1 warning per native architecture and all checks/smokes,
+**499.25 s amd64 / 454.37 s arm64**. Neither v0.0.13 run validates v0.0.14.
 
 **Historical v0.0.12 final local and native results verified, 2026-09-17 JST:**
 Apple Container and native Docker amd64/arm64 each passed **426 tests,
@@ -358,17 +407,20 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**v0.0.13 requires schema 9 and new `009_scope_access.sql` for durable admin audit.**
-Follow the [schema-9 upgrade](docs/operations/README.md#schema-9-scope-access-upgrade).
+**v0.0.14 retains schema 9; no new migration is added.** An existing schema-9 DB
+uses the [application-only update](docs/operations/README.md#schema-9-application-only-upgrade).
+Older schemas require `009_scope_access.sql`, introduced in v0.0.13 for durable
+admin audit; follow the [schema-9 upgrade](docs/operations/README.md#schema-9-scope-access-upgrade).
 Older databases still require the v0.0.11 `008_pgvector.sql` migration. PostgreSQL must provide
 `vector` **0.8.6 in `public`**; migration rejects an existing extension with the
 wrong version or schema. The prebuilt profile supplies the matching extension.
 API, worker, and `migrate` validate it even when schema 9 is already recorded.
-Stop/drain **all old/new APIs, workers, adapters, hook launches, and SDK callers**, preserve a
-backup and current deletion/ACL records, then migrate offline.
+Before a required migration, stop/drain **all old/new APIs, workers, adapters,
+hook launches, SDK callers, and admin commands**, preserve a backup and current
+deletion/ACL records, then migrate offline.
 Older databases also apply the retained migrations, including migration 007's
 lexical backfill. **There is no embedding backfill or automatic embedding rebuild**.
-Only matching v0.0.13 processes may restart; API/worker startup requires exact
+Only matching v0.0.14 processes may restart; API/worker startup requires exact
 history `[1, 2, 3, 4, 5, 6, 7, 8, 9]` and extension `vector` 0.8.6 in schema `public`.
 Schema-8 processes are not rolling-compatible with schema 9.
 Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
@@ -398,6 +450,7 @@ service does **not** verify an external consent registry or automatically
 redact secrets/PII. Only send approved, already-sanitized data.
 Interactive schema documentation is at `/docs`; OpenAPI is at `/openapi.json`.
 `/healthz` is process liveness after startup validation, not continuous DB readiness.
+See [`/readyz` and its limits](docs/STATUS.md#runtime-readiness) for the bounded runtime check.
 
 ## Pgvector retrieval foundation
 
@@ -513,7 +566,7 @@ Repository Docker test/runtime images intentionally include all three extras;
 that is **not** the base-package default.
 
 Install the optional `pg-agmemory[mcp]` package extra, or use the repository image,
-whose v0.0.13 test and runtime stages retain `mcp`, `hook`, and `sdk` extras.
+whose v0.0.14 test and runtime stages retain `mcp`, `hook`, and `sdk` extras.
 The MCP extra pins the official **mcp 2.2.0** SDK
 and **httpx 0.28.1**. From this checkout, `uv sync --frozen --extra mcp` prepares
 the locked environment. A trusted local MCP host launches:
@@ -527,7 +580,7 @@ configuration, not tool arguments or checked-in host configuration. The URL must
 be an HTTPS origin or loopback HTTP origin, with no credentials, path, query, or
 fragment. The token is for the **Native API audience**, which the Native API
 checks; it is not forwarded MCP caller identity. Startup makes an authenticated
-capabilities request and requires API `v1`, service `0.0.13`, and schema `9`.
+capabilities request and requires API `v1`, service `0.0.14`, and schema `9`.
 Configuration/authentication/version failures exit nonzero without secrets.
 Restart to refresh the fixed token. `--subject` and `--once` are rejected.
 
@@ -611,7 +664,7 @@ Shared `NativeSettings` also uses `httpx.URL` to reject control characters and
 invalid IDNA before transport. Redirects/proxy environment are disabled and TLS is verified.
 
 Each invocation freshly checks authenticated capabilities for exact
-**service `0.0.13` / API `v1` / schema `9`**, then posts Native recall with
+**service `0.0.14` / API `v1` / schema `9`**, then posts Native recall with
 `mode: "implicit"` and Native current-time defaults. The deadline covers **both
 HTTP steps together**, excluding process startup, stdin input/waiting, and output.
 It is not an LLM latency SLO.
@@ -691,7 +744,7 @@ cascade in the same barrier, without child DELETE grants; they are not separate
 memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
 selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
 not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
-back up, rebuild lexical projections, then restart matching v0.0.13 processes only.
+back up, rebuild lexical projections, then restart matching v0.0.14 processes only.
 This does not populate or rebuild embeddings. There is no automatic
 repair worker, external model/provider, or file-based memory index.
 See [the contract](docs/STATUS.md#japanese-lexical-profile),
@@ -866,6 +919,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Pgvector retrieval decisions](docs/adr/0011-pgvector-retrieval.md) | [Pgvector retrievalの決定](docs/adr/0011-pgvector-retrieval-jp.md) |
 | [Python SDK decisions](docs/adr/0012-python-sdk.md) | [Python SDKの決定](docs/adr/0012-python-sdk-jp.md) |
 | [Scope-access administration](docs/adr/0013-scope-access.md) | [Scope-access管理](docs/adr/0013-scope-access-jp.md) |
+| [Runtime readiness](docs/adr/0014-runtime-readiness.md) | [Runtime readiness](docs/adr/0014-runtime-readiness-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

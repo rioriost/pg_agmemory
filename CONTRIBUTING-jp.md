@@ -37,6 +37,11 @@ scope-access CLI smokeでは使い捨ての管理者資格情報でmembershipを
 Nativeの読取り/書込み動作を確認します。[ADR 0013](docs/adr/0013-scope-access-jp.md)の
 tenant session-lock drain、epoch CAS、原子的audit契約を維持し、
 runtimeにRLS bypassを付与してはいけません。
+readiness smokeでは`/readyz`の200、使い捨てDBのschema台帳を一時利用不能にした際の
+503、その間も`/healthz`が稼働状態を返すこと、台帳復旧後にAPIを再起動せず
+readinessが回復することを確認します。読取り専用・時間制限付きprobeを
+livenessやresource認可と混同しないでください。
+[ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

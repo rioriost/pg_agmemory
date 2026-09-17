@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/production/performance/quality/DR/full-erasure completion
 
+**Historical version notice:** this ADR records verified v0.0.13/schema 9,
+including stage `m2-scope-access` and its startup-version decisions.
+[ADR 0014](0014-runtime-readiness.md) records application-only v0.0.14 runtime
+readiness with the same schema 9 and unchanged scope-access contract.
+v0.0.14 local and both native checks passed. The separate final v0.0.13 docs CI 35198499967
+is recorded in [historical evidence](../STATUS.md#v0013--schema-9).
+
 ## Decision and authority
 
 Add `pg-agmemory scope-access get|set|revoke` for trusted administration of

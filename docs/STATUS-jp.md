@@ -2,9 +2,9 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.13/schema 9の特権scope-access管理です。
+**現在の上限付きmilestoneはv0.0.14/schema 9のruntime readinessです。
 実装はlocal Apple Containerとnative CI両architectureで検証済みです。
-検証済みv0.0.12以前の結果は過去の証拠であり、v0.0.13の結果ではありません。
+検証済みv0.0.13以前の結果は過去の証拠であり、v0.0.14の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -48,10 +48,89 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 `/docs`と`/openapi.json`で公開します。schemaの生成済みファイルは不要です。
 `/healthz`は起動検証後のprocess livenessであり、
 PostgreSQLへの継続的なreadiness検査ではありません。
+`/readyz`は`/v1`の外で下記の上限付き検査を追加します。
+
+## Runtime readiness
+
+**v0.0.14/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
+`GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
+新しい`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
+想定するreadiness応答は次のとおりです。
+
+| HTTP status | 正確なbody | Header |
+|---|---|---|
+| `200` | `{"status":"ready"}` | `Cache-Control: no-store`、生成UUIDの`X-Request-ID` |
+| `503` | `{"status":"not_ready"}` | `Cache-Control: no-store`、生成UUIDの`X-Request-ID` |
+
+OpenAPIの両応答はNative `ErrorBody`でなく型付き`ReadinessStatus`です。
+不正なHTTP methodはreadiness検査を行わず405を返します。
+
+public bodyにreason、DSN、token、payload、identity、schema一覧を含めません。
+受け付けたprobeごとに**同じruntime DSN**の新しい接続で既存`validate_runtime`を呼び、
+admin資格情報やfallbackは使いません。API起動とworker検証を含むvalidation sessionは
+`default_transaction_read_only = on`を明示します。
+明示SQLは最大4文で、`SET`一つとrole catalog、schema履歴、extension catalog用の
+`SELECT`三つです。read-onlyは専用validation接続だけに適用し、
+後続Native mutationの書込み可能性は維持します。
+
+- superuser、`BYPASSRLS`、`memory`または`memory_ops`のtable所有権/owner-role membershipを
+  拒否し、`NOINHERIT` membershipも対象です。
+- 厳密なmigration履歴`[1,2,3,4,5,6,7,8,9]`を要求します。
+- **`public`内の`vector` 0.8.6**を要求します。
+
+memory本文読取り、tenant lock、audit/epoch/job/receipt書込み、migration、
+provider呼出し、成功結果cache、background検査、retryはありません。
+既存の起動時fail-closed動作を維持します。
+`RuntimeValidationError`は`RuntimeError`を継承し、従来の起動messageを維持しつつ、
+想定する設定driftを固定codeで区別します。
+
+### Admission、cancel、diagnostic
+
+API app/processごとにactive検査は一つだけ受け付けます。並行要求はlog reason
+`probe_busy`で即503となり、**別接続、待機、cache済み成功応答はありません**。
+process単位のadmissionであり、global rate limitやrequest flood適格性確認ではありません。
+固定`asyncio` active検査timeout予算は**5.0秒**、DB connect/statement/lock予算は
+引き続き**5秒**です。cancel/connection cleanupで遅延が増え得るため、
+**厳密なwall-clock SLAではありません**。cancelは伝播しgate/connectionを解放し、retryしません。
+
+想定内の失敗は生成`request_id`と固定`reason`を持つ`readiness_unavailable`をlogへ出します。
+reasonは`runtime_role_invalid`、`schema_unavailable`、`schema_version_mismatch`、
+`extension_version_mismatch`、`probe_busy`、または例外class名です。
+readiness diagnosticにraw error文字列、traceback、DSN、資格情報、payloadは含めません。
+`psycopg.Error`と`TimeoutError`は503になります。
+通常の`RuntimeError`を含む想定外のprogramming exceptionは
+**catchしてnot-ready応答に見せかけません**。
+
+### 解釈と互換性
+
+これは**ある時点の接続/runtime role/schema/vector契約**であり、
+全principal認可、table grant/RLS policyの完全性audit、write transaction、
+書込み可能性/primary検査、継続JWT検証、tokenizer/provider readiness、
+backlog/load/HA/DR/性能/品質/本番の適格性確認ではありません。
+SELECT-only DBもこの上限付き検査に合格し得ます。
+resource routeはprobeを呼ばず、drift後の永続fail-closed gateを新設しません。
+readinessはoperatorのtraffic停止を助けるもので、**認可境界の代用ではありません**。
+既存Native認可は引き続き強制します。
+
+livenessには`/healthz`を使い、restart stormを起こす依存readinessで代用しないでください。
+busy 503も考慮したorchestrator失敗/復旧thresholdを設定し、
+deployment perimeterでpublic probeを制限/rate-limitします。
+Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
+
+stageは**`m2-runtime-readiness`**です。認証付きcapabilitiesに
+`health_probes` metadataとして`liveness: "/healthz"`、`readiness: "/readyz"`、
+`readiness_timeout_seconds: 5.0`、`readiness_max_in_flight_per_process: 1`を追加します。
+public memory surfaceは**24 resource method**を維持し、health pathはSDK resource-route coverage対象外です。
+SDK/MCP/hook probe methodは追加しません。
+対応adapterはすべて**service 0.0.14 / API v1 / schema 9**を要求します。
+application-only更新であり、新migration、依存、固定image変更はありません。
+[運用](operations/README-jp.md#runtime-readiness)と
+[ADR 0014](adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**v0.0.13/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+**既存scope-access契約を維持し、v0.0.14 localとnative検査は合格しました。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
@@ -115,7 +194,7 @@ membership不在時は`membership_exists: false`、`permissions: []`、
 自然な期限切れは`access_epoch`を進めず、payload/auditを消さず、処理中HTTPもdrainしません。
 強いdrainが必要な場合は明示revoke/barrierを使います。
 
-新**`009_scope_access.sql`**は特権専用`memory_ops.scope_access_event`を作り、
+既存**`009_scope_access.sql`**は特権専用`memory_ops.scope_access_event`を作り、
 forced RLSと**runtime policy/grantなし**を適用します。
 主keyは`(tenant_id, access_epoch)`で、同一tenant FKが対象scope/principalを結びます。
 eventは`set`/`revoke`、変更前後のpermission/expiry、DB `recorded_at`、
@@ -166,7 +245,8 @@ cancel、process kill、stdout喪失でも変更結果は不明になり得ま�
 
 barrierは配信済みcontextを撤回できません。最新ACL/削除記録のrestoreは手動であり、
 grantによってpurge済みdataは復活しません。
-API stageは**`m2-scope-access`**です。capabilitiesに`scope_access_administration`
+過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-runtime-readiness`です。
+capabilitiesは`scope_access_administration`
 metadataとして`transport: "admin-cli"`、`command: "scope-access"`、
 `compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`を追加します。
 PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しません。
@@ -175,7 +255,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**既存SDK契約を維持し、v0.0.13 localとnative検査は合格しました。**
+**既存SDK契約を維持し、v0.0.14 localとnative検査は合格しました。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -204,7 +284,7 @@ request scopeは現在のserver ACLを狭めるだけで、identity変更や権�
 
 client instanceごとに`async with ... as memory:`を一度だけ使います。
 entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
-厳密な**service `0.0.13` / API `v1` / schema `9`**一致を要求します。
+厳密な**service `0.0.14` / API `v1` / schema `9`**一致を要求します。
 entry失敗時も`finally`で所有resourceを閉じます。
 entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
 exitは接続を解放するだけで、**dataは消去しません**。
@@ -464,7 +544,7 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、v0.0.13の起動時一致は**service `0.0.13` / API `v1` / schema `9`**です。
+MCP両protocol時代を維持し、v0.0.14の起動時一致は**service `0.0.14` / API `v1` / schema `9`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
 v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
@@ -591,7 +671,7 @@ stage名はM2や他受入gateの完了を意味しません。
 
 captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.13` / API `v1` / schema `9`**を要求します。
+MCP/hook起動は厳密な**service `0.0.14` / API `v1` / schema `9`**を要求します。
 既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
@@ -603,7 +683,7 @@ host/backup/WAL/完全消去の保証は得られません。
 
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.13のrepository Docker test/runtime両stageに
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.14のrepository Docker test/runtime両stageに
 `mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
 合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
@@ -677,9 +757,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.13"`、`schema_version: 9`を要求します。
+`service_version: "0.0.14"`、`schema_version: 9`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.13はschema 9を要求しますが、adapter自体はmigrationを行いません。
+v0.0.14はschema 9を維持しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -779,7 +859,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.13` / API `v1` / schema `9`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.14` / API `v1` / schema `9`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -1529,14 +1609,15 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.13はdurable admin auditのためschema 9と`009_scope_access.sql`を要求します**。
-過去のapplication-only v0.0.12更新とは異なるschema変更です。
-新しい特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
+**v0.0.14はschema 9を維持し、新migrationは追加しません**。既存schema 9 DBには
+[application-only更新](operations/README-jp.md#schema-9-application-only-upgrade)を使います。
+過去のv0.0.13がdurable admin audit用の`009_scope_access.sql`を導入しました。
+既存の特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
 原子的membership/epoch/audit変更を使います。
 固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
-旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.13 componentだけを
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.14 componentだけを
 導入します。混在版/rolling互換性は主張しません。
-[schema 9更新](operations/README-jp.md#schema-9-scope-access-upgrade)を参照してください。
+古いschemaには[schema 9更新](operations/README-jp.md#schema-9-scope-access-upgrade)を使います。
 古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
 migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既存extensionを拒否します。
 上記の固定prebuilt上流DB profileを使い、旧PostgreSQL imageが不変と想定したり、
@@ -1544,7 +1625,7 @@ migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既�
 既存episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.13`、API `v1`、schema `9`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.14`、API `v1`、schema `9`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -1556,7 +1637,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.13のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9]`と
+追加しません。v0.0.14のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -1564,12 +1645,12 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.13/schema 9 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.14/schema 9 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.13 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
+対応するv0.0.14 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
@@ -1579,9 +1660,52 @@ rolling共存やdowngradeは非対応です。
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0014--schema-9"></a>
+
+### v0.0.14 / schema 9 — 検証済み
+
+**2026-09-17 JSTに最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**495テスト、既存warning 1件**、
+Ruff、strict mypy（**source 19ファイル + 別のstrict SDK consumer 1ファイル**）、
+真のcore-only/hook-only/sdk-only導入検査が合格しました。
+localの`./scripts/test-containers.sh`は**exit 0**でした。
+内訳は**既存464 + readiness unit 16 + integration 15テスト（新規31）**です。
+schema 9は不変で、migrationは追加しません。
+公開済み実装:
+[`71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277`](https://github.com/rioriost/pg_agmemory/commit/71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277)
+（`feat: add bounded runtime readiness probe`）。
+[CI 35201615965](https://github.com/rioriost/pg_agmemory/actions/runs/35201615965)は
+この完全一致SHAで合格しました。job statusだけでなく**実log**で両native Linux architectureの
+件数、検査、smokeを確認しています。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| Local Apple Container | **295.67秒（4:55）** |
+| Docker、native `linux/amd64` | **385.41秒** |
+| Docker、native `linux/arm64` | **470.16秒** |
+
+所要時間は性能benchmarkではありません。
+これらは上記実装SHAの結果です。その後の最終文書公開/CI runは別であり、ここでは報告しません。
+
+実5秒locked-schema timeout検査はassertion範囲4.5〜10秒内で合格しましたが、
+wall-clock SLAではありません。cancel後のruntime backend leakはなく、
+connection refusalからの復旧と既存livenessも合格しました。
+`NOINHERIT` owner-role membership、schema ledger SELECTの剥奪/復元、
+extension namespace移動/復元のDB variantも合格しました。
+
+non-root productionの日本語tokenizer、HTTP/liveness、readiness schema障害/復旧、
+worker、MCP **2026-07-28/2025-11-25**、hook全3 event、capture、pgvector、
+Python SDK、scope-accessの全smokeが全3環境で合格しました。
+合格した使い捨てDB readiness smokeは**同じAPI process**で
+**ready 200 → schema ledger rename → health 200のままready 503 →
+ledger restore → ready 200**を検査します。通常HTTP smokeの後に実行し、
+後続Native/SDK smokeは変更せず、source/tombstoneも書き込みません。
+このlifecycleは全3環境で合格しました。live DBでdriftを再現してはいけません。
+MVP/本番/性能/品質/DR/完全消去の適格性確認は主張しません。
+
 <a id="v0013--schema-9"></a>
 
-### v0.0.13 / schema 9 — 検証済み
+### 過去のv0.0.13 / schema 9 — 検証済み
 
 **2026-09-17 JSTに最終localとnative結果を検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**464テスト、既存warning 1件**、
@@ -1601,7 +1725,13 @@ localの`./scripts/test-containers.sh`は**exit 0**でした。公開済み実�
 | Docker、native `linux/arm64` | **460.73秒** |
 
 所要時間は性能benchmarkではありません。
-これらは上記実装SHAの結果です。その後の最終文書公開/CI runは別であり、ここでは報告しません。
+別の最終v0.0.13 docs
+[`185f433aa49479810b8955f1bec2e856f2715f7b`](https://github.com/rioriost/pg_agmemory/commit/185f433aa49479810b8955f1bec2e856f2715f7b)は
+[CI 35198499967](https://github.com/rioriost/pg_agmemory/actions/runs/35198499967)に合格しました。
+native実logで各architecture **464テスト、warning 1件**、Ruff、
+strict mypy **source 19 + consumer 1ファイル**、optional導入検査、全production smokeを確認し、
+**amd64 499.25秒 / arm64 454.37秒**でした。
+docs所要時間は上記実装CI 35196930448とは別です。両runともv0.0.14の検証ではありません。
 
 合格integrationは非owner `BYPASSRLS` roleによる`FOR UPDATE`なしの照会、
 epoch最大値での変更拒否/no-op動作、schema 8→9のDDL後のledger記録失敗、

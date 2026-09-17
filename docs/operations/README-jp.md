@@ -13,13 +13,14 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 repositoryの既存`Dockerfile`から構築したapplication imageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
-現在の上限付きmilestoneは**v0.0.13/schema 9の特権scope-access管理**です。
+現在の上限付きmilestoneは**v0.0.14/schema 9のruntime readiness**です。
 **実装はlocal Apple Containerとnative CI両architectureで検証済み**です。
-検証済みv0.0.12以前の結果は過去の証拠であり、v0.0.13の証拠ではありません。
+検証済みv0.0.13以前の結果は過去の証拠であり、v0.0.14の証拠ではありません。
 既存`008_pgvector.sql`は**`public`内の`vector` 0.8.6**を要求し、
 別版/別schemaの既存extensionを拒否します。
-新`009_scope_access.sql`は特権audit tableを追加し、固定DB profileとPython依存版は維持します。
-[scope管理](#scope-access-administration)を参照してください。
+既存`009_scope_access.sql`は特権audit tableを提供します。
+v0.0.14はmigrationを追加せず、固定DB profileとPython依存版を維持します。
+[runtime readiness](#runtime-readiness)を参照してください。
 **過去のv0.0.8:** Apple Containerとnative Docker amd64/arm64で214テストと
 production smokeに合格しました。v0.0.9の結果ではありません。
 M0〜M3、MVP、本番、性能、品質、DR、完全消去の受入は未完了です。
@@ -36,7 +37,7 @@ byte単位で同一です。v6との差分はJanome 0.5.0の追加とprojectのv
 buildしました。v0.0.8/v0.0.9のpackage件数や検証についての主張ではありません。
 現在のlock済みbuildを使用してください。任意のMCP extraは`mcp==2.2.0`と
 `httpx==0.28.1`を固定し、Docker test/runtime両stageに含めます。
-v0.0.13は両stageに`hook`と`sdk`も維持します。`pg-agmemory[hook]`は
+v0.0.14は両stageに`hook`と`sdk`も維持します。`pg-agmemory[hook]`は
 `httpx==0.28.1`を固定し、**MCP SDKは含めません**。
 container検査scriptは使い捨てsmoke設定を含め、**Apple ContainerとDockerの両方**で
 runner側の`jq`を必須とします。
@@ -66,7 +67,7 @@ runner側の`jq`を必須とします。
    `src/pg_agmemory/storage/005_relational_graph.sql`、
    `src/pg_agmemory/storage/006_durable_jobs.sql`に続き、追加的な
    `src/pg_agmemory/storage/007_japanese_fts.sql`、既存`008_pgvector.sql`、
-   新`009_scope_access.sql`をpackage resourceとして
+   既存`009_scope_access.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`/対応pgvector
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
@@ -91,9 +92,112 @@ logへ残さず、不要なものをruntime環境へ渡さないでください�
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
+## Runtime readiness
+
+**v0.0.14/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+livenessと依存readinessを分離してください。
+`GET /healthz`は起動成功後に正確な`{"status":"ok"}`を返し、DBへ接続しません。
+public・認証不要の`GET /readyz`は**200**と正確な`{"status":"ready"}`、
+または想定内の失敗時に**503**と`{"status":"not_ready"}`を返します。
+両readiness応答に`Cache-Control: no-store`と生成UUIDの`X-Request-ID`を含めます。
+認証headerは無視するため、tokenを送らずtenant/principalも選びません。
+readiness bodyにprivate reasonやschema一覧は含めません。
+OpenAPIの両応答はNative `ErrorBody`でなく`ReadinessStatus`です。
+不正なHTTP methodはreadiness検査なしで405を返します。
+
+### Dataを変更せず照会する
+
+**説明用commandであり、文書レビュー中にlive DBへ実行してはいけません。**
+placeholderを信頼する承認済みAPI originへ置き換えてください。
+資格情報や自動retryは不要です。例のcurl 10秒制限はcaller予算であり、
+serverのwall-clock保証ではありません。HTTP 503でcurlはexit 22になります。
+
+```bash
+PROBE_API_URL='https://memory.example.invalid'
+curl --include --silent --show-error --fail-with-body --max-time 10 \
+  "$PROBE_API_URL/healthz"
+curl --include --silent --show-error --fail-with-body --max-time 10 \
+  "$PROBE_API_URL/readyz"
+```
+
+受け付けたreadiness検査ごとに`validate_runtime`経由で`PGAG_DATABASE_URL`の新接続を開きます。
+`PGAG_ADMIN_DATABASE_URL`やfallbackを与えないでください。
+明示SQLは`SET`一つとrole/schema/extension catalog、schema ledger用`SELECT`三つの最大4文です。
+`default_transaction_read_only = on`は起動/worker検証を含む専用validation接続に限定し、
+後続Native mutationの書込み可能性を維持します。
+superuser、`BYPASSRLS`、`memory`/`memory_ops`のtable所有権/owner-role membershipを拒否し、
+`NOINHERIT`も対象とします。
+厳密な履歴`[1,2,3,4,5,6,7,8,9]`と`public`内の`vector` 0.8.6を要求します。
+memory本文を読まず、tenant lockを取らず、audit、epoch、job、receipt、
+source、tombstoneを書き込みません。
+migration、cache、background polling、provider呼出し、retryは行いません。
+
+### Restart stormを避けた失敗の解釈
+
+app/processごとにactive検査は一つです。並行要求は別接続や待機なしで即503、
+log reason `probe_busy`となります。
+固定の**active検査予算5.0秒**と既存DB connect/statement/lock各**5秒**は
+**厳密なwall-clock SLAではなく**、cancel/connection cleanupで長くなり得ます。
+cancelは伝播しgate/connectionを解放します。
+
+生成`X-Request-ID`と`readiness_unavailable` logの`request_id`を照合してください。
+固定`reason`は`runtime_role_invalid`、`schema_unavailable`、`schema_version_mismatch`、
+`extension_version_mismatch`、`probe_busy`、または例外class名です。
+想定内の`RuntimeValidationError`、`psycopg.Error`、`TimeoutError`は503となり、
+raw error本文、traceback、DSN、資格情報、payloadをlogへ出しません。
+想定外のprogramming exceptionは503に変換しないため、
+通常の`RuntimeError`を想定内driftと扱ってはいけません。
+信頼する設定/DB状態を別途調査し、probeを通すためにruntime roleを昇格したり
+自動migrationを起動したりしないでください。
+
+readyはある時点の接続/runtime role/schema/vector検査だけです。
+SELECT-only DBも合格し得て、書込み/primary状態、全principal権限、
+table grant/RLS policy完全性、JWT検証、tokenizer/provider正常性、
+backlog/load、HA/DR、本番/品質/性能を証明しません。
+resource routeはreadinessを呼ばず、drift後の永続gateも取得しません。
+既存Native認可は維持します。traffic停止signalであり、認可firewallではありません。
+依存readinessをlivenessへ接続してrestart stormを起こさないでください。
+busy 503を考慮した失敗/復旧thresholdと、deployment perimeterでのpublic probe制限/rate limitを設定します。
+process単位のadmissionはglobal rate limiterやrequest flood適格性確認ではありません。
+Kubernetes、Compose、Docker `HEALTHCHECK`設定は提供しません。
+
+### Schema 9 application-only upgrade
+
+v0.0.13→v0.0.14は**migrationを追加せず**、依存/imageもupgradeしません。
+PostgreSQL 18.6、`public`内の`vector` 0.8.6、厳密なschema履歴1〜9を維持します。
+replica/restartを含む旧API、worker、adapter、hook起動、SDK caller、管理commandを停止/drainし、
+現在ACL/削除記録とbackupを保全してください。
+対応v0.0.14 componentだけを導入し、混在版rolloutを行いません。
+既存の起動時fail-closedを維持し、SDK/MCP/hookは厳密な
+**service 0.0.14 / API v1 / schema 9**を要求します。
+認証付きcapabilitiesのstage `m2-runtime-readiness`と`health_probes` metadata
+（`liveness: "/healthz"`、`readiness: "/readyz"`、`readiness_timeout_seconds: 5.0`、
+`readiness_max_in_flight_per_process: 1`）を確認します。
+traffic再開前にliveness、上限付きreadiness、承認済みの認証付きresource/adapter動作を検査してください。
+readyだけでは不十分です。古いschemaには[既存migration sequence](#schema-9-scope-access-upgrade)が必要です。
+
+実装済み使い捨てDB production smokeは通常HTTP smokeの後に同じAPI processで
+ready 200 → schema ledger rename →
+health 200のままready 503 → ledger復元 → ready 200と既存の認証付きsmokeを対象とし、
+source/tombstoneを書き込みません。live DBでdriftを再現しないでください。
+**このlifecycleはlocalと両native architectureで合格しました。**
+Apple Containerとnative Docker amd64/arm64で各**495テスト、既存warning 1件**、
+内訳は**既存464 + readiness unit 16 + integration 15テスト（新規31）**です。
+Ruff、strict mypy（**source 19ファイル + SDK consumer 1ファイル**）、
+真のcore/hook/sdk-only導入、non-root production全smokeも全3環境で合格しました。
+実装
+[`71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277`](https://github.com/rioriost/pg_agmemory/commit/71bd2c59e1fb65e0ae2a6ba45c09d0013fb08277)
+は[CI 35201615965](https://github.com/rioriost/pg_agmemory/actions/runs/35201615965)に合格し、
+native実logで検査/smokeを確認しました。
+所要時間は**local 295.67秒 / amd64 385.41秒 / arm64 470.16秒**であり、性能benchmarkではありません。
+これは実装の結果であり、最終docs CI runではありません。
+[検証証拠](../STATUS-jp.md#v0014--schema-9)を参照してください。
+24 memory resource routeとSDK/MCP/hook method surfaceは維持し、health probeはSDK route coverage対象外です。
+[ADR 0014](../adr/0014-runtime-readiness-jp.md)を参照してください。
+
 ## Scope-access administration
 
-**v0.0.13/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+**既存scope-access契約を維持し、v0.0.14 localとnative検査は合格しました。**
 手書きmembership SQLより`pg-agmemory scope-access`を優先してください。
 同じtenantに属する承認済み既存tenant/scope/principal UUIDだけを使います。
 このcommandはprovisionせず、HTTP/MCP/Python SDKでは公開しません。
@@ -198,28 +302,29 @@ stdout barrierは配信済みcontextを撤回できません。
 
 ## Schema 9 scope-access upgrade
 
-**v0.0.13 localとnative検査は合格しました。本番/DR認定ではありません。**
+**schema 9は不変で、v0.0.14 localとnative検査は合格しました。**
+既存schema 9 DBには[application-only更新](#schema-9-application-only-upgrade)を使います。
 下記の固定PostgreSQL **18.6** / **`public`内の`vector` 0.8.6** imageを維持します。
-新schemaはdurable特権auditのためであり、依存upgradeではありません。
+migration 009はv0.0.13でdurable特権auditを導入したもので、v0.0.14の追加ではありません。
 
 1. replica/restartを含め、旧版・新版の全API、worker、adapter、hook起動、
    SDK caller、管理commandを停止/drainします。
    backupと現在ACL/削除記録を保全し、予行は使い捨てDBだけで行います。
-2. matching v0.0.13 toolingとmigration管理者で`pg-agmemory migrate`を実行します。
+2. matching v0.0.14 toolingとmigration管理者で`pg-agmemory migrate`を実行します。
    記録順に001〜008の後へ`009_scope_access.sql`を適用します。
    schema 8→9 ledger書込み失敗後のrollback/retryと以前のmigration検査は
-   localと両native architectureで合格しました。既存ACL行を維持し、過去の手動変更のaudit backfillは行いません。
+   v0.0.14のlocalと両native architectureで合格しました。既存ACL行を維持し、過去の手動変更のaudit backfillは行いません。
    embedding backfillや暗黙ownership/purge変更は追加しません。
 3. 厳密な履歴`[1,2,3,4,5,6,7,8,9]`、extension版/schema、特権専用audit tableを確認し、
-   対応v0.0.13 API/workerだけを起動します。
-   SDK/MCP/hookはservice **0.0.13**、API **v1**、schema **9**を要求します。
-4. 認証付きcapabilitiesのstage `m2-scope-access`と`scope_access_administration`
+   対応v0.0.14 API/workerだけを起動します。
+   SDK/MCP/hookはservice **0.0.14**、API **v1**、schema **9**を要求します。
+4. 認証付きcapabilitiesのstage `m2-runtime-readiness`と`scope_access_administration`
    metadata（`transport: "admin-cli"`、`command: "scope-access"`、
    `compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`）を確認し、
    traffic再開前に承認済み使い捨てdataでCLI/ACL/drainと既存resourceを検査します。
    版混在やdowngrade互換性は保証しません。失敗時は旧processの停止を維持します。
 
-Apple Containerとnative Docker amd64/arm64で各**464テスト、既存warning 1件**、
+**過去のv0.0.13証拠:** Apple Containerとnative Docker amd64/arm64で各**464テスト、既存warning 1件**、
 Ruff、strict mypy（**source 19ファイル + SDK consumer 1ファイル**）、
 真のcore/hook/sdk-only導入、実scope-access CLI/SDK lifecycleを含むnon-root production全smokeが合格しました。
 内訳は**既存426 + scope-admin unit 22 + integration 16テスト（新規38）**です。実装
@@ -227,13 +332,17 @@ Ruff、strict mypy（**source 19ファイル + SDK consumer 1ファイル**）�
 は[CI 35196930448](https://github.com/rioriost/pg_agmemory/actions/runs/35196930448)に合格し、
 native実logで検査/smokeを確認しました。
 所要時間は**local 297.52秒 / amd64 539.86秒 / arm64 460.73秒**であり、性能benchmarkではありません。
-これは実装の結果であり、最終docs CI runではありません。
+別の最終v0.0.13 docs
+[185f433](https://github.com/rioriost/pg_agmemory/commit/185f433aa49479810b8955f1bec2e856f2715f7b)は
+[CI 35198499967](https://github.com/rioriost/pg_agmemory/actions/runs/35198499967)に合格しました。
+各native architecture 464テスト/warning 1件と全検査/smoke、
+**amd64 499.25秒 / arm64 454.37秒**でした。両runともv0.0.14を検証しません。
 [検証証拠](../STATUS-jp.md#v0013--schema-9)と
 [ADR 0013](../adr/0013-scope-access-jp.md)を参照してください。本番/DR認定ではありません。
 
 ## Python SDK operations
 
-**既存SDK契約を維持し、v0.0.13 localとnative検査は合格しました。**
+**既存SDK契約を維持し、v0.0.14 localとnative検査は合格しました。**
 対応checkoutから`python -m pip install '.[sdk]'`で導入します。
 `pg-agmemory[sdk]` extraはMCP SDKでなく`httpx==0.28.1`だけを固定しますが、
 同じcore packageには引き続きFastAPI、psycopg、Janomeが含まれます。
@@ -252,7 +361,7 @@ HTTPXがなければ固定SDK import `ImportError`となり、
    serverがbearer token認証と現在ACLを強制します。request scopeは権限を狭めるだけです。
 3. `async with AsyncMemoryClient(api_url, api_token) as memory:`へentryします。
    所有HTTP clientを作り、認証付きcapabilitiesで
-   **service 0.0.13 / API v1 / schema 9**を要求します。
+   **service 0.0.14 / API v1 / schema 9**を要求します。
    context前/後の利用と同一instanceへの再entryは
    `client_not_open` / `client_already_used`で拒否します。
    exitで閉じるのは接続であり、**保存memoryは消去しません**。
@@ -295,8 +404,9 @@ context exitでは既に返したcopyを消せません。
 
 ## v0.0.12 application更新（schema変更なし）
 
-**過去のschema 8専用手順であり、v0.0.13更新ではありません。**
-現在のtoolingには[schema 9保守](#schema-9-scope-access-upgrade)を使ってください。
+**過去のschema 8専用手順であり、v0.0.14更新ではありません。**
+現在は[schema 9更新](#schema-9-application-only-upgrade)を使い、
+古いschemaには先に[migration保守](#schema-9-scope-access-upgrade)を適用してください。
 **保守手順であり、本番upgradeや災害復旧の適格性認定ではありません。**
 既存schema 8 DBは下記の固定PostgreSQL 18.6 / `public`内の`vector` 0.8.6
 DB imageを維持します。schema 9 migration、embedding backfill、provider呼出しは追加しません。
@@ -329,8 +439,8 @@ docs CI 35190495385を含む別々のv0.0.11実装/最終docs runは
 ## Schema 8 pgvector upgrade
 
 **v0.0.11のapplication/migration検査は合格しました。本番適格性の認定は未完了です。**
-migration 008はv0.0.11で導入・検証済みです。現在のv0.0.13 toolingは009も適用し、
-localとnative検査は合格しました。過去v0.0.12のapplication-only手順でなく、
+migration 008はv0.0.11で導入・検証済みです。現在のv0.0.14 toolingも009を維持し、
+v0.0.14 localとnative検査は合格しました。過去v0.0.12のapplication-only手順でなく、
 [schema 9境界](#schema-9-scope-access-upgrade)に従ってください。
 
 採用prebuilt image:
@@ -360,7 +470,7 @@ native ELF、`vector.control` **0.8.6**を確認しました。
    migration lockは旧schema 7 processの稼働継続を防ぎません。rolling共存は非対応です。
 3. backup、application/schema/extension版、現在の削除/ACL記録を保全します。
    予行は使い捨てDBだけで行い、restore隔離とDR/完全消去の未完了を維持します。
-4. migration管理者と対応v0.0.13 applicationで`pg-agmemory migrate`を実行します。
+4. migration管理者と対応v0.0.14 applicationで`pg-agmemory migrate`を実行します。
    変更しない001〜007に続いて`008_pgvector.sql`、`009_scope_access.sql`を適用し、
    古いDBにはmigration 007のlexical backfillも必要です。
    migrationは**`public`内の`vector` 0.8.6**を要求し、版/schemaが異なる既存extensionを拒否します。
@@ -369,7 +479,7 @@ native ELF、`vector.control` **0.8.6**を確認しました。
    canonical `ON DELETE CASCADE`、runtime **SELECT/INSERTのみ**を適用します。
    **既存dataのembedding backfillはありません**。
 5. 厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9]`とschema `public`内のextension `vector` 0.8.6を確認してから、
-   対応v0.0.13 API/workerだけを起動します。
+   対応v0.0.14 API/workerだけを起動します。
    traffic再開前に認証付きcapabilities、lexical互換、合成vector/hybrid ranking、
    coverage、RLS/時間filter、replay/purge、既存adapterを検査します。
    API/worker起動はschema/extension不一致を拒否します。
@@ -572,7 +682,7 @@ proxy環境とredirectを無効化し、HTTPSは既定TLS検証を使います�
 
 **既存capture契約はv0.0.11でも検証済みです。**
 上記に従いNative APIとruntime roleを準備します。
-対応するservice `0.0.13`、API `v1`、schema `9`を使います。
+対応するservice `0.0.14`、API `v1`、schema `9`を使います。
 過去v0.0.10 stage `m2-atomic-capture`はM2全体の完了ではありません。
 captureはNative routeであり、**MCP toolや自動recall-hook操作ではありません**。
 既存schema 8と新schema 9 migrationはcapture semanticsとは別で、captureはembeddingを生成しません。
@@ -713,7 +823,7 @@ capability feature `atomic_structured_capture`の`atomic_capture` metadataは
    `--subject`と`--once`は両方拒否するため付けません。
    stdin/stdoutは人間用promptや通常logでなくMCP message用に接続を維持します。
    診断にはsanitized stderrを使います。
-6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.13`、schema `9`の
+6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.14`、schema `9`の
    一致を確認してからtoolを提供します。不正設定/token、API到達不能、version不一致は
    secretをlogに出さず非zero終了します。`/healthz`合格だけでは不十分です。
    信頼する設定を修正し再起動してください。検査を回避したり、
@@ -800,7 +910,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
 1. 上記role分離に従ってNative APIのsubject/scopeをprovisionします。
    hookには**DB資格情報**、admin URL、JWT署名key、外部model keyは不要です。
    設定されたNative audience tokenだけを使います。
-2. `pg-agmemory[hook]`を導入するか、`mcp`・`hook`・`sdk`を含むv0.0.13 repository imageを
+2. `pg-agmemory[hook]`を導入するか、`mcp`・`hook`・`sdk`を含むv0.0.14 repository imageを
    使用します。checkoutでは`uv sync --frozen --extra hook`を使います。
    hook-only導入は`httpx==0.28.1`を固定し、**MCP SDKは含めません**。
 3. 信頼するharnessを起動する前にoperatorが以下の環境を安全に渡します。
@@ -833,7 +943,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
    取得意図はJSONの`query`だけから渡し、`event`はlifecycle名です。
    identity、`scope_ids`、purpose、mode、budget、URL、header、tool、時刻、その他fieldは
    許可しません。event textはアクセス権を付与しません。
-5. 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密なservice `0.0.13`、
+5. 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密なservice `0.0.14`、
    API `v1`、schema `9`を検査し、`POST /v1/recall`へ`mode: "implicit"`、
    信頼するrecall設定、Nativeの現在時刻defaultを送ります。
    両requestに同じ固定tokenを使い、認可やresponseをcacheしません。
@@ -1037,7 +1147,7 @@ hookは権限を拡大せず、host/WAL/replica/backup/物理media消去を証�
 ## 過去のv0.0.10のapplication更新（schema変更なし）
 
 **過去のschema 7専用workflowであり、v0.0.11 upgradeではありません。**
-現在の版は[schema 9 scope-access upgrade](#schema-9-scope-access-upgrade)を使います。
+現在の版は[schema 9 application更新](#schema-9-application-only-upgrade)を使います。
 
 既存v0.0.7/v0.0.8/v0.0.9のschema 7 DBには**migration 008/009/010も新backfillもありません**。
 application/schema版を記録し、backupと現在の削除/ACL記録を保全します。
@@ -1059,7 +1169,7 @@ reindexは別のoffline保守であり、MCP/hook commandではありません�
 ## v0.0.7の保守migration
 
 **v0.0.7〜v0.0.10だけを対象とする過去のschema 7手順です。**
-古いschemaからv0.0.13へ更新するには[migration 008](#schema-8-pgvector-upgrade)と
+古いschemaからv0.0.14へ更新するには[migration 008](#schema-8-pgvector-upgrade)と
 [009](#schema-9-scope-access-upgrade)も必要であり、
 ここで説明するschema 7 processを再起動してはいけません。
 
@@ -1149,7 +1259,7 @@ migration済みschema 8 DBのlexical projectionをcanonical dataから再構築�
 
 1. 自動再起動を含む**全API/workerを停止/drain**し、migration同様にbackupします。
    offline保守であり、稼働中の管理APIではありません。
-2. 対応するv0.0.13 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
+2. 対応するv0.0.14 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
    必要なtable権限を持つ管理者で次を実行します。
 
    ```bash
@@ -1166,7 +1276,7 @@ migration済みschema 8 DBのlexical projectionをcanonical dataから再構築�
    traffic停止を維持し、schema、権限、lock競合を調査します。
    index修復のためruntime bypassを付与したり、canonical本文、timestamp、receiptを
    編集したりしてはいけません。
-5. 対応するv0.0.13 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
+5. 対応するv0.0.14 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
    profile/coverageと認可された現在/過去recallを確認してください。
    正確な`known_at`境界にはhost/VMのwall-clock値でなく、
    serverが返すassertionの`recorded_at`を使います。
@@ -1378,7 +1488,10 @@ runtime portを信頼できないnetworkへ直接公開しないでください�
 `/docs`と`/openapi.json`はruntime生成のschema表示で、配置の認可設定ではありません。
 
 `GET /healthz`は起動検証後のprocess livenessです。成功しても現在のDB接続、
-認可の正しさ、本番readinessを保証しません。DB/lock障害は`503`になり得ます。
+認可の正しさ、本番readinessを保証しません。
+[runtime readiness](#runtime-readiness)の`GET /readyz`は上限付きread-only契約を検査し、
+認可全体や書込み可能性を証明しません。両probeとも認証付きresource検査の代用ではありません。
+memory resource要求のDB/lock障害は`503`になり得ます。
 mutationの結果が不明なら、新しいkeyを作らず同じkey・同じpayloadで再送してください。
 commit済みでもHTTP応答だけ失われる場合があります。
 

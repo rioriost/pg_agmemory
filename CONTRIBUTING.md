@@ -38,6 +38,11 @@ The scope-access CLI smoke uses disposable administrative credentials to inspect
 narrow, and revoke membership while checking Native read/write behavior. Preserve
 the tenant session-lock drain, epoch CAS, and atomic audit contract described in
 [ADR 0013](docs/adr/0013-scope-access.md); never grant runtime RLS bypass.
+The readiness smoke verifies `/readyz` returns 200, then 503 while the disposable
+schema ledger is unavailable, while `/healthz` stays live; readiness recovers
+after restoration without an API restart. Keep the read-only, bounded probe
+separate from liveness and resource authorization; see
+[ADR 0014](docs/adr/0014-runtime-readiness.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

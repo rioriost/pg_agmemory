@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/本番/性能/品質/DR/完全消去の完了ではない
 
+**過去版の注記:** このADRはstage `m2-scope-access`と起動版の決定を含む
+検証済みv0.0.13/schema 9の記録です。
+[ADR 0014](0014-runtime-readiness-jp.md)は同じschema 9とscope-access契約を維持する
+application-only v0.0.14 runtime readinessの記録です。localと両native検査は合格しました。
+別の最終v0.0.13 docs CI 35198499967は
+[過去の証拠](../STATUS-jp.md#v0013--schema-9)に記録します。
+
 ## 決定と権限
 
 信頼する管理者が**既存の同一tenant**のtenant/scope/principal UUIDを管理する
