@@ -2,9 +2,9 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.14/schema 9のruntime readinessです。
-実装はlocal Apple Containerとnative CI両architectureで検証済みです。
-検証済みv0.0.13以前の結果は過去の証拠であり、v0.0.14の結果ではありません。
+**上限付きmilestoneはv0.0.15/schema 10の明示job取消です。
+実装はlocalと両native Linux architectureで検証済みです。
+検証済みv0.0.14以前の結果は過去の証拠であり、v0.0.15の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -24,6 +24,7 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 | `POST /v1/jobs` | 構造化記憶publicationを明示queue化。`202`はjob参照であり完了ではない |
 | `GET /v1/jobs/{job_id}` | 現在読取り可能なstate、安全なerror/時刻、正確な入力参照、元の結果revision 1を返す |
 | `POST /v1/jobs/{job_id}/retry` | 全intentと現在のアクセス権を検査し、所有するfailed jobのchildを一つ作成/重複抑止 |
+| `POST /v1/jobs/{job_id}/cancel` | owner専用state/attempt CAS。HTTP 200でterminal取消をcommitし、worker中断やdata除去は行わない |
 | `POST /v1/assertions/{memory_id}/revisions` | expected head、明示的intent、reason、revision固有のepisode根拠を使い、同一assertionへ全置換revisionを追加 |
 | `POST /v1/entities` | episode根拠付きの不変・caller申告entity identityをrevision 1で作成 |
 | `GET /v1/entities/{memory_id}` | 現在読取り可能なentity metadataとepisode原文根拠を返す |
@@ -50,12 +51,101 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 PostgreSQLへの継続的なreadiness検査ではありません。
 `/readyz`は`/v1`の外で下記の上限付き検査を追加します。
 
+## Explicit job cancellation
+
+**v0.0.15/schema 10はlocalと両native architectureで検証済みです。**
+`POST /v1/jobs/{job_id}/cancel`はNative JWT認証とcallerの`Idempotency-Key`を要求します。
+`CancelJob`が受け付けるのは次のfieldだけです。
+
+```json
+{"expected_state":"pending","expected_attempt":0}
+```
+
+`expected_state`は`pending`または`running`です。
+`expected_attempt`は**strict整数0〜5**で、runningは**1以上**を要求します。
+boolean、整数への暗黙変換、追加fieldは不正です。
+reason、provider、lease token、任意state強制入力はありません。
+job GETでstate/attemptを取得し、そのCASを明示選択します。
+**tenant `access_epoch`や外部tool state/versionではありません**。
+
+### 権限と原子的な結果
+
+jobの`principal_id`は認証中のcurrent principalと一致し、現在のscope
+**readとwrite**権限、既存のsource可視性/完全性検査も満たす必要があります。
+同じscopeの別readerは`admin` permissionがあっても取消できず、
+runtime `job_update` RLSは変更しません。
+不在/private/cross-tenant/non-job/purge済みtargetは`404`、
+既存の参照失効は`409 job_invalidated`です。
+原子的SQL UPDATEは**expected stateとattemptの両方**を照合します。
+
+HTTP **200**（202ではない）でcommit済み`JobReceipt`を返します。
+
+```text
+{job_id, kind: "structured_remember", recipe_version: "structured-remember-v1"}
+```
+
+GETで`state: "cancelled"`を確認します。leaseが有効**または期限切れ**でも
+pending/runningからterminal cancelledへ遷移できます。
+保存job payload、`lease_token`、`lease_until`、`error_code`を消去し、resultはありません。
+同じjob identity、attempt、source/intent/input参照、`retry_of`、`created_at`を保持し、
+DB clockの`updated_at`で完了を記録します。取消reason/private自由文は保存しません。
+state変更、`job_cancelled` audit、idempotency receiptは原子的です。
+保存idempotency結果は`{job_id}`だけで、request/keyはHMACで保護します。
+transaction失敗時は3者をまとめてrollbackし、access/deletion epochは進めません。
+
+既存tenantの**session advisory lockをHTTP配信完了まで保持**し、
+worker claim/publicationも同じbarrierを使います。
+取消jobのqueue化、worker kill、provider中断/compensationではありません。
+古い準備処理が続いてもpublish/heartbeat/failはnot-runningを検出して
+`job_lease_conflict`となり、workerは`lease_lost`を報告します。
+取消が先ならそのjobからresultは公開されません。
+publicationのcommitが先なら取消は競合し、succeeded resultを維持します。**公開撤回はしません**。
+
+### 競合、replay、保持
+
+state/attempt変更やterminal（`succeeded`、`failed`、`cancelled`）は
+`409 job_cancel_conflict`です。既にcancelledのjobを新keyで取消する場合も同じです。
+成功した同じkey/bodyは、現在のowner/write/access/liveness検査が通る間だけ元receiptをreplayします。
+同じkeyでbody**またはjob ID**を変えると`409 idempotency_conflict`です。
+HTTP配信結果不明時は**同じkey/bodyまたは現在job GET**で照合し、
+expected値やkeyを盲目的に新しくしません。自動retryはありません。
+
+取消は**`forget`ではありません**。canonical source episode/evidence、
+opaque intent参照、dedup anchorを保持します。
+worker準備memory、WAL、backupの消去は保証しません。
+source forgetは依存jobをpurgeして取消replayを拒否し、再grantでもpurge済みpayloadは復活しません。
+retryは**failed専用**のためcancelledは`409 job_retry_conflict`です。
+通常の同intent enqueue/captureはcancelled jobへdedupし、
+capture replayは元のepisode/job pairを維持して復活させません。
+recipe版や架空intent keyでdedupを迂回しないでください。
+cancelledは100 active-job上限と`jobs_pending`の両方から除外します。
+
+### SchemaとSDK境界
+
+`010_job_cancellation.sql`はjob state/payload制約とguard triggerを変更し、tableは追加しません。
+cancelledはDB上で不変となり、復活/書換えを拒否します。
+payload/result/lease/errorのnullを制約し、新規jobは引き続きpending、attempt 0が必須です。
+既存pending/running/succeeded/failed semanticsを維持します。
+schema 9→10 migrationは旧processの停止/drainを要求します。
+PostgreSQL 18.6、pgvector 0.8.6、依存、provider、固定artifactは変更しません。
+
+SDKの非同期`cancel_job(UUID, CancelJob, *, idempotency_key) -> JobReceipt`は
+modelを再検証し、正確なHTTP 200を要求してsafe Native error catalogへ`job_cancel_conflict`を追加します。
+Native resource/SDK surfaceは**25 method**となります。MCPの4 toolとread-only hookは変更しません。
+Python taskのcancelはこのjob取消endpointを呼びません。
+全adapterは**service 0.0.15 / API v1 / schema 10**を要求し、readinessは厳密な履歴1〜10を検査します。
+capabilitiesはstage `m2-job-cancellation`と`job_cancellation` metadataを使います。
+`endpoint: "/v1/jobs/{job_id}/cancel"`、`compare_and_swap: ["state", "attempt"]`、
+`terminal_state: "cancelled"`、`provider_interruption: false`を追加します。
+[運用](operations/README-jp.md#explicit-job-cancellation)と
+[ADR 0015](adr/0015-job-cancellation-jp.md)を参照してください。
+
 ## Runtime readiness
 
-**v0.0.14/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+**既存readiness契約を維持し、v0.0.15/schema 10で検証済みです。**
 health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
 `GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
-新しい`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
+v0.0.14で導入した`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
 想定するreadiness応答は次のとおりです。
 
 | HTTP status | 正確なbody | Header |
@@ -76,7 +166,7 @@ admin資格情報やfallbackは使いません。API起動とworker検証を含�
 
 - superuser、`BYPASSRLS`、`memory`または`memory_ops`のtable所有権/owner-role membershipを
   拒否し、`NOINHERIT` membershipも対象です。
-- 厳密なmigration履歴`[1,2,3,4,5,6,7,8,9]`を要求します。
+- 厳密なmigration履歴`[1,2,3,4,5,6,7,8,9,10]`を要求します。
 - **`public`内の`vector` 0.8.6**を要求します。
 
 memory本文読取り、tenant lock、audit/epoch/job/receipt書込み、migration、
@@ -118,25 +208,26 @@ busy 503も考慮したorchestrator失敗/復旧thresholdを設定し、
 deployment perimeterでpublic probeを制限/rate-limitします。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
 
-stageは**`m2-runtime-readiness`**です。認証付きcapabilitiesに
+過去v0.0.14のstageは`m2-runtime-readiness`で、現在は`m2-job-cancellation`です。認証付きcapabilitiesに
 `health_probes` metadataとして`liveness: "/healthz"`、`readiness: "/readyz"`、
 `readiness_timeout_seconds: 5.0`、`readiness_max_in_flight_per_process: 1`を追加します。
-public memory surfaceは**24 resource method**を維持し、health pathはSDK resource-route coverage対象外です。
+job取消によりpublic memory surfaceは**25 resource method**となり、health pathはSDK resource-route coverage対象外です。
 SDK/MCP/hook probe methodは追加しません。
-対応adapterはすべて**service 0.0.14 / API v1 / schema 9**を要求します。
-application-only更新であり、新migration、依存、固定image変更はありません。
+対応adapterはすべて**service 0.0.15 / API v1 / schema 10**を要求します。
+readiness動作は維持しますが、job取消のschema 10にはmigration 010が必要です。
+依存や固定imageは変更しません。
 [運用](operations/README-jp.md#runtime-readiness)と
 [ADR 0014](adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.14 localとnative検査は合格しました。**
+**既存scope-access契約を維持し、v0.0.15で検証済みです。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
 IDはUUIDとしてparseし、lock keyを正規化します。取得memory本文ではなく、
 信頼する管理情報から承認済みopaque IDを選んでください。
-public Native memory surfaceは24 resource methodを維持し、
+public Native memory surfaceは25 resource methodとなり、
 **HTTP、MCP、Python SDK管理methodは追加しません**。
 
 ### 権限とcompare-and-swap
@@ -151,7 +242,7 @@ JWT、`--subject`、`--once`、runtime URLへのfallbackはありません。
 `SELECT`/`UPDATE`/`INSERT`/`DELETE`、`memory_ops`の`USAGE`と
 `scope_access_event`の`INSERT`が必要です。
 readもsession advisory barrierを取得し、table権限がread-onlyでもRLS bypass roleは必須です。
-操作前にrole、厳密なschema履歴**1〜9**、**`public`内の`vector` 0.8.6**を検査します。
+操作前にrole、厳密なschema履歴**1〜10**、**`public`内の`vector` 0.8.6**を検査します。
 
 | 操作 | 必須intent | 意味 |
 |---|---|---|
@@ -245,7 +336,7 @@ cancel、process kill、stdout喪失でも変更結果は不明になり得ま�
 
 barrierは配信済みcontextを撤回できません。最新ACL/削除記録のrestoreは手動であり、
 grantによってpurge済みdataは復活しません。
-過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-runtime-readiness`です。
+過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-job-cancellation`です。
 capabilitiesは`scope_access_administration`
 metadataとして`transport: "admin-cli"`、`command: "scope-access"`、
 `compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`を追加します。
@@ -255,7 +346,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**既存SDK契約を維持し、v0.0.14 localとnative検査は合格しました。**
+**SDKは型付きjob取消を追加し、v0.0.15で検証済みです。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -272,8 +363,8 @@ HTTPXがない場合のSDK importは固定の明確な`ImportError`となり、
 `mcp`/`hook`が提供するHTTPXでも動作します。extraの選択名でなく依存の存在を検出します。
 Docker test/runtimeは`mcp`・`hook`とともに`sdk`を含みます。
 core-only/hook-only/sdk-only検査と、hook-only/sdk-only導入にMCP SDKがないことの検査を実装しています。
-真のnoneditable wheel導入3検査と同梱`py.typed`検査はlocalと両native architectureで合格しました。
-Python依存のupgradeはありません。
+真のnoneditable wheel導入3検査と同梱`py.typed`検査はv0.0.15のlocalと両native architectureで
+合格しました。Python依存のupgradeはありません。
 
 `AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
 設定しないでください。`NativeSettings`は固定HTTPS originまたはloopback HTTP originを
@@ -284,7 +375,7 @@ request scopeは現在のserver ACLを狭めるだけで、identity変更や権�
 
 client instanceごとに`async with ... as memory:`を一度だけ使います。
 entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
-厳密な**service `0.0.14` / API `v1` / schema `9`**一致を要求します。
+厳密な**service `0.0.15` / API `v1` / schema `10`**一致を要求します。
 entry失敗時も`finally`で所有resourceを閉じます。
 entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
 exitは接続を解放するだけで、**dataは消去しません**。
@@ -299,8 +390,11 @@ host登録、delegation、自動jobは追加しません。
 すべて非同期です。下記body名はNative request model、ID引数はUUIDであり任意pathではありません。
 すべての変更にはcaller管理のkeyword-only `idempotency_key`が必須です。
 `forget`のpreview/purgeも対象で、両方HTTP 202です。
-その他の読取り専用methodはkey不要でHTTP 200、書込みはNative既存の201/202を維持します。
-job receiptはpublication完了を意味しません。
+その他の読取り専用methodはkey不要でHTTP 200、他の書込みはNative既存の201/202を維持します。
+`cancel_job`は正確なHTTP 200を要求し、取消receiptはpublicationでなくcommit済み取消を示します。
+SDK内部の各POSTは期待成功statusから変更を推測せず、readとmutationを明示区別します。
+HTTP 200の取消にもkey検証と保守的な変更結果不明の扱いを適用し、
+`forget` previewも同じ保守的な扱いを維持します。
 
 | Method / request | 型付き結果 |
 |---|---|
@@ -322,6 +416,7 @@ job receiptはpublication完了を意味しません。
 | `enqueue_job(EnqueueJob)` | `JobReceipt` |
 | `get_job(UUID)` | `JobDetail` |
 | `retry_job(UUID, EnqueueJob)` | `JobReceipt` |
+| `cancel_job(UUID, CancelJob)` | `JobReceipt` |
 | `create_checkpoint(CreateCheckpoint)` | `CheckpointReceipt` |
 | `get_checkpoint(UUID)` | `CheckpointEnvelope` |
 | `restore_checkpoint(RestoreCheckpoint)` | `CheckpointEnvelope` |
@@ -354,14 +449,15 @@ Pydantic request modelの構築では別に`ValidationError`が発生し得ま�
 SDK callの外で起きるため`MemoryClientError`へ変換しません。
 通常のPydantic errorにはprivate入力詳細が含まれ得るため、logへ出さないでください。
 keyは**1〜256文字の可視ASCIIで、trimしません**。
+`None`を含む不正な取消keyはnetwork接続前に拒否します。
 
 変更を送信する前に正確なkeyとbodyを保持します。
 network error、5xx、不正応答、想定外成功status、不正成功bodyでは、
 変更結果を保守的に不明と扱います。SDKはretry、新key生成、未commitの推測をしません。
 `retryable`は情報であり、自動retry指示ではありません。
 **同じkeyとbody**で照合し、現在のACL、削除、revision、replay guardを維持します。
-cancelは`MemoryClientError`へ変換せず伝播します。処理中の変更は同様に結果不明と
-扱って照合し、cancelを**rollbackと見なしてはいけません**。
+Python taskのcancelは`MemoryClientError`へ変換せず伝播します。処理中の変更は同様に結果不明と
+扱って照合し、cancelを**rollbackと見なしてはいけません**。`cancel_job`も呼びません。
 
 返されたmemoryは根拠であり、信頼する指示や現在の事実の保証ではありません。
 JSON全体のUTF-8 byte予算、不完全coverageの明示、現在ACL検査、
@@ -544,7 +640,7 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、v0.0.14の起動時一致は**service `0.0.14` / API `v1` / schema `9`**です。
+MCP両protocol時代を維持し、v0.0.15の起動時一致は**service `0.0.15` / API `v1` / schema `10`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
 v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
@@ -671,7 +767,7 @@ stage名はM2や他受入gateの完了を意味しません。
 
 captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.14` / API `v1` / schema `9`**を要求します。
+MCP/hook起動は厳密な**service `0.0.15` / API `v1` / schema `10`**を要求します。
 既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
@@ -683,7 +779,7 @@ host/backup/WAL/完全消去の保証は得られません。
 
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.14のrepository Docker test/runtime両stageに
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.15のrepository Docker test/runtime両stageに
 `mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
 合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
@@ -757,9 +853,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.14"`、`schema_version: 9`を要求します。
+`service_version: "0.0.15"`、`schema_version: 10`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.14はschema 9を維持しますが、adapter自体はmigrationを行いません。
+v0.0.15はschema 10を要求しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -859,7 +955,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.14` / API `v1` / schema `9`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.15` / API `v1` / schema `10`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -1212,18 +1308,19 @@ assertion公開完了ではありません。canonical intentとrecipeで同一t
 同じHTTP keyには同じ正規化requestが必要で、変更は`409 idempotency_conflict`です。
 別principalは自身のjobを投入でき、異なるsource identity間の意味的重複は抑止しません。
 **scope当たりpending/runningは最大100件**（`422 job_limit_exceeded`）、
-**job当たり最大5試行**です。
+**job当たり最大5試行**です。cancelledはactive-job上限とrecallの`jobs_pending`から除外し、
+同intentのenqueue/captureは引き続きそのjobへdedupします。
 capabilitiesは`durable_jobs`、`job_kinds: ["structured_remember"]`、
 `auto_synthesis: false`と、100 job/5試行/30秒lease上限を公開します。
 この上限付きjobはM2全体の受入を意味しません。
 
 `GET /v1/jobs/{job_id}`には現在のread権限が必要です。同一scopeのreaderは他principalの
-jobを読めますが、claim、publish、retryはできません。応答は次のfieldを含みます。
+jobを読めますが、claim、publish、retry、cancelはできません。応答は次のfieldを含みます。
 
 | Field | 契約 |
 |---|---|
 | `job_id`, `kind`, `recipe_version`, `retry_of` | opaque job identity、固定kind/recipe、nullableなretry parent |
-| `state` | `pending`、`running`、`succeeded`、`failed` |
+| `state` | `pending`、`running`、`succeeded`、`failed`、`cancelled` |
 | `attempt`, `max_attempts` | claim済みの試行回数。最大は5 |
 | `available_at`, `lease_until`, `created_at`, `updated_at` | scheduling/leaseとserver時刻。running以外のleaseはnull |
 | `error_code` | null、または`dependency_unavailable`、`stale_context`、`invalid_input`、`attempt_limit` |
@@ -1231,15 +1328,16 @@ jobを読めますが、claim、publish、retryはできません。応答は次
 | `result` | null、または後続訂正後も元のassertion `{memory_id, revision: 1}` |
 
 GETはrequest payload、lease token、owner principalを返しません。
-succeeded/failedの両terminal jobはrequest JSONを消去し、入力ID参照はpurgeまで保持します。
-terminal記録は不変です。
+succeeded/failed/cancelledのterminal jobはrequest JSONを消去し、入力ID参照はpurgeまで保持します。
+terminal記録は不変です。state/attempt CAS、publication競合、replay、`forget`との違いは
+[明示取消](#explicit-job-cancellation)を参照してください。
 
 ### Terminal失敗の明示retry
 
 `POST /v1/jobs/{job_id}/retry`は`Idempotency-Key`と元の`EnqueueJob` body全体を
 要求します。failed payloadは保存されていないため、ownerが再送する必要があります。
 現在の権限/根拠を再検査し、HMACでintentを確認します。
-intent変更は`409 job_intent_conflict`、failed以外のparentは`409 job_retry_conflict`、
+intent変更は`409 job_intent_conflict`、cancelledを含むfailed以外のparentは`409 job_retry_conflict`、
 非ownerは`404`です。
 
 retryは新たな5試行枠を持つ**一つの新child**を作り、旧terminal記録をresetしません。
@@ -1609,23 +1707,25 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.14はschema 9を維持し、新migrationは追加しません**。既存schema 9 DBには
-[application-only更新](operations/README-jp.md#schema-9-application-only-upgrade)を使います。
+**v0.0.15はschema 10と`010_job_cancellation.sql`を要求します**。
+job state/payload制約とterminal guardを変更し、tableは追加しません。
+過去v13→v14のapplication-only手順ではなく、
+[schema 10更新](operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
 過去のv0.0.13がdurable admin audit用の`009_scope_access.sql`を導入しました。
 既存の特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
 原子的membership/epoch/audit変更を使います。
 固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
-旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.14 componentだけを
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.15 componentだけを
 導入します。混在版/rolling互換性は主張しません。
-古いschemaには[schema 9更新](operations/README-jp.md#schema-9-scope-access-upgrade)を使います。
+すべての古いschemaには010までの既存migrationが必要です。
 古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
 migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既存extensionを拒否します。
 上記の固定prebuilt上流DB profileを使い、旧PostgreSQL imageが不変と想定したり、
-未固定extensionを使ったりしないでください。schema 9で旧schema 8 processを起動してはいけません。
+未固定extensionを使ったりしないでください。schema 10で古いschemaのprocessを起動してはいけません。
 既存episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.14`、API `v1`、schema `9`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.15`、API `v1`、schema `10`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -1637,7 +1737,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.14のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9]`と
+追加しません。v0.0.15のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -1645,24 +1745,69 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.14/schema 9 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.15/schema 10 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.14 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
+対応するv0.0.15 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
-[schema 9運用](operations/README-jp.md#schema-9-scope-access-upgrade)に従ってください。
+[schema 10運用](operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0015--schema-10"></a>
+
+### v0.0.15 / schema 10 — 検証済み
+
+**2026-09-17 JSTに実装の最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**535テスト、既存warning 1件**が合格しました。
+localの`./scripts/test-containers.sh`は**exit 0**でした。
+内訳は**既存495 + 新規40テスト**で、unit/integration別の件数は主張しません。
+Ruff、strict mypy（**source 19ファイル + strict SDK consumer 1ファイル**）、
+真のcore-only/hook-only/sdk-only導入検査は全3環境で合格しました。
+公開済み実装:
+[`9cf325f0d7aebe9c8dd6d72c41ba1510840f1460`](https://github.com/rioriost/pg_agmemory/commit/9cf325f0d7aebe9c8dd6d72c41ba1510840f1460)
+（`feat: add fenced durable job cancellation`）。
+[CI 35216770999](https://github.com/rioriost/pg_agmemory/actions/runs/35216770999)は
+この完全一致SHAで両native Linux architectureとも合格しました。
+job statusだけでなく**実log**で各architectureの件数、検査、smokeを確認しています。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| Local Apple Container | **298.29秒（4:58）** |
+| Docker、native `linux/amd64` | **406.88秒** |
+| Docker、native `linux/arm64` | **490.57秒** |
+
+所要時間は性能benchmarkではありません。これは実装の適格性確認であり、
+後続の最終文書公開やCI結果は主張しません。
+全3環境で全production smokeが合格しました。日本語tokenizer、HTTP、readiness、
+worker、modern/legacy MCP、hook全3 event、capture、pgvector、Python SDK、
+明示job取消、scope accessを対象にします。
+取消smokeは実SDKのenqueue → cancel → 同key replay → GET cancelled →
+worker `--once`のidle報告 → source purgeを実行し、
+そのfixtureのpurgeは`object_count: 2`を返しました。
+
+job取消のDB/CAS/競合/ownership/purge/rollback/worker `lease_lost`検査と、
+SDKの**全25 resource route** coverageが合格しました。
+実際にcommit済みのHTTP 200取消応答を失うと`outcome_unknown: true`となり、
+同じkey/bodyのreplayでreceiptを回復しました。
+別keyは`409 job_cancel_conflict`、`outcome_unknown: false`でした。
+不正応答/想定外statusの取消は結果不明のままとし、
+`None`を含む不正keyはnetwork接続前に拒否しました。
+SDK内部POSTは成功statusと独立してmutationを明示分類します。
+
+DDL後のschema 9→10 ledger失敗は以前のguard function、制約、schema 9履歴を復元し、
+その後のretryは成功しました。既存v6 jobのstate、attempt、payloadは不変でした。
+既存MVP/本番/品質/DRの制限を維持します。
+
 <a id="v0014--schema-9"></a>
 
-### v0.0.14 / schema 9 — 検証済み
+### 過去のv0.0.14 / schema 9 — 検証済み
 
 **2026-09-17 JSTに最終localとnative結果を検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**495テスト、既存warning 1件**、
@@ -1685,7 +1830,13 @@ schema 9は不変で、migrationは追加しません。
 | Docker、native `linux/arm64` | **470.16秒** |
 
 所要時間は性能benchmarkではありません。
-これらは上記実装SHAの結果です。その後の最終文書公開/CI runは別であり、ここでは報告しません。
+別の最終v0.0.14 docs
+[`d4b24f60a2fbdbba05ebaebd5a8a731b9bf74f68`](https://github.com/rioriost/pg_agmemory/commit/d4b24f60a2fbdbba05ebaebd5a8a731b9bf74f68)は
+[CI 35202931424](https://github.com/rioriost/pg_agmemory/actions/runs/35202931424)に合格しました。
+native実logで各architecture **495テスト、warning 1件**、Ruff、
+strict mypy **source 19 + SDK consumer 1ファイル**、optional導入、全production smokeを確認し、
+**amd64 319.51秒 / arm64 503.56秒**でした。
+docs所要時間は上記実装CI 35201615965とは別です。両v0.0.14 runともv0.0.15/schema 10の検証ではありません。
 
 実5秒locked-schema timeout検査はassertion範囲4.5〜10秒内で合格しましたが、
 wall-clock SLAではありません。cancel後のruntime backend leakはなく、

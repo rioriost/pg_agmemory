@@ -43,6 +43,11 @@ schema ledger is unavailable, while `/healthz` stays live; readiness recovers
 after restoration without an API restart. Keep the read-only, bounded probe
 separate from liveness and resource authorization; see
 [ADR 0014](docs/adr/0014-runtime-readiness.md).
+Schema 10 adds terminal job cancellation. Its smoke uses the SDK to enqueue,
+cancel, replay, confirm worker idleness, and purge the source dependency. Preserve
+state/attempt CAS, owner/current-access checks, atomic audit/receipt writes, and
+stale-worker fencing. HTTP 200 cancellation is a mutation, including for SDK
+key validation and uncertain outcomes; see [ADR 0015](docs/adr/0015-job-cancellation.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

@@ -8,6 +8,14 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/本番/性能/品質/HA/DR/完全消去の適格性確認ではない
 
+**過去版の注記:** このADRはapplication-only更新、stage、24-resource SDK境界を含む
+検証済みv0.0.14/schema 9の記録です。
+[ADR 0015](0015-job-cancellation-jp.md)はmigration 010と25番目のresource/SDK methodを
+追加するv0.0.15/schema 10 job取消の記録です。
+readiness semanticsは厳密なschema履歴1〜10で維持し、v0.0.15はlocalと両native architectureで検証済みです。
+別の最終v0.0.14 docs CI 35202931424は
+[過去の証拠](../STATUS-jp.md#v0014--schema-9)に記録します。
+
 ## 決定
 
 public `GET /healthz`は起動成功後のprocess livenessを維持し、

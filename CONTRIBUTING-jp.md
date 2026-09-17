@@ -42,6 +42,12 @@ readiness smokeでは`/readyz`の200、使い捨てDBのschema台帳を一時利
 readinessが回復することを確認します。読取り専用・時間制限付きprobeを
 livenessやresource認可と混同しないでください。
 [ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
+schema 10はjobの終端状態`cancelled`を追加します。smokeではSDKによるenqueue、
+cancel、再送、workerのidle確認、source依存先のpurgeを検査します。
+state/attempt CAS、所有者と現在の権限、audit/receiptの原子的更新、
+古いworkerの公開防止を維持してください。HTTP 200のcancelもmutationであり、
+SDKのkey検証と結果不明の扱いを省略してはいけません。
+[ADR 0015](docs/adr/0015-job-cancellation-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

@@ -8,6 +8,14 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/production/performance/quality/HA/DR/full-erasure qualification
 
+**Historical version notice:** this ADR records verified v0.0.14/schema 9,
+including its application-only upgrade, stage, and 24-resource SDK boundary.
+[ADR 0015](0015-job-cancellation.md) records v0.0.15/schema 10 job cancellation,
+which needs migration 010 and adds the 25th resource/SDK method. Readiness semantics
+are retained with exact schema history 1–10; v0.0.15 is verified locally and on both native architectures.
+Separate final v0.0.14 docs CI 35202931424 is recorded in
+[historical evidence](../STATUS.md#v0014--schema-9).
+
 ## Decision
 
 Preserve public `GET /healthz` as process liveness after successful startup,

@@ -7,9 +7,9 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**現在の上限付きmilestoneはv0.0.14/schema 9のruntime readinessです。
-実装はlocal Apple Containerとnative CI両architectureで検証済みです。
-以下の検証済みv0.0.13以前の結果は過去の証拠であり、v0.0.14の証拠ではありません。
+**上限付きmilestoneはv0.0.15/schema 10の明示job取消です。
+実装はlocalと両native Linux architectureで検証済みです。
+以下の検証済みv0.0.14以前の結果は過去の証拠であり、v0.0.15の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -31,18 +31,48 @@ postgresem連携は今後の実装対象です。
 性能・記憶品質・災害復旧・完全消去の受入は未測定または未認定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
 
+## Explicit job cancellation
+
+**v0.0.15/schema 10はlocalと両native architectureで検証済みです。**
+`POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
+`expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
+（0〜5、runningは1以上）だけを要求します。
+最初にjobを読み、tenant access epochや外部tool版ではなく**state/attempt CAS**を明示選択します。
+認証中のownerで、現在のscope read/write権限と有効・可視の入力を持つ場合だけ取消できます。
+同一scopeの別readerは`admin` permissionがあっても取消できません。
+
+HTTP **200**でcommit済み`JobReceipt`を返し、GETでterminal `cancelled`を確認します。
+期限切れleaseを含むpending/running jobを取消できます。
+同じjobのidentity、attempt、source/intent参照、retry parent、作成時刻を保持し、
+保存job payload、lease、errorを消去し、resultはありません。
+既存tenant session barrier下でstate変更、`job_cancelled` audit、idempotency receiptを
+原子的にcommitし、access/deletion epochは進めません。
+非同期の取消job、worker kill、provider中断、`forget`ではありません。
+source episode、dedup anchor、worker準備memory、WAL、backupは取消で消去されません。
+
+取消が先なら古いworker publicationを拒否し、publicationが先なら
+`409 job_cancel_conflict`となり公開済みresultは撤回しません。
+応答喪失時は**同じkey/body**か新しいGETで照合し、CAS値を盲目的に更新しません。
+failed専用retryはcancelled jobを拒否し、enqueue/captureのdedupは復活させずcancelled jobを返します。
+source purgeは引き続きjobを失効させ、取消replayを拒否します。
+SDKは`cancel_job`を追加してmemory surfaceを**25 method**とし、
+MCPの4 toolとread-only hookは変更しません。
+[完全な契約](docs/STATUS-jp.md#explicit-job-cancellation)、
+[運用とschema 10 migration](docs/operations/README-jp.md#explicit-job-cancellation)、
+[ADR 0015](docs/adr/0015-job-cancellation-jp.md)を参照してください。
+
 ## Runtime readiness
 
-**v0.0.14/schema 9はlocalとnative Linux amd64/arm64で検証済みです。新migrationはありません。**
+**既存readiness契約を維持し、v0.0.15/schema 10で検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
-`{"status":"ok"}`を返します。新しいpublic・認証不要の`GET /readyz`は
+`{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
 **503**と正確な`{"status":"not_ready"}`を返します。
 両readiness応答は`Cache-Control: no-store`と生成UUIDの`X-Request-ID`を持ち、
 private詳細を含めません。渡された認証headerは無視し、tenant/principalは選びません。
 
 受け付けた検査ごとに新しい**runtime** DB接続を開き、role/schema/extension契約だけを読みます。
-特権runtime roleやアプリtable所有権がないこと、厳密なmigration履歴1〜9、
+特権runtime roleやアプリtable所有権がないこと、厳密なmigration履歴1〜10、
 `public`内の`vector` 0.8.6を確認します。validation sessionは明示read-onlyです。
 memory本文、tenant lock、audit/epoch/job/receipt書込み、migration、
 retry、cache、background検査はありません。
@@ -55,14 +85,14 @@ resource routeはprobeを呼ばず、新たな永続readiness gateも取得し�
 readinessはtraffic制御に使い、依存障害でrestart stormを起こすlivenessとして使わないでください。
 失敗/復旧thresholdとperimeter制限/rate limitを設定します。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
-24 memory resource methodとSDK/MCP/hook interfaceは維持します。
+readinessはSDK/MCP/hook probe methodを追加せず、別の取消methodによりNative/SDK memory surfaceは25になります。
 [完全な契約](docs/STATUS-jp.md#runtime-readiness)、
-[probe例とapplication-only更新](docs/operations/README-jp.md#runtime-readiness)、
+[probe運用](docs/operations/README-jp.md#runtime-readiness)、
 [ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.14 localとnative検査は合格しました。**
+**既存scope-access契約を維持し、v0.0.15で検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -82,15 +112,15 @@ CLIは共有**tenant session advisory lock**をcommitとJSON stdout flushまで�
 盲目的retryやidempotency receiptはありません。配信済みcontextは撤回できず、
 purge済みdataも復活しません。auditは改ざん耐性の証明やDR solutionではありません。
 
-`009_scope_access.sql`はv0.0.13でschema 9を導入し、v0.0.14も維持します。
+`009_scope_access.sql`はschema 9でscope-access auditを導入し、schema 10も維持します。
 PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
-現在stageは`m2-runtime-readiness`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
+現在stageは`m2-job-cancellation`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
 [get → set → revoke例とmigration](docs/operations/README-jp.md#scope-access-administration)、
 [ADR 0013](docs/adr/0013-scope-access-jp.md)を参照してください。
 
 ## Python SDK
 
-**既存SDK契約を維持し、v0.0.14 localとnative検査は合格しました。** 対応checkoutから導入します。
+**SDKは型付きjob取消を追加し、v0.0.15で検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -146,7 +176,7 @@ SDK call時の検証はsanitized SDK errorを返します。
 
 `AsyncMemoryClient`は固定HTTPS originまたはloopback HTTP originとtokenの形を検査し、
 実際のtoken認証はserverが行います。context entryで所有HTTP clientを作成し、
-認証付きcapabilitiesの**service 0.0.14 / API v1 / schema 9**完全一致を要求します。
+認証付きcapabilitiesの**service 0.0.15 / API v1 / schema 10**完全一致を要求します。
 一つのcontext内だけで使い、再entryや自動retryはありません。
 未完了taskはawaitするかcancel後にawaitして、**contextをexitする前に完了を確認**してください。
 client closeはrequestのschedule/cancel管理でもDB rollbackでもありません。
@@ -154,7 +184,7 @@ exitで閉じるのは接続であり、**保存memoryは消去しません**。
 scopeはserver ACLを狭めるだけです。返されたmemoryは根拠であって、
 信頼する指示や現在の事実の保証ではありません。
 
-明示embedding、job、graph、checkpoint、tool effectを含む全24 public memory resource
+明示job取消、embedding、job、graph、checkpoint、tool effectを含む全25 public memory resource
 methodを対象とし、CLI管理やworker実行は対象外です。
 すべての変更にはcallerが保持するkeyword-onlyの`idempotency_key`が必須です。
 処理中のcancelを含む変更結果不明時は**同じkeyとbody**で照合し、
@@ -202,7 +232,18 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**2026-09-17 JSTにv0.0.14最終localとnative結果を検証しました。**
+**v0.0.15実装の適格性確認はlocalと両native architectureで合格しました。**
+実装
+[`9cf325f0d7aebe9c8dd6d72c41ba1510840f1460`](https://github.com/rioriost/pg_agmemory/commit/9cf325f0d7aebe9c8dd6d72c41ba1510840f1460)は
+完全一致SHAの[CI 35216770999](https://github.com/rioriost/pg_agmemory/actions/runs/35216770999)に合格しました。
+各環境**535テスト、既存warning 1件**で、local Apple Containerは**298.29秒（4:58）**、
+native Docker amd64は**406.88秒**、arm64は**490.57秒**でした。
+native実logでRuff、strict mypy **source 19ファイル + SDK consumer 1ファイル**、
+真のoptional導入、明示job取消を含む全production smokeを確認し、localも同じ検査に合格しました。
+所要時間は性能benchmarkではありません。[実装証拠](docs/STATUS-jp.md#v0015--schema-10)を参照してください。
+後続の文書公開CIは主張しません。
+
+**過去のv0.0.14最終localとnative結果を2026-09-17 JSTに検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**495テスト、既存warning 1件**、
 Ruff、strict mypy（**source 19ファイル + SDK consumer 1ファイル**）、
 真のcore/hook/sdk-only導入、readiness障害/liveness/復旧を含むnon-root production全smokeが合格しました。
@@ -213,7 +254,11 @@ Ruff、strict mypy（**source 19ファイル + SDK consumer 1ファイル**）�
 native実logで完全一致SHA、件数、全検査/smokeを確認しています。
 所要時間は**local 295.67秒 / amd64 385.41秒 / arm64 470.16秒**であり、性能benchmarkではありません。
 [検証証拠](docs/STATUS-jp.md#v0014--schema-9)を参照してください。
-これは実装の結果であり、その後の最終docs CI runではありません。
+別の最終v0.0.14 docs
+[d4b24f6](https://github.com/rioriost/pg_agmemory/commit/d4b24f60a2fbdbba05ebaebd5a8a731b9bf74f68)は
+[CI 35202931424](https://github.com/rioriost/pg_agmemory/actions/runs/35202931424)に合格しました。
+実logで各native architecture 495テスト/warning 1件と全検査/smokeを確認し、
+**amd64 319.51秒 / arm64 503.56秒**でした。両v0.0.14 runともv0.0.15の検証ではありません。
 
 **過去のv0.0.13最終localとnative結果を2026-09-17 JSTに検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**464テスト、既存warning 1件**、
@@ -389,24 +434,24 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.14はschema 9を維持し、新migrationは追加しません。** 既存schema 9 DBは
-[application-only更新](docs/operations/README-jp.md#schema-9-application-only-upgrade)を使います。
-古いschemaにはv0.0.13でdurable admin audit用に導入した`009_scope_access.sql`が必要です。
-[schema 9更新](docs/operations/README-jp.md#schema-9-scope-access-upgrade)に従ってください。
+**v0.0.15はschema 10と`010_job_cancellation.sql`を要求します。**
+過去v13→v14のapplication-only更新ではありません。
+[schema 10更新](docs/operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
+古いschemaにはdurable admin audit用の`009_scope_access.sql`を含む既存migration sequenceも必要です。
 古いDBには引き続きv0.0.11の`008_pgvector.sql` migrationが必要です。
 PostgreSQLは**`public`内の`vector` 0.8.6**を必要とし、
 migrationは版/schemaが異なる既存extensionを拒否します。prebuilt profileは対応extensionを提供します。
-API、worker、`migrate`はschema 9記録済みでもこれを検査します。
+API、worker、`migrate`はschema 10記録済みでもこれを検査します。
 必要なmigrationの前に**旧版・新版の全API、worker、adapter、hook起動、
 SDK caller、管理commandを停止/drain**し、backupと現在の削除/ACL記録を保全してoffline migrationを行います。
 古いDBにはmigration 007のlexical backfillを含む既存migrationも適用します。
 **embedding backfillや自動embedding再構築はありません**。
-対応するv0.0.14 processだけを再起動し、API/workerは厳密な履歴
-`[1, 2, 3, 4, 5, 6, 7, 8, 9]`とschema `public`内のextension `vector` 0.8.6を要求します。
-schema 8 processとschema 9のrolling混在互換性はありません。
+対応するv0.0.15 processだけを再起動し、API/workerは厳密な履歴
+`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`とschema `public`内のextension `vector` 0.8.6を要求します。
+古いschemaのprocessとschema 10のrolling混在互換性はありません。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 rolling共存やdowngradeは非対応です。
-[schema 9手順](docs/operations/README-jp.md#schema-9-scope-access-upgrade)に従ってください。
+[schema 10手順](docs/operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -537,7 +582,7 @@ Python SDKには`pg-agmemory[sdk]`を選択してください。
 repositoryのDocker test/runtime imageは意図的に3 extraすべてを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.14のtest/runtime両stageに
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.15のtest/runtime両stageに
 `mcp`・`hook`・`sdk`を含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
@@ -551,7 +596,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.14`、schema `9`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.15`、schema `10`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -631,7 +676,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.14` / API `v1` / schema `9`**を検査し、
+**service `0.0.15` / API `v1` / schema `10`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -706,7 +751,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-lexical projectionを再構築して、対応するv0.0.14 processだけを再起動します。
+lexical projectionを再構築して、対応するv0.0.15 processだけを再起動します。
 embeddingの投入/再構築は行いません。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
@@ -728,6 +773,9 @@ job dedupでは根拠順を正規化しますが、同じHTTP keyには同じ正
 scope当たりpending/runningは100件、job当たり最大5試行です。
 terminal jobはrequest JSONを消去します。ownerは`POST /v1/jobs/{job_id}/retry`へ
 元のbody全体とkeyを送り、failed jobを明示再試行できます。
+ownerはstate/attempt CASで[pending/running作業を取消](#explicit-job-cancellation)できます。
+cancelled jobはterminalでretryできず、active-job上限と`jobs_pending`の対象外ですが、
+同intentのenqueue/captureは引き続きそのjobへdedupします。
 同じparentの再試行は一つのchildを再利用し、そのchildが失敗したらchildを再試行します。
 
 subjectのprovision後、制限付き`PGAG_DATABASE_URL`資格情報で実行します。
@@ -879,6 +927,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Python SDKの決定](docs/adr/0012-python-sdk-jp.md) | [Python SDK decisions](docs/adr/0012-python-sdk.md) |
 | [Scope-access管理](docs/adr/0013-scope-access-jp.md) | [Scope-access administration](docs/adr/0013-scope-access.md) |
 | [Runtime readiness](docs/adr/0014-runtime-readiness-jp.md) | [Runtime readiness](docs/adr/0014-runtime-readiness.md) |
+| [Job取消](docs/adr/0015-job-cancellation-jp.md) | [Job cancellation](docs/adr/0015-job-cancellation.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

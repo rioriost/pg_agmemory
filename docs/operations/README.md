@@ -14,14 +14,15 @@ Use the pinned prebuilt upstream pgvector DB profile below and the application
 image built from the repository's existing `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The current bounded milestone is **v0.0.14/schema 9 runtime readiness**.
-**Implementation is verified locally with Apple Container and on both native CI architectures**.
-Verified v0.0.13 and earlier results are historical, not v0.0.14 evidence.
+The current bounded milestone is **v0.0.15/schema 10 explicit job cancellation**.
+**The implementation is verified locally and on both native Linux architectures**.
+Verified v0.0.14 and earlier results are historical, not v0.0.15 evidence.
 Existing `008_pgvector.sql` requires **`vector` 0.8.6 in `public`** and rejects an
 existing extension at another version or in another schema.
 Existing `009_scope_access.sql` supplies the privileged audit table.
-v0.0.14 adds no migration; the pinned DB profile and Python dependency versions
-are unchanged. See [runtime readiness](#runtime-readiness).
+New `010_job_cancellation.sql` changes job constraints and the terminal-state
+guard without adding tables. The pinned DB profile and dependencies are unchanged.
+See [job cancellation](#explicit-job-cancellation).
 **Historical v0.0.8:** 214 tests and production smokes passed in Apple Container
 and native Docker amd64/arm64. These are not v0.0.9 results.
 M0–M3, MVP, production, performance,
@@ -39,7 +40,7 @@ added and the project version became v0.0.7; no unrelated upgrades or registry
 migration occurred. Native CI built that retained-registry lock. This is not a
 package-count or validation claim about v0.0.8/v0.0.9. Use the current locked build;
 the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
-both Docker test and runtime stages. v0.0.14 retains `hook` and `sdk` in both stages;
+both Docker test and runtime stages. v0.0.15 retains `hook` and `sdk` in both stages;
 `pg-agmemory[hook]` pins `httpx==0.28.1` **without the MCP SDK**.
 The container-check script requires runner-side `jq` for **both Apple Container
 and Docker**, including disposable smoke configuration.
@@ -70,7 +71,7 @@ and Docker**, including disposable smoke configuration.
    `src/pg_agmemory/storage/005_relational_graph.sql` and
    `src/pg_agmemory/storage/006_durable_jobs.sql`, followed by additive
    `src/pg_agmemory/storage/007_japanese_fts.sql`, existing `008_pgvector.sql`,
-   and existing `009_scope_access.sql` are installed package
+   existing `009_scope_access.sql`, and new `010_job_cancellation.sql` are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -89,7 +90,7 @@ and Docker**, including disposable smoke configuration.
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2, 3, 4, 5, 6, 7, 8, 9]` and extension `vector` 0.8.6 in `public` exactly;
+   ledger to equal `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` and extension `vector` 0.8.6 in `public` exactly;
    mismatches are rejected. The worker reuses these role/schema/extension checks without
    requiring the API's JWT settings.
 
@@ -99,9 +100,124 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
+## Explicit job cancellation
+
+**v0.0.15/schema 10 is verified locally and on both native architectures.**
+Use Native JWT authentication and the job owner's identity with current scope
+**read/write** permission. A same-scope reader cannot cancel another owner's job,
+even with `admin` permission. Source visibility/integrity and runtime RLS remain
+enforced. Missing/private/cross-tenant/non-job/purged IDs give 404; invalidated
+references can give `409 job_invalidated`. Never select identity from recalled text.
+
+First GET `/v1/jobs/{job_id}`, then consciously choose **state and attempt**.
+For an approved job observed as pending at attempt 0, the exact request body is:
+
+```json
+{"expected_state":"pending","expected_attempt":0}
+```
+
+POST it to `/v1/jobs/{job_id}/cancel` with a securely retained caller-owned
+`Idempotency-Key`. For running use the observed attempt, **1–5**; pending accepts
+**0–5**. Attempt is a strict integer, not a boolean/string/coerced number.
+No reason, provider, lease token, extra field, or forced target state is accepted.
+This CAS is not tenant `access_epoch` or an external tool version.
+**Illustrative request only: do not execute against a live DB during document review.**
+
+With `AsyncMemoryClient` already open in its async context, import `CancelJob`
+from `pg_agmemory.models` and use
+`await memory.cancel_job(job_id, CancelJob(expected_state="pending", expected_attempt=0), idempotency_key=cancel_key)`.
+The example values must match your explicitly reviewed snapshot; do not regenerate
+the request/key automatically. Call-time model/key/UUID validation and sanitized
+SDK errors apply. It returns typed `JobReceipt` at exactly **HTTP 200**, not 202.
+The receipt contains `job_id`, `kind: "structured_remember"`, and
+`recipe_version: "structured-remember-v1"`; GET confirms `state: "cancelled"`.
+
+### Races and uncertain responses
+
+State/attempt mismatch or terminal succeeded/failed/cancelled gives
+`409 job_cancel_conflict`; a fresh-key repeat on cancelled is also a conflict.
+Successful same-key/same-body replay returns the original receipt only under
+current owner/write/access/liveness checks. A changed body **or job ID** under
+the key gives `409 idempotency_conflict`. SDK recognizes `job_cancel_conflict`.
+After lost/unknown HTTP delivery, preserve and retry the **same key/body**, or GET
+the current job. Do not blindly choose new expected values or a new key.
+Cancelling a Python task does not implicitly call `cancel_job`; an in-flight
+mutation can still commit, so cancellation does not prove rollback.
+
+The existing tenant **session advisory lock stays held through HTTP delivery**;
+worker claim/publication use the same barrier. Cancellation accepts running jobs
+with either active or expired leases. If it wins, no result is published by that job.
+Old preparation may continue; publish/heartbeat/fail rejects not-running with
+`job_lease_conflict`, and the worker reports `lease_lost`.
+If publication commits first, cancellation conflicts and the succeeded result
+remains. No worker kill, provider abort, compensation, or unpublishing is promised.
+Use explicit `forget` when data removal is intended.
+
+### What is retained
+
+Terminal cancelled clears the stored job payload, lease token/deadline, and error,
+with no result. It preserves job ID, attempt, input/source/intent references,
+retry parent, and creation time; DB `updated_at` records completion.
+No private cancellation reason is stored.
+Job transition, `job_cancelled` audit, and the HMAC-backed request/key idempotency
+receipt commit atomically or all roll back. The stored replay result is only `{job_id}`.
+No access/deletion epoch advances. DB constraints/trigger prevent terminal
+revival or rewrite; new jobs must still start pending at attempt 0.
+
+Cancelled jobs are excluded from the 100 pending/running cap and `jobs_pending`.
+Retry remains failed-only (`409 job_retry_conflict` for cancelled). Same-intent
+enqueue/capture dedups to the cancelled job; capture replay keeps the original
+episode/job pair. New HTTP keys or invented recipe/intent keys are not a revival path.
+Cancellation is **not purge**: canonical episodes/evidence, intent/dedup anchors,
+prepared worker memory, WAL, and backups are not erased.
+Source forget still purges dependent jobs and denies cancellation replay;
+later grants cannot resurrect purged payload. See [the contract](../STATUS.md#explicit-job-cancellation)
+and [ADR 0015](../adr/0015-job-cancellation.md).
+
+## Schema 10 job-cancellation upgrade
+
+**v0.0.15 passed locally and on both native architectures.** Unlike the historical v13→v14 application-only
+update, schema 9→10 requires **`010_job_cancellation.sql`**.
+It modifies existing job state/payload constraints and the guard trigger; no
+table is added. Providers, dependencies, PostgreSQL 18.6/pgvector 0.8.6, and pinned
+images are unchanged.
+
+1. Stop/drain old/new APIs, workers, SDK callers, MCP adapters, hook launches,
+   and admin commands, including replicas/restarts. Preserve current ACL/deletion
+   records and backups; rehearse only with disposable data.
+2. Use matching v0.0.15 migration tooling and `PGAG_ADMIN_DATABASE_URL` to run
+   `pg-agmemory migrate`, applying 010 after exact history 001–009.
+   Older schemas must apply all retained migrations too. Runtime credentials
+   must not migrate or bypass the schema guard.
+3. Verify exact history `[1,2,3,4,5,6,7,8,9,10]` and `vector` 0.8.6 in `public`.
+   Start only matching v0.0.15 API/worker/SDK/MCP/hook components, requiring
+   **service 0.0.15 / API v1 / schema 10**. No mixed-version rollout or downgrade.
+4. Check authenticated stage `m2-job-cancellation`, `job_cancellation` metadata
+   (`endpoint: "/v1/jobs/{job_id}/cancel"`, `compare_and_swap: ["state", "attempt"]`,
+   `terminal_state: "cancelled"`, `provider_interruption: false`), bounded readiness,
+   and approved resource/adapter checks before reopening traffic.
+
+Implementation
+[`9cf325f0d7aebe9c8dd6d72c41ba1510840f1460`](https://github.com/rioriost/pg_agmemory/commit/9cf325f0d7aebe9c8dd6d72c41ba1510840f1460)
+passed [CI 35216770999](https://github.com/rioriost/pg_agmemory/actions/runs/35216770999)
+on that exact SHA. Actual logs verified **535 tests, 1 existing warning** per native
+architecture: **406.88 s amd64 / 490.57 s arm64**; local Apple Container passed
+**535 tests, 1 existing warning, 298.29 s (4:58)**.
+Ruff, strict mypy **19 source files + 1 SDK consumer**, genuine optional installs,
+and all production smokes passed in all three environments.
+Schema-9→10 ledger failure after DDL restored the prior guard function,
+constraints, and schema-9 history before retry; legacy v6 job state/attempt/payload
+remained unchanged. The production smoke passed actual SDK enqueue → cancel →
+same-key replay → GET cancelled → worker `--once` idle → source purge,
+returning `object_count: 2` for that fixture.
+These are implementation results, not later final-docs publication/CI results.
+Elapsed times are not performance benchmarks; see [verified evidence](../STATUS.md#v0015--schema-10).
+There are now 25 Native resource/SDK methods. MCP's four tools and read-only
+hook are unchanged. No MVP/production/quality/DR qualification is claimed.
+
 ## Runtime readiness
 
-**v0.0.14/schema 9: verified locally and on native Linux amd64/arm64.**
+**Retained readiness contract; verified in v0.0.15/schema 10.**
 Keep liveness and dependency readiness separate:
 `GET /healthz` returns exactly `{"status":"ok"}` after successful startup and
 does not contact the DB. Public, unauthenticated `GET /readyz` returns exactly
@@ -136,7 +252,7 @@ statements for role/schema/extension catalogs and the schema ledger.
 connections, including startup/worker validation; later Native mutations remain
 writable. It rejects superuser, `BYPASSRLS`, and table ownership/owner-role
 membership in `memory`/`memory_ops`, including `NOINHERIT`, and requires exact
-history `[1,2,3,4,5,6,7,8,9]` plus `vector` 0.8.6 in `public`.
+history `[1,2,3,4,5,6,7,8,9,10]` plus `vector` 0.8.6 in `public`.
 It reads no memory payload, takes no tenant lock, and writes no audit, epoch,
 job, receipt, source, or tombstone. No migration, cache, background polling,
 provider call, or retry is performed.
@@ -174,6 +290,9 @@ No Kubernetes, Compose, or Docker `HEALTHCHECK` wiring is supplied.
 
 ### Schema 9 application-only upgrade
 
+**Historical v0.0.13→v0.0.14 procedure only, not the v0.0.15 upgrade.**
+Use [schema-10 maintenance](#schema-10-job-cancellation-upgrade) for current tooling.
+
 v0.0.13→v0.0.14 adds **no migration** or dependency/image upgrade.
 Keep PostgreSQL 18.6, `vector` 0.8.6 in `public`, and exact schema history 1–9.
 Stop/drain old APIs, workers, adapters, hook launches, SDK callers, and admin
@@ -186,9 +305,10 @@ metadata (`liveness: "/healthz"`, `readiness: "/readyz"`,
 `readiness_timeout_seconds: 5.0`, `readiness_max_in_flight_per_process: 1`).
 Then check liveness, bounded readiness, and approved authenticated resource/
 adapter behavior before reopening traffic; ready alone is insufficient.
-Older schemas still need the [retained migration sequence](#schema-9-scope-access-upgrade).
+That historical procedure required migrations through 009. Current upgrades
+from older schemas instead need the [sequence through 010](#schema-10-job-cancellation-upgrade).
 
-The implemented disposable-DB production smoke uses the same API process after
+The historical v0.0.14 disposable-DB production smoke uses the same API process after
 the normal HTTP smoke: ready 200 → schema-ledger
 rename → ready 503 while health stays 200 → ledger restoration → ready 200,
 with retained authenticated smokes and no source/tombstone writes.
@@ -203,14 +323,19 @@ Implementation
 passed [CI 35201615965](https://github.com/rioriost/pg_agmemory/actions/runs/35201615965);
 actual native logs verified the checks/smokes.
 Test elapsed: **295.67 s local / 385.41 s amd64 / 470.16 s arm64**, not a
-performance benchmark. These are implementation results, not a final-docs CI run.
+performance benchmark. Separate final v0.0.14 docs
+[d4b24f6](https://github.com/rioriost/pg_agmemory/commit/d4b24f60a2fbdbba05ebaebd5a8a731b9bf74f68)
+passed [CI 35202931424](https://github.com/rioriost/pg_agmemory/actions/runs/35202931424):
+495 tests/1 warning and all checks/smokes per native architecture,
+**319.51 s amd64 / 503.56 s arm64**. Neither run validates v0.0.15.
 See [validation evidence](../STATUS.md#v0014--schema-9).
-The 24 memory resource routes and SDK/MCP/hook method surfaces are unchanged;
-health probes are outside SDK route coverage. See [ADR 0014](../adr/0014-runtime-readiness.md).
+Readiness adds no SDK/MCP/hook probe method; current job cancellation brings the
+resource/SDK surface to 25. Health probes remain outside SDK route coverage.
+See [ADR 0014](../adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.14 local and native checks passed.**
+**Retained scope-access contract; verified in v0.0.15.**
 Prefer `pg-agmemory scope-access` over handwritten membership SQL.
 Use only approved existing tenant/scope/principal UUIDs, all in the same tenant.
 The command never provisions records and is not exposed through HTTP, MCP, or
@@ -319,24 +444,25 @@ ACL/deletion records is still manual; grants never resurrect purged data.
 
 ## Schema 9 scope-access upgrade
 
-**Schema 9 is unchanged; v0.0.14 local and native checks passed.**
-For an existing schema-9 DB use the [application-only update](#schema-9-application-only-upgrade).
+**Retained schema-9 migration step; not a complete v0.0.15 upgrade.**
+Current tooling must continue through the [schema-10 upgrade](#schema-10-job-cancellation-upgrade),
+including for an existing schema-9 database. v0.0.15 passed locally and on both native architectures.
 Retain the pinned PostgreSQL **18.6** / `vector` **0.8.6 in `public`** image below.
-Migration 009 introduced durable privileged audit in v0.0.13; it is not new in v0.0.14.
+Migration 009 introduced durable privileged audit in v0.0.13; it is not new in v0.0.15.
 
 1. Stop/drain all old/new APIs, workers, adapters, hook launches, SDK callers,
    and administrative commands, including replicas/restarts. Preserve backups
    and current ACL/deletion records; rehearse only on disposable databases.
-2. Run `pg-agmemory migrate` from matching v0.0.14 tooling with the migration
+2. Run `pg-agmemory migrate` from matching v0.0.15 tooling with the migration
    administrator. Apply `009_scope_access.sql` after 001–008 in the recorded
-   migration sequence. Schema-8→9 rollback/retry after a ledger-write failure
-   and prior migration tests passed locally and on both native architectures in v0.0.14.
+   migration sequence, then apply 010. Historical schema-8→9 rollback/retry after
+   a ledger-write failure passed in v0.0.14; the v0.0.15 full local/native suites also passed.
    Existing ACL rows are preserved, with no audit backfill for prior manual changes.
    No embedding backfill or implicit ownership/purge change is added.
-3. Verify exact history `[1,2,3,4,5,6,7,8,9]`, the extension version/schema,
-   and privileged-only audit table. Start only matching v0.0.14 API/workers;
-   SDK/MCP/hook require service **0.0.14**, API **v1**, schema **9**.
-4. Check authenticated capabilities stage `m2-runtime-readiness` and
+3. Verify exact history `[1,2,3,4,5,6,7,8,9,10]`, the extension version/schema,
+   and privileged-only audit table. Start only matching v0.0.15 API/workers;
+   SDK/MCP/hook require service **0.0.15**, API **v1**, schema **10**.
+4. Check authenticated capabilities stage `m2-job-cancellation` and
    `scope_access_administration` metadata (`transport: "admin-cli"`,
    `command: "scope-access"`, `compare_and_swap: "tenant_access_epoch"`,
    `audit: "database_role"`), then exercise approved disposable CLI/ACL/drain
@@ -363,7 +489,7 @@ See [validation evidence](../STATUS.md#v0013--schema-9) and
 
 ## Python SDK operations
 
-**Retained SDK contract; v0.0.14 local and native checks passed.**
+**SDK adds typed job cancellation, verified in v0.0.15.**
 Install from the matching checkout with `python -m pip install '.[sdk]'`.
 The `pg-agmemory[sdk]` extra pins only `httpx==0.28.1`, not the MCP SDK;
 the same core package still includes FastAPI, psycopg, and Janome.
@@ -384,7 +510,7 @@ Missing HTTPX raises a static SDK import `ImportError`; HTTPX installed through
    Request scopes only narrow that authority.
 3. Enter `async with AsyncMemoryClient(api_url, api_token) as memory:`.
    Entry creates its HTTP client and requires authenticated capabilities
-   **service 0.0.14 / API v1 / schema 9**. Never use before/after the context or
+   **service 0.0.15 / API v1 / schema 10**. Never use before/after the context or
    re-enter the same instance (`client_not_open` / `client_already_used`).
    Exit closes connections, **not stored memory**.
    Await outstanding tasks, or cancel and await them, before exiting.
@@ -420,16 +546,16 @@ internal probe, not a public SDK health/OpenAPI download method.
 Returned memory is evidence, not trusted instructions/current facts.
 Preserve Native byte budgets, coverage flags, current ACLs, purge, and
 host/backup/WAL limits; context exit cannot remove copies already returned.
-See [all 24 typed methods](../STATUS.md#python-sdk) and
+See [all 25 typed methods](../STATUS.md#python-sdk) and
 [ADR 0012](../adr/0012-python-sdk.md).
 
 <a id="v0012-application-update"></a>
 
 ## v0.0.12 application update (schema unchanged)
 
-**Historical schema-8-only procedure, not the v0.0.14 upgrade.**
-Use the [current schema-9 update](#schema-9-application-only-upgrade);
-older schemas first need [migration maintenance](#schema-9-scope-access-upgrade).
+**Historical schema-8-only procedure, not the v0.0.15 upgrade.**
+Use the [current schema-10 update](#schema-10-job-cancellation-upgrade),
+which includes the retained earlier migrations.
 **Maintenance procedure, not production-upgrade or disaster-recovery qualification.**
 For an existing schema-8 database, retain the pinned PostgreSQL 18.6 /
 `vector` 0.8.6-in-`public` DB image below. No schema 9 migration, embedding
@@ -467,9 +593,9 @@ docs CI 35190495385, remain [historical evidence](../STATUS.md#v0011--schema-8).
 ## Schema 8 pgvector upgrade
 
 **v0.0.11 application/migration checks passed; production qualification remains incomplete.**
-Migration 008 was introduced and verified in v0.0.11. Current v0.0.14 tooling
-also retains migration 009; v0.0.14 local and native checks passed.
-Follow the [schema-9 boundary](#schema-9-scope-access-upgrade), not the
+Migration 008 was introduced and verified in v0.0.11. Current v0.0.15 tooling
+also applies migrations 009 and 010; v0.0.15 passed locally and on both native architectures.
+Follow the [schema-10 boundary](#schema-10-job-cancellation-upgrade), not the
 historical v0.0.12 application-only procedure.
 
 Adopt the prebuilt image:
@@ -502,9 +628,9 @@ host-APT installation, or source-build workflow is part of the implemented profi
 3. Preserve a backup, application/schema/extension versions, and current deletion
    and ACL records. Rehearse only on disposable databases; restore quarantine and
    DR/full-erasure gaps remain.
-4. With the migration administrator and matching v0.0.14 application, run
+4. With the migration administrator and matching v0.0.15 application, run
    `pg-agmemory migrate`. Apply `008_pgvector.sql` after unchanged 001–007,
-   followed by `009_scope_access.sql`;
+   followed by `009_scope_access.sql` and `010_job_cancellation.sql`;
    older databases still need migration 007's lexical backfill.
    Migration requires `vector` **0.8.6 in `public`** and refuses an existing
    extension with the wrong version/schema.
@@ -513,8 +639,8 @@ host-APT installation, or source-build workflow is part of the implemented profi
    New episode/assertion-revision vector projections have forced RLS,
    canonical `ON DELETE CASCADE`, and runtime **SELECT/INSERT only**.
    **No existing data receives embedding backfill**.
-5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9]` and extension `vector` 0.8.6 in `public`
-   before starting only matching v0.0.14 APIs/workers. Check authenticated
+5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` and extension `vector` 0.8.6 in `public`
+   before starting only matching v0.0.15 APIs/workers. Check authenticated
    capabilities, lexical compatibility, synthetic vector/hybrid ranking,
    coverage, RLS/time filters, replay/purge, and retained adapters before traffic.
    API/worker startup rejects schema/extension mismatches.
@@ -523,7 +649,7 @@ host-APT installation, or source-build workflow is part of the implemented profi
    exists; lexical reindex does not populate vectors.
 
 Migration 008 is the **historical schema-8 migration**; current tooling also needs
-the schema-9 upgrade above. This differs from the historical v0.0.10 application-only
+the schema-10 upgrade above, including 009. This differs from the historical v0.0.10 application-only
 update below. Artifact/version/license inspection and v0.0.11 application checks are verified
 separately. See [the current contract](../STATUS.md#pgvector-exact-and-hybrid-retrieval)
 and [ADR 0011](../adr/0011-pgvector-retrieval.md).
@@ -718,11 +844,12 @@ a larger corpus is complete. Do not label this a semantic embedding model.
 ## Atomic structured capture operations
 
 **Retained capture contract, verified in v0.0.11.** Bootstrap Native roles
-as above and use matching service `0.0.14`, API `v1`, schema `9`.
+as above and use matching service `0.0.15`, API `v1`, schema `10`.
 The historical v0.0.10 stage `m2-atomic-capture` did not complete M2.
 Capture is a Native route, **not an MCP tool or automatic recall-hook action**.
-The retained schema-8 and new schema-9 migrations are separate from capture semantics;
-capture never generates embeddings.
+The retained schema-8/9 migrations are separate from capture semantics.
+Schema 10 adds terminal cancellation; same-intent capture still dedups without
+reviving the job. Capture never generates embeddings.
 
 ### Explicit request example
 
@@ -874,7 +1001,7 @@ and [ADR 0010](../adr/0010-atomic-capture.md).
    `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
    not human prompts or ordinary log output. Diagnostics use sanitized stderr.
 6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
-   `0.0.14`, schema `9` before serving tools. A bad setting/token, unreachable API,
+   `0.0.15`, schema `10` before serving tools. A bad setting/token, unreachable API,
    or version mismatch exits nonzero without logging secrets. A passing
    `/healthz` alone is insufficient. Fix trusted configuration and restart;
    do not bypass the check or change tool arguments to override identity/URL.
@@ -965,7 +1092,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
 1. Provision the Native API subject/scopes using the role separation above.
    The hook requires **no DB credentials**, admin URL, JWT signing key, or
    external model key. It only uses the configured Native audience token.
-2. Install `pg-agmemory[hook]` or use the v0.0.14 repository image with
+2. Install `pg-agmemory[hook]` or use the v0.0.15 repository image with
    `mcp`, `hook`, and `sdk` extras. For the checkout use `uv sync --frozen --extra hook`.
    Hook-only installation pins `httpx==0.28.1`, **not the MCP SDK**.
 3. Have the operator securely supply the following environment before starting
@@ -1000,7 +1127,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
    `scope_ids`, purpose, mode, budget, URL, header, tool, time, or other field
    is accepted. Event text never authorizes access.
 5. Each invocation freshly checks authenticated `GET /v1/capabilities` for exact
-   service `0.0.14`, API `v1`, schema `9`, then sends `POST /v1/recall` with
+   service `0.0.15`, API `v1`, schema `10`, then sends `POST /v1/recall` with
    `mode: "implicit"`, trusted recall settings, and Native current-time defaults.
    The same fixed token is used for both requests; no caching of authorization
    or responses occurs. Replace credentials only through trusted startup configuration.
@@ -1209,7 +1336,7 @@ See [the complete contract](../STATUS.md#implicit-recall-hook) and
 ## Historical v0.0.10 application update (schema unchanged)
 
 **Historical schema-7-only workflow, not the v0.0.11 upgrade.**
-For the current version use the [schema-9 application update](#schema-9-application-only-upgrade).
+For the current version use the [schema-10 upgrade](#schema-10-job-cancellation-upgrade).
 
 For an existing v0.0.7/v0.0.8/v0.0.9 schema-7 database there is **no migration 008/009/010 or new
 backfill**. Record the application/schema versions and preserve a backup and
@@ -1232,8 +1359,9 @@ Reindex remains separate offline maintenance, not an MCP/hook command.
 ## v0.0.7 maintenance migration
 
 **Historical schema-7 procedure for v0.0.7–v0.0.10 only.**
-Upgrading an older schema to v0.0.14 must also apply migrations
-[008](#schema-8-pgvector-upgrade) and [009](#schema-9-scope-access-upgrade)
+Upgrading an older schema to v0.0.15 must also apply migrations
+[008](#schema-8-pgvector-upgrade), [009](#schema-9-scope-access-upgrade),
+and [010](#schema-10-job-cancellation-upgrade)
 and must not restart the schema-7 processes described here.
 
 This is the retained schema-7 migration introduced in v0.0.7, for older
@@ -1330,14 +1458,14 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v0.0.14 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.15 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
    pg-agmemory reindex-lexical
    ```
 
-3. Use exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9]` and the matching extension; the command takes the migration
+3. Use exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` and the matching extension; the command takes the migration
    advisory lock with a 5-second lock timeout, and replaces both projection
    tables in one transaction. It segments every retained episode and assertion
    revision, not just heads, excluding tombstones. Canonical IDs, system times,
@@ -1348,7 +1476,7 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v0.0.14 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.15 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.
@@ -1379,7 +1507,7 @@ agents runtime DB credentials or authority to select worker subjects. No JWT
 signing/public key or admin URL is needed by the worker; never use superuser,
 table-owner/owner-member, or `BYPASSRLS` credentials. Startup shares API role/schema
 validation. Only that principal's currently writable jobs can be claimed.
-Same-scope readers can GET jobs but cannot run or retry another principal's work.
+Same-scope readers can GET jobs but cannot run, retry, or cancel another principal's work.
 
 Omit `--once` for continuous operation: idle poll interval is 1 second, transient
 DB loop delay is 2 seconds. `--once` handles at most one due job and prints JSON
@@ -1406,7 +1534,7 @@ access/deletion checks instead of relying on an earlier CLI outcome.
 3. Poll job GET for state, attempts (maximum 5), scheduling/lease timestamps,
    safe error code, immutable episode input references, retry parent, and result.
    GET never returns request JSON, owner principal, or lease token. Terminal
-   success/failure erases the request; succeeded results stay revision 1 after
+   success/failure/cancellation erases the request; succeeded results stay revision 1 after
    later corrections. Use the result's exact assertion revision for explain.
    Assertion recorded/system time begins at worker publication, not job enqueue;
    do not substitute job `created_at` for the assertion's adoption time.
@@ -1418,7 +1546,7 @@ access/deletion checks instead of relying on an earlier CLI outcome.
 5. For an owned terminal failed job, POST the full original `EnqueueJob` body
    to `/v1/jobs/{job_id}/retry` with a key. Current evidence/permissions and HMAC
    intent are rechecked; changed intent is `409 job_intent_conflict`, nonfailed
-   parent is `409 job_retry_conflict`, and nonowner is `404`. Repeated retry of
+   parent, including cancelled, is `409 job_retry_conflict`, and nonowner is `404`. Repeated retry of
    that parent reuses one child even across keys. If the child fails, retry its
    ID for another explicit five-attempt cycle. Never reset terminal rows/recipes in SQL.
 
@@ -1431,10 +1559,13 @@ rolls back output. Internal heartbeat validates lease/epochs, but the determinis
 processor needs no background heartbeat task or external call. There are no public
 claim/publish/heartbeat endpoints. At-least-once attempts produce at most one
 committed result per job, not external exactly-once execution.
+For [explicit cancellation](#explicit-job-cancellation), state/attempt CAS and
+the shared tenant barrier decide the race: cancellation fences old publication,
+but cannot unpublish an already-committed result or abort external work.
 
 `observe` never auto-enqueues; synchronous `remember` and its legacy JSON/HMAC
 remain unchanged. Recall's `jobs_pending` covers readable pending/running jobs
-in requested scopes; `synthesis_pending` and `graph_used` remain false.
+in requested scopes, excluding cancelled; `synthesis_pending` and `graph_used` remain false.
 Jobs are not recall/explain items or checkpoint/effect reference kinds.
 See [the contract](../STATUS.md#durable-jobs) and
 [ADR 0006](../adr/0006-durable-jobs.md); M0/M1/M2/M3, MVP/production, performance,
@@ -1594,9 +1725,9 @@ inventing a new key. A committed mutation may have lost its HTTP acknowledgment.
 **Current default: use the CAS-safe [scope-access CLI](#scope-access-administration).**
 It holds the session lock through commit and stdout flush and supplies atomic
 epoch/audit updates. The handwritten sequence below is a **historical expert
-fallback**, not a schema-9-ready recipe: it lacks expected-epoch CAS, conditional
+fallback**, not a schema-9/10-ready recipe: it lacks expected-epoch CAS, conditional
 epoch advancement, and `scope_access_event` audit. Do not run it unchanged on
-schema 9. An expert override must implement all current invariants; otherwise
+schema 9 or 10. An expert override must implement all current invariants; otherwise
 use the supported CLI. Direct SQL bypasses are not covered by its guarantees.
 
 **Administrative permission changes must cooperate with the API's lock.**
