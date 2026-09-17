@@ -7,6 +7,8 @@ from pg_agmemory.models import (
     AssertionHistoryPage,
     CancelJob,
     Capture,
+    CaptureBatch,
+    CaptureBatchResult,
     CaptureResult,
     CheckpointBranch,
     CheckpointEnvelope,
@@ -80,6 +82,13 @@ async def typed_calls(
         assert_type(memory, AsyncMemoryClient)
         assert_type(await memory.observe(observe, idempotency_key=key), ObserveResult)
         assert_type(await memory.capture(capture, idempotency_key=key), CaptureResult)
+        assert_type(
+            await memory.capture_batch(
+                CaptureBatch(episode=capture.episode, memories=[capture.memory]),
+                idempotency_key=key,
+            ),
+            CaptureBatchResult,
+        )
         assert_type(await memory.remember(remember, idempotency_key=key), RememberResult)
         assert_type(
             await memory.revise_assertion(identity, revise, idempotency_key=key), RevisionResult

@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 
 from pg_agmemory.jobs import Jobs
-from pg_agmemory.models import Capture, EnqueueJob
+from pg_agmemory.models import Capture, CaptureBatch, EnqueueJob
 from pg_agmemory.service import MemoryService
 
 
@@ -30,4 +30,30 @@ class Captures:
         }
         await self.memory.save_result("capture", key_hash, payload_hash, result)
         await self.memory.audit("capture", UUID(episode["memory_id"]))
+        return result
+
+    async def create_batch(self, data: CaptureBatch, key: str) -> dict[str, Any]:
+        await self.memory.scope(data.episode.scope_id, "write")
+        key_hash, payload_hash, previous = await self.memory.replay(
+            "capture_batch", key, data.model_dump_json()
+        )
+        if previous is not None:
+            return previous
+        episode = await self.memory.observe(data.episode, "capture-batch-observe-v1:" + key_hash)
+        jobs = Jobs(self.memory)
+        job_ids = []
+        for index, memory in enumerate(data.memories):
+            intent = memory.remember(data.episode.scope_id, UUID(episode["memory_id"]))
+            job = await jobs.enqueue(
+                EnqueueJob(kind="structured_remember", memory=intent),
+                f"capture-batch-job-v1:{key_hash}:{index}",
+            )
+            job_ids.append(job["job_id"])
+        result = {
+            "memory_id": episode["memory_id"],
+            "revision": 1,
+            "synthesis_job_ids": job_ids,
+        }
+        await self.memory.save_result("capture_batch", key_hash, payload_hash, result)
+        await self.memory.audit("capture_batch", UUID(episode["memory_id"]))
         return result

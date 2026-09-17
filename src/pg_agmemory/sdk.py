@@ -18,6 +18,8 @@ from pg_agmemory.models import (
     AssertionHistoryPage,
     CancelJob,
     Capture,
+    CaptureBatch,
+    CaptureBatchResult,
     CaptureResult,
     CheckpointBranch,
     CheckpointEnvelope,
@@ -211,6 +213,14 @@ class AsyncMemoryClient:
             mutation=True,
             status=201,
             key=idempotency_key,
+        )
+
+    async def capture_batch(
+        self, request: CaptureBatch, *, idempotency_key: str
+    ) -> CaptureBatchResult:
+        return await self._post(
+            "/v1/captures/batch", request, CaptureBatch, TypeAdapter(CaptureBatchResult),
+            mutation=True, status=201, key=idempotency_key,
         )
 
     async def remember(self, request: Remember, *, idempotency_key: str) -> RememberResult:

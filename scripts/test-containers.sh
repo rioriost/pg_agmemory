@@ -783,6 +783,59 @@ asyncio.run(smoke())
 print("Production entity query smoke passed: exact pages, duplicate identities, explicit graph seed, purge")
 ' "$scope_id"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import CaptureBatch, CapturedMemory, Forget, Observe
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        body = CaptureBatch(
+            episode=Observe(
+                scope_id=UUID(sys.argv[1]), source_namespace="production-batch",
+                source_event_id="batch-smoke", occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                content="Synthetic Gold batch evidence", consent_reference="synthetic-smoke",
+            ),
+            memories=[CapturedMemory(
+                subject="SyntheticBatch-" + str(number), predicate="tier", value="Gold",
+                evidence_quote="Gold", explicit_intent=True,
+            ) for number in range(3)],
+        )
+        saved = await sdk.capture_batch(body, idempotency_key="batch-smoke")
+        assert len(set(saved.synthesis_job_ids)) == 3
+        assert await sdk.capture_batch(body, idempotency_key="batch-smoke") == saved
+        published = set()
+        for _ in saved.synthesis_job_ids:
+            worker = subprocess.run(
+                ["pg-agmemory", "worker", "--once", "--subject", sys.argv[2]],
+                capture_output=True, text=True, timeout=30, check=True,
+            )
+            outcome = json.loads(worker.stdout)
+            assert outcome["outcome"] == "succeeded"
+            published.add(UUID(outcome["job_id"]))
+        assert published == set(saved.synthesis_job_ids)
+        assert await sdk.capture_batch(body, idempotency_key="batch-new-key") == saved
+        assert all([(await sdk.get_job(job_id)).state == "succeeded" for job_id in saved.synthesis_job_ids])
+        deleted = await sdk.forget(Forget(memory_ids=[saved.memory_id], reason="synthetic-smoke"),
+                                   idempotency_key="batch-purge")
+        assert deleted.object_count == 7
+        try:
+            await sdk.capture_batch(body, idempotency_key="batch-smoke")
+        except MemoryClientError as error:
+            assert error.error.code == "not_found" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Purged batch replay remained available")
+
+asyncio.run(smoke())
+print("Production batch capture smoke passed: atomic admission, independent worker publication, replay, purge")
+' "$scope_id" "${run_id}-worker"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

@@ -18,6 +18,8 @@ from pg_agmemory.models import (
     AssertionHistoryPage,
     CancelJob,
     Capture,
+    CaptureBatch,
+    CaptureBatchResult,
     CapturedMemory,
     CheckpointBranch,
     CheckpointEnvelope,
@@ -75,6 +77,22 @@ def memory(scope, source):
         value="Gold",
         evidence=[Evidence(memory_id=source, quote="Gold")],
         explicit_intent=True,
+    )
+
+
+def batch_request(scope=None):
+    return CaptureBatch(
+        episode=observation(scope),
+        memories=[
+            CapturedMemory(
+                subject=f"ACME-{i}",
+                predicate="tier",
+                value="Gold",
+                evidence_quote="Gold",
+                explicit_intent=True,
+            )
+            for i in range(2)
+        ],
     )
 
 
@@ -291,7 +309,7 @@ def test_incompatible_server_closes_before_any_operation(monkeypatch, capabiliti
 
 
 @pytest.mark.parametrize("key", ["", " ", " lead", "tail ", "\r\nsecret", "あ", "x" * 257, None, 1])
-@pytest.mark.parametrize("method", ["observe", "cancel"])
+@pytest.mark.parametrize("method", ["observe", "cancel", "batch"])
 def test_bad_keys_are_rejected_before_network(monkeypatch, key, method):
     _, calls = mock_client(monkeypatch, lambda _: pytest.fail("Invalid key reached API"))
 
@@ -300,6 +318,8 @@ def test_bad_keys_are_rejected_before_network(monkeypatch, key, method):
             with pytest.raises(MemoryClientError, match="invalid_request") as failure:
                 if method == "observe":
                     await client.observe(observation(), idempotency_key=key)
+                elif method == "batch":
+                    await client.capture_batch(batch_request(), idempotency_key=key)
                 else:
                     await client.cancel_job(
                         uuid4(),
@@ -515,6 +535,7 @@ def test_sdk_route_surface_covers_native_resources(env):
     expected = {
         "/v1/observe",
         "/v1/captures",
+        "/v1/captures/batch",
         "/v1/remember",
         "/v1/assertions/{memory_id}/revisions",
         "/v1/assertions/history",
@@ -549,7 +570,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 29
+    assert len(methods) == len(expected) == 30
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
@@ -923,6 +944,117 @@ def test_real_sdk_entity_query_preserves_duplicate_identities_for_explicit_graph
         asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    "outcome", ["receipt", "conflict", "wrong_status", "empty", "too_many", "lost"]
+)
+def test_sdk_batch_capture_preserves_mutation_uncertainty_bounds_and_no_automatic_split(
+    monkeypatch, outcome
+):
+    body = batch_request()
+    receipt = {
+        "memory_id": str(uuid4()),
+        "revision": 1,
+        "synthesis_job_ids": [str(uuid4()), str(uuid4())],
+    }
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/captures/batch"
+        assert request.headers["idempotency-key"] == "durable-batch"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated batch response loss")
+        if outcome == "conflict":
+            return response(
+                409,
+                {
+                    "code": "idempotency_conflict",
+                    "request_id": str(uuid4()),
+                    "retryable": False,
+                },
+            )
+        if outcome == "empty":
+            return response(201, receipt | {"synthesis_job_ids": []})
+        if outcome == "too_many":
+            return response(201, receipt | {"synthesis_job_ids": [str(uuid4()) for _ in range(17)]})
+        return response(200 if outcome == "wrong_status" else 201, receipt)
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            if outcome == "receipt":
+                result = await sdk.capture_batch(body, idempotency_key="durable-batch")
+                assert isinstance(result, CaptureBatchResult)
+                assert result.model_dump(mode="json") == receipt
+            else:
+                with pytest.raises(MemoryClientError) as error:
+                    await sdk.capture_batch(body, idempotency_key="durable-batch")
+                assert "PRIVATE" not in str(error.value)
+                assert error.value.error.outcome_unknown == (outcome != "conflict")
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.capture_batch(
+                    body.model_copy(update={"memories": [body.memories[0]] * 2}),
+                    idempotency_key="invalid",
+                )
+            oversized = body.model_copy(
+                update={
+                    "memories": [
+                        body.memories[0].model_copy(
+                            update={"subject": str(i), "value": "x" * 65536}
+                        )
+                        for i in range(5)
+                    ]
+                }
+            )
+            with pytest.raises(MemoryClientError, match="body_too_large") as large:
+                await sdk.capture_batch(oversized, idempotency_key="oversized")
+            assert not large.value.error.outcome_unknown and len(calls) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_real_sdk_batch_capture_ordered_jobs_independent_publication_and_purge(env, api_process):
+    with api_process("sdk-batch.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                body = batch_request(env.scopes[0])
+                saved = await sdk.capture_batch(body, idempotency_key="batch")
+                assert isinstance(saved, CaptureBatchResult) and len(saved.synthesis_job_ids) == 2
+                assert await sdk.capture_batch(body, idempotency_key="batch") == saved
+                assert await sdk.capture_batch(body, idempotency_key="batch-new") == saved
+                for job_id in saved.synthesis_job_ids:
+                    queued = await sdk.get_job(job_id)
+                    assert queued.input_refs[0].memory_id == saved.memory_id
+                    assert queued.state == "pending"
+                published_ids = set()
+                for _ in saved.synthesis_job_ids:
+                    published = await run_once(env.settings.database_url, env.subjects[0])
+                    assert published["outcome"] == "succeeded"
+                    job_id = UUID(published["job_id"])
+                    published_ids.add(job_id)
+                    detail = await sdk.get_job(job_id)
+                    full = await sdk.explain(Explain(memory_id=detail.result.memory_id))
+                    assert isinstance(full, AssertionExplanation)
+                    assert (
+                        full.assertion.subject
+                        == body.memories[saved.synthesis_job_ids.index(job_id)].subject
+                    )
+                assert published_ids == set(saved.synthesis_job_ids)
+                assert await sdk.capture_batch(body, idempotency_key="batch") == saved
+                purged = await sdk.forget(
+                    Forget(memory_ids=[saved.memory_id], reason="test"),
+                    idempotency_key="batch-purge",
+                )
+                assert purged.object_count == 5
+                with pytest.raises(MemoryClientError, match="not_found"):
+                    await sdk.capture_batch(body, idempotency_key="batch")
+
+        asyncio.run(scenario())
+
+
 @pytest.mark.integration
 def test_real_sdk_owned_job_pagination_state_filter_and_purge(env, api_process):
     with api_process("sdk-job-query.log") as (http, _):
@@ -1275,8 +1407,9 @@ def test_sdk_does_not_cache_authorization_or_scope_visibility(env, api_process):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("batch", [False, True])
 def test_sdk_lost_committed_response_replays_same_reference(
-    env, api_process, monkeypatch, lose_first_response_transport
+    env, api_process, monkeypatch, lose_first_response_transport, batch
 ):
     lost = lose_first_response_transport
     direct = httpx.AsyncHTTPTransport()
@@ -1304,13 +1437,16 @@ def test_sdk_lost_committed_response_replays_same_reference(
 
         async def scenario():
             async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
-                body = observation(env.scopes[0])
+                body = batch_request(env.scopes[0]) if batch else observation(env.scopes[0])
+                send = sdk.capture_batch if batch else sdk.observe
                 with pytest.raises(MemoryClientError) as failure:
-                    await sdk.observe(body, idempotency_key="durable-key")
+                    await send(body, idempotency_key="durable-key")
                 assert failure.value.error.outcome_unknown and lost.calls == 1
                 assert lost.committed_response is not None
-                replay = await sdk.observe(body, idempotency_key="durable-key")
+                replay = await send(body, idempotency_key="durable-key")
                 assert replay.memory_id == UUID(lost.committed_response["memory_id"])
+                if batch:
+                    assert replay.model_dump(mode="json") == lost.committed_response
                 assert lost.calls == 2
             with psycopg.connect(env.admin_url) as conn:
                 assert (

@@ -35,6 +35,8 @@ from pg_agmemory.models import (
     AssertionHistoryPage,
     CancelJob,
     Capture,
+    CaptureBatch,
+    CaptureBatchResult,
     CaptureResult,
     CheckpointBranch,
     CheckpointEnvelope,
@@ -270,10 +272,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-entity-query",
+            "stage": "m2-batch-capture",
             "features": [
                 "observe",
                 "atomic_structured_capture",
+                "atomic_batch_structured_capture",
                 "structured_remember",
                 "assertion_revisions",
                 "fts_recall",
@@ -307,6 +310,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "max_jobs": 1,
                 "recipe_version": "structured-remember-v1",
                 "automatic_capture": False,
+            },
+            "atomic_batch_capture": {
+                "endpoint": "/v1/captures/batch",
+                "max_jobs": 16,
+                "recipe_version": "structured-remember-v1",
+                "automatic_capture": False,
+                "admission_atomic": True,
+                "publication_atomic": False,
             },
             "job_kinds": ["structured_remember"],
             "job_query": {
@@ -438,6 +449,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/captures", status_code=201, response_model=CaptureResult)
     async def capture(data: Capture, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await Captures(service(request)).create(data, idempotency_key)
+
+    @app.post("/v1/captures/batch", status_code=201, response_model=CaptureBatchResult)
+    async def capture_batch(
+        data: CaptureBatch, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Captures(service(request)).create_batch(data, idempotency_key)
 
     @app.post("/v1/remember", status_code=201, response_model=RememberResult)
     async def remember(data: Remember, request: Request, idempotency_key: IdempotencyKey) -> Any:

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from pg_agmemory.models import (
     AssertionHistory,
     CancelJob,
+    CaptureBatch,
     CheckpointBranch,
     MemoryItem,
     Observe,
@@ -238,3 +239,47 @@ def test_entity_query_defaults_bounds_and_duplicate_scopes():
     assert QueryEntities(scope_ids=[scope], canonical_label=" ACME ").canonical_label == "ACME"
     with pytest.raises(ValidationError):
         QueryEntities(scope_ids=[scope, scope])
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["empty", "seventeen", "duplicate", "trim_duplicate", "scope", "evidence", "intent", "unknown"],
+)
+def test_capture_batch_bounds_distinct_intents_and_closed_fields(change):
+    body = {
+        "episode": {
+            "scope_id": uuid4(),
+            "source_namespace": "test",
+            "source_event_id": "1",
+            "occurred_at": "2026-09-01T00:00:00Z",
+            "content": "Gold",
+            "consent_reference": "test",
+        },
+        "memories": [
+            {
+                "subject": "ACME",
+                "predicate": "tier",
+                "value": "Gold",
+                "evidence_quote": "Gold",
+                "explicit_intent": True,
+            }
+        ],
+    }
+    if change == "empty":
+        body["memories"] = []
+    elif change == "seventeen":
+        body["memories"] = [dict(body["memories"][0], subject=str(i)) for i in range(17)]
+    elif change in ("duplicate", "trim_duplicate"):
+        body["memories"].append(
+            dict(body["memories"][0], subject=" ACME " if change == "trim_duplicate" else "ACME")
+        )
+    elif change == "scope":
+        body["memories"][0]["scope_id"] = uuid4()
+    elif change == "evidence":
+        body["memories"][0]["evidence"] = [{"memory_id": uuid4(), "quote": "Gold"}]
+    elif change == "intent":
+        body["memories"][0]["explicit_intent"] = False
+    else:
+        body["batch_id"] = uuid4()
+    with pytest.raises(ValidationError):
+        CaptureBatch.model_validate(body)

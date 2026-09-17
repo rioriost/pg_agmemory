@@ -135,6 +135,17 @@ class Capture(Contract):
     memory: CapturedMemory
 
 
+class CaptureBatch(Contract):
+    episode: Observe
+    memories: Annotated[list[CapturedMemory], Field(min_length=1, max_length=16)]
+
+    @model_validator(mode="after")
+    def distinct_memories(self) -> "CaptureBatch":
+        if len({memory.model_dump_json() for memory in self.memories}) != len(self.memories):
+            raise ValueError("captured memories must be distinct")
+        return self
+
+
 class ReviseAssertion(Contract):
     expected_revision: Revision
     value: Content
@@ -352,6 +363,12 @@ class CaptureResult(BaseModel):
     memory_id: UUID
     revision: Literal[1]
     synthesis_job_id: UUID
+
+
+class CaptureBatchResult(BaseModel):
+    memory_id: UUID
+    revision: Literal[1]
+    synthesis_job_ids: Annotated[list[UUID], Field(min_length=1, max_length=16)]
 
 
 class RememberResult(BaseModel):
