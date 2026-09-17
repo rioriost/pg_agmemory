@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and vector/capture/API/worker/MCP/hook smokes."
+    echo "Build and run lint, types, PostgreSQL tests, and SDK/vector/capture/API/worker/MCP/hook smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -383,4 +383,57 @@ with httpx.Client(
 print("Production pgvector smoke passed: exact/hybrid, episode/assertion, purge")
 ' "$scope_id"
 
-echo "Container tests and production vector/capture/API/worker/MCP/hook smoke passed ($engine)."
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import (
+    Capture, CapturedMemory, DeletionPreview, DeletionResult, EmbeddingModel, Explain, Forget,
+    Observe, PutEmbedding, Recall, VectorQuery,
+)
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        request = Capture(episode=Observe(
+            scope_id=scope, source_namespace="production-sdk", source_event_id="sdk-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic SDK Gold",
+            consent_reference="synthetic-smoke",
+        ), memory=CapturedMemory(
+            subject="ACME", predicate="tier", value="Gold", evidence_quote="Gold", explicit_intent=True,
+        ))
+        captured = await sdk.capture(request, idempotency_key="sdk-capture")
+        assert await sdk.capture(request, idempotency_key="sdk-capture") == captured
+        assert (await sdk.get_job(captured.synthesis_job_id)).state == "pending"
+        canonical = await sdk.embedding_input(Explain(memory_id=captured.memory_id))
+        model = EmbeddingModel(name="synthetic-sdk", revision="basis-v1")
+        values = [1.0] + [0.0] * 767
+        await sdk.put_embedding(PutEmbedding(memory_id=captured.memory_id,
+            input_digest=canonical.input_digest, model=model, values=values),
+            idempotency_key="sdk-embedding")
+        recalled = await sdk.recall(Recall(scope_ids=[scope], purpose="synthetic-sdk",
+            retrieval_mode="vector", vector_query=VectorQuery(model=model, values=values)))
+        assert [item.memory_id for item in recalled.items] == [captured.memory_id]
+        assert recalled.coverage.retrieval_complete
+        preview = await sdk.forget(Forget(memory_ids=[captured.memory_id],
+            mode="preview", reason="synthetic-sdk"), idempotency_key="sdk-preview")
+        assert isinstance(preview, DeletionPreview) and preview.object_count == 2
+        purged = await sdk.forget(Forget(memory_ids=[captured.memory_id], reason="synthetic-sdk"),
+            idempotency_key="sdk-purge")
+        assert isinstance(purged, DeletionResult)
+        assert (await sdk.get_deletion(purged.deletion_id)).state == "active_store_purged"
+        try:
+            await sdk.capture(request, idempotency_key="sdk-capture")
+        except MemoryClientError as exc:
+            assert exc.error.code == "not_found" and not exc.error.outcome_unknown
+        else:
+            raise AssertionError("Purged capture replay accepted")
+
+asyncio.run(smoke())
+print("Production Python SDK smoke passed: capture, replay, typed reads, vector recall, purge")
+' "$scope_id"
+
+echo "Container tests and production SDK/vector/capture/API/worker/MCP/hook smoke passed ($engine)."

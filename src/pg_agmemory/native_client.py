@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import json
 import re
+from collections.abc import Set
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
@@ -112,8 +113,11 @@ def failure(
 
 
 class NativeHTTPClient:
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self, client: httpx.AsyncClient, *, safe_codes: Set[str] = SAFE_NATIVE_CODES
+    ) -> None:
         self.client = client
+        self.safe_codes = safe_codes
 
     async def exchange(
         self,
@@ -160,7 +164,7 @@ class NativeHTTPClient:
                                 status=response.status_code,
                             ) from None
                         raise failure(
-                            native.code if native.code in SAFE_NATIVE_CODES else "native_api_error",
+                            native.code if native.code in self.safe_codes else "native_api_error",
                             retryable=response.status_code in (429, 503),
                             unknown=mutation and response.status_code >= 500,
                             status=response.status_code,
@@ -189,20 +193,23 @@ class NativeHTTPClient:
     async def request[T: BaseModel](
         self,
         path: str,
-        request: BaseModel,
+        request: BaseModel | None,
         response: TypeAdapter[T],
         *,
         expected_status: int = 200,
         key: str | None = None,
         mutation: bool = False,
+        max_request_bytes: int = MAX_REQUEST_BYTES,
     ) -> T:
+        body = None
         try:
-            body = json.dumps(
-                request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")
-            ).encode()
+            if request is not None:
+                body = json.dumps(
+                    request.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")
+                ).encode()
         except UnicodeEncodeError:
             raise failure("invalid_request") from None
-        if len(body) > MAX_REQUEST_BYTES:
+        if body is not None and len(body) > max_request_bytes:
             raise failure("body_too_large")
         status, payload = await self.exchange(path, body=body, key=key, mutation=mutation)
         if status != expected_status:

@@ -227,7 +227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-pgvector-retrieval",
+            "stage": "m2-python-sdk",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -282,6 +282,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "transport": "stdio",
                 "remote": False,
                 "tools": ["memory_recall", "memory_remember", "memory_explain", "memory_forget"],
+            },
+            "python_sdk": {
+                "installation": "sdk-extra",
+                "async": True,
+                "automatic_retry": False,
             },
             "recall_hook": {
                 "installation": "hook-extra",
