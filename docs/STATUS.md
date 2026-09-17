@@ -3,7 +3,7 @@
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
 **Current bounded implementation: v0.0.22/schema 10 explicit batch capture.
-Graph fix verified; expanded directional qualification pending.
+Graph fix and all-direction regression verified locally and on both native architectures.
 Verified v0.0.21 and earlier results remain historical evidence, not v0.0.22 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -59,7 +59,7 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10 contract retained; expanded directional qualification pending.** Native JWT and caller-owned
+**v0.0.22/schema 10 verified locally and on both native architectures.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -151,7 +151,7 @@ See [operations](operations/README.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
+**v0.0.22/schema 10 verified locally and on both native architectures.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -246,7 +246,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
+**v0.0.22/schema 10 verified locally and on both native architectures.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -340,7 +340,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
+**v0.0.22/schema 10 verified locally and on both native architectures.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -428,7 +428,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.22 expanded directional qualification pending.**
+**Retained checkpoint-head contract; v0.0.22 verified locally and on both native architectures.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -506,7 +506,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.22 expanded directional qualification pending.**
+**Retained recall-filter contract; v0.0.22 verified locally and on both native architectures.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -577,7 +577,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.22 expanded directional qualification pending.**
+**Retained required-context contract; v0.0.22 verified locally and on both native architectures.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -659,7 +659,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.22 expanded directional qualification pending.**
+**Retained job-cancellation contract; v0.0.22 verified locally and on both native architectures.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -752,7 +752,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
+**Retained readiness contract; v0.0.22/schema 10 verified locally and on both native architectures.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -835,7 +835,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.22 expanded directional qualification pending.**
+**Retained scope-access contract; v0.0.22 verified locally and on both native architectures.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -966,7 +966,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds explicit batch capture: 30 methods; v0.0.22 expanded directional qualification pending.**
+**SDK adds explicit batch capture: 30 methods; v0.0.22 verified locally and on both native architectures.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -984,8 +984,8 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification passed in the 774-test graph-fix qualification; expanded
-directional qualification is pending.
+verification passed in the 780-test all-direction qualification, locally and on
+both native architectures.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -2536,9 +2536,28 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0022--schema-10"></a>
 
-### v0.0.22 / schema 10 — expanded directional qualification pending
+### v0.0.22 / schema 10 — all-direction qualification verified
 
-**Graph fix qualified; expanded directional qualification pending, 2026-09-18 JST.**
+**Final all-direction qualification verified, 2026-09-18 JST.**
+Directional follow-up
+[`3f56c51434333428fe742bb6a464d1d3117e8e26`](https://github.com/rioriost/pg_agmemory/commit/3f56c51434333428fe742bb6a464d1d3117e8e26)
+(`test: cover bounded graph plans in every direction`) passed the full Apple
+Container `./scripts/test-containers.sh`: **780 passed, 1 warning, 507.09 s**.
+The targeted nine combinations also passed: **9 cases, 75.55 s**.
+[CI 35271311062](https://github.com/rioriost/pg_agmemory/actions/runs/35271311062)
+passed on that exact SHA: amd64 **780 passed, 1 warning, 819.23 s**;
+arm64 **780 passed, 1 warning, 745.25 s**.
+All three environments passed Ruff, mypy **19 source files + 1 strict SDK consumer**,
+all optional installation checks, and all production smokes.
+
+The qualified regression crosses `auto`, `generic`, and `nested_loop` with
+`outgoing`, `incoming`, and `both`, covering both adjacency branches:
+**3 modes × 3 directions = 9 cases**.
+The final count is **780 = 773 batch baseline + 1 nested-loop case + 6 direction cases**.
+This directional extension changes regression coverage, not product SQL, version,
+or schema. Final-docs CI for this update has not run.
+
+**Earlier 774-test graph-fix qualification:**
 Fix [`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)
 (`fix: bound protected canonical graph rescans`) passed the full Apple Container
 suite: **774 passed, 445.86 s**, with all smokes. Targeted Apple Container checks
@@ -2547,13 +2566,6 @@ also passed **100 tests, 199.92 s**.
 passed on that exact SHA: amd64 **774 passed, 779.45 s**;
 arm64 **774 passed, 682.78 s**. Both passed Ruff, mypy **19 source files +
 1 strict SDK consumer**, all installation checks, and all production smokes.
-
-The three existing planner-mode cases are now parameterized over `outgoing`,
-`incoming`, and `both`, exercising both adjacency branches and all directions:
-**3 modes × 3 directions = 9 cases**, six more than the qualified suite,
-so **780 tests are expected**, not yet qualified. Product SQL, version, and schema
-are unchanged; this is a test-coverage extension. Its revision and completed
-local/native results are not recorded yet.
 
 **Negative control:** the regression against unmodified pre-fix source in an
 earlier test image produced **1 expected failure, 8.29 s**. The retained
@@ -2582,13 +2594,13 @@ ordering, limits, and the **5000 ms** statement timeout are unchanged.
 This is a code follow-up, not an unchanged-code rerun or timeout increase.
 Version v0.0.22, API v1, schema 10, and 30 Native/SDK resource methods remain unchanged.
 
-The qualified 774-test regression covers `auto`, `generic`, and `nested_loop`,
+The qualified all-direction regression covers `auto`, `generic`, and `nested_loop`,
 preserving the actual generic-prepared-usage assertion. Runtime-role
 `EXPLAIN ANALYZE` on the actual SQL and parameters checks 100 returned rows at
 100 paths, `assertion` and `assertion_revision` scan loops **<= 1**, and
 `entity` and `entity_evidence` scan loops **<= 2**.
-The explicit nine mode/direction combinations remain pending, not covered by a
-claim of 780 passing tests. No performance benchmark or production completion is claimed.
+All nine mode/direction combinations passed these checks. No performance benchmark
+or production completion is claimed.
 
 **Initial v22 implementation evidence, not qualification of the follow-up:**
 the full Apple Container `./scripts/test-containers.sh` completed with
@@ -2622,7 +2634,7 @@ explicit recovery with the original stable key/body; the 256 KiB body bound is c
 The contract, 30 Native/SDK resource methods, four MCP tools, and closed hook
 remain as documented. Schema 10/history 1–10 and dependencies/backend/providers
 are unchanged; no SQL migration. These initial results remain distinct from the
-later failed final-docs CI, the qualified graph fix, and the pending directional extension.
+later failed final-docs CI, the qualified 774-test graph fix, and the qualified 780-test directional extension.
 Elapsed time is not a benchmark; no M0–M3/MVP, performance, memory-quality,
 production, or DR qualification is claimed.
 

@@ -8,7 +8,7 @@
 以下のコマンドはこのローカルcheckoutから実行してください。
 
 **現在の上限付き実装はv0.0.22/schema 10の明示batch captureです。
-v0.0.22のgraph修正は検証済み、方向別回帰拡張は適格性確認待ちです。
+v0.0.22のgraph修正と全方向回帰はlocalと両native architectureで検証済みです。
 以下の検証済みv0.0.21以前の結果は過去の証拠であり、v0.0.22の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
@@ -33,7 +33,7 @@ postgresem連携は今後の実装対象です。
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
+**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
 認証付き`POST /v1/captures/batch`にcaller所有の`Idempotency-Key`を要求します。
 closedな`CaptureBatch`は既存`episode: Observe`と
 **1〜16件**の`memories: list[CapturedMemory]`を持ちます。
@@ -72,7 +72,7 @@ schema 10にmigration、依存、backend、provider変更はありません。
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
+**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
 closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
@@ -123,7 +123,7 @@ schema 10にはmigration、依存/provider、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
+**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -171,7 +171,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
+**v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -217,7 +217,7 @@ Native/SDKは**30 resource method**となり、MCPの4 toolとhookは不変でjo
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.22の方向別回帰拡張は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.22はlocalと両native architectureで検証済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -259,7 +259,7 @@ v20からのSQL migration、依存/provider/artifact固定値の変更はあり�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.22の方向別回帰拡張は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.22はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -295,7 +295,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -330,7 +330,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -360,7 +360,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.22/schema 10はlocalと両native architectureで検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -389,7 +389,7 @@ readinessはSDK/MCP/hook probe methodを追加せず、batch captureによる現
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.22はlocalと両native architectureで検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -417,7 +417,7 @@ PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
 
 ## Python SDK
 
-**SDKは明示batch captureを追加し30 methodです。v0.0.22の方向別回帰拡張は適格性確認待ちです。** 対応checkoutから導入します。
+**SDKは明示batch captureを追加し30 methodです。v0.0.22はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -529,16 +529,27 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.22のgraph修正は検証済みで、方向別回帰拡張の適格性確認待ちです。**
+**v0.0.22のgraph修正と全方向の回帰は検証済みです。**
+方向別追加検証の
+[`3f56c51434333428fe742bb6a464d1d3117e8e26`](https://github.com/rioriost/pg_agmemory/commit/3f56c51434333428fe742bb6a464d1d3117e8e26)は
+Apple Containerのfull `./scripts/test-containers.sh`で
+**780合格、warning 1件、507.09秒**でした。
+[CI 35271311062](https://github.com/rioriost/pg_agmemory/actions/runs/35271311062)は完全一致SHAで、
+amd64 **780合格、warning 1件、819.23秒**、arm64 **780合格、warning 1件、745.25秒**でした。
+全3環境でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全optional導入検査、全production smokeも合格しました。
+`auto`/`generic`/`nested_loop` × `outgoing`/`incoming`/`both`の9組が検証済みで、
+**780 = batch基準773 + nested-loop case 1 + direction case 6**です。
+この拡張は回帰coverageの変更であり、product SQL、version、schemaは不変です。
+この文書更新の最終docs CIはまだ実行していません。
+
+**以前の774件のgraph修正適格性確認:**
 修正[`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)は
 Apple Containerのfull suiteで**774合格、445.86秒**、全smokeも合格しました。
 [CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)は完全一致SHAで、
 amd64 **774合格、779.45秒**、arm64 **774合格、682.78秒**でした。
 両方でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
 全導入検査、全production smokeも合格しました。
-planner-mode 3 caseに`outgoing`、`incoming`、`both`を掛け合わせて9 caseへ拡張中で、
-6件追加の**期待件数780**はまだ適格性確認済みではありません。
-変更は回帰coverageだけで、product SQL、version、schemaは不変です。
 未変更の修正前sourceに対するnegative controlは期待通り失敗しましたが、
 そのsynthetic診断は失敗CI planでも性能benchmarkでもありません。
 
@@ -553,8 +564,7 @@ amd64は既存100-path auto-plan graph caseの**503 `QueryCanceled`**で
 timeで絞ったrevision、重複しない認可済み・根拠有効なendpointを別途materializeします。
 事前計算ID arrayでsemijoin反転と保護されたcanonical dataの反復scanを防ぐ設計です。
 RLS、scope/time/根拠検証、順序、上限、**5000 ms** timeoutは維持します。
-774件の適格性確認はplanner mode/scan loop検査を含みますが、
-方向別回帰拡張のrevisionと適格性確認結果は未記録です。
+方向別回帰拡張は全9組とscan loop検査を含めて検証済みです。
 性能benchmarkや本番適格性確認ではありません。
 
 **初期v22実装の証拠であり、追加修正の適格性確認ではありません。**

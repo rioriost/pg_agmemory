@@ -3,7 +3,7 @@
 [日本語](0022-batch-capture-jp.md) | [Contract](../STATUS.md#explicit-batch-capture) | [Operations](../operations/README.md#explicit-batch-capture)
 
 - Date: 2026-09-18
-- Status: accepted in bounded v0.0.22/schema 10; graph fix qualified, expanded directional qualification pending
+- Status: accepted in bounded v0.0.22/schema 10; graph fix and all-direction regression verified locally and natively
 - Extends: [atomic capture](0010-atomic-capture.md), [durable jobs](0006-durable-jobs.md), and [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
@@ -79,18 +79,29 @@ promise; stop/drain old components and use matching versions.
 
 ## Validation boundary
 
-**Graph fix qualified; expanded directional qualification pending.**
+**Graph fix and all-direction regression verified.**
+Directional follow-up
+[`3f56c51434333428fe742bb6a464d1d3117e8e26`](https://github.com/rioriost/pg_agmemory/commit/3f56c51434333428fe742bb6a464d1d3117e8e26)
+passed the full Apple Container `./scripts/test-containers.sh`:
+**780 passed, 1 warning, 507.09 s**.
+[CI 35271311062](https://github.com/rioriost/pg_agmemory/actions/runs/35271311062)
+passed on that exact SHA: amd64 **780 passed, 1 warning, 819.23 s**;
+arm64 **780 passed, 1 warning, 745.25 s**.
+All three environments passed Ruff, mypy **19 source files + 1 strict SDK consumer**,
+all optional installation checks, and all production smokes.
+The nine `auto`/`generic`/`nested_loop` × `outgoing`/`incoming`/`both` combinations
+cover both adjacency branches and passed:
+**780 = 773 batch baseline + 1 nested-loop case + 6 direction cases**.
+This extension changes regression coverage, not product SQL, version, or schema.
+Final-docs CI for this update has not run.
+
+**Earlier 774-test graph-fix qualification:**
 Fix [`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)
 passed the full Apple Container suite: **774 passed, 445.86 s**, with all smokes.
 [CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)
 passed on that exact SHA: amd64 **774 passed, 779.45 s**;
 arm64 **774 passed, 682.78 s**. Both passed Ruff, mypy **19 source files +
 1 strict SDK consumer**, all installation checks, and all production smokes.
-The three planner-mode cases are now crossed with `outgoing`, `incoming`, and
-`both`: nine cases covering both adjacency branches and all directions, six
-additional tests, **780 expected**. That qualification and revision are pending;
-product SQL, version, and schema are unchanged.
-
 The negative control against unmodified pre-fix source in an earlier test image
 produced **1 expected failure**. Its retained synthetic
 `graph-canonical-baseline-plan.json` showed `assertion`/`assertion_revision`
@@ -113,13 +124,13 @@ uses materialized authorized metadata.
 RLS, scope/time/evidence semantics, ordering, limits, and the **5000 ms** timeout
 remain unchanged, as do version/API/schema and 30 resource methods.
 
-The qualified 774-test regression covers `auto`, `generic`, and `nested_loop`,
+The qualified all-direction regression covers `auto`, `generic`, and `nested_loop`,
 retaining the actual generic-prepared-usage assertion. Runtime-role `EXPLAIN ANALYZE`
 of the actual SQL and parameters checks 100 rows at 100 paths with
 `assertion`/`assertion_revision` scan loops **<= 1** and
 `entity`/`entity_evidence` scan loops **<= 2**.
-The expanded directional qualification remains pending; the verified fix does
-not establish a 780-test passing result or production completion.
+All nine mode/direction combinations passed these checks; this does not establish
+production completion.
 
 **Initial v22 implementation evidence, not qualification of the follow-up.** The full Apple
 Container `./scripts/test-containers.sh` completed with **773 passed,

@@ -3,7 +3,7 @@
 [English](0022-batch-capture.md) | [契約](../STATUS-jp.md#explicit-batch-capture) | [運用](../operations/README-jp.md#explicit-batch-capture)
 
 - 日付: 2026-09-18
-- 状態: 上限付きv0.0.22/schema 10で採用。graph修正は検証済み、方向別回帰拡張は適格性確認待ち
+- 状態: 上限付きv0.0.22/schema 10で採用。graph修正と全方向回帰はlocal/nativeで検証済み
 - 拡張対象: [atomic capture](0010-atomic-capture-jp.md)、[durable job](0006-durable-jobs-jp.md)、[Python SDK](0012-python-sdk-jp.md)
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/記憶品質/本番/DRの適格性確認ではない
@@ -74,17 +74,28 @@ v21→v22はapplication-onlyで、schema 10/履歴1〜10、固定artifact、
 
 ## 検証境界
 
-**graph修正は検証済みで、方向別回帰拡張は適格性確認待ちです。**
+**graph修正と全方向回帰は検証済みです。**
+方向別追加検証の
+[`3f56c51434333428fe742bb6a464d1d3117e8e26`](https://github.com/rioriost/pg_agmemory/commit/3f56c51434333428fe742bb6a464d1d3117e8e26)は
+Apple Containerのfull `./scripts/test-containers.sh`で
+**780合格、warning 1件、507.09秒**でした。
+[CI 35271311062](https://github.com/rioriost/pg_agmemory/actions/runs/35271311062)は完全一致SHAで、
+amd64 **780合格、warning 1件、819.23秒**、arm64 **780合格、warning 1件、745.25秒**でした。
+全3環境でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全optional導入検査、全production smokeも合格しました。
+`auto`/`generic`/`nested_loop` × `outgoing`/`incoming`/`both`の9組は
+両adjacency branchを対象として合格し、
+**780 = batch基準773 + nested-loop case 1 + direction case 6**です。
+この拡張は回帰coverageの変更であり、product SQL、version、schemaは不変です。
+この文書更新の最終docs CIはまだ実行していません。
+
+**以前の774件のgraph修正適格性確認:**
 修正[`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)は
 Apple Containerのfull suiteで**774合格、445.86秒**、全smokeも合格しました。
 [CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)は完全一致SHAで、
 amd64 **774合格、779.45秒**、arm64 **774合格、682.78秒**でした。
 両方でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
 全導入検査、全production smokeも合格しました。
-planner-mode 3 caseと`outgoing`、`incoming`、`both`を掛け合わせて9 caseとし、
-両adjacency branchと全方向を確認します。6件追加の**期待件数780**については
-適格性確認とrevisionが未確認で、product SQL、version、schemaは不変です。
-
 以前のtest image内の未変更の修正前sourceに対するnegative controlは**期待通り1失敗**でした。
 保持したsyntheticな`graph-canonical-baseline-plan.json`は
 `assertion`/`assertion_revision`が**400 loop**、endpoint-evidenceが**4 loop**を示しました。
@@ -105,11 +116,11 @@ amd64は**772合格、1失敗、631.34秒**、arm64は**773合格、701.79秒**�
 RLS、scope/time/根拠の意味、順序、上限、**5000 ms** timeout、
 version/API/schemaと30 resource methodは維持します。
 
-検証済み774件の回帰は`auto`、`generic`、`nested_loop`を対象とし、実際のgeneric prepared使用のassertionも維持します。
+検証済み全方向回帰は`auto`、`generic`、`nested_loop`を対象とし、実際のgeneric prepared使用のassertionも維持します。
 runtime roleで実際のSQLとparameterに`EXPLAIN ANALYZE`を使い、
 100-pathで100行、`assertion`/`assertion_revision`のscan loop **<= 1**、
 `entity`/`entity_evidence`のscan loop **<= 2**を確認しました。
-方向別回帰拡張は適格性確認待ちで、検証済み修正だけで780件合格や本番完了を主張しません。
+mode/方向の全9組でこれらの検査に合格しましたが、本番完了は主張しません。
 
 **初期v22実装の証拠であり、追加修正の適格性確認ではありません。** Apple Containerのfull
 `./scripts/test-containers.sh`は**773合格、既存warning 1件、447.40秒**でした。
