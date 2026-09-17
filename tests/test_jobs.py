@@ -13,8 +13,10 @@ from uuid import uuid4
 import psycopg
 import pytest
 
+from pg_agmemory.database import connect
 from pg_agmemory.jobs import Jobs, job_transaction
-from pg_agmemory.models import Remember
+from pg_agmemory.models import Identity, JobPage, QueryJobs, Remember
+from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
 from pg_agmemory.service import MemoryError, MemoryService
 from pg_agmemory.worker import run_once
 
@@ -46,6 +48,21 @@ def enqueue(env, body=None, index=0, headers=None):
 
 def get(env, job, index=0):
     return env.client.get("/v1/jobs/" + job["job_id"], headers=env.headers(index))
+
+
+def query(env, index=0, **changes):
+    headers = env.headers(index)
+    del headers["Idempotency-Key"]
+    return env.client.post(
+        "/v1/jobs/query",
+        json={"scope_ids": [str(env.scopes[index])], **changes},
+        headers=headers,
+    )
+
+
+def page_ids(response):
+    assert response.status_code == 200, response.text
+    return [job["job_id"] for job in response.json()["jobs"]]
 
 
 def call(env, method, *args, index=0, **kwargs):
@@ -89,6 +106,268 @@ def cancellation_count(env, job):
             "WHERE tenant_id=%s AND target_id=%s AND action='job_cancelled'",
             (env.tenants[0], job["job_id"]),
         ).fetchone()[0]
+
+
+def test_owned_job_pages_match_get_and_do_not_expose_payloads(env):
+    jobs = [
+        enqueue(env, payload(env, subject=f"PRIVATE_JOB_PAYLOAD_{number}")) for number in range(5)
+    ]
+    first = query(env, max_items=2)
+    assert page_ids(first) == [job["job_id"] for job in reversed(jobs[-2:])]
+    cursor = first.json()["next_cursor"]
+    assert cursor == {
+        "created_at": first.json()["jobs"][-1]["created_at"],
+        "job_id": first.json()["jobs"][-1]["job_id"],
+    }
+    second = query(env, max_items=2, before=cursor)
+    third = query(env, max_items=2, before=second.json()["next_cursor"])
+    assert page_ids(first) + page_ids(second) + page_ids(third) == [
+        job["job_id"] for job in reversed(jobs)
+    ]
+    assert third.json()["next_cursor"] is None
+    for response in (first, second, third):
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["consistency"] == {"access_epoch": 1, "deletion_epoch": 1}
+        assert "PRIVATE_JOB_PAYLOAD" not in response.text and "lease_token" not in response.text
+        for job in response.json()["jobs"]:
+            assert job == {**get(env, job).json(), "scope_id": str(env.scopes[0])}
+    assert query(env, before=None).json() == query(env, states=[]).json()
+
+
+def test_job_query_has_exclusive_uuid_tie_breaking_for_equal_timestamps(env):
+    jobs = [enqueue(env) for _ in range(3)]
+    tied_at = "2026-09-01T00:00:00Z"
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute("ALTER TABLE memory_ops.job DISABLE TRIGGER guard_job")
+        conn.execute(
+            "UPDATE memory_ops.job SET created_at=%s WHERE tenant_id=%s",
+            (tied_at, env.tenants[0]),
+        )
+        conn.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        conn.execute("ALTER TABLE memory_ops.job ENABLE TRIGGER guard_job")
+    expected = sorted((job["job_id"] for job in jobs), reverse=True)
+    before = None
+    actual = []
+    for _ in range(3):
+        response = query(env, max_items=1, before=before)
+        actual += page_ids(response)
+        before = response.json()["next_cursor"]
+    assert actual == expected and before is None
+    assert page_ids(query(env, before={"created_at": tied_at, "job_id": expected[-1]})) == []
+
+
+def test_job_query_all_states_include_cancelled_and_original_results(env):
+    succeeded = enqueue(env)
+    assert process(env)["outcome"] == "succeeded"
+    failed = enqueue(env)
+    lease = call(env, "claim")
+    call(env, "fail", lease["job_id"], lease["lease_token"], "invalid_input", retry=False)
+    cancelled = enqueue(env)
+    assert cancel(env, cancelled).status_code == 200
+    running = enqueue(env)
+    assert str(call(env, "claim")["job_id"]) == running["job_id"]
+    pending = enqueue(env)
+    expected = {
+        "succeeded": succeeded,
+        "failed": failed,
+        "cancelled": cancelled,
+        "running": running,
+        "pending": pending,
+    }
+    assert len(page_ids(query(env))) == 5
+    for state, job in expected.items():
+        page = query(env, states=[state])
+        assert page_ids(page) == [job["job_id"]] and page.json()["next_cursor"] is None
+        assert page.json()["jobs"][0] == {**get(env, job).json(), "scope_id": str(env.scopes[0])}
+    assert page_ids(query(env, states=["pending", "cancelled"])) == [
+        pending["job_id"],
+        cancelled["job_id"],
+    ]
+
+
+def test_job_query_applies_owner_scope_and_visibility_before_limits(env):
+    own = enqueue(env)
+    shared_body = payload(env, index=2)
+    shared_other = enqueue(env, shared_body, index=2)
+    foreign = enqueue(env, index=1)
+    scopes = [str(scope) for scope in env.scopes] + [str(uuid4())]
+    assert page_ids(query(env, scope_ids=scopes)) == [own["job_id"]]
+    with scope_access(
+        env.admin_url,
+        ScopeAccessRequest(
+            operation="set",
+            tenant_id=env.tenants[0],
+            scope_id=env.scopes[2],
+            principal_id=env.principals[0],
+            expected_access_epoch=1,
+            permissions=("admin",),
+            no_expiry=True,
+        ),
+    ):
+        pass
+    assert get(env, shared_other).status_code == 200
+    assert page_ids(query(env, scope_ids=scopes, max_items=1)) == [own["job_id"]]
+    assert query(env, scope_ids=scopes, max_items=1).json()["next_cursor"] is None
+    shared_own = enqueue(env, shared_body)
+    response = query(env, scope_ids=scopes)
+    assert page_ids(response) == [shared_own["job_id"], own["job_id"]]
+    assert shared_other["job_id"] not in response.text and foreign["job_id"] not in response.text
+    assert response.json()["jobs"][0]["scope_id"] == str(env.scopes[2])
+    assert page_ids(query(env, scope_ids=[str(env.scopes[0])])) == [own["job_id"]]
+    assert page_ids(query(env, scope_ids=[str(env.scopes[1]), str(uuid4())])) == []
+
+
+def test_job_cursor_is_not_a_snapshot_or_authority_and_survives_cursor_deletion(env):
+    oldest, middle, newest = [enqueue(env) for _ in range(3)]
+    first = query(env, states=["pending"], max_items=1)
+    assert page_ids(first) == [newest["job_id"]]
+    cursor = first.json()["next_cursor"]
+    assert cancel(env, middle).status_code == 200
+    later = enqueue(env)
+    assert page_ids(query(env, states=["pending"], before=cursor)) == [oldest["job_id"]]
+    assert page_ids(query(env, states=["cancelled"], before=cursor)) == [middle["job_id"]]
+    assert page_ids(query(env, states=["pending"]))[0] == later["job_id"]
+    source = get(env, newest).json()["input_refs"][0]["memory_id"]
+    assert (
+        env.client.post(
+            "/v1/forget", json={"memory_ids": [source], "reason": "test"}, headers=env.headers()
+        ).status_code
+        == 202
+    )
+    after_purge = query(env, before=cursor)
+    assert page_ids(after_purge) == [middle["job_id"], oldest["job_id"]]
+    assert after_purge.json()["consistency"]["deletion_epoch"] == 2
+    forged = {"created_at": "2100-01-01T00:00:00Z", "job_id": str(uuid4())}
+    assert page_ids(query(env, before=forged)) == [
+        later["job_id"],
+        middle["job_id"],
+        oldest["job_id"],
+    ]
+    assert (
+        page_ids(query(env, before={"created_at": "2000-01-01T00:00:00Z", "job_id": str(uuid4())}))
+        == []
+    )
+
+
+def test_job_pages_recheck_current_membership_and_do_not_require_write(env):
+    jobs = [enqueue(env) for _ in range(2)]
+    before = query(env, max_items=1).json()["next_cursor"]
+    for operation, epoch, permissions in (
+        ("set", 1, ("read",)),
+        ("revoke", 2, ()),
+        ("set", 3, ("read",)),
+    ):
+        options = {"permissions": permissions, "no_expiry": True} if operation == "set" else {}
+        with scope_access(
+            env.admin_url,
+            ScopeAccessRequest(
+                operation=operation,
+                tenant_id=env.tenants[0],
+                scope_id=env.scopes[0],
+                principal_id=env.principals[0],
+                expected_access_epoch=epoch,
+                **options,
+            ),
+        ):
+            pass
+        page = query(env, before=before)
+        assert page_ids(page) == ([jobs[0]["job_id"]] if operation == "set" else [])
+        assert page.json()["consistency"]["access_epoch"] == epoch + 1
+        assert cancel(env, jobs[0]).status_code == 404
+
+
+def test_job_query_exact_page_limit_and_overflow(env):
+    jobs = [enqueue(env) for _ in range(100)]
+    assert cancel(env, jobs[0]).status_code == 200
+    newest = enqueue(env)
+    first = query(env, max_items=100)
+    assert len(page_ids(first)) == 100 and page_ids(first)[0] == newest["job_id"]
+    second = query(env, max_items=100, before=first.json()["next_cursor"])
+    assert page_ids(second) == [jobs[0]["job_id"]] and second.json()["next_cursor"] is None
+    pending = query(env, max_items=100, states=["pending"])
+    assert len(page_ids(pending)) == 100 and pending.json()["next_cursor"] is None
+    assert query(env, max_items=101).status_code == 422
+
+
+def test_invalid_selected_job_fails_whole_page_without_partial_success(env, monkeypatch):
+    older, newest = [enqueue(env) for _ in range(2)]
+    original = Jobs.get
+
+    async def invalid(self, job_id):
+        if str(job_id) == older["job_id"]:
+            raise MemoryError("job_invalidated", 409)
+        return await original(self, job_id)
+
+    monkeypatch.setattr(Jobs, "get", invalid)
+    response = query(env)
+    assert response.status_code == 409 and response.json()["code"] == "job_invalidated"
+    assert "jobs" not in response.json()
+    assert older["job_id"] not in response.text and newest["job_id"] not in response.text
+
+
+def test_job_query_runs_in_read_only_transaction_and_does_not_change_jobs(env):
+    job = enqueue(env)
+    before = get(env, job).json()
+    statement = """SELECT
+        (SELECT count(*) FROM memory_ops.audit_event WHERE tenant_id=%s),
+        (SELECT count(*) FROM memory_ops.idempotency WHERE tenant_id=%s)"""
+    with psycopg.connect(env.admin_url) as conn:
+        counts = conn.execute(statement, (env.tenants[0],) * 2).fetchone()
+
+    async def read_only():
+        async with await connect(env.settings.database_url) as conn:
+            async with conn.transaction():
+                await conn.execute("SET TRANSACTION READ ONLY")
+                await conn.execute(
+                    """SELECT set_config('pgag.tenant_id',%s,true),
+                              set_config('pgag.principal_id',%s,true)""",
+                    (str(env.tenants[0]), str(env.principals[0])),
+                )
+                memory = MemoryService(
+                    conn, Identity(tenant_id=env.tenants[0], principal_id=env.principals[0])
+                )
+                return await Jobs(memory).query(QueryJobs(scope_ids=[env.scopes[0]]))
+
+    direct = JobPage.model_validate(asyncio.run(read_only())).model_dump(mode="json")
+    assert direct == query(env).json() and get(env, job).json() == before
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(statement, (env.tenants[0],) * 2).fetchone() == counts
+
+
+def test_job_query_openapi_authentication_and_empty_page_contract(env):
+    empty = query(env)
+    assert empty.json() == {
+        "jobs": [],
+        "next_cursor": None,
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+    assert (
+        env.client.post("/v1/jobs/query", json={"scope_ids": [str(env.scopes[0])]}).status_code
+        == 401
+    )
+    raw = json.dumps({"scope_ids": [str(env.scopes[0])]}).encode()
+    padded = raw + b" " * (262144 - len(raw))
+    headers = {**env.headers(), "Content-Type": "application/json"}
+    assert env.client.post("/v1/jobs/query", content=padded, headers=headers).status_code == 200
+    assert (
+        env.client.post("/v1/jobs/query", content=padded + b" ", headers=headers).status_code == 413
+    )
+    invalid = query(env, principal_id="PRIVATE")
+    assert invalid.status_code == 422 and invalid.json()["code"] == "invalid_request"
+    assert "PRIVATE" not in invalid.text
+    cap = env.client.get("/v1/capabilities", headers=env.headers()).json()
+    assert cap["job_query"] == {
+        "endpoint": "/v1/jobs/query",
+        "ownership": "caller",
+        "order": ["created_at_desc", "job_id_desc"],
+        "pagination": "exclusive_keyset",
+        "max_items": 100,
+    }
+    operation = env.client.get("/openapi.json").json()["paths"]["/v1/jobs/query"]["post"]
+    assert operation["security"] == [{"BearerAuth": []}]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/JobPage"
+    }
 
 
 def test_cancel_pending_is_terminal_replayable_and_not_forget(env):

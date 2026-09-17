@@ -32,10 +32,12 @@ from pg_agmemory.models import (
     ExpandGraph,
     Explain,
     Forget,
+    JobPage,
     Observe,
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryJobs,
     Recall,
     Remember,
     RestoreCheckpoint,
@@ -523,6 +525,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/relations/{memory_id}/revisions",
         "/v1/graph/expand",
         "/v1/jobs",
+        "/v1/jobs/query",
         "/v1/jobs/{job_id}",
         "/v1/jobs/{job_id}/retry",
         "/v1/jobs/{job_id}/cancel",
@@ -540,7 +543,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 26
+    assert len(methods) == len(expected) == 27
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
@@ -583,6 +586,127 @@ def test_sdk_checkpoint_head_is_read_only_and_validates_errors(monkeypatch, outc
             assert len(calls) == 2
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "outcome", ["page", "invalidated", "wrong_status", "bad_cursor", "too_many", "lost"]
+)
+def test_sdk_job_query_is_read_only_bounded_and_never_auto_pages(monkeypatch, outcome):
+    body = QueryJobs(scope_ids=[uuid4()], max_items=1)
+    job_id = uuid4()
+    now = "2026-09-01T00:00:00Z"
+    page = {
+        "jobs": [
+            {
+                "job_id": str(job_id),
+                "scope_id": str(body.scope_ids[0]),
+                "retry_of": None,
+                "state": "pending",
+                "attempt": 0,
+                "available_at": now,
+                "lease_until": None,
+                "created_at": now,
+                "updated_at": now,
+                "error_code": None,
+                "input_refs": [{"memory_id": str(uuid4()), "revision": 1}],
+                "result": None,
+            }
+        ],
+        "next_cursor": {"created_at": now, "job_id": str(job_id)},
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/jobs/query"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        assert "idempotency-key" not in request.headers
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated query response loss")
+        if outcome == "invalidated":
+            return response(
+                409,
+                {
+                    "code": "job_invalidated",
+                    "request_id": str(uuid4()),
+                    "retryable": False,
+                },
+            )
+        if outcome == "bad_cursor":
+            return response(200, page | {"next_cursor": {}})
+        if outcome == "too_many":
+            return response(200, page | {"jobs": page["jobs"] * 101})
+        return response(201 if outcome == "wrong_status" else 200, page)
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            if outcome == "page":
+                result = await sdk.query_jobs(body)
+                assert isinstance(result, JobPage) and result.jobs[0].job_id == job_id
+                assert result.next_cursor.job_id == job_id
+            else:
+                with pytest.raises(MemoryClientError) as error:
+                    await sdk.query_jobs(body)
+                assert not error.value.error.outcome_unknown and "PRIVATE" not in str(error.value)
+                if outcome == "invalidated":
+                    assert error.value.error.code == "job_invalidated"
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.query_jobs(body.model_copy(update={"max_items": True}))
+            assert len(calls) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_real_sdk_owned_job_pagination_state_filter_and_purge(env, api_process):
+    with api_process("sdk-job-query.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                source = await sdk.observe(
+                    observation(env.scopes[0]), idempotency_key="query-source"
+                )
+                jobs = []
+                for number in range(5):
+                    saved = await sdk.enqueue_job(
+                        EnqueueJob(
+                            kind="structured_remember",
+                            memory=memory(env.scopes[0], source.memory_id).model_copy(
+                                update={"subject": f"Synthetic-{number}"}
+                            ),
+                        ),
+                        idempotency_key=f"query-job-{number}",
+                    )
+                    jobs.append(saved)
+                request = QueryJobs(scope_ids=[env.scopes[0]], max_items=2)
+                before = None
+                observed = []
+                for _ in range(3):
+                    result = await sdk.query_jobs(request.model_copy(update={"before": before}))
+                    assert isinstance(result, JobPage)
+                    assert all(job.scope_id == env.scopes[0] for job in result.jobs)
+                    observed.extend(job.job_id for job in result.jobs)
+                    before = result.next_cursor
+                assert observed == [job.job_id for job in reversed(jobs)] and before is None
+                await sdk.cancel_job(
+                    jobs[2].job_id,
+                    CancelJob(expected_state="pending", expected_attempt=0),
+                    idempotency_key="query-cancel",
+                )
+                cancelled = await sdk.query_jobs(
+                    QueryJobs(scope_ids=[env.scopes[0]], states=["cancelled"])
+                )
+                assert [job.job_id for job in cancelled.jobs] == [jobs[2].job_id]
+                purged = await sdk.forget(
+                    Forget(memory_ids=[source.memory_id], reason="test"),
+                    idempotency_key="query-purge",
+                )
+                assert purged.object_count == 6
+                assert not (await sdk.query_jobs(request)).jobs
+
+        asyncio.run(scenario())
 
 
 @pytest.mark.integration

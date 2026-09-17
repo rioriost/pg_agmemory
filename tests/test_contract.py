@@ -5,7 +5,15 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from pg_agmemory.models import CancelJob, CheckpointBranch, MemoryItem, Observe, Recall, Remember
+from pg_agmemory.models import (
+    CancelJob,
+    CheckpointBranch,
+    MemoryItem,
+    Observe,
+    QueryJobs,
+    Recall,
+    Remember,
+)
 from pg_agmemory.service import MemoryError, build_context
 
 
@@ -107,3 +115,46 @@ def test_checkpoint_head_has_only_exact_branch_identity(changes):
     for field in body:
         with pytest.raises(ValidationError):
             CheckpointBranch(**{key: value for key, value in body.items() if key != field})
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"scope_ids": []},
+        {"scope_ids": [uuid4() for _ in range(33)]},
+        {"states": ["pending", "pending"]},
+        {"states": ["unknown"]},
+        {"states": "pending"},
+        {"max_items": 0},
+        {"max_items": 101},
+        {"max_items": True},
+        {"max_items": "2"},
+        {"before": {}},
+        {"before": {"created_at": "2026-09-01T00:00:00", "job_id": str(uuid4())}},
+        {"before": {"created_at": "2026-09-01T00:00:00Z", "job_id": "invalid"}},
+        {"principal_id": str(uuid4())},
+        {"offset": 1},
+        {"kind": "structured_remember"},
+    ],
+)
+def test_job_query_filters_and_cursor_are_closed_and_bounded(changes):
+    with pytest.raises(ValidationError):
+        QueryJobs(**{"scope_ids": [uuid4()], **changes})
+
+
+def test_job_query_default_states_bounds_and_duplicate_scopes():
+    scope = uuid4()
+    body = QueryJobs(scope_ids=[scope])
+    assert body.states == [] and body.before is None and body.max_items == 20
+    assert QueryJobs(
+        scope_ids=[uuid4() for _ in range(32)],
+        max_items=100,
+        states=["pending", "running", "succeeded", "failed", "cancelled"],
+    )
+    with pytest.raises(ValidationError):
+        QueryJobs(scope_ids=[scope, scope])
+    with pytest.raises(ValidationError):
+        QueryJobs(
+            scope_ids=[scope],
+            before={"created_at": "2026-09-01T00:00:00Z", "job_id": uuid4(), "scope_id": scope},
+        )

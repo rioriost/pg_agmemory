@@ -641,6 +641,49 @@ asyncio.run(smoke())
 print("Production job cancellation smoke passed: enqueue, cancel, replay, worker idle, source purge")
 ' "$scope_id" "${run_id}-worker"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import CancelJob, EnqueueJob, Evidence, Forget, Observe, QueryJobs, Remember
+from pg_agmemory.sdk import AsyncMemoryClient
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-job-query", source_event_id="query-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic Gold evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="query-source")
+        jobs = []
+        for number in range(3):
+            jobs.append(await sdk.enqueue_job(EnqueueJob(
+                kind="structured_remember", memory=Remember(
+                    scope_id=scope, subject="SyntheticQuery", predicate="query_" + str(number),
+                    value="Gold", evidence=[Evidence(memory_id=source.memory_id, quote="Gold")],
+                    explicit_intent=True,
+                ),
+            ), idempotency_key="query-job-" + str(number)))
+        request = QueryJobs(scope_ids=[scope], states=["pending"], max_items=1)
+        first = await sdk.query_jobs(request)
+        assert [job.job_id for job in first.jobs] == [jobs[2].job_id] and first.next_cursor
+        await sdk.cancel_job(jobs[1].job_id, CancelJob(expected_state="pending", expected_attempt=0),
+                             idempotency_key="query-cancel")
+        second = await sdk.query_jobs(request.model_copy(update={"before": first.next_cursor}))
+        assert [job.job_id for job in second.jobs] == [jobs[0].job_id] and not second.next_cursor
+        cancelled = await sdk.query_jobs(QueryJobs(scope_ids=[scope], states=["cancelled"]))
+        assert jobs[1].job_id in [job.job_id for job in cancelled.jobs]
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="query-purge")
+        assert purged.object_count == 4 and not (await sdk.query_jobs(request)).jobs
+
+asyncio.run(smoke())
+print("Production job query smoke passed: owned pages, state change, source purge")
+' "$scope_id"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

@@ -37,11 +37,13 @@ from pg_agmemory.models import (
     Forget,
     GraphResult,
     JobDetail,
+    JobPage,
     JobReceipt,
     Observe,
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryJobs,
     Recall,
     RecallResult,
     Remember,
@@ -331,6 +333,11 @@ class AsyncMemoryClient:
 
     async def get_job(self, job_id: UUID) -> JobDetail:
         return await self._get(f"/v1/jobs/{_id(job_id)}", JobDetail)
+
+    async def query_jobs(self, request: QueryJobs) -> JobPage:
+        return await self._post(
+            "/v1/jobs/query", request, QueryJobs, TypeAdapter(JobPage), mutation=False
+        )
 
     async def retry_job(
         self, job_id: UUID, request: EnqueueJob, *, idempotency_key: str

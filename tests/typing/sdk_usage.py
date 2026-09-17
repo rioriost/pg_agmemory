@@ -26,11 +26,13 @@ from pg_agmemory.models import (
     Forget,
     GraphResult,
     JobDetail,
+    JobPage,
     JobReceipt,
     Observe,
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryJobs,
     Recall,
     RecallFilters,
     RecallResult,
@@ -106,6 +108,7 @@ async def typed_calls(
         assert_type(await memory.expand_graph(graph), GraphResult)
         assert_type(await memory.enqueue_job(job, idempotency_key=key), JobReceipt)
         assert_type(await memory.get_job(identity), JobDetail)
+        assert_type(await memory.query_jobs(QueryJobs(scope_ids=[identity])), JobPage)
         assert_type(await memory.retry_job(identity, job, idempotency_key=key), JobReceipt)
         assert_type(
             await memory.cancel_job(identity, cancellation, idempotency_key=key), JobReceipt

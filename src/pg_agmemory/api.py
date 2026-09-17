@@ -56,11 +56,13 @@ from pg_agmemory.models import (
     Forget,
     GraphResult,
     JobDetail,
+    JobPage,
     JobReceipt,
     Observe,
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryJobs,
     ReadinessStatus,
     Recall,
     RecallResult,
@@ -264,7 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-checkpoint-head",
+            "stage": "m2-job-query",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -296,6 +298,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "automatic_capture": False,
             },
             "job_kinds": ["structured_remember"],
+            "job_query": {
+                "endpoint": "/v1/jobs/query",
+                "ownership": "caller",
+                "order": ["created_at_desc", "job_id_desc"],
+                "pagination": "exclusive_keyset",
+                "max_items": 100,
+            },
             "job_cancellation": {
                 "endpoint": "/v1/jobs/{job_id}/cancel",
                 "compare_and_swap": ["state", "attempt"],
@@ -509,6 +518,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         data: EnqueueJob, request: Request, idempotency_key: IdempotencyKey
     ) -> Any:
         return await Jobs(service(request)).enqueue(data, idempotency_key)
+
+    @app.post("/v1/jobs/query", response_model=JobPage)
+    async def query_jobs(data: QueryJobs, request: Request) -> Any:
+        return await Jobs(service(request)).query(data)
 
     @app.get("/v1/jobs/{job_id}", response_model=JobDetail)
     async def get_job(job_id: UUID, request: Request) -> Any:

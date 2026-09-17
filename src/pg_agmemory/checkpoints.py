@@ -22,17 +22,6 @@ class Checkpoints:
         self.conn = memory.conn
         self.tenant = memory.tenant
 
-    async def epochs(self) -> dict[str, Any]:
-        row = await (
-            await self.conn.execute(
-                "SELECT access_epoch, deletion_epoch FROM memory.tenant WHERE id = %s",
-                (self.tenant,),
-            )
-        ).fetchone()
-        if row is None:
-            raise MemoryError("not_found", 404)
-        return row
-
     async def checksum(self, payload: dict[str, Any]) -> str:
         return await self.memory.digest(
             "checkpoint-envelope-v1:"
@@ -94,7 +83,7 @@ class Checkpoints:
 
     async def envelope(self, checkpoint_id: UUID) -> dict[str, Any]:
         saved = await self.load(checkpoint_id)
-        epochs = await self.epochs()
+        epochs = await self.memory.epochs()
         effects = await ToolEffects(self.memory).list_run(
             UUID(saved["scope_id"]), UUID(saved["run_id"])
         )
@@ -210,7 +199,7 @@ class Checkpoints:
         self, data: CreateCheckpoint, sequence: int, parent_id: UUID | None
     ) -> dict[str, Any]:
         refs = await self.memory.validate_refs(data.scope_id, data.memory_refs)
-        epochs = await self.epochs()
+        epochs = await self.memory.epochs()
         checkpoint_id = await self.memory.new_object(data.scope_id, "checkpoint")
         payload = {
             "checkpoint_id": str(checkpoint_id),

@@ -471,6 +471,27 @@ class DeletionPreview(BaseModel):
 
 
 JobError = Literal["dependency_unavailable", "stale_context", "invalid_input", "attempt_limit"]
+JobState = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+
+
+class JobCursor(Contract):
+    created_at: AwareDatetime
+    job_id: UUID
+
+
+class QueryJobs(Contract):
+    scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
+    states: Annotated[list[JobState], Field(max_length=5)] = Field(default_factory=list)
+    max_items: Annotated[int, Field(ge=1, le=100, strict=True)] = 20
+    before: JobCursor | None = None
+
+    @model_validator(mode="after")
+    def unique_filters(self) -> "QueryJobs":
+        if len(set(self.scope_ids)) != len(self.scope_ids):
+            raise ValueError("scope IDs must be unique")
+        if len(set(self.states)) != len(self.states):
+            raise ValueError("job states must be unique")
+        return self
 
 
 class EnqueueJob(Contract):
@@ -497,7 +518,7 @@ class JobReceipt(BaseModel):
 
 class JobDetail(JobReceipt):
     retry_of: UUID | None
-    state: Literal["pending", "running", "succeeded", "failed", "cancelled"]
+    state: JobState
     attempt: int
     max_attempts: Literal[5] = 5
     available_at: datetime
@@ -507,6 +528,16 @@ class JobDetail(JobReceipt):
     error_code: JobError | None
     input_refs: list[MemoryReference]
     result: MemoryReference | None
+
+
+class ListedJob(JobDetail):
+    scope_id: UUID
+
+
+class JobPage(BaseModel):
+    jobs: Annotated[list[ListedJob], Field(max_length=100)]
+    next_cursor: JobCursor | None
+    consistency: Consistency
 
 
 class EntityReceipt(BaseModel):

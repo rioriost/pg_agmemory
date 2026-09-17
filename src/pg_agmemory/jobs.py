@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from pg_agmemory.models import CancelJob, EnqueueJob, JobError, Remember
+from pg_agmemory.models import CancelJob, EnqueueJob, JobError, QueryJobs, Remember
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
 RECIPE = "structured-remember-v1"
@@ -72,6 +72,44 @@ class Jobs:
             "result": {"memory_id": row["result_id"], "revision": 1}
             if row["result_id"] is not None
             else None,
+        }
+
+    async def query(self, data: QueryJobs) -> dict[str, Any]:
+        rows = await (
+            await self.conn.execute(
+                """SELECT id,scope_id,created_at FROM memory_ops.job
+                   WHERE tenant_id=%(tenant)s AND principal_id=%(principal)s
+                     AND scope_id=ANY(%(scopes)s)
+                     AND (%(all_states)s OR state=ANY(%(states)s::text[]))
+                     AND (%(before_time)s::timestamptz IS NULL
+                          OR (created_at,id)<(%(before_time)s,%(before_id)s::uuid))
+                   ORDER BY created_at DESC,id DESC LIMIT %(limit)s""",
+                {
+                    "tenant": self.tenant,
+                    "principal": self.memory.principal,
+                    "scopes": data.scope_ids,
+                    "states": data.states,
+                    "all_states": not data.states,
+                    "before_time": data.before.created_at if data.before else None,
+                    "before_id": data.before.job_id if data.before else None,
+                    "limit": data.max_items + 1,
+                },
+            )
+        ).fetchall()
+        selected = rows[: data.max_items]
+        jobs = [
+            {**await self.get(row["id"]), "scope_id": row["scope_id"]}
+            for row in selected
+        ]
+        return {
+            "jobs": jobs,
+            "next_cursor": {
+                "created_at": selected[-1]["created_at"],
+                "job_id": selected[-1]["id"],
+            }
+            if len(rows) > data.max_items
+            else None,
+            "consistency": await self.memory.epochs(),
         }
 
     async def enqueue(

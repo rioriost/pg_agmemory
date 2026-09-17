@@ -81,6 +81,17 @@ class MemoryService:
         self.tenant = identity.tenant_id
         self.principal = identity.principal_id
 
+    async def epochs(self) -> dict[str, Any]:
+        row = await (
+            await self.conn.execute(
+                "SELECT access_epoch, deletion_epoch FROM memory.tenant WHERE id = %s",
+                (self.tenant,),
+            )
+        ).fetchone()
+        if row is None:
+            raise MemoryError("not_found", 404)
+        return row
+
     async def scope(self, scope_id: UUID, permission: str) -> None:
         row = await (
             await self.conn.execute(
@@ -566,12 +577,7 @@ class MemoryService:
         context, selected, budget_exhausted = build_context(
             items, data.token_budget, required_count=len(required)
         )
-        epoch = await (
-            await self.conn.execute(
-                "SELECT access_epoch, deletion_epoch FROM memory.tenant WHERE id = %s",
-                (self.tenant,),
-            )
-        ).fetchone()
+        epoch = await self.epochs()
         pending = await (
             await self.conn.execute(
                 """SELECT EXISTS(SELECT 1 FROM memory_ops.job WHERE tenant_id = %s
