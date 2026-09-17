@@ -3,7 +3,7 @@
 [日本語](0022-batch-capture-jp.md) | [Contract](../STATUS.md#explicit-batch-capture) | [Operations](../operations/README.md#explicit-batch-capture)
 
 - Date: 2026-09-18
-- Status: accepted in bounded v0.0.22/schema 10; graph follow-up qualification pending
+- Status: accepted in bounded v0.0.22/schema 10; graph fix qualified, expanded directional qualification pending
 - Extends: [atomic capture](0010-atomic-capture.md), [durable jobs](0006-durable-jobs.md), and [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
@@ -79,7 +79,24 @@ promise; stop/drain old components and use matching versions.
 
 ## Validation boundary
 
-**Current graph follow-up: qualification pending.**
+**Graph fix qualified; expanded directional qualification pending.**
+Fix [`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)
+passed the full Apple Container suite: **774 passed, 445.86 s**, with all smokes.
+[CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)
+passed on that exact SHA: amd64 **774 passed, 779.45 s**;
+arm64 **774 passed, 682.78 s**. Both passed Ruff, mypy **19 source files +
+1 strict SDK consumer**, all installation checks, and all production smokes.
+The three planner-mode cases are now crossed with `outgoing`, `incoming`, and
+`both`: nine cases covering both adjacency branches and all directions, six
+additional tests, **780 expected**. That qualification and revision are pending;
+product SQL, version, and schema are unchanged.
+
+The negative control against unmodified pre-fix source in an earlier test image
+produced **1 expected failure**. Its retained synthetic
+`graph-canonical-baseline-plan.json` showed `assertion`/`assertion_revision`
+at **400 loops** and endpoint-evidence at **4 loops**.
+This is not the failed CI plan or a production performance benchmark.
+
 Final-docs revision
 [`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)
 **failed** [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011):
@@ -96,15 +113,13 @@ uses materialized authorized metadata.
 RLS, scope/time/evidence semantics, ordering, limits, and the **5000 ms** timeout
 remain unchanged, as do version/API/schema and 30 resource methods.
 
-Regression extensions cover `auto`, `generic`, and `nested_loop`, retaining
-the actual generic-prepared-usage assertion. Runtime-role `EXPLAIN ANALYZE`
-of the actual SQL and parameters must return 100 rows at 100 paths with
+The qualified 774-test regression covers `auto`, `generic`, and `nested_loop`,
+retaining the actual generic-prepared-usage assertion. Runtime-role `EXPLAIN ANALYZE`
+of the actual SQL and parameters checks 100 rows at 100 paths with
 `assertion`/`assertion_revision` scan loops **<= 1** and
 `entity`/`entity_evidence` scan loops **<= 2**.
-One additional mode means **774 expected tests**, not an observed passing count.
-The fix revision and completed local/native qualification are not recorded yet.
-These are regression requirements, not a performance benchmark or production
-completion claim.
+The expanded directional qualification remains pending; the verified fix does
+not establish a 780-test passing result or production completion.
 
 **Initial v22 implementation evidence, not qualification of the follow-up.** The full Apple
 Container `./scripts/test-containers.sh` completed with **773 passed,

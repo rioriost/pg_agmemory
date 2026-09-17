@@ -3,7 +3,7 @@
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 **現在の上限付き実装はv0.0.22/schema 10の明示batch captureです。
-v0.0.22のgraph追加修正は進行中、適格性確認待ちです。
+v0.0.22のgraph修正は検証済み、方向別回帰拡張は適格性確認待ちです。
 検証済みv0.0.21以前の結果は過去の証拠であり、v0.0.22の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
@@ -58,7 +58,7 @@ PostgreSQLへの継続的なreadiness検査ではありません。
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
+**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求し、
 既存の現在tenant/scope read/write権限、RLS、response-drain barrierを適用します。
 closedな`CaptureBatch`は`episode: Observe`と
@@ -145,7 +145,7 @@ SQL migration、依存、backend、provider変更はありません。
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
+**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
 Native JWT認証付き`POST /v1/entities/query`はread-onlyで、現在のread権限が必要ですが、
 write権限や`Idempotency-Key`は不要です。closedな`QueryEntities`は次だけを受け付けます。
 
@@ -235,7 +235,7 @@ SQL migration、依存/provider、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
+**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
 read-only `POST /v1/assertions/history`にはNative JWT認証と現在のread権限が必要で、
 `Idempotency-Key`やwrite権限は不要です。
 closedな`AssertionHistory` modelは次だけを受け付けます。
@@ -327,7 +327,7 @@ SQL migrationや依存/provider変更はありません。
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
+**v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
 read-only `POST /v1/jobs/query`にはNative JWT認証が必要で、
 `Idempotency-Key`やwrite権限は不要です。closedな`QueryJobs`のfieldは次だけです。
 
@@ -408,7 +408,7 @@ v21→v22にはSQL migration、依存/provider/artifact固定値変更はあり�
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.22のgraph追加修正は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 `POST /v1/checkpoints/head`はNative JWT認証とscopeの現在のread権限を要求し、
 write権限は不要です。`Idempotency-Key`も不要です。
 closedな型付き`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
@@ -476,7 +476,7 @@ harness連携、compaction、MVP、汎用復旧/本番/DRの適格性確認で�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.22のgraph追加修正は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 既存requestへ`Recall.filters: RecallFilters | None = None`を追加します。
 `RecallFilters`は共有の型付きclosed nested契約で、未知fieldを拒否します。
 
@@ -543,7 +543,7 @@ MVP、意味品質、性能、本番、DRの適格性確認は主張しません
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 既存`Recall`への追加fieldであり、新routeやSDK methodではありません。
 
 | Request規則 | 契約 |
@@ -621,7 +621,7 @@ stageは`m2-batch-capture`で、capabilitiesに`required_context`を維持しま
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 `POST /v1/jobs/{job_id}/cancel`はNative JWT認証とcallerの`Idempotency-Key`を要求します。
 `CancelJob`が受け付けるのは次のfieldだけです。
 
@@ -711,7 +711,7 @@ capabilitiesは`job_cancellation` metadataを維持します。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.22/schema 10の契約を維持し、graph追加修正の適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.22/schema 10の契約を維持し、方向別回帰拡張の適格性確認待ちです。**
 health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
 `GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
 v0.0.14で導入した`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
@@ -790,7 +790,7 @@ readiness動作は維持しますが、job取消のschema 10にはmigration 010�
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.22のgraph追加修正は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
@@ -915,7 +915,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**SDKは明示batch captureを追加し30 methodです。v0.0.22のgraph追加修正は適格性確認待ちです。**
+**SDKは明示batch captureを追加し30 methodです。v0.0.22の方向別回帰拡張は適格性確認待ちです。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -932,7 +932,7 @@ HTTPXがない場合のSDK importは固定の明確な`ImportError`となり、
 `mcp`/`hook`が提供するHTTPXでも動作します。extraの選択名でなく依存の存在を検出します。
 Docker test/runtimeは`mcp`・`hook`とともに`sdk`を含みます。
 core-only/hook-only/sdk-only検査と、hook-only/sdk-only導入にMCP SDKがないことの検査を実装しています。
-真のnoneditable wheel導入3検査と同梱`py.typed`検査は初期v0.0.22実装で合格し、graph追加修正は適格性確認待ちです。
+真のnoneditable wheel導入3検査と同梱`py.typed`検査は774件のgraph修正適格性確認で合格し、方向別回帰拡張は確認待ちです。
 Python依存のupgradeはありません。
 
 `AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
@@ -2392,9 +2392,31 @@ rolling共存やdowngradeは非対応です。
 
 <a id="v0022--schema-10"></a>
 
-### v0.0.22 / schema 10 — graph追加修正の適格性確認待ち
+### v0.0.22 / schema 10 — 方向別回帰拡張の適格性確認待ち
 
-**2026-09-18 JSTの現在のgraph追加修正は適格性確認待ちです。**
+**2026-09-18 JSTのgraph修正は検証済みで、方向別回帰拡張は適格性確認待ちです。**
+修正[`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)
+（`fix: bound protected canonical graph rescans`）はApple Containerのfull suiteで
+**774合格、445.86秒**、全smokeも合格しました。
+targeted Apple Container検査も**100テスト合格、199.92秒**でした。
+[CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)は完全一致SHAで、
+amd64 **774合格、779.45秒**、arm64 **774合格、682.78秒**でした。
+両方でRuff、mypy **source 19 + strict SDK consumer 1ファイル**、
+全導入検査、全production smokeも合格しました。
+
+既存planner-mode 3 caseを`outgoing`、`incoming`、`both`でparameterizeし、
+両adjacency branchと全方向を確認する拡張を行っています。
+**3 mode × 3方向 = 9 case**で、検証済みsuiteから6件増えた
+**期待件数780**はまだ適格性確認済みではありません。
+product SQL、version、schemaは不変で、test coverageの拡張です。
+そのrevisionと完了したlocal/native結果は未記録です。
+
+**Negative control:** 以前のtest image内の未変更の修正前sourceに対する回帰は
+**期待通り1失敗、8.29秒**でした。保持した`graph-canonical-baseline-plan.json`の
+synthetic診断では`assertion`と`assertion_revision`が**400 loop**、
+endpoint-evidenceが**4 loop**でした。
+失敗CI planや本番性能benchmarkではありません。
+
 最終docs revision
 [`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)の
 [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011)は**失敗**しました。
@@ -2415,14 +2437,12 @@ timeで絞ったrevision、重複しない認可済み・根拠有効なendpoint
 変更なしのcode再実行やtimeout引上げではなくcode追加修正です。
 version v0.0.22、API v1、schema 10、Native/SDKの30 resource methodは維持します。
 
-既存limit回帰を`auto`、`generic`、`nested_loop` modeへ拡張し、
+検証済み774件の回帰は`auto`、`generic`、`nested_loop`を対象とし、
 実際のgeneric prepared使用のassertionも維持します。
-新検査はruntime roleで実際のSQLとparameterに`EXPLAIN ANALYZE`を使い、
+runtime roleで実際のSQLとparameterに`EXPLAIN ANALYZE`を使い、
 100-pathで返す行数100、`assertion`/`assertion_revision`のscan loop **<= 1**、
-`entity`/`entity_evidence`のscan loop **<= 2**を要求します。
-回帰要件であり合格結果ではありません。planner-mode case一つの追加で
-**期待件数は774**ですが、観測した合格件数ではありません。
-追加修正revisionと完了したlocal/native適格性確認結果は未記録です。
+`entity`/`entity_evidence`のscan loop **<= 2**を確認しました。
+明示的なmode/方向9組は確認待ちで、780件合格の主張はしません。
 性能benchmarkや本番完了は主張しません。
 
 **初期v22実装の証拠であり、追加修正の適格性確認ではありません。**
@@ -2454,7 +2474,7 @@ source/job/result purge、全childのreplay検査、古いleaseのfenceを含み
 
 契約、Native/SDKの30 resource method、MCPの4 tool、closed hookは記載通りです。
 schema 10/履歴1〜10と依存/backend/providerは不変で、SQL migrationはありません。
-初期結果は、その後の最終docs CI失敗や確認待ちのgraph追加修正と区別して維持します。
+初期結果は、その後の最終docs CI失敗、検証済みgraph修正、確認待ちの方向別回帰拡張と区別して維持します。
 所要時間はbenchmarkではなく、M0〜M3/MVP、性能、記憶品質、本番、DR適格性確認は主張しません。
 
 <a id="v0021--schema-10"></a>

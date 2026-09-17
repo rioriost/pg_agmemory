@@ -765,7 +765,8 @@ def test_entity_erasure_purges_historical_links_checkpoints_and_effects(env, del
 
 
 @pytest.mark.parametrize("plan_mode", ["auto", "generic", "nested_loop"])
-def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, plan_mode):
+@pytest.mark.parametrize("direction", ["outgoing", "incoming", "both"])
+def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, plan_mode, direction):
     checked = False
     neighbors = SqlGraph.neighbors
 
@@ -831,15 +832,16 @@ def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, plan
     for _ in range(100):
         response = env.client.post("/v1/relations", json=body, headers=env.headers())
         assert response.status_code == 201, response.text
-    exact = expand(env, a, max_paths=100)
+    seed = b if direction == "incoming" else a
+    exact = expand(env, seed, direction=direction, max_paths=100)
     assert len(exact["paths"]) == len(exact["edges"]) == 100
     assert exact["coverage"]["truncated"] is False
     assert checked
     assert env.client.post("/v1/relations", json=body, headers=env.headers()).status_code == 201
-    overflow = expand(env, a)
+    overflow = expand(env, seed, direction=direction)
     assert len(overflow["paths"]) == 100 and overflow["coverage"]["truncated"] is True
     seeds = [create_entity(env, f"Isolated {i}")["memory_id"] for i in range(16)]
-    isolated = expand(env, a, seeds=seeds)
+    isolated = expand(env, seed, direction=direction, seeds=seeds)
     assert len(isolated["nodes"]) == 16 and isolated["paths"] == []
     sources = [uuid4() for _ in range(32)]
     with psycopg.connect(env.admin_url) as conn, conn.cursor() as cur:

@@ -73,7 +73,8 @@ explicit graph-seed selection, and source purge. Keep shared-scope visibility
 distinct from owner-only job discovery; equal labels must not merge identities.
 Metadata pages omit evidence quotes; see [ADR 0021](docs/adr/0021-entity-query.md).
 Graph path-limit checks exercise automatic and actual generic prepared plans,
-including nested-loop-only planning. Execution-plan assertions bound protected
+including nested-loop-only planning, for outgoing, incoming, and bidirectional
+traversal. Execution-plan assertions bound protected
 metadata and endpoint-evidence rescans at the 100-path boundary. Preserve the
 materialized adjacency, assertion, revision, and distinct-endpoint boundaries and
 their precomputed ID arrays; do not mask regressions by increasing timeouts.

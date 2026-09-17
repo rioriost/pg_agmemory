@@ -7,7 +7,7 @@ is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local 
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 **Current bounded implementation: v0.0.22/schema 10 explicit batch capture.
-Graph follow-up in progress; qualification pending.
+Graph fix verified; expanded directional qualification pending.
 Verified v0.0.21 and earlier results below are historical, not v0.0.22 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
@@ -37,7 +37,7 @@ before using the service.
 
 ## Explicit batch capture
 
-**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
+**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
 Authenticated `POST /v1/captures/batch` requires a caller-owned `Idempotency-Key`.
 Closed `CaptureBatch` contains unchanged `episode: Observe` and **1–16**
 `memories: list[CapturedMemory]`. Every proposal is explicit, same-scope, and
@@ -78,7 +78,7 @@ See [the contract](docs/STATUS.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
+**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
 Authenticated read-only `POST /v1/entities/query` requires no `Idempotency-Key`.
 Closed `QueryEntities` accepts distinct `scope_ids` (1–32 UUIDs), nullable
 `entity_type` (one of the existing eight `EntityType` values), nullable
@@ -131,7 +131,7 @@ and [ADR 0021](docs/adr/0021-entity-query.md).
 
 ## Assertion metadata history
 
-**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
+**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
 Authenticated read-only `POST /v1/assertions/history` requires no `Idempotency-Key`.
 Closed `AssertionHistory` accepts only required UUID `memory_id`, strict integer
 `max_items` (1–100, default 20), and nullable strict integer `before_revision`
@@ -179,7 +179,7 @@ and [ADR 0020](docs/adr/0020-assertion-history.md).
 
 ## Owned-job query and pagination
 
-**v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
+**v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
 Authenticated read-only `POST /v1/jobs/query` requires no `Idempotency-Key`.
 Closed `QueryJobs` accepts distinct `scope_ids` (1–32 UUIDs), distinct `states`
 (at most five; `[]`/omitted means all), strict integer `max_items` (1–100,
@@ -230,7 +230,7 @@ and [ADR 0019](docs/adr/0019-job-query.md).
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.22 graph follow-up qualification pending.**
+**Retained checkpoint-head contract; v0.0.22 expanded directional qualification pending.**
 Authenticated `POST /v1/checkpoints/head` is read-only and requires no
 `Idempotency-Key`. Its closed `CheckpointBranch` body contains exactly three
 required UUIDs: `scope_id`, `run_id`, and `branch_id`. It selects only that exact,
@@ -279,7 +279,7 @@ and [ADR 0018](docs/adr/0018-checkpoint-head.md).
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.22 graph follow-up qualification pending.**
+**Retained recall-filter contract; v0.0.22 expanded directional qualification pending.**
 Existing Native `POST /v1/recall`, typed SDK `recall`, and MCP `memory_recall`
 accept `Recall.filters: RecallFilters | None = None`. The closed nested model has
 only nullable `kind` (`"episode"` or `"assertion"`), `subject` (`ShortText`,
@@ -318,7 +318,7 @@ and [ADR 0017](docs/adr/0017-recall-filters.md).
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.22 graph follow-up qualification pending.**
+**Retained required-context contract; v0.0.22 expanded directional qualification pending.**
 Existing Native `POST /v1/recall`, SDK `recall`, and MCP `memory_recall` accept
 `Recall.required_memory_refs`: omitted or `[]` by default, at most **16**
 `MemoryReference` entries. Each selects a UUID and exact revision **1–1000**;
@@ -357,7 +357,7 @@ and [ADR 0016](docs/adr/0016-required-context.md).
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.22 graph follow-up qualification pending.**
+**Retained job-cancellation contract; v0.0.22 expanded directional qualification pending.**
 `POST /v1/jobs/{job_id}/cancel` requires Native authentication, a caller-retained
 `Idempotency-Key`, and exactly `expected_state` (`pending` or `running`) plus
 strict integer `expected_attempt` (0–5; running requires at least 1).
@@ -390,7 +390,7 @@ and [ADR 0015](docs/adr/0015-job-cancellation.md).
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.22/schema 10 contract retained; graph follow-up qualification pending.**
+**Retained readiness contract; v0.0.22/schema 10 contract retained; expanded directional qualification pending.**
 `GET /healthz` remains process liveness after successful startup:
 `{"status":"ok"}`, without DB calls. Public, unauthenticated `GET /readyz`
 returns HTTP **200** with exactly `{"status":"ready"}` or an expected-failure
@@ -422,7 +422,7 @@ and [ADR 0014](docs/adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.22 graph follow-up qualification pending.**
+**Retained scope-access contract; v0.0.22 expanded directional qualification pending.**
 The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
 for existing same-tenant scope/principal UUIDs. It requires
 `PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
@@ -452,7 +452,7 @@ and [ADR 0013](docs/adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds explicit batch capture: 30 methods; v0.0.22 graph follow-up qualification pending.** From the matching checkout:
+**SDK adds explicit batch capture: 30 methods; v0.0.22 expanded directional qualification pending.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -564,7 +564,19 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.22 graph follow-up is in progress; qualification pending.**
+**v0.0.22 graph fix verified; expanded directional qualification pending.**
+Fix [`bf7429327955071239fdc2f7b60d1a5d47dfff7e`](https://github.com/rioriost/pg_agmemory/commit/bf7429327955071239fdc2f7b60d1a5d47dfff7e)
+passed the full Apple Container suite: **774 passed, 445.86 s**, with all smokes.
+[CI 35268438022](https://github.com/rioriost/pg_agmemory/actions/runs/35268438022)
+passed on that exact SHA: amd64 **774 passed, 779.45 s**;
+arm64 **774 passed, 682.78 s**. Both passed Ruff, mypy **19 source files +
+1 strict SDK consumer**, all installation checks, and all production smokes.
+The three planner-mode cases are now being crossed with `outgoing`, `incoming`,
+and `both`: nine cases, six additional tests, **780 expected**, not yet qualified.
+Only regression coverage is changing; product SQL, version, and schema are unchanged.
+A negative control against unmodified pre-fix source failed as expected; its
+synthetic diagnostic is not the failed CI plan or a performance benchmark.
+
 Final-docs revision
 [`af91974d091feb276db79baf838c7fa2bab8904f`](https://github.com/rioriost/pg_agmemory/commit/af91974d091feb276db79baf838c7fa2bab8904f)
 **failed** [CI 35265233011](https://github.com/rioriost/pg_agmemory/actions/runs/35265233011):
@@ -577,8 +589,8 @@ scope/predicate-filtered assertions, time-filtered revisions, and distinct
 authorized/evidence-valid endpoints. Precomputed ID arrays are intended to
 prevent reversed semijoins and repeated protected canonical scans.
 RLS, scope/time/evidence checks, ordering, limits, and the **5000 ms** timeout
-remain unchanged. Planner-mode and scan-loop regression checks are being extended;
-no follow-up fix revision or passing qualification results are recorded yet.
+remain unchanged. The 774-test qualification covers the planner-mode and scan-loop
+checks; the expanded directional revision and qualification results are not recorded yet.
 This is not a performance benchmark or production qualification.
 
 **Initial v22 implementation evidence, not qualification of the follow-up:**

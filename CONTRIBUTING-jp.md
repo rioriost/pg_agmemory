@@ -73,7 +73,8 @@ entity-query smokeではscope内のlabel/type完全一致、同名の異なるid
 所有者限定のjob検索と区別し、同名でidentityを統合してはいけません。
 metadata pageに根拠引用は含めません。[ADR 0021](docs/adr/0021-entity-query-jp.md)を参照してください。
 graphのpath件数制限は自動選択と実際のgeneric prepared planで検査し、
-nested-loop-onlyの計画も含めます。100path境界では実行計画のassertionで
+nested-loop-onlyの計画も含め、outgoing・incoming・双方向を対象にします。
+100path境界では実行計画のassertionで
 保護されたmetadataとendpoint根拠の再scan回数を制限します。
 adjacency・assertion・revision・重複除去したendpointのmaterialization境界と
 事前計算したID配列を維持し、timeoutの延長で退行を隠してはいけません。
