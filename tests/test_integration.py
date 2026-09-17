@@ -434,7 +434,7 @@ def test_dependency_failure_returns_retryable_error_without_success(env, monkeyp
     async def disconnected(url):
         raise psycopg.OperationalError("connection failed: DO_NOT_ECHO")
 
-    monkeypatch.setattr("pg_agmemory.api.connect", disconnected)
+    monkeypatch.setattr("pg_agmemory.service.connect", disconnected)
     response = env.observe()
     assert response.status_code == 503
     assert response.json()["retryable"] is True

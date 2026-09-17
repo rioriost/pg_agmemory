@@ -13,6 +13,7 @@ MIGRATIONS = (
     "003_checkpoints.sql",
     "004_tool_effects.sql",
     "005_relational_graph.sql",
+    "006_durable_jobs.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 

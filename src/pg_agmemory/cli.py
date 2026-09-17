@@ -1,5 +1,7 @@
 import argparse
+import asyncio
 import json
+import logging
 import os
 import secrets
 from uuid import uuid4
@@ -8,15 +10,28 @@ import psycopg
 import uvicorn
 
 from pg_agmemory.database import migrate
+from pg_agmemory.worker import run
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pg-agmemory")
-    parser.add_argument("command", choices=["serve", "migrate", "provision"])
-    parser.add_argument("--subject", help="Verified issuer subject to bind to a new private tenant")
+    parser.add_argument("command", choices=["serve", "migrate", "provision", "worker"])
+    parser.add_argument(
+        "--subject", help="Trusted issuer subject for provisioning or fixed-principal worker"
+    )
+    parser.add_argument(
+        "--once", action="store_true", help="Worker: process at most one due job and exit"
+    )
     args = parser.parse_args()
+    if args.once and args.command != "worker":
+        parser.error("--once is only supported by worker")
     if args.command == "migrate":
         migrate(os.environ["PGAG_ADMIN_DATABASE_URL"])
+    elif args.command == "worker":
+        if not args.subject or not 1 <= len(args.subject) <= 256:
+            parser.error("worker requires --subject with 1 to 256 characters")
+        logging.basicConfig(level=logging.INFO)
+        asyncio.run(run(os.environ["PGAG_DATABASE_URL"], args.subject, once=args.once))
     elif args.command == "provision":
         if not args.subject or not 1 <= len(args.subject) <= 256:
             parser.error("provision requires --subject with 1 to 256 characters")

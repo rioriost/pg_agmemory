@@ -235,6 +235,7 @@ class ContextPack(BaseModel):
 class Coverage(BaseModel):
     retrieval_complete: bool
     synthesis_pending: Literal[False]
+    jobs_pending: bool = False
     graph_used: Literal[False]
     truncated: bool
 
@@ -323,6 +324,34 @@ class DeletionPreview(BaseModel):
 class MemoryReference(Contract):
     memory_id: UUID
     revision: Revision = 1
+
+
+JobError = Literal["dependency_unavailable", "stale_context", "invalid_input", "attempt_limit"]
+
+
+class EnqueueJob(Contract):
+    kind: Literal["structured_remember"]
+    memory: Remember
+
+
+class JobReceipt(BaseModel):
+    job_id: UUID
+    kind: Literal["structured_remember"] = "structured_remember"
+    recipe_version: Literal["structured-remember-v1"] = "structured-remember-v1"
+
+
+class JobDetail(JobReceipt):
+    retry_of: UUID | None
+    state: Literal["pending", "running", "succeeded", "failed"]
+    attempt: int
+    max_attempts: Literal[5] = 5
+    available_at: datetime
+    lease_until: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    error_code: JobError | None
+    input_refs: list[MemoryReference]
+    result: MemoryReference | None
 
 
 class EntityReceipt(BaseModel):

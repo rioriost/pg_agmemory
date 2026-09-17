@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL integration tests, and production HTTP smoke tests."
+    echo "Build and run lint, types, PostgreSQL integration tests, and production API/worker smoke tests."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -44,7 +44,10 @@ migrate_name="${run_id}-migrate"
 key_name="${run_id}-key"
 api_name="${run_id}-api"
 probe_name="${run_id}-probe"
-containers=("$probe_name" "$api_name" "$key_name" "$migrate_name" "$test_name" "$smoke_db" "$test_db")
+provision_name="${run_id}-provision"
+worker_name="${run_id}-worker"
+containers=("$worker_name" "$provision_name" "$probe_name" "$api_name" "$key_name"
+            "$migrate_name" "$test_name" "$smoke_db" "$test_db")
 network=default
 network_created=false
 password="${run_id}-${RANDOM}"
@@ -63,7 +66,7 @@ cleanup() {
     trap - EXIT INT TERM
     set +e
     if [[ $status -ne 0 ]]; then
-        for name in "$test_name" "$api_name" "$smoke_db" "$test_db"; do
+        for name in "$test_name" "$api_name" "$worker_name" "$smoke_db" "$test_db"; do
             "$engine" logs "$name" >&2 2>/dev/null
         done
     fi
@@ -177,4 +180,22 @@ for attempt in range(60):
         time.sleep(1)
 ' "http://${api_host}:8000/healthz"
 
-echo "Container tests and production HTTP smoke passed ($engine)."
+"$engine" run --name "$provision_name" --network "$network" \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$runtime_image" pg-agmemory provision --subject "${run_id}-worker" >/dev/null
+"$engine" run --name "$worker_name" --network "$network" \
+    -e "PGAG_DATABASE_URL=postgresql://pgag_smoke:${runtime_password}@${smoke_host}:5432/pgag_test" \
+    "$runtime_image" python -c '
+import json
+import subprocess
+import sys
+
+result = subprocess.run(
+    ["pg-agmemory", "worker", "--subject", sys.argv[1], "--once"],
+    check=True, stdout=subprocess.PIPE, text=True, timeout=30,
+)
+assert json.loads(result.stdout) == {"outcome": "idle"}, result.stdout
+print("Production worker smoke passed: --once -> {outcome: idle}")
+' "${run_id}-worker"
+
+echo "Container tests and production API/worker smoke passed ($engine)."

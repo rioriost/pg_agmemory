@@ -148,6 +148,9 @@ def database():
     seed_v4_effect(url, legacy[0])
     with pytest.raises(RuntimeError, match="schema version mismatch"):
         asyncio.run(validate_runtime(runtime_url))
+    seed_v5_graph(url, legacy[0])
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
@@ -480,6 +483,60 @@ def seed_v4_effect(url, record):
         "external_key": external_key,
         "fingerprint": fingerprint,
     }
+
+
+def seed_v5_graph(url, record):
+    source, target, relation = [uuid4() for _ in range(3)]
+    with psycopg.connect(url) as conn:
+        conn.execute(files("pg_agmemory").joinpath("storage/005_relational_graph.sql").read_text())
+        conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (5)")
+        for entity_id, label in [(source, "ACME"), (target, "Gold")]:
+            conn.execute(
+                "INSERT INTO memory.object(tenant_id,id,scope_id,kind) VALUES (%s,%s,%s,'entity')",
+                (record["tenant"], entity_id, record["scope"]),
+            )
+            conn.execute(
+                """INSERT INTO memory.entity
+                   (tenant_id,id,scope_id,entity_type,canonical_label,reference_count,explicit_intent)
+                   VALUES (%s,%s,%s,'organization',%s,1,true)""",
+                (record["tenant"], entity_id, record["scope"], label),
+            )
+            conn.execute(
+                """INSERT INTO memory.entity_evidence(tenant_id,entity_id,scope_id,source_id,quote)
+                   VALUES (%s,%s,%s,%s,%s)""",
+                (record["tenant"], entity_id, record["scope"], record["source"], label),
+            )
+        conn.execute(
+            "INSERT INTO memory.object(tenant_id,id,scope_id,kind) VALUES (%s,%s,%s,'assertion')",
+            (record["tenant"], relation, record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory.assertion(tenant_id,id,scope_id,subject,predicate,is_relation)
+               VALUES (%s,%s,%s,'ACME','depends_on',true)""",
+            (record["tenant"], relation, record["scope"]),
+        )
+        conn.execute(
+            "INSERT INTO memory.relation(tenant_id,id,scope_id,source_id) VALUES (%s,%s,%s,%s)",
+            (record["tenant"], relation, record["scope"], source),
+        )
+        conn.execute(
+            """INSERT INTO memory.assertion_revision
+               (tenant_id,assertion_id,scope_id,revision,value,valid_time,explicit_intent)
+               VALUES (%s,%s,%s,1,'Gold','(,)',true)""",
+            (record["tenant"], relation, record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory.provenance_edge
+               (tenant_id,child_id,child_revision,parent_id,scope_id,quote)
+               VALUES (%s,%s,1,%s,%s,'Gold')""",
+            (record["tenant"], relation, record["source"], record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory.relation_revision
+               (tenant_id,assertion_id,scope_id,revision,target_id) VALUES (%s,%s,%s,1,%s)""",
+            (record["tenant"], relation, record["scope"], target),
+        )
+    record["graph"] = {"source": source, "target": target, "relation": relation}
 
 
 @pytest.fixture

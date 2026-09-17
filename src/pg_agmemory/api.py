@@ -16,9 +16,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pg_agmemory import __version__
 from pg_agmemory.checkpoints import Checkpoints
-from pg_agmemory.database import SCHEMA_VERSION, Settings, connect, validate_runtime
+from pg_agmemory.database import SCHEMA_VERSION, Settings, validate_runtime
 from pg_agmemory.effects import ToolEffects
 from pg_agmemory.graphs import SqlGraph
+from pg_agmemory.jobs import Jobs
 from pg_agmemory.models import (
     AssertionExplanation,
     CheckpointEnvelope,
@@ -29,6 +30,7 @@ from pg_agmemory.models import (
     DeletionPreview,
     DeletionProgress,
     DeletionResult,
+    EnqueueJob,
     EntityDetail,
     EntityReceipt,
     EntityType,
@@ -38,7 +40,8 @@ from pg_agmemory.models import (
     Explain,
     Forget,
     GraphResult,
-    Identity,
+    JobDetail,
+    JobReceipt,
     Observe,
     ObserveResult,
     PlanToolEffect,
@@ -55,7 +58,7 @@ from pg_agmemory.models import (
     ToolEffectReceipt,
     TransitionToolEffect,
 )
-from pg_agmemory.service import MemoryError, MemoryService
+from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
 logger = logging.getLogger("pg_agmemory")
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=256)]
@@ -122,41 +125,12 @@ class TransactionBoundary:
                     ]
                 messages.append(message)
 
-            async with await connect(self.settings.database_url) as conn:
+            async with principal_connection(self.settings.database_url, subject) as (
+                conn,
+                identity,
+            ):
                 async with conn.transaction():
-                    await conn.execute("SELECT set_config('pgag.subject', %s, true)", (subject,))
-                    principal = await (
-                        await conn.execute(
-                            """SELECT tenant_id, id FROM memory.principal
-                               WHERE external_subject = %s""",
-                            (subject,),
-                        )
-                    ).fetchone()
-                if principal is None:
-                    raise MemoryError("unauthenticated", 401)
-                identity = Identity(tenant_id=principal["tenant_id"], principal_id=principal["id"])
-                # A session lock survives commit until response delivery. Forget cannot
-                # acknowledge its barrier while an earlier response is still being sent.
-                await conn.execute(
-                    "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
-                    (str(identity.tenant_id),),
-                )
-                async with conn.transaction():
-                    await conn.execute(
-                        """SELECT set_config('pgag.subject', %s, true),
-                                  set_config('pgag.tenant_id', %s, true),
-                                  set_config('pgag.principal_id', %s, true)""",
-                        (subject, str(identity.tenant_id), str(identity.principal_id)),
-                    )
-                    current = await (
-                        await conn.execute(
-                            """SELECT 1 FROM memory.principal
-                               WHERE tenant_id = %s AND id = %s AND external_subject = %s""",
-                            (identity.tenant_id, identity.principal_id, subject),
-                        )
-                    ).fetchone()
-                    if current is None:
-                        raise MemoryError("unauthenticated", 401)
+                    await bind_identity(conn, subject, identity)
                     scope["state"]["service"] = MemoryService(conn, identity)
                     await self.app(scope, buffered_receive, buffered_send)
                 async with asyncio.timeout(10):
@@ -240,7 +214,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m1-sql-graph",
+            "stage": "m2-durable-jobs",
             "features": [
                 "observe",
                 "structured_remember",
@@ -254,11 +228,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "entities",
                 "structured_relations",
                 "graph_expand",
+                "durable_jobs",
             ],
             "graph_backend": "sql",
             "entity_types": list(get_args(EntityType)),
             "relation_types": list(get_args(RelationType)),
             "auto_synthesis": False,
+            "job_kinds": ["structured_remember"],
             "checkpoints": True,
             "tool_effect_ledger": True,
             "temporal_revisions": True,
@@ -278,6 +254,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "graph_hops": 2,
                 "graph_seeds": 16,
                 "graph_paths": 100,
+                "active_jobs_per_scope": 100,
+                "job_attempts": 5,
+                "job_lease_seconds": 30,
             },
         }
 
@@ -363,6 +342,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/graph/expand", response_model=GraphResult)
     async def expand_graph(data: ExpandGraph, request: Request) -> Any:
         return await SqlGraph(service(request)).expand(data)
+
+    @app.post("/v1/jobs", status_code=202, response_model=JobReceipt)
+    async def enqueue_job(
+        data: EnqueueJob, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Jobs(service(request)).enqueue(data, idempotency_key)
+
+    @app.get("/v1/jobs/{job_id}", response_model=JobDetail)
+    async def get_job(job_id: UUID, request: Request) -> Any:
+        return await Jobs(service(request)).get(job_id)
+
+    @app.post("/v1/jobs/{job_id}/retry", status_code=202, response_model=JobReceipt)
+    async def retry_job(
+        job_id: UUID, data: EnqueueJob, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Jobs(service(request)).enqueue(data, idempotency_key, retry_of=job_id)
 
     @app.post("/v1/explain", response_model=EpisodeExplanation | AssertionExplanation)
     async def explain(data: Explain, request: Request) -> Any:

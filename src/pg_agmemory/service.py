@@ -1,12 +1,14 @@
 import hashlib
 import hmac
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from pg_agmemory.database import Connection
+from pg_agmemory.database import Connection, connect
 from pg_agmemory.models import (
     Evidence,
     Explain,
@@ -27,6 +29,47 @@ class MemoryError(Exception):
         self.code = code
         self.status = status
         super().__init__(code)
+
+
+@asynccontextmanager
+async def principal_connection(
+    url: str, subject: str
+) -> AsyncIterator[tuple[Connection, Identity]]:
+    async with await connect(url) as conn:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('pgag.subject', %s, true)", (subject,))
+            row = await (
+                await conn.execute(
+                    "SELECT tenant_id,id FROM memory.principal WHERE external_subject = %s",
+                    (subject,),
+                )
+            ).fetchone()
+        if row is None:
+            raise MemoryError("unauthenticated", 401)
+        identity = Identity(tenant_id=row["tenant_id"], principal_id=row["id"])
+        # The lock survives commit and stays held through API response delivery.
+        await conn.execute(
+            "SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(identity.tenant_id),)
+        )
+        yield conn, identity
+
+
+async def bind_identity(conn: Connection, subject: str, identity: Identity) -> None:
+    await conn.execute(
+        """SELECT set_config('pgag.subject', %s, true),
+                  set_config('pgag.tenant_id', %s, true),
+                  set_config('pgag.principal_id', %s, true)""",
+        (subject, str(identity.tenant_id), str(identity.principal_id)),
+    )
+    row = await (
+        await conn.execute(
+            """SELECT 1 FROM memory.principal
+               WHERE tenant_id = %s AND id = %s AND external_subject = %s""",
+            (identity.tenant_id, identity.principal_id, subject),
+        )
+    ).fetchone()
+    if row is None:
+        raise MemoryError("unauthenticated", 401)
 
 
 class MemoryService:
@@ -90,6 +133,8 @@ class MemoryService:
             await self.object(UUID(result["memory_id"]), "write")
         if "checkpoint_id" in result:
             await self.object(UUID(result["checkpoint_id"]), "write")
+        if "job_id" in result:
+            await self.object(UUID(result["job_id"]), "write")
         if "deletion_id" in result:
             for scope in result["scope_ids"]:
                 await self.scope(UUID(scope), "delete")
@@ -209,6 +254,12 @@ class MemoryService:
         )
         if previous is not None:
             return previous
+        result = await self.publish_assertion(data)
+        await self.save_result("remember", key_hash, payload_hash, result)
+        return result
+
+    async def publish_assertion(self, data: Remember) -> dict[str, Any]:
+        await self.scope(data.scope_id, "write")
         await self.validate_evidence(data.scope_id, data.evidence)
         object_id = await self.new_object(data.scope_id, "assertion")
         await self.conn.execute(
@@ -218,7 +269,6 @@ class MemoryService:
         )
         await self.insert_revision(object_id, data.scope_id, 1, data)
         result = {"memory_id": str(object_id), "revision": 1, "epistemic_status": "reported"}
-        await self.save_result("remember", key_hash, payload_hash, result)
         await self.audit("remember", object_id)
         return result
 
@@ -382,12 +432,20 @@ class MemoryService:
                 (self.tenant,),
             )
         ).fetchone()
+        pending = await (
+            await self.conn.execute(
+                """SELECT EXISTS(SELECT 1 FROM memory_ops.job WHERE tenant_id = %s
+                   AND scope_id = ANY(%s) AND state IN ('pending','running')) AS pending""",
+                (self.tenant, data.scope_ids),
+            )
+        ).fetchone()
         return {
             "items": [item.model_dump(mode="json") for item in selected],
             "context_pack": context,
             "coverage": {
                 "retrieval_complete": True,
                 "synthesis_pending": False,
+                "jobs_pending": bool(pending and pending["pending"]),
                 "graph_used": False,
                 "truncated": budget_exhausted or len(rows) > data.max_items,
             },
@@ -473,6 +531,15 @@ class MemoryService:
                     SELECT parent_id, child_id FROM memory.provenance_edge
                     WHERE tenant_id = %(tenant)s
                     UNION
+                    SELECT source_id, job_id FROM memory_ops.job_input
+                    WHERE tenant_id = %(tenant)s
+                    UNION
+                    SELECT result_id, id FROM memory_ops.job
+                    WHERE tenant_id = %(tenant)s AND result_id IS NOT NULL
+                    UNION
+                    SELECT retry_of, id FROM memory_ops.job
+                    WHERE tenant_id = %(tenant)s AND retry_of IS NOT NULL
+                    UNION
                     SELECT source_id, entity_id FROM memory.entity_evidence
                     WHERE tenant_id = %(tenant)s
                     UNION
@@ -507,6 +574,14 @@ class MemoryService:
         if data.mode == "preview":
             return {"mode": "preview", "object_count": len(targets), "changed": False}
         if data.mode == "purge":
+            await self.conn.execute(
+                "DELETE FROM memory_ops.job_input WHERE tenant_id = %s AND job_id = ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory_ops.job WHERE tenant_id = %s AND id = ANY(%s)",
+                (self.tenant, targets),
+            )
             await self.conn.execute(
                 """UPDATE memory.checkpoint_run r SET effects_invalidated = true
                    WHERE r.tenant_id = %s AND NOT r.effects_invalidated AND EXISTS (
