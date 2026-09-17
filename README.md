@@ -6,8 +6,8 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**v0.0.9/schema 7 implicit recall hook implemented; local Apple Container and
-native Docker amd64/arm64 checks passed. v0.0.8 evidence stays historical.
+**Bounded v0.0.10/schema 7 atomic structured capture implemented.
+Final local and native amd64/arm64 checks passed. Verified v0.0.9 results remain historical.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -20,9 +20,10 @@ tool-effect ledger. Explicit entities and revisioned relation assertions support
 bounded, read-only SQL graph traversal, alongside explicitly queued structured
 publication through a fixed-principal worker and opt-in, versioned Japanese lexical
 search and a local, fixed-identity MCP adapter over the Native API.
-The v0.0.9 contract adds an optional vendor-neutral, harness-side implicit recall
-hook—not automatic host registration, remote MCP, automatic synthesis, or a
-measured retrieval-quality improvement.
+The optional vendor-neutral implicit recall hook remains read-only.
+The v0.0.10 delta atomically commits one episode and one explicitly requested
+structured-publication job—not a published assertion, automatic capture,
+natural-language synthesis, or a measured retrieval-quality improvement.
 
 Cross-assertion supersession/fact arbitration, provider receipt verification, vendor-specific harness adapters,
 automatic enqueue/extraction, general multi-tenant scheduling,
@@ -71,7 +72,29 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.9/schema 7, final results verified 2026-09-17 JST:** all three environments
+**v0.0.10/schema 7: final local and native results verified 2026-09-17 JST.**
+Apple Container and native Docker amd64/arm64 each passed **304 tests, 1 existing
+warning**, plus **Ruff, strict mypy (16 source files), genuine core-only/hook-only
+installation checks, and all non-root production smokes**.
+These cover Japanese/API/worker, both MCP eras, all three hook events, and the
+new atomic **capture → actual worker → recall → replay → purge** workflow.
+
+| Environment | Test elapsed |
+|---|---|
+| Local Apple Container | **275.53 s** |
+| Docker, native `linux/amd64` | **467.75 s** |
+| Docker, native `linux/arm64` | **434.40 s** |
+
+The final local source matches published implementation
+[ac42c35](https://github.com/rioriost/pg_agmemory/commit/ac42c354b9310e877c9d248cf9c8cc8f4293128f).
+Both native jobs in
+[CI run 35185176814](https://github.com/rioriost/pg_agmemory/actions/runs/35185176814)
+passed; actual logs verified that exact SHA, counts, timings, and checks,
+not just job status.
+Test elapsed time is not a performance benchmark.
+See [v0.0.10 evidence](docs/STATUS.md#v0010--schema-7).
+
+**Historical v0.0.9/schema 7, final results verified 2026-09-17 JST:** all three environments
 passed **274 tests, 1 existing warning**, Ruff, strict mypy (**15 source files**),
 genuine core-only/hook-only installation checks, and all non-root production
 Japanese/API/worker smokes, MCP **`2026-07-28` and `2025-11-25`**, and hook
@@ -91,6 +114,11 @@ verified that exact SHA and all checks above, not just job status.
 Timings are test observations, not performance benchmarks. See
 [v0.0.9 validation evidence](docs/STATUS.md#v009--schema-7) for scope;
 no original milestone or acceptance gate is completed by these checks.
+The final v0.0.9 documentation commit
+[de1bcc1](https://github.com/rioriost/pg_agmemory/commit/de1bcc13da74bb6e26475269a7acd283f43625db)
+also passed **274 tests** on both native architectures in
+[CI run 35182291689](https://github.com/rioriost/pg_agmemory/actions/runs/35182291689).
+Neither v0.0.9 run validates v0.0.10 atomic capture.
 
 **Historical v0.0.8/schema 7:** implementation
 [3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)
@@ -156,13 +184,14 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**v0.0.9 retains exact schema 7; there is no migration 008 or 009,
-DDL, or new backfill from v0.0.7/v0.0.8.**
+**v0.0.10 retains exact schema 7; no migration 008/009/010, DDL, or new backfill
+is needed from v0.0.7/v0.0.8/v0.0.9.** No dependencies are added; only the Python
+project version and its lock metadata change to v0.0.10.
 Stop/drain old APIs, workers, and adapters before replacing them with matching
-v0.0.9 processes; do not assume mixed-version compatibility.
+v0.0.10 processes; do not assume mixed-version compatibility.
 For databases older than schema 7, a maintenance stop and backup are required. Stop/drain all
 old/new APIs **and workers**, apply pending migrations through `007_japanese_fts.sql`
-with its atomic Python lexical backfill, then start only matching v0.0.9 APIs/workers.
+with its atomic Python lexical backfill, then start only matching v0.0.10 APIs/workers.
 Both require exact history `[1, 2, 3, 4, 5, 6, 7]`.
 Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling coexistence or downgrade is supported. Follow the
@@ -192,6 +221,50 @@ redact secrets/PII. Only send approved, already-sanitized data.
 Interactive schema documentation is at `/docs`; OpenAPI is at `/openapi.json`.
 `/healthz` is process liveness after startup validation, not continuous DB readiness.
 
+## Atomic structured capture
+
+**v0.0.10: final local and both native checks passed.** Native `POST /v1/captures` requires
+`Idempotency-Key` and `{episode: <unchanged Observe>, memory: <one structured intent>}`.
+The memory intent contains `subject`, `predicate`, `value`, one `evidence_quote`,
+`explicit_intent: true`, and optional aware/null `valid_from`/`valid_to`.
+It accepts **no scope, evidence IDs, or identity fields**: scope and the single
+episode evidence ID are derived inside the transaction. The 1–4,096-character
+quote must occur literally in the normalized episode. Existing Remember field
+limits/valid-time rules and reported, uncalibrated semantics remain unchanged.
+
+**HTTP 201** returns `{memory_id: <episode UUID>, revision: 1,
+synthesis_job_id: <job UUID>}`. It acknowledges a committed episode plus one
+`structured_remember` / `structured-remember-v1` job, **not assertion publication**.
+Capture may reuse an existing, even terminal, job: **201 does not guarantee a
+fresh or pending job**. These are historical references; GET is authoritative for current status.
+Use `GET /v1/jobs/{synthesis_job_id}` and the existing fixed-subject worker for
+eventual publication. Existing 100-active-jobs/scope and five-attempt limits,
+leases, epoch checks, and publication fencing still apply.
+`POST /v1/observe` remains unchanged: `synthesis_job_id: null`, no automatic job.
+Explicit `/v1/jobs` and synchronous `/v1/remember` remain unchanged too.
+
+Same key/normalized body returns the same episode/job pair; a changed body with
+that key conflicts. New HTTP keys with the same episode/intent/principal deduplicate
+the pair. A different explicit intent may create a separate job on a retained
+episode; another authorized principal has independent job identity/ownership.
+The transaction covers episode/projection, job data/identity, idempotency, and
+audit. Transaction failure rolls back new changes, not an episode that already existed independently.
+
+Replay checks **current ACLs and deletion for both IDs**. Purged episode/job/result
+dependencies can invalidate the pair with `404`; a purged job identity is not
+recreated by a new key. Retrying a failed job is an explicit existing job-retry
+operation; capture replay still returns its original job, not a retry child.
+This remains true after an explicit retry child has been created.
+This is not a permanent seal on a retained source against new, different intent.
+IDs are historical references; GET supplies fresh state.
+
+Capture is **not an MCP tool** and the recall hook never captures automatically.
+There is no LLM/provider, extraction, automatic synthesis, pgvector, or semantic
+truth qualification. The Native HTTP response-drain and host-erasure boundaries
+are unchanged. See the [full delta contract](docs/STATUS.md#atomic-structured-capture),
+[operator curl example](docs/operations/README.md#atomic-structured-capture-operations),
+and [ADR 0010](docs/adr/0010-atomic-capture.md).
+
 ## Local stdio MCP
 
 A plain `pg-agmemory` package installation does **not** install optional `mcp`
@@ -200,7 +273,7 @@ or `hook` dependencies. Select `pg-agmemory[mcp]` for MCP or
 intentionally include both extras; that is **not** the base-package default.
 
 Install the optional `pg-agmemory[mcp]` package extra, or use the repository image,
-whose v0.0.9 test and runtime stages include both `mcp` and `hook` extras.
+whose v0.0.10 test and runtime stages retain both `mcp` and `hook` extras.
 The MCP extra pins the official **mcp 2.2.0** SDK
 and **httpx 0.28.1**. From this checkout, `uv sync --frozen --extra mcp` prepares
 the locked environment. A trusted local MCP host launches:
@@ -214,7 +287,7 @@ configuration, not tool arguments or checked-in host configuration. The URL must
 be an HTTPS origin or loopback HTTP origin, with no credentials, path, query, or
 fragment. The token is for the **Native API audience**, which the Native API
 checks; it is not forwarded MCP caller identity. Startup makes an authenticated
-capabilities request and requires API `v1`, service `0.0.9`, and schema `7`.
+capabilities request and requires API `v1`, service `0.0.10`, and schema `7`.
 Configuration/authentication/version failures exit nonzero without secrets.
 Restart to refresh the fixed token. `--subject` and `--once` are rejected.
 
@@ -239,8 +312,9 @@ responses mean `outcome_unknown`, **not rollback**. Results use
 `isError: true` and `{result: null, error: {code, retryable, outcome_unknown,
 native_status, request_id}}`. Short text does not duplicate evidence.
 
-Remember is explicit structured publication only; capture episodes through Native
-`observe`, not MCP. UTF-8 byte budgeting (not model tokens), opt-in Japanese
+Remember is explicit structured publication only. Store standalone episodes with
+Native `/v1/observe`; use Native `/v1/captures` for explicit episode-plus-job
+atomicity. Neither is an MCP tool. UTF-8 byte budgeting (not model tokens), opt-in Japanese
 recall, current Native authentication/ACLs, deletion checks, and historical
 idempotency references are unchanged. MCP session/request IDs are neither memory
 run IDs nor HTTP idempotency keys.
@@ -255,13 +329,15 @@ ACL changes; there is no MCP deletion notification or adapter response/semantic 
 See [the full contract](docs/STATUS.md#local-stdio-mcp),
 [startup and recovery](docs/operations/README.md#local-stdio-mcp-operations), and
 [ADR 0008](docs/adr/0008-local-mcp.md), including protocol validation limits.
-v0.0.9 retains both modern `2026-07-28` and legacy `2025-11-25` protocol
-contracts and all MCP semantics. Regression and both protocol smokes passed
-locally and on both native Docker architectures.
+v0.0.10 retains both modern `2026-07-28` and legacy `2025-11-25` protocol
+contracts and all MCP semantics. Historical v0.0.9 regression and both protocol
+smokes passed locally and on both native Docker architectures.
+v0.0.10 final local and both native checks also passed.
 
 ## Implicit recall hook
 
-**v0.0.9: local and both native Docker checks passed.** Install optional
+**Retained read-only hook; v0.0.10 final local and both native checks passed.** Historical v0.0.9 local/native
+checks passed. Install optional
 `pg-agmemory[hook]` (`uv sync --frozen --extra hook` in this checkout).
 It pins **httpx 0.28.1, not the MCP SDK**; Docker test/runtime include both extras.
 `pg-agmemory recall-hook` is a one-shot, vendor-neutral local Native HTTP client.
@@ -295,7 +371,7 @@ Shared `NativeSettings` also uses `httpx.URL` to reject control characters and
 invalid IDNA before transport. Redirects/proxy environment are disabled and TLS is verified.
 
 Each invocation freshly checks authenticated capabilities for exact
-**service `0.0.9` / API `v1` / schema `7`**, then posts Native recall with
+**service `0.0.10` / API `v1` / schema `7`**, then posts Native recall with
 `mode: "implicit"` and Native current-time defaults. The deadline covers **both
 HTTP steps together**, excluding process startup, stdin input/waiting, and output.
 It is not an LLM latency SLO.
@@ -375,7 +451,7 @@ cascade in the same barrier, without child DELETE grants; they are not separate
 memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
 selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
 not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
-back up, rebuild, then restart matching v0.0.9 processes only. There is no automatic
+back up, rebuild, then restart matching v0.0.10 processes only. There is no automatic
 repair worker, external model/provider, or file-based memory index.
 See [the contract](docs/STATUS.md#japanese-lexical-profile),
 [maintenance](docs/operations/README.md#lexical-profile-and-reindex-operations),
@@ -545,6 +621,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) | [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) |
 | [Local MCP decisions](docs/adr/0008-local-mcp.md) | [Local MCPの決定](docs/adr/0008-local-mcp-jp.md) |
 | [Implicit recall hook decisions](docs/adr/0009-implicit-recall-hook.md) | [Implicit recall hookの決定](docs/adr/0009-implicit-recall-hook-jp.md) |
+| [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) | [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

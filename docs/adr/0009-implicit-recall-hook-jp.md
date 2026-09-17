@@ -9,6 +9,10 @@
   MITを変更せず、英語/日本語文書を維持
 - 受入: M0〜M3全体、MVP、本番、性能、記憶品質、DR、完全消去のgateは未完了
 
+**過去版の範囲:** このADRはv0.0.9/schema 7とその検証済み証拠を記録します。
+[ADR 0010](0010-atomic-capture-jp.md)はv0.0.10 atomic captureを扱い、
+起動時の対応版は[現在のSTATUS](../STATUS-jp.md)を参照してください。hookは読取り専用のままです。
+
 ## 決定と範囲
 
 任意の`pg-agmemory recall-hook`を**vendor-neutralなharness側、一回実行のlocal Native

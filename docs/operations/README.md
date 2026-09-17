@@ -13,9 +13,9 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The **v0.0.9/schema 7 implicit recall hook passed final local Apple Container
-and native Docker amd64/arm64 checks**.
-No migration 008 or 009 is added.
+The bounded **v0.0.10/schema 7 atomic structured capture** milestone is implemented.
+**Final local and native amd64/arm64 checks passed**.
+No migration 008/009/010 or new dependency is added; only project version/lock metadata changes.
 **Historical v0.0.8:** 214 tests and production smokes passed in Apple Container
 and native Docker amd64/arm64. These are not v0.0.9 results.
 M0–M3, MVP, production, performance,
@@ -33,7 +33,7 @@ added and the project version became v0.0.7; no unrelated upgrades or registry
 migration occurred. Native CI built that retained-registry lock. This is not a
 package-count or validation claim about v0.0.8/v0.0.9. Use the current locked build;
 the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
-both Docker test and runtime stages. v0.0.9 also includes `hook` in both stages;
+both Docker test and runtime stages. v0.0.10 retains `hook` in both stages;
 `pg-agmemory[hook]` pins `httpx==0.28.1` **without the MCP SDK**.
 The container-check script requires runner-side `jq` for **both Apple Container
 and Docker**, including disposable smoke configuration.
@@ -89,6 +89,127 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
+## Atomic structured capture operations
+
+**v0.0.10: final local and both native checks passed.** Bootstrap the Native API and runtime
+roles as above. Keep exact service `0.0.10`, API `v1`, schema `7`; the implemented
+stage is `m2-atomic-capture`, not full M2 completion.
+Capture is a Native route, **not an MCP tool or automatic recall-hook action**.
+There are no new dependencies or DDL for schema-7 databases.
+
+### Explicit request example
+
+Use approved, sanitized, disposable data. The operator supplies `MEMORY_URL`
+(trusted API origin), `TOKEN` (Native-audience token), `SCOPE_ID` (authorized
+UUID), `SOURCE_EVENT_ID` (stable source identity), and `CAPTURE_KEY` (caller-owned
+idempotency key). These are placeholders, not embedded credentials.
+Retain the exact request/key securely before sending; do not enable shell tracing
+or copy tokens/content into logs or issue reports.
+
+```bash
+curl --fail-with-body "${MEMORY_URL%/}/v1/captures" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Idempotency-Key: ${CAPTURE_KEY}" \
+  -H 'Content-Type: application/json' \
+  --data-binary @- <<JSON
+{
+  "episode": {
+    "scope_id": "${SCOPE_ID}",
+    "source_namespace": "atomic-capture-demo",
+    "source_event_id": "${SOURCE_EVENT_ID}",
+    "occurred_at": "2026-09-17T00:00:00Z",
+    "content": "ACME contract is Gold",
+    "consent_reference": "operator-approved-demo-consent"
+  },
+  "memory": {
+    "subject": "ACME",
+    "predicate": "contract_tier",
+    "value": "Gold",
+    "evidence_quote": "ACME contract is Gold",
+    "explicit_intent": true,
+    "valid_from": null,
+    "valid_to": null
+  }
+}
+JSON
+```
+
+`episode` is unchanged Observe. `memory` is exactly one structured intent with
+no scope, evidence IDs, or identity overrides; the server derives its scope and
+single episode evidence ID inside the transaction. Its one quote must be a
+literal 1–4,096-character substring of the normalized episode.
+Remember bounds remain: subject 1–256, predicate `^[a-z][a-z0-9_]{0,63}$`,
+value 1–65,536, explicit intent true, and aware/null valid bounds with start
+before end when both are present. The literal quote is not proof of semantic truth;
+published assertions remain reported and uncalibrated.
+
+### Follow the job, not a presumed assertion
+
+HTTP **201** gives `{memory_id: <episode UUID>, revision: 1,
+synthesis_job_id: <job UUID>}`. This acknowledges the atomic **episode plus
+structured_remember / structured-remember-v1 job commit**, not assertion
+publication. Existing jobs, including terminal ones, may be reused:
+**201 does not mean fresh or pending**. Save both historical IDs and use GET as
+the authority for current job status. With `CAPTURE_JOB_ID` set to the returned job UUID:
+
+```bash
+curl --fail-with-body "${MEMORY_URL%/}/v1/jobs/${CAPTURE_JOB_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+Run the existing worker under the **same owning principal's trusted fixed
+subject**, with restricted runtime DB credentials, then GET again for fresh state.
+`--once` processes at most one due owned job; it need not be this job and is not
+a queue drain. Only a successful job result supplies the published assertion ID.
+Existing quota (100 pending/running jobs per scope), five attempts, leases,
+epochs, and publication fencing apply unchanged. See
+[worker operations](#durable-job-and-worker-operations).
+
+Pure `POST /v1/observe` still returns `synthesis_job_id: null` and never queues
+automatically. Direct `/v1/jobs` and synchronous `/v1/remember` are unchanged,
+including Observe/Remember serialization/HMAC compatibility.
+There is no LLM/provider, extraction, natural-language synthesis, pgvector,
+or new semantic-quality qualification.
+
+### Replay, failures, and deletion
+
+- Reuse the **same capture key and normalized body** after uncertainty, including
+  API restart; HTTP response loss is not proof of rollback. Changed body with
+  the same key is `409`. IDs are historical: GET supplies fresh job state.
+- New keys with the same episode/intent/principal deduplicate **both IDs**.
+  A previously observed identical event is reusable. Changed episode body for
+  the same source identity conflicts with `409`, without new partial writes.
+- A new, different explicit intent may create another job using the retained
+  episode. Another authorized principal has independent job identity/worker
+  ownership; source deduplication does not grant permissions.
+- Transaction failure after episode/projection, job data/identity, outer
+  idempotency receipt, or audit rolls back new changes together. An independently
+  pre-existing episode remains; no partial new job survives. At most one job
+  belongs to a capture operation.
+- Current ACLs/deletion win for **both returned IDs**. Episode purge closes
+  job/assertion descendants. Job-only purge leaves the episode and independently
+  stored published output, but old-pair replay or a new key for the same intent
+  returns `404`; the purged job identity is not recreated. Result-assertion purge
+  removes its dependent job but keeps source, invalidating the pair.
+- This is not a permanent whole-source seal: new explicit **different** intent
+  on retained source follows existing job semantics.
+- To retry a failed job, use existing `POST /v1/jobs/{job_id}/retry` with the full
+  original `EnqueueJob` intent and caller-owned key. Reconstruct its existing
+  Remember evidence from the returned episode ID and retained quote/intent.
+  Capture replay returns the original failed job reference, **not a retry child**,
+  even after that child is created.
+
+Retained opaque source/job/idempotency anchors include internal composition keys
+derived by server HMAC from the caller key. Do not supply or synthesize these
+internal keys; they are not MCP autogenerated caller keys or a new API input.
+The Native tenant HTTP response-drain boundary is unchanged. Retained anchors,
+host context, backups, WAL, and delivered data have no new full-erasure guarantee.
+Capability feature `atomic_structured_capture` has `atomic_capture` metadata:
+`endpoint: "/v1/captures"`, `max_jobs: 1`,
+`recipe_version: "structured-remember-v1"`, `automatic_capture: false`.
+See [the delta contract](../STATUS.md#atomic-structured-capture)
+and [ADR 0010](../adr/0010-atomic-capture.md).
+
 ## Local stdio MCP operations
 
 ### Install and start with one trusted identity
@@ -126,7 +247,7 @@ authorization boundary.
    `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
    not human prompts or ordinary log output. Diagnostics use sanitized stderr.
 6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
-   `0.0.9`, schema `7` before serving tools. A bad setting/token, unreachable API,
+   `0.0.10`, schema `7` before serving tools. A bad setting/token, unreachable API,
    or version mismatch exits nonzero without logging secrets. A passing
    `/healthz` alone is insufficient. Fix trusted configuration and restart;
    do not bypass the check or change tool arguments to override identity/URL.
@@ -197,10 +318,10 @@ Historical v0.0.8 actual stdio SDK `Client` connections and raw JSON fixtures ex
 The response-loss regression drops an actual HTTP response **after remember
 commits**, then retries the same key/body and checks that only one assertion
 persists. This tests caller-driven recovery, not an automatic retry.
-Historical local/native CI evidence is recorded in STATUS. v0.0.9 retains both
-protocol eras, these semantics, and MCP bounds while extracting the shared
-Native HTTP client. Regression checks and both protocol smokes passed locally
-and on both native Docker architectures.
+Historical local/native CI evidence is recorded in STATUS. v0.0.10 retains both
+protocol eras, semantics, MCP bounds, and the shared Native HTTP client.
+v0.0.9 checks passed locally and on both native Docker architectures;
+v0.0.10 final local and both native checks also passed.
 These specific checks do not prove compatibility with untested
 older clients or a named host.
 See [the full contract](../STATUS.md#local-stdio-mcp) and
@@ -208,7 +329,7 @@ See [the full contract](../STATUS.md#local-stdio-mcp) and
 
 ## Implicit recall hook operations
 
-**v0.0.9: final local and both native Docker checks passed.** This is a vendor-neutral,
+**Retained read-only hook; v0.0.10 final local and both native checks passed.** This is a vendor-neutral,
 one-shot harness-side command, not MCP, a model caller, or an automatically
 registered host plugin. No Copilot/Claude/Codex integration is claimed.
 
@@ -217,7 +338,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
 1. Provision the Native API subject/scopes using the role separation above.
    The hook requires **no DB credentials**, admin URL, JWT signing key, or
    external model key. It only uses the configured Native audience token.
-2. Install `pg-agmemory[hook]` or use the v0.0.9 repository image with both
+2. Install `pg-agmemory[hook]` or use the v0.0.10 repository image with both
    `mcp` and `hook` extras. For the checkout use `uv sync --frozen --extra hook`.
    Hook-only installation pins `httpx==0.28.1`, **not the MCP SDK**.
 3. Have the operator securely supply the following environment before starting
@@ -238,7 +359,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
 
    URL, token, and scope IDs are **all required**. Shared `NativeSettings` also
    parses origins with `httpx.URL`, rejecting control characters and invalid
-   IDNA before transport. These invalid-origin checks passed in all three environments.
+   IDNA before transport. These checks passed in all three historical v0.0.9 environments.
 
    Loopback is relative to the hook process/container; do not assume it reaches
    a sibling container or the Mac host. Non-loopback HTTP is rejected.
@@ -252,7 +373,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
    `scope_ids`, purpose, mode, budget, URL, header, tool, time, or other field
    is accepted. Event text never authorizes access.
 5. Each invocation freshly checks authenticated `GET /v1/capabilities` for exact
-   service `0.0.9`, API `v1`, schema `7`, then sends `POST /v1/recall` with
+   service `0.0.10`, API `v1`, schema `7`, then sends `POST /v1/recall` with
    `mode: "implicit"`, trusted recall settings, and Native current-time defaults.
    The same fixed token is used for both requests; no caching of authorization
    or responses occurs. Replace credentials only through trusted startup configuration.
@@ -454,16 +575,18 @@ See [the complete contract](../STATUS.md#implicit-recall-hook) and
 
 <a id="v008-application-update-schema-unchanged"></a>
 
-## v0.0.9 application update (schema unchanged)
+<a id="v009-application-update-schema-unchanged"></a>
 
-For an existing v0.0.7/v0.0.8 schema-7 database there is **no migration 008/009 or new
+## v0.0.10 application update (schema unchanged)
+
+For an existing v0.0.7/v0.0.8/v0.0.9 schema-7 database there is **no migration 008/009/010 or new
 backfill**. Record the application/schema versions and preserve a backup and
 current deletion/ACL records. Stop/drain old APIs, workers, and MCP adapters,
-and suspend hook launches, including auto-restarts; replace them with matching v0.0.9 images. Confirm exact
+and suspend hook launches, including auto-restarts; replace them with matching v0.0.10 images. Confirm exact
 schema history `[1, 2, 3, 4, 5, 6, 7]`, then start the restricted Native API/workers,
 check authenticated capabilities, and start each fixed-identity adapter/hook.
 Same schema does not establish rolling mixed-version compatibility or a
-supported downgrade. v0.0.9 packaged runtime and retained schema-contract
+supported downgrade. v0.0.10 packaged runtime and retained schema-contract
 checks passed locally and on both native Docker architectures. Historical results stay separate in
 [validation evidence](../STATUS.md#validation-evidence).
 For older schemas, apply the retained schema-7 migration procedure below using
@@ -477,7 +600,7 @@ the current image. Reindex remains separate offline maintenance, not an MCP/hook
 ## v0.0.7 maintenance migration
 
 This is the retained schema-7 migration introduced in v0.0.7, for older
-databases; it is **not a new v0.0.8/v0.0.9 migration**.
+databases; it is **not a new v0.0.8/v0.0.9/v0.0.10 migration**.
 
 **No rolling old/new API/worker coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -509,7 +632,7 @@ Follow this maintenance protocol:
    JSON/HMAC ordering. Use the pinned Janome 0.5.0 dependency and bundled dictionary.
    The v4 ledger's stricter resume rules remain: untracked hints, even planned
    ones, block resumption.
-5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v0.0.9 APIs/workers**
+5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v0.0.10 APIs/workers**
    with restricted runtime credentials and the intended fixed worker subjects.
    Check capabilities/schema, default/opt-in recall and projection coverage,
    historical revision selection, authorization, purge, atomic publication, and
@@ -569,7 +692,7 @@ To rebuild an existing schema-7 database from canonical data:
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v0.0.9 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.10 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
@@ -587,7 +710,7 @@ To rebuild an existing schema-7 database from canonical data:
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v0.0.9 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.10 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.
@@ -995,7 +1118,7 @@ The subsequent v0.0.8 bilingual documentation commit
 passed **214 tests on each native architecture** in
 [CI run 35177260509](https://github.com/rioriost/pg_agmemory/actions/runs/35177260509).
 None of these historical runs validates the v0.0.9 hook or shared-client extraction.
-**Final v0.0.9 results verified 2026-09-17 JST:** Apple Container and native Docker
+**Historical final v0.0.9 results verified 2026-09-17 JST:** Apple Container and native Docker
 amd64/arm64 each passed **274 tests, 1 existing warning**, Ruff, strict mypy
 (**15 source files**), genuine core-only/hook-only installation checks, and all
 non-root production Japanese/API/worker smokes, MCP **`2026-07-28` and `2025-11-25`**,
@@ -1013,3 +1136,33 @@ installation/missing extras, then hook-only **without MCP**, including explicit
 JSON for failed HTTP. The container script builds it on local Apple Container
 and both native Docker architectures. It **passed in all three environments**.
 No original milestone or acceptance gate is complete.
+Final v0.0.9 documentation
+[de1bcc1](https://github.com/rioriost/pg_agmemory/commit/de1bcc13da74bb6e26475269a7acd283f43625db)
+also passed **274 tests** on both native architectures in
+[CI 35182291689](https://github.com/rioriost/pg_agmemory/actions/runs/35182291689).
+These are historical results, not v0.0.10 evidence.
+
+**v0.0.10 final local and native results verified 2026-09-17 JST.**
+Apple Container and native Docker amd64/arm64 each passed **304 tests, 1 existing
+warning**, plus **Ruff, strict mypy (16 source files), genuine core-only/hook-only
+installation checks, and all non-root production smokes**:
+Japanese/API/worker, both MCP eras, all three hook events, and atomic capture.
+Test elapsed: **275.53 s** on Apple Container, **467.75 s** on native amd64,
+and **434.40 s** on native arm64.
+The final local source matches published implementation
+[ac42c35](https://github.com/rioriost/pg_agmemory/commit/ac42c354b9310e877c9d248cf9c8cc8f4293128f).
+Both native jobs in
+[CI run 35185176814](https://github.com/rioriost/pg_agmemory/actions/runs/35185176814)
+passed; actual logs verified that exact SHA, counts, timings, and all checks,
+not just job status.
+Coverage includes rollback faults, source/key deduplication races,
+quota/RLS/deletion, and API process restart with an actual worker.
+For a fresh fixture, the production smoke passed in all three environments.
+It follows MCP/hook checks with Native capture →
+pending job → actual worker CLI `--once` → episode/assertion recall →
+same capture replay → source purge → job GET `404` and capture replay `404`.
+All three final runs also cover committed HTTP 201 response loss followed by same-key
+recovery of the exact pair with one publication, and stable replay of the original
+failed capture job after explicit retry-child creation.
+Elapsed time is not a performance benchmark; all acceptance gates remain incomplete.
+See [v0.0.10 evidence](../STATUS.md#v0010--schema-7).

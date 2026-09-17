@@ -7,8 +7,8 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.9/schema 7のimplicit recall hookを実装し、local Apple Containerと
-native Docker amd64/arm64の検査に合格しました。v0.0.8証拠は過去のものとして維持します。
+**上限付きv0.0.10/schema 7のatomic structured captureを実装しました。
+最終localとnative amd64/arm64検査に合格しました。検証済みv0.0.9結果は過去の証拠として維持します。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -19,8 +19,9 @@ typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳
 明示entityとrevision付きrelation assertionは上限付きの読取り専用SQL graph探索を提供します。
 固定principal workerによる明示queue型の構造化publicationと、
 opt-inのversion付き日本語lexical search、Native API上のlocal・固定identity MCP adapterも提供します。
-v0.0.9契約は任意のvendor-neutralなharness側implicit recall hookを追加します。
-hostへの自動登録、remote MCP、自動synthesis、検索品質の測定済み改善ではありません。
+任意のvendor-neutral implicit recall hookは読取り専用を維持します。
+v0.0.10差分はepisode一つと明示要求された構造化publication job一つを原子的にcommitします。
+assertion公開済み、自動capture、自然言語synthesis、検索品質の測定済み改善ではありません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、vendor固有harness adapter、
 自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、
@@ -68,7 +69,27 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.9/schema 7の最終結果を2026-09-17 JSTに確認しました。**
+**v0.0.10/schema 7の最終localとnative結果を2026-09-17 JSTに確認しました。**
+Apple Containerとnative Docker amd64/arm64は各**304テスト、既存warning 1件**に合格しました。
+**Ruff、strict mypy（source 16ファイル）、真のcore-only/hook-only導入検査、
+non-root productionの全smoke**も全3環境で合格しました。
+日本語/API/worker、MCP両時代、hook全3 eventに加え、
+新しい原子的な**capture → 実worker → recall → replay → purge** workflowが対象です。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| ローカルApple Container | **275.53秒** |
+| Docker、native `linux/amd64` | **467.75秒** |
+| Docker、native `linux/arm64` | **434.40秒** |
+
+最終local sourceは公開済み実装
+[ac42c35](https://github.com/rioriost/pg_agmemory/commit/ac42c354b9310e877c9d248cf9c8cc8f4293128f)と一致します。
+[CI run 35185176814](https://github.com/rioriost/pg_agmemory/actions/runs/35185176814)は
+両native jobとも合格し、実logでjob statusだけでなく完全一致SHA、件数、所要時間、検査を確認しました。
+所要時間は性能benchmarkではありません。
+[v0.0.10証拠](docs/STATUS-jp.md#v0010--schema-7)を参照してください。
+
+**過去のv0.0.9/schema 7の最終結果を2026-09-17 JSTに確認しました。**
 全3環境で**274テスト、既存warning 1件**、Ruff、strict mypy（**source 15ファイル**）、
 真のcore-only/hook-only導入検査、non-root productionの日本語/API/worker、
 MCP **`2026-07-28`・`2025-11-25`**、
@@ -87,6 +108,11 @@ hook **`session_start`・`task_switch`・`after_compaction`**の全smokeに合�
 所要時間はテスト観測値であり、性能benchmarkではありません。
 範囲は[v0.0.9検証証拠](docs/STATUS-jp.md#v009--schema-7)を参照してください。
 これらの検査で元のmilestoneや受入gateが完了したとは扱いません。
+最終v0.0.9 docs commit
+[de1bcc1](https://github.com/rioriost/pg_agmemory/commit/de1bcc13da74bb6e26475269a7acd283f43625db)も、
+[CI run 35182291689](https://github.com/rioriost/pg_agmemory/actions/runs/35182291689)で
+両native architecture各**274テスト**に合格しました。
+どちらのv0.0.9 runもv0.0.10 atomic captureの検証ではありません。
 
 **過去のv0.0.8/schema 7:** 実装
 [3b84a22](https://github.com/rioriost/pg_agmemory/commit/3b84a22c4dac56ffdc9a6276f558fb5268774fd2)は、
@@ -150,14 +176,14 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.9は厳密なschema 7を維持し、v0.0.7/v0.0.8からのmigration 008/009、
-DDL、新backfillはありません。**
-旧API/worker/adapterを停止/drainしてから、対応するv0.0.9 processに置換してください。
+**v0.0.10は厳密なschema 7を維持し、v0.0.7/v0.0.8/v0.0.9からのmigration 008/009/010、
+DDL、新backfillは不要です。** 新依存はなく、Python project版とそのlock metadataだけをv0.0.10へ更新します。
+旧API/worker/adapterを停止/drainしてから、対応するv0.0.10 processに置換してください。
 異なるversionの混在互換性を想定しないでください。
 schema 7より古いDBには保守停止とbackupが必要です。
 旧版・新版すべてのAPI**とworker**を停止/drainし、`007_japanese_fts.sql`までの
 未適用migrationと原子的Python lexical backfillを適用してから、
-対応するv0.0.9 API/workerだけを起動します。
+対応するv0.0.10 API/workerだけを起動します。
 両者とも厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 rolling共存やdowngradeは非対応です。
@@ -186,6 +212,48 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
 
+## Atomic structured capture
+
+**v0.0.10の最終localとnative両architecture検査に合格しました。**
+Native `POST /v1/captures`は`Idempotency-Key`と
+`{episode: <変更しないObserve>, memory: <一つの構造化intent>}`を要求します。
+memory intentは`subject`、`predicate`、`value`、一つの`evidence_quote`、
+`explicit_intent: true`、任意のtimezone付き/nullの`valid_from`/`valid_to`を持ちます。
+**scope、根拠ID、identity fieldは受け付けず**、scopeと一つのepisode根拠IDをtransaction内で導出します。
+1〜4,096文字のquoteは正規化済みepisodeに原文として含まれる必要があります。
+既存Rememberのfield上限/valid-time規則とreported・未校正semanticsを維持します。
+
+**HTTP 201**は`{memory_id: <episode UUID>, revision: 1,
+synthesis_job_id: <job UUID>}`を返します。
+episodeと一つの`structured_remember` / `structured-remember-v1` jobのcommitを確認するだけで、
+**assertion publicationの完了ではありません**。
+既存jobやterminal jobを再利用する場合があり、**201は新規/pending jobを保証しません**。
+返却値は過去参照であり、現在のstatusはGETを正とします。
+`GET /v1/jobs/{synthesis_job_id}`と既存の固定subject workerで後続publicationを扱います。
+scope当たりactive job 100件、job当たり5試行、lease、epoch検査、publication fencingを維持します。
+`POST /v1/observe`は変更せず`synthesis_job_id: null`で、自動jobはありません。
+明示`/v1/jobs`と同期`/v1/remember`も変更しません。
+
+同じkey/正規化bodyは同じepisode/job組を返し、同じkeyでbodyを変えるとconflictします。
+同じepisode/intent/principalなら新HTTP keyでも組を重複抑止します。
+別の明示intentは生存episode上に別jobを作れ、別の認可済みprincipalは独立したjob identity/所有権を持ちます。
+episode/projection、job data/identity、idempotency、auditを一つのtransactionで扱います。
+transaction失敗は新規変更をrollbackし、以前から独立して存在したepisodeは削除しません。
+
+replayは**両IDの現在のACL/削除**を確認します。episode/job/resultの依存purgeで組は
+`404`になり得て、新keyでもpurge済みjob identityを再作成できません。
+failed jobは既存job-retry操作で明示retryし、capture replayはretry childでなく元jobを返します。
+明示retry childを作成した後も変わりません。
+生存source上の新しい別intentを永久禁止するものではありません。
+IDは過去参照であり、fresh stateはGETで取得します。
+
+captureは**MCP toolではなく**、recall hookも自動captureしません。
+LLM/provider、抽出、自動synthesis、pgvector、意味的な真実の認定はありません。
+Native HTTP response-drainとhost消去の境界は変更しません。
+[全差分契約](docs/STATUS-jp.md#atomic-structured-capture)、
+[operator向けcurl例](docs/operations/README-jp.md#atomic-structured-captureの運用)、
+[ADR 0010](docs/adr/0010-atomic-capture-jp.md)を参照してください。
+
 ## Local stdio MCP
 
 通常の`pg-agmemory` package導入では任意の`mcp`/`hook`依存を**導入しません**。
@@ -193,7 +261,7 @@ MCPには`pg-agmemory[mcp]`、recall-hookには`pg-agmemory[hook]`を選択し�
 repositoryのDocker test/runtime imageは意図的に両extraを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.9のtest/runtime両stageに
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.10のtest/runtime両stageに
 `mcp`・`hook`両extraを含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
@@ -207,7 +275,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.9`、schema `7`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.10`、schema `7`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -230,8 +298,9 @@ Native forgetは従来どおり**preview/purgeともHTTP 202**です。
 `{result: null, error: {code, retryable, outcome_unknown, native_status, request_id}}`
 を返します。短いtextには根拠を重複収録しません。
 
-rememberは明示structured publication専用です。episode captureにはMCPでなくNative `observe`を
-使います。UTF-8 byte予算（model tokenではない）、日本語recallのopt-in、現在のNative認証/ACL、
+rememberは明示structured publication専用です。episode単体保存にはNative `/v1/observe`、
+明示episode/jobの原子性にはNative `/v1/captures`を使い、どちらもMCP toolではありません。
+UTF-8 byte予算（model tokenではない）、日本語recallのopt-in、現在のNative認証/ACL、
 削除検査、過去のidempotency参照は維持します。MCP session/request IDはmemory run IDでも
 HTTP idempotency keyでもありません。
 
@@ -244,12 +313,14 @@ buffer済み/配信済みcontextは回収できません。forget/ACL変更後�
 protocol検証の制限を含む[全契約](docs/STATUS-jp.md#local-stdio-mcp)、
 [起動と復旧](docs/operations/README-jp.md#local-stdio-mcpの運用)、
 [ADR 0008](docs/adr/0008-local-mcp-jp.md)を参照してください。
-v0.0.9はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP semanticsを
-維持します。regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
+v0.0.10はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP semanticsを維持します。
+過去のv0.0.9 regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
+v0.0.10の最終localとnative両architecture検査も合格しました。
 
 ## Implicit recall hook
 
-**v0.0.9: localとnative Docker両architectureの検査に合格しました。**
+**既存の読取り専用hookです。v0.0.10最終localとnative両architecture検査に合格しました。**
+過去のv0.0.9 local/native検査は合格しています。
 任意の`pg-agmemory[hook]`を導入します（checkoutでは`uv sync --frozen --extra hook`）。
 固定依存は**httpx 0.28.1だけで、MCP SDKではありません**。
 Docker test/runtimeには両extraを含めます。
@@ -284,7 +355,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.9` / API `v1` / schema `7`**を検査し、
+**service `0.0.10` / API `v1` / schema `7`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -359,7 +430,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-対応するv0.0.9 processだけを再起動します。
+対応するv0.0.10 processだけを再起動します。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
 [保守](docs/operations/README-jp.md#lexical-profileとreindexの運用)、
@@ -526,6 +597,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) | [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) |
 | [Local MCPの決定](docs/adr/0008-local-mcp-jp.md) | [Local MCP decisions](docs/adr/0008-local-mcp.md) |
 | [Implicit recall hookの決定](docs/adr/0009-implicit-recall-hook-jp.md) | [Implicit recall hook decisions](docs/adr/0009-implicit-recall-hook.md) |
+| [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) | [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

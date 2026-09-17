@@ -2,8 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.9/schema 7 implicit recall hook implemented; final local Apple Container
-and native Docker amd64/arm64 checks passed. v0.0.8 results stay historical.
+**Bounded v0.0.10/schema 7 atomic structured capture implemented.
+Final local and native amd64/arm64 checks passed. v0.0.9 results remain historical evidence.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -20,6 +20,7 @@ software dependency, not stored application memory.
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
+| `POST /v1/captures` | Atomically commits/reuses one episode and one explicit structured-publication job; `201` returns the episode/job pair, not a published assertion |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
 | `POST /v1/jobs` | Explicitly queues structured memory publication; `202` is a job reference, not completion |
 | `GET /v1/jobs/{job_id}` | Returns currently readable state, safe errors/timing, exact input references, and original result revision 1 |
@@ -47,14 +48,143 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness.
 
+## Atomic structured capture
+
+**v0.0.10 delta: final local and both native checks passed.** `POST /v1/captures` requires
+`Idempotency-Key` and one body:
+
+```text
+{episode: <unchanged Observe>,
+ memory: {subject, predicate, value, evidence_quote, explicit_intent: true,
+          valid_from: <aware timestamp or null>, valid_to: <aware timestamp or null>}}
+```
+
+The request model is `Capture(episode: Observe, memory: CapturedMemory)`.
+The episode is the existing `Observe` model, not an alternate capture format.
+Exactly one structured memory intent is accepted, not a list or free-text
+extraction request. Memory fields retain the synchronous Remember rules:
+
+| Memory field | Contract |
+|---|---|
+| `subject` | 1–256 characters |
+| `predicate` | Matches `^[a-z][a-z0-9_]{0,63}$` |
+| `value` | 1–65,536 characters |
+| `evidence_quote` | One 1–4,096-character literal substring of the normalized captured episode |
+| `explicit_intent` | Must be `true` |
+| `valid_from`, `valid_to` | Optional timezone-aware timestamps or null/unbounded; when both are present, start must be before end |
+
+Memory accepts **no scope, evidence IDs, or identity fields**. The transaction
+derives scope from the episode and binds its single evidence reference to that
+episode's memory ID/revision 1. Current Native authentication, tenant/scope
+read/write authorization, RLS, normalization, and source-event deduplication
+remain authoritative; nothing silently widens scope or tenant. Literal matching
+establishes provenance, **not semantic support or truth**. Publication retains
+`epistemic_status: "reported"` and uncalibrated confidence (`score: null`,
+`method: "uncalibrated"`).
+
+### Commit and publication are separate
+
+**HTTP 201** returns `CaptureResult`:
+`{memory_id: <episode UUID>, revision: 1, synthesis_job_id: <job UUID>}`.
+`memory_id` is **not an assertion ID**, and `synthesis_job_id` is a job reference,
+not a promise that synthesis occurred. The episode plus at most one
+`structured_remember` / `structured-remember-v1` job are committed atomically.
+Capture may reuse an existing job, including a terminal one. **201 does not
+guarantee a newly created or pending job**; GET is authoritative for current status.
+Use `GET /v1/jobs/{synthesis_job_id}` for fresh state and the existing
+fixed-subject worker for eventual assertion publication.
+
+The existing **100 pending/running jobs per scope**, **five attempts per job**,
+leases, access/deletion epochs, and publication fencing remain unchanged.
+Worker publication remains a separate atomic transaction; enqueue does not set
+the assertion's server-recorded publication time.
+`POST /v1/observe` retains unchanged `ObserveResult`, including literal-null `synthesis_job_id`,
+and **never automatically enqueues a job**. Explicit `POST /v1/jobs`, synchronous `/v1/remember`,
+and pure Observe/Remember normalized serialization/HMAC remain byte-compatible.
+
+### Deduplication and transaction boundary
+
+| Request situation | Result under current access/deletion checks |
+|---|---|
+| Same capture key and normalized body | Same episode/job pair |
+| Changed body with the same capture key | `409`, no new partial writes |
+| Different HTTP keys, same episode/intent/principal | Both IDs deduplicate to the same pair |
+| Previously observed identical event | Reuse its episode; the explicit wrapper supplies the job intent |
+| New key and different explicit memory intent | May create a separate job using the same retained episode; intentional, not semantic deduplication |
+| Another authorized principal using the same event | Episode source deduplication remains; job identity/worker ownership are independent |
+| Same source-event identity, changed episode body | `409`, no new partial writes |
+
+One transaction covers episode and lexical projection, job input/control/identity,
+idempotency receipts (including the outer capture receipt), and audit.
+Transaction failure after either write or the outer receipt rolls back **all new changes**.
+An episode that existed independently before capture remains on failure; no
+partial new job survives. There is no distributed transaction or external provider.
+
+Retained opaque idempotency/source/job identity anchors include internal
+composition keys, derived by server HMAC from the caller's key. They are not
+client-supplied fields, autogenerated MCP caller keys, or a change to caller-owned
+HTTP key reuse. Retained anchors are not fresh memory content or full-erasure proof.
+
+### Replay, deletion, and failed-job retry
+
+**Current ACLs and deletion override replay for both returned IDs**, including
+an exact capture replay after API process restart. The pair is historical;
+GET checks fresh job state rather than capture silently changing the pair.
+Shared replay checks a non-null `synthesis_job_id` as well as `memory_id`;
+the unchanged Observe result still has no job reference.
+
+| Purge target | Effect on capture |
+|---|---|
+| Episode | Closes dependent jobs and assertion descendants through existing purge dependencies |
+| Job alone | Leaves the episode and independently stored published output; old capture replay and a new key for the same intent return `404`, not a recreated job identity |
+| Published result assertion | Removes the dependent job, keeps its source episode, and invalidates the old pair |
+
+A **new explicit different intent on a retained source** is still allowed by
+existing job semantics. Capture is not a permanent whole-source seal.
+Failed jobs use existing `POST /v1/jobs/{job_id}/retry` with the original complete
+`EnqueueJob` intent and a caller-owned key. Retry creates/reuses a child under
+existing rules; replaying capture returns the **original failed job reference**,
+not that child, even after the child has been created. See [durable jobs](#durable-jobs).
+
+### Scope and capabilities
+
+The implemented API stage is **`m2-atomic-capture`**, with capability feature
+**`atomic_structured_capture`**. The exact `atomic_capture` metadata fragment is:
+
+```json
+{
+  "atomic_capture": {
+    "endpoint": "/v1/captures",
+    "max_jobs": 1,
+    "recipe_version": "structured-remember-v1",
+    "automatic_capture": false
+  }
+}
+```
+
+This describes at most one job per explicit capture, not automatic capture.
+The stage label does not complete M2 or any other acceptance gate.
+
+Capture is **Native-only**, not a fifth MCP tool. Recall-hook stays read-only;
+neither adapter automatically captures. MCP/hook startup requires exact
+**service `0.0.10` / API `v1` / schema `7`**. No new dependency, DDL, or migration
+is needed for an existing schema-7 DB; only project version/lock metadata changes.
+No LLM/provider, extraction, natural-language synthesis, automatic synthesis,
+pgvector, or semantic-quality claim is added.
+The tenant HTTP response-drain barrier is unchanged: no atomic host-context
+delivery, retraction, or host/backup/WAL/full-erasure guarantee follows.
+See [ADR 0010](adr/0010-atomic-capture.md) and the
+[operator example](operations/README.md#atomic-structured-capture-operations).
+
 ## Local stdio MCP
 
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.9 Docker test/runtime stages include both `mcp` and `hook` extras.
+v0.0.10 Docker test/runtime stages retain both `mcp` and `hook` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
-below. Regression checks passed locally and on both native Docker architectures.
+below. Historical v0.0.9 checks passed locally and on both native Docker
+architectures. v0.0.10 final local and both native checks also passed.
 Shared `NativeSettings` additionally parses origins with `httpx.URL`, rejecting
 control characters and invalid IDNA before transport. No remote MCP HTTP/SSE listener,
 OAuth, delegated caller identity, semantic cache, or response cache is provided.
@@ -134,9 +264,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.9"`, and `schema_version: 7`.
+`api_version: "v1"`, `service_version: "0.0.10"`, and `schema_version: 7`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. There is **no migration 008 or 009**: v0.0.9 retains schema 7.
+sanitized diagnostics. There is **no migration 008/009/010**: v0.0.10 retains schema 7.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -178,22 +308,22 @@ followed by same-key/body retry and an assertion that only one assertion exists.
 There is no automatic retry. Exact 256/257-character key boundaries and rejection
 without whitespace trimming are also covered.
 
-Historical v0.0.8 local/native CI results are recorded below. v0.0.9 retains both
-protocol eras, with local and both native CI checks passed. These exercised paths do not qualify
+Historical v0.0.8/v0.0.9 local/native CI results are recorded below. v0.0.10
+retains both protocol eras; final local and both native checks passed. These exercised paths do not qualify
 untested older clients, named host applications, or every protocol version.
 See [ADR 0008](adr/0008-local-mcp.md) and
 [operations](operations/README.md#local-stdio-mcp-operations).
 
 ## Implicit recall hook
 
-**v0.0.9: final local and both native Docker checks passed.**
+**Retained read-only contract; v0.0.10 final local and both native checks passed.**
 `pg-agmemory recall-hook` is an optional, vendor-neutral **harness-side** local
 Native HTTP client. There is no automatic registration into a host and no
 Copilot, Claude, or Codex integration claim. The host chooses when to invoke it;
 the service does not observe host lifecycle events itself. `pg-agmemory[hook]`
 pins **httpx==0.28.1, not the MCP SDK**. Both Docker test/runtime stages include
-`mcp` and `hook`; genuine core-only/hook-only isolation checks passed locally
-and on both native Docker architectures.
+`mcp` and `hook`; historical v0.0.9 core-only/hook-only isolation checks passed
+locally and on both native Docker architectures.
 The hook needs no database credentials, signing key, or LLM/provider key.
 
 ### Input and trusted startup configuration
@@ -240,10 +370,10 @@ audience, and cannot be overridden by the event.
 URL, token, and scope IDs are **all required**. Shared `NativeSettings` uses
 `httpx.URL` as well as the origin restrictions, rejecting control characters
 and invalid IDNA before transport. These invalid-origin cases are covered by
-the final local and both native CI suites.
+the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.9` / API `v1` / schema `7`**, then sends `POST /v1/recall`
+exact **service `0.0.10` / API `v1` / schema `7`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -576,12 +706,13 @@ without input text. Library `SystemExit` becomes tokenizer-unavailable:
 API `503 dependency_unavailable`, not an incomplete-index success; workers use
 the existing bounded `dependency_unavailable` retry path without input echo.
 
-Capabilities report stage `m2-japanese-fts`, feature `japanese_fts`, both
+Capabilities retain feature `japanese_fts`, both
 `search_profiles`, `default_search_profile: "simple-v1"`, and pinned tokenizer/
 dictionary metadata with `normalization: "none"` and
 `segmentation: "japanese-script-runs"`. Context budgeting stays `utf8-bytes-v1`;
 `vector_search`, `auto_synthesis`, and recall `graph_used` remain false.
-The stage label is not full M2 acceptance. See
+The historical stage `m2-japanese-fts` becomes `m2-atomic-capture`
+in v0.0.10 without changing the lexical contract. The stage label is not full M2 acceptance. See
 [ADR 0007](adr/0007-japanese-fts.md),
 [offline rebuild](operations/README.md#lexical-profile-and-reindex-operations),
 and [dependency licensing](../README.md#dependency-licensing).
@@ -1032,9 +1163,9 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.9 keeps exact schema 7; no migration 008 or 009 is added to v0.0.7/v0.0.8.**
+**v0.0.10 keeps exact schema 7; no migration 008/009/010 is added to v0.0.7/v0.0.8/v0.0.9.**
 The MCP adapter and recall hook use HTTP only and perform no DDL/backfill.
-Their authenticated startup checks require a matching v0.0.9/schema-7 Native API,
+Their authenticated startup checks require a matching v0.0.10/schema-7 Native API,
 not just a compatible database version.
 The following migration history still applies to databases older than schema 7.
 
@@ -1048,7 +1179,7 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.9 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7]` and reject
+The v0.0.10 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7]` and reject
 older, newer, or incomplete histories and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
@@ -1061,7 +1192,7 @@ atomically replaces only projections under the migration lock, emitting the
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.9 processes. Stop adapters and hook launches during maintenance too.
+then start only matching v0.0.10 processes. Stop adapters and hook launches during maintenance too.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
 [operations](operations/README.md#v007-maintenance-migration).
@@ -1070,7 +1201,48 @@ No rolling coexistence or downgrade is supported. Follow
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
-### v0.0.9 / schema 7
+<a id="v0010--schema-7"></a>
+
+### v0.0.10 / schema 7 — verified
+
+**Final local Apple Container and native CI results verified 2026-09-17 JST.**
+The final local source matches published implementation
+[ac42c35](https://github.com/rioriost/pg_agmemory/commit/ac42c354b9310e877c9d248cf9c8cc8f4293128f).
+Both native jobs in
+[CI run 35185176814](https://github.com/rioriost/pg_agmemory/actions/runs/35185176814)
+passed. Actual logs verified the exact SHA, test counts, timings, and checks
+below, not just the job status.
+
+| Environment | Command | Tests | Test elapsed |
+|---|---|---|---|
+| Local Apple Container | `./scripts/test-containers.sh` | **304 passed, 1 existing warning** | **275.53 s** |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | **304 passed, 1 existing warning** | **467.75 s** |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | **304 passed, 1 existing warning** | **434.40 s** |
+
+All three final runs also passed **Ruff, strict mypy (16 source files), genuine
+core-only/hook-only installation checks, and every non-root production smoke**:
+Japanese tokenizer, API HTTP, worker CLI, MCP in **`2026-07-28` and `2025-11-25`
+modes**, all three hook events (**`session_start`, `task_switch`,
+`after_compaction`**), and atomic capture. Timings are test observations,
+not performance benchmarks.
+
+Coverage includes rollback faults after either write and the outer receipt,
+source/key deduplication races, quota, RLS/deletion, and API process restart with
+an actual worker. The production smoke passed in all three environments.
+For a fresh fixture, after MCP/hook checks, it exercises Native capture →
+pending job → actual worker CLI `--once` → recall of the episode/assertion pair →
+same capture replay → source purge → job GET `404` and capture replay `404`.
+The final suites also cover actual HTTP 201 response loss after commit:
+same-key retry returns the exact episode/job pair with only one publication.
+It also checks that a failed original capture job remains the replay target
+after explicit creation of its retry child. These regressions passed locally
+and on both native Docker architectures.
+No dependency is added; project v0.0.10 lock metadata changes only.
+All M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
+
+<a id="v009--schema-7"></a>
+
+### Historical v0.0.9 / schema 7
 
 **Final local and native CI results verified on 2026-09-17 JST.**
 The tested final local source matches published implementation
@@ -1107,6 +1279,13 @@ JSON for failed HTTP. The container script builds it on local Apple Container
 and both native Docker architectures. These genuine installation and failed-HTTP
 checks **passed in all three environments**, along with the production smokes above.
 Full M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
+
+The final v0.0.9 documentation commit
+[de1bcc1](https://github.com/rioriost/pg_agmemory/commit/de1bcc13da74bb6e26475269a7acd283f43625db)
+also passed **274 tests** in each native architecture in
+[CI run 35182291689](https://github.com/rioriost/pg_agmemory/actions/runs/35182291689).
+This final-docs run is distinct from the implementation-run timings above.
+Neither v0.0.9 run validates v0.0.10 atomic capture.
 
 <a id="v008--schema-7"></a>
 

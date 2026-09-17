@@ -23,6 +23,7 @@ scriptはtest imageをbuildし、Ruff、mypy、unitテスト、PostgreSQL integr
 実行します。MCP SDKなしの実core-only/hook-only installを検査した後、
 non-root runtime imageをbuild・起動して、日本語tokenizer、API liveness、
 worker、MCP両protocol mode、暗黙recall hook全3eventを確認します。
+atomic capture smokeでは実workerによる公開、検索、再送、source purgeも検査します。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

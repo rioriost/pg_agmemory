@@ -12,8 +12,9 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
-**v0.0.9/schema 7のimplicit recall hookは最終local Apple Containerと
-native Docker amd64/arm64検査に合格しました**。migration 008/009は追加しません。
+上限付きmilestoneである**v0.0.10/schema 7のatomic structured capture**を実装しました。
+**最終localとnative amd64/arm64検査に合格**しました。
+migration 008/009/010や新依存はなく、project版/lock metadataだけを変更します。
 **過去のv0.0.8:** Apple Containerとnative Docker amd64/arm64で214テストと
 production smokeに合格しました。v0.0.9の結果ではありません。
 M0〜M3、MVP、本番、性能、品質、DR、完全消去の受入は未完了です。
@@ -30,7 +31,7 @@ byte単位で同一です。v6との差分はJanome 0.5.0の追加とprojectのv
 buildしました。v0.0.8/v0.0.9のpackage件数や検証についての主張ではありません。
 現在のlock済みbuildを使用してください。任意のMCP extraは`mcp==2.2.0`と
 `httpx==0.28.1`を固定し、Docker test/runtime両stageに含めます。
-v0.0.9は両stageに`hook`も含めます。`pg-agmemory[hook]`は
+v0.0.10は両stageに`hook`も維持します。`pg-agmemory[hook]`は
 `httpx==0.28.1`を固定し、**MCP SDKは含めません**。
 container検査scriptは使い捨てsmoke設定を含め、**Apple ContainerとDockerの両方**で
 runner側の`jq`を必須とします。
@@ -81,6 +82,118 @@ logへ残さず、不要なものをruntime環境へ渡さないでください�
 runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけません。
 固定queryと信頼されたidentity contextも認可境界の一部です。
 
+## Atomic structured captureの運用
+
+**v0.0.10の最終localとnative両architecture検査に合格しました。**
+上記に従いNative APIとruntime roleを準備します。
+厳密なservice `0.0.10`、API `v1`、schema `7`を維持し、
+実装済みstageは`m2-atomic-capture`であってM2全体の完了ではありません。
+captureはNative routeであり、**MCP toolや自動recall-hook操作ではありません**。
+schema 7 DBに新依存やDDLは不要です。
+
+### 明示request例
+
+許可済み・除去処理済みの使い捨てdataを使います。
+operatorが`MEMORY_URL`（信頼するAPI origin）、`TOKEN`（Native audience token）、
+`SCOPE_ID`（認可済みUUID）、`SOURCE_EVENT_ID`（安定したsource identity）、
+`CAPTURE_KEY`（caller管理idempotency key）を渡します。placeholderであり埋込み資格情報ではありません。
+送信前に正確なrequest/keyを安全に保持し、shell tracingを有効にしたり、
+token/本文をlogやissueへコピーしたりしないでください。
+
+```bash
+curl --fail-with-body "${MEMORY_URL%/}/v1/captures" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Idempotency-Key: ${CAPTURE_KEY}" \
+  -H 'Content-Type: application/json' \
+  --data-binary @- <<JSON
+{
+  "episode": {
+    "scope_id": "${SCOPE_ID}",
+    "source_namespace": "atomic-capture-demo",
+    "source_event_id": "${SOURCE_EVENT_ID}",
+    "occurred_at": "2026-09-17T00:00:00Z",
+    "content": "ACME contract is Gold",
+    "consent_reference": "operator-approved-demo-consent"
+  },
+  "memory": {
+    "subject": "ACME",
+    "predicate": "contract_tier",
+    "value": "Gold",
+    "evidence_quote": "ACME contract is Gold",
+    "explicit_intent": true,
+    "valid_from": null,
+    "valid_to": null
+  }
+}
+JSON
+```
+
+`episode`は変更しないObserveです。`memory`は構造化intent一つだけで、
+scope、根拠ID、identityの上書きはなく、serverがtransaction内でscopeと一つのepisode根拠IDを導出します。
+一つのquoteは正規化episodeの1〜4,096文字の原文substringである必要があります。
+Rememberの上限を維持し、subject 1〜256文字、predicate `^[a-z][a-z0-9_]{0,63}$`、
+value 1〜65,536文字、explicit intent true、valid boundはtimezone付き/null、
+両端指定時は開始が終了より前です。
+原文quoteは意味的な真実の証明ではなく、公開assertionはreported・未校正を維持します。
+
+### Assertionを推測せずjobを追跡
+
+HTTP **201**は`{memory_id: <episode UUID>, revision: 1,
+synthesis_job_id: <job UUID>}`を返します。
+原子的な**episodeとstructured_remember / structured-remember-v1 jobのcommit**を示し、
+assertion publicationではありません。terminalを含む既存jobも再利用でき、
+**201は新規/pendingを意味しません**。両IDを過去参照として保存し、現在のjob statusはGETを正とします。
+返却job UUIDを`CAPTURE_JOB_ID`に設定して照会します。
+
+```bash
+curl --fail-with-body "${MEMORY_URL%/}/v1/jobs/${CAPTURE_JOB_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+制限付きruntime DB資格情報と**同じowner principalの信頼する固定subject**で既存workerを実行し、
+GETを再度行ってfresh stateを取得します。`--once`は実行時刻に達したowned jobを最大一つ処理し、
+このjobとは限らずqueue drainでもありません。
+成功したjob resultだけが公開assertion IDを与えます。
+既存quota（scope当たりpending/running 100件）、5試行、lease、epoch、publication fencingを維持します。
+[worker運用](#durable-jobとworkerの運用)を参照してください。
+
+純粋な`POST /v1/observe`は`synthesis_job_id: null`を返し、自動queue化しません。
+直接`/v1/jobs`と同期`/v1/remember`も変更せず、Observe/Rememberのserialization/HMAC互換を維持します。
+LLM/provider、抽出、自然言語synthesis、pgvector、新しい意味品質の適格性認定はありません。
+
+### Replay、失敗、削除
+
+- API再起動を含む結果不明時は**同じcapture keyと正規化body**を再利用します。
+  HTTP応答喪失はrollbackの証明ではありません。同keyのbody変更は`409`です。
+  IDは過去参照であり、fresh job stateはGETで取得します。
+- 同じepisode/intent/principalの新keyは**両ID**を重複抑止します。
+  以前observeした同一eventも再利用可能です。
+  同じsource identityでepisode bodyが異なる場合は`409`で、新規partial writeはありません。
+- 新しい別の明示intentは生存episode上に別jobを作れます。
+  別の認可済みprincipalは独立したjob identity/worker所有権を持ち、source重複抑止は権限を付与しません。
+- episode/projection、job data/identity、outer idempotency receipt、auditの後のtransaction失敗は、
+  新規変更をまとめてrollbackします。以前から独立して存在したepisodeは残り、
+  新しいjobだけが部分的に残ることはありません。capture操作当たりjobは最大一つです。
+- **両返却ID**について現在のACL/削除が優先します。
+  episode purgeはjob/assertion子孫を閉じます。job単体purgeはepisodeと独立保存の公開済みoutputを残しますが、
+  旧組replayや同intentの新keyは`404`となり、purge済みjob identityを再作成しません。
+  result assertion purgeは依存jobを削除しsourceを残すため、組は無効になります。
+- source全体の永久sealではなく、生存source上の新しい**別の**明示intentは既存job semanticsに従います。
+- failed jobのretryは既存`POST /v1/jobs/{job_id}/retry`に元の完全な`EnqueueJob` intentと
+  caller管理keyを渡します。返却episode IDと保持quote/intentから既存Remember evidenceを再構成します。
+  child作成後もcapture replayは**retry childでなく元のfailed job参照**を返します。
+
+保持するopaque source/job/idempotency anchorにはcaller keyからserver HMACで導出した
+内部composition keyも含みます。その内部keyを指定/生成する必要はなく、
+MCP caller keyの自動生成や新API入力ではありません。
+Native tenant HTTP response-drain境界は維持します。
+保持anchor、host context、backup、WAL、配信済みdataについて新しい完全消去保証はありません。
+capability feature `atomic_structured_capture`の`atomic_capture` metadataは
+`endpoint: "/v1/captures"`、`max_jobs: 1`、
+`recipe_version: "structured-remember-v1"`、`automatic_capture: false`です。
+[差分契約](../STATUS-jp.md#atomic-structured-capture)と
+[ADR 0010](../adr/0010-atomic-capture-jp.md)を参照してください。
+
 ## Local stdio MCPの運用
 
 ### 一つの信頼identityで導入・起動
@@ -114,7 +227,7 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
    `--subject`と`--once`は両方拒否するため付けません。
    stdin/stdoutは人間用promptや通常logでなくMCP message用に接続を維持します。
    診断にはsanitized stderrを使います。
-6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.9`、schema `7`の
+6. 起動時に`GET /v1/capabilities`へ認証し、API `v1`、service `0.0.10`、schema `7`の
    一致を確認してからtoolを提供します。不正設定/token、API到達不能、version不一致は
    secretをlogに出さず非zero終了します。`/healthz`合格だけでは不十分です。
    信頼する設定を修正し再起動してください。検査を回避したり、
@@ -183,15 +296,16 @@ purgeはhost context、backup、WAL、replica、物理mediaの消去を証明し
 同じkey/bodyで再送してassertionが一つだけ残ることを検査します。
 caller主導の復旧の検査であり、自動retryではありません。
 過去のlocal/native CI証拠をSTATUSに記録しています。
-v0.0.9は共有Native HTTP clientを抽出しつつ、両protocol時代、semantics、MCP上限を
-維持します。regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
+v0.0.10は両protocol時代、semantics、MCP上限、共有Native HTTP clientを維持します。
+v0.0.9はlocalとnative Docker両architectureで合格しました。
+v0.0.10の最終localとnative両architecture検査も合格しました。
 これらの特定経路の検査は、未検証の旧clientや特定hostとの互換性を証明しません。
 [全契約](../STATUS-jp.md#local-stdio-mcp)と
 [ADR 0008](../adr/0008-local-mcp-jp.md)を参照してください。
 
 ## Implicit recall hookの運用
 
-**v0.0.9: 最終localとnative Docker両architectureの検査に合格しました。**
+**既存の読取り専用hookです。v0.0.10最終localとnative両architecture検査に合格しました。**
 vendor-neutralな一回実行のharness側commandであり、MCP、model caller、
 自動登録host pluginではありません。Copilot/Claude/Codex連携を主張しません。
 
@@ -200,7 +314,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
 1. 上記role分離に従ってNative APIのsubject/scopeをprovisionします。
    hookには**DB資格情報**、admin URL、JWT署名key、外部model keyは不要です。
    設定されたNative audience tokenだけを使います。
-2. `pg-agmemory[hook]`を導入するか、`mcp`・`hook`両extraを含むv0.0.9 repository imageを
+2. `pg-agmemory[hook]`を導入するか、`mcp`・`hook`両extraを含むv0.0.10 repository imageを
    使用します。checkoutでは`uv sync --frozen --extra hook`を使います。
    hook-only導入は`httpx==0.28.1`を固定し、**MCP SDKは含めません**。
 3. 信頼するharnessを起動する前にoperatorが以下の環境を安全に渡します。
@@ -220,7 +334,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
 
    URL、token、scope IDは**すべて必須**です。共有`NativeSettings`は`httpx.URL`でも
    originをparseし、transport前に制御文字や不正IDNAを拒否します。
-   これらの不正origin検査は全3環境で合格しています。
+   これらの検査は過去のv0.0.9全3環境で合格しています。
 
    loopbackはhook process/container基準です。別containerやMac hostへ到達すると
    仮定してはいけません。非loopback HTTPは拒否します。
@@ -233,7 +347,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
    取得意図はJSONの`query`だけから渡し、`event`はlifecycle名です。
    identity、`scope_ids`、purpose、mode、budget、URL、header、tool、時刻、その他fieldは
    許可しません。event textはアクセス権を付与しません。
-5. 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密なservice `0.0.9`、
+5. 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密なservice `0.0.10`、
    API `v1`、schema `7`を検査し、`POST /v1/recall`へ`mode: "implicit"`、
    信頼するrecall設定、Nativeの現在時刻defaultを送ります。
    両requestに同じ固定tokenを使い、認可やresponseをcacheしません。
@@ -430,16 +544,18 @@ hookは権限を拡大せず、host/WAL/replica/backup/物理media消去を証�
 
 <a id="v008のapplication更新schema変更なし"></a>
 
-## v0.0.9のapplication更新（schema変更なし）
+<a id="v009のapplication更新schema変更なし"></a>
 
-既存v0.0.7/v0.0.8のschema 7 DBには**migration 008/009も新backfillもありません**。
+## v0.0.10のapplication更新（schema変更なし）
+
+既存v0.0.7/v0.0.8/v0.0.9のschema 7 DBには**migration 008/009/010も新backfillもありません**。
 application/schema版を記録し、backupと現在の削除/ACL記録を保全します。
 自動再起動を含む旧API/worker/MCP adapterを停止/drainしてhook起動も止め、
-対応するv0.0.9 imageへ置換します。
+対応するv0.0.10 imageへ置換します。
 厳密なschema履歴`[1, 2, 3, 4, 5, 6, 7]`を確認後、制限付きNative API/workerを起動し、
 認証付きcapabilitiesを検査して各固定identity adapter/hookを起動します。
 schemaが同じでもrolling混在互換性や対応済みdowngradeの根拠にはなりません。
-v0.0.9のpackage化runtimeと既存schema契約はlocalとnative Docker両architectureで合格しました。
+v0.0.10のpackage化runtimeと既存schema契約はlocalとnative Docker両architectureで合格しました。
 過去の結果は[検証証拠](../STATUS-jp.md#検証証拠)に分けて記録しています。
 旧schemaには以下の既存schema 7 migration手順を現在のimageで適用します。
 reindexは別のoffline保守であり、MCP/hook commandではありません。
@@ -452,7 +568,7 @@ reindexは別のoffline保守であり、MCP/hook commandではありません�
 ## v0.0.7の保守migration
 
 旧DB用に残しているv0.0.7導入時のschema 7 migration手順であり、
-**v0.0.8/v0.0.9の新migrationではありません**。
+**v0.0.8/v0.0.9/v0.0.10の新migrationではありません**。
 
 **旧版/新版API/workerのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -482,7 +598,7 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
    固定したJanome 0.5.0依存と同梱辞書を使用します。
    v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
 5. 厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を確認してから、制限付きruntime資格情報と
-   意図した固定worker subjectで**対応するv0.0.9 API/workerだけを起動**します。
+   意図した固定worker subjectで**対応するv0.0.10 API/workerだけを起動**します。
    traffic再開前にcapabilities/schema、既定/opt-in recallとprojection coverage、
    過去revision選択、認可、purge、原子的publication、互換性を検査してください。
    health応答だけではこれらを検証できません。migration/rebuildの時間・resource使用量は
@@ -536,7 +652,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
 
 1. 自動再起動を含む**全API/workerを停止/drain**し、migration同様にbackupします。
    offline保守であり、稼働中の管理APIではありません。
-2. 対応するv0.0.9 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
+2. 対応するv0.0.10 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
    必要なtable権限を持つ管理者で次を実行します。
 
    ```bash
@@ -553,7 +669,7 @@ reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を�
    traffic停止を維持し、schema、権限、lock競合を調査します。
    index修復のためruntime bypassを付与したり、canonical本文、timestamp、receiptを
    編集したりしてはいけません。
-5. 対応するv0.0.9 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
+5. 対応するv0.0.10 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
    profile/coverageと認可された現在/過去recallを確認してください。
    正確な`known_at`境界にはhost/VMのwall-clock値でなく、
    serverが返すassertionの`recorded_at`を使います。
@@ -927,7 +1043,7 @@ local Apple Containerと完全一致SHAのnative Docker
 [CI run 35177260509](https://github.com/rioriost/pg_agmemory/actions/runs/35177260509)で
 **各native architectureで214テスト**に合格しました。
 これらの過去runはv0.0.9 hookや共有client抽出を検証していません。
-**v0.0.9の最終結果を2026-09-17 JSTに確認しました。**
+**過去のv0.0.9の最終結果を2026-09-17 JSTに確認しました。**
 Apple Containerとnative Docker amd64/arm64の各環境で**274テスト、既存warning 1件**、
 Ruff、strict mypy（**source 15ファイル**）、真のcore-only/hook-only導入検査、
 non-root productionの日本語/API/worker、
@@ -946,3 +1062,29 @@ hook **`session_start`・`task_switch`・`after_compaction`**の全smokeに合�
 container scriptはlocal Apple Containerとnative Docker両architectureでこのtargetをbuildします。
 **全3環境で合格**しました。
 元のmilestoneや受入gateの完了ではありません。
+最終v0.0.9 docs
+[de1bcc1](https://github.com/rioriost/pg_agmemory/commit/de1bcc13da74bb6e26475269a7acd283f43625db)も、
+[CI 35182291689](https://github.com/rioriost/pg_agmemory/actions/runs/35182291689)で
+両native architecture各**274テスト**に合格しました。
+過去の結果であり、v0.0.10証拠ではありません。
+
+**v0.0.10の最終localとnative結果を2026-09-17 JSTに確認しました。**
+Apple Containerとnative Docker amd64/arm64は各**304テスト、既存warning 1件**に合格しました。
+**Ruff、strict mypy（source 16ファイル）、真のcore-only/hook-only導入検査、
+non-root productionの全smoke**も全3環境で合格しました。
+日本語/API/worker、MCP両時代、hook全3 event、atomic captureが対象です。
+テスト所要時間はApple Container **275.53秒**、native amd64 **467.75秒**、
+native arm64 **434.40秒**です。
+最終local sourceは公開済み実装
+[ac42c35](https://github.com/rioriost/pg_agmemory/commit/ac42c354b9310e877c9d248cf9c8cc8f4293128f)と一致します。
+[CI run 35185176814](https://github.com/rioriost/pg_agmemory/actions/runs/35185176814)は
+両native jobとも合格し、実logでjob statusだけでなく完全一致SHA、件数、所要時間、全検査を確認しました。
+検査はrollback fault、source/key重複抑止の競合、quota/RLS/削除、
+API process再起動と実workerを対象にします。
+全3環境で合格した新規fixtureのproduction smokeはMCP/hook検査後に、Native capture → pending job →
+実worker CLI `--once` → episode/assertion recall → 同capture replay →
+source purge → job GET `404`とcapture replay `404`を確認します。
+全3環境の最終runには、commit済みHTTP 201応答喪失後のsame-key復旧で正確な同一組と一つのpublicationを
+確認する検査と、明示retry child作成後も元のfailed capture jobをreplayする検査も含めます。
+所要時間は性能benchmarkではありません。全受入gateは未完了です。
+[v0.0.10証拠](../STATUS-jp.md#v0010--schema-7)を参照してください。

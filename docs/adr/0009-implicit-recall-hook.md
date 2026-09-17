@@ -10,6 +10,10 @@
 - Acceptance: full M0–M3, MVP, production, performance, memory quality, DR, and
   full-erasure gates remain incomplete
 
+**Historical scope:** this ADR records v0.0.9/schema 7 and its verified evidence.
+[ADR 0010](0010-atomic-capture.md) covers v0.0.10 atomic capture; use
+[current STATUS](../STATUS.md) for matching startup versions. The hook stays read-only.
+
 ## Decision and scope
 
 Provide optional `pg-agmemory recall-hook` as a **vendor-neutral, harness-side,
