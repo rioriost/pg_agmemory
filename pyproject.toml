@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pg-agmemory"
-version = "0.0.6"
+version = "0.0.7"
 description = "PostgreSQL-backed agent memory with scoped evidence and deletion"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "pydantic>=2.10,<3",
   "PyJWT[crypto]>=2.10,<3",
+  "Janome==0.5.0",
 ]
 
 [project.optional-dependencies]
@@ -43,3 +44,7 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.12"
 strict = true
 files = ["src/pg_agmemory"]
+
+[[tool.mypy.overrides]]
+module = ["janome.*"]
+ignore_missing_imports = true

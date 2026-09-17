@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from psycopg.types.json import Jsonb
 
 from pg_agmemory.database import Connection, connect
+from pg_agmemory.lexical import JAPANESE_PROFILE, segment
 from pg_agmemory.models import (
     Evidence,
     Explain,
@@ -237,6 +238,12 @@ class MemoryService:
                 ),
             )
             await self.conn.execute(
+                """INSERT INTO memory.episode_lexical
+                   (tenant_id,episode_id,scope_id,profile,search_text)
+                   VALUES (%s,%s,%s,%s,to_tsvector('simple',%s))""",
+                (self.tenant, object_id, data.scope_id, JAPANESE_PROFILE, segment(data.content)),
+            )
+            await self.conn.execute(
                 """INSERT INTO memory_ops.source_event
                    (tenant_id, scope_id, event_digest, request_digest, object_id)
                    VALUES (%s, %s, %s, %s, %s)""",
@@ -312,6 +319,27 @@ class MemoryService:
                    VALUES (%s, %s, %s, %s, %s, %s)""",
                 (self.tenant, object_id, revision, evidence.memory_id, scope_id, evidence.quote),
             )
+        identity = await (
+            await self.conn.execute(
+                "SELECT subject,predicate FROM memory.assertion WHERE tenant_id = %s AND id = %s",
+                (self.tenant, object_id),
+            )
+        ).fetchone()
+        if identity is None:
+            raise MemoryError("not_found", 404)
+        await self.conn.execute(
+            """INSERT INTO memory.assertion_lexical
+               (tenant_id,assertion_id,revision,scope_id,profile,search_text)
+               VALUES (%s,%s,%s,%s,%s,to_tsvector('simple',%s))""",
+            (
+                self.tenant,
+                object_id,
+                revision,
+                scope_id,
+                JAPANESE_PROFILE,
+                segment(identity["subject"] + " " + identity["predicate"] + " " + data.value),
+            ),
+        )
 
     async def revise_assertion(
         self, object_id: UUID, data: ReviseAssertion, key: str
@@ -351,29 +379,32 @@ class MemoryService:
 
     async def recall(self, data: Recall) -> dict[str, Any]:
         # Scope IDs only narrow access; invisible scopes never contribute candidates.
-        rows = await (
-            await self.conn.execute(
-                """WITH candidates AS (
+        candidates = """WITH candidates AS (
                     SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
                            NULL::uuid AS source_entity, NULL::uuid AS target_entity,
-                           ts_rank_cd(e.search_text, plainto_tsquery('simple', %(query)s)) AS rank
+                           CASE WHEN %(profile)s = 'simple-v1' THEN e.search_text
+                                ELSE lex.search_text END AS search_text
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
+                    LEFT JOIN memory.episode_lexical lex
+                      ON lex.tenant_id = e.tenant_id AND lex.episode_id = e.id
+                     AND lex.profile = %(profile)s
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
                       AND o.created_at <= COALESCE(%(known)s, statement_timestamp())
                       AND e.occurred_at <= COALESCE(%(as_of)s, statement_timestamp())
-                      AND (%(query)s = '' OR
-                           e.search_text @@ plainto_tsquery('simple', %(query)s))
                     UNION ALL
                     SELECT o.id, o.kind, lower(r.system_time), r.revision,
                            a.subject || ' / ' || a.predicate || ': ' || r.value, NULL,
                            lower(r.valid_time), upper(r.valid_time),
                            link.source_id, endpoint.target_id,
-                           ts_rank_cd(a.search_text || r.search_text,
-                                      plainto_tsquery('simple', %(query)s))
+                           CASE WHEN %(profile)s = 'simple-v1'
+                                THEN a.search_text || r.search_text ELSE lex.search_text END
                     FROM memory.object o JOIN memory.assertion a USING (tenant_id, id)
                     JOIN memory.assertion_revision r
                       ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
+                    LEFT JOIN memory.assertion_lexical lex
+                      ON lex.tenant_id = r.tenant_id AND lex.assertion_id = r.assertion_id
+                     AND lex.revision = r.revision AND lex.profile = %(profile)s
                     LEFT JOIN memory.relation link
                       ON link.tenant_id = a.tenant_id AND link.id = a.id
                     LEFT JOIN memory.relation_revision endpoint ON endpoint.tenant_id = r.tenant_id
@@ -382,21 +413,40 @@ class MemoryService:
                       AND (NOT a.is_relation OR endpoint.assertion_id IS NOT NULL)
                       AND r.valid_time @> COALESCE(%(as_of)s, statement_timestamp())
                       AND r.system_time @> COALESCE(%(known)s, statement_timestamp())
-                      AND (%(query)s = '' OR
-                           (a.search_text || r.search_text)
-                           @@ plainto_tsquery('simple', %(query)s))
-                ) SELECT * FROM candidates
-                  ORDER BY rank DESC, created_at DESC, id LIMIT %(limit)s""",
-                {
-                    "query": data.query,
-                    "tenant": self.tenant,
-                    "scopes": data.scope_ids,
-                    "as_of": data.as_of,
-                    "known": data.known_at,
-                    "limit": data.max_items + 1,
-                },
+                ) """
+        parameters = {
+            "query": segment(data.query) if data.search_profile == JAPANESE_PROFILE else data.query,
+            "browse": data.query == "",
+            "profile": data.search_profile,
+            "tenant": self.tenant,
+            "scopes": data.scope_ids,
+            "as_of": data.as_of,
+            "known": data.known_at,
+            "limit": data.max_items + 1,
+        }
+        rows = await (
+            await self.conn.execute(
+                candidates
+                + """SELECT *, CASE WHEN %(browse)s THEN 0::real
+                            ELSE ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
+                            END AS rank
+                     FROM candidates WHERE %(browse)s
+                       OR search_text @@ plainto_tsquery('simple',%(query)s)
+                     ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s""",
+                parameters,
             )
         ).fetchall()
+        incomplete = False
+        if data.search_profile == JAPANESE_PROFILE:
+            coverage = await (
+                await self.conn.execute(
+                    candidates
+                    + """SELECT EXISTS(SELECT 1 FROM candidates WHERE search_text IS NULL)
+                         AS incomplete""",
+                    parameters,
+                )
+            ).fetchone()
+            incomplete = bool(coverage and coverage["incomplete"])
         items = []
         for row in rows[: data.max_items]:
             sources = await (
@@ -442,15 +492,19 @@ class MemoryService:
         return {
             "items": [item.model_dump(mode="json") for item in selected],
             "context_pack": context,
+            "search_profile": data.search_profile,
             "coverage": {
-                "retrieval_complete": True,
+                "retrieval_complete": not incomplete,
                 "synthesis_pending": False,
                 "jobs_pending": bool(pending and pending["pending"]),
+                "lexical_incomplete": incomplete,
                 "graph_used": False,
                 "truncated": budget_exhausted or len(rows) > data.max_items,
             },
             "consistency": epoch,
-            "empty_reason": ("budget_exhausted" if items else "not_found")
+            "empty_reason": (
+                "budget_exhausted" if items else "index_incomplete" if incomplete else "not_found"
+            )
             if not selected
             else None,
         }

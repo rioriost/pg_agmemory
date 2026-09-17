@@ -6,6 +6,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from pg_agmemory.lexical import rebuild
+
 Connection = psycopg.AsyncConnection[dict[str, Any]]
 MIGRATIONS = (
     "001_initial.sql",
@@ -14,6 +16,7 @@ MIGRATIONS = (
     "004_tool_effects.sql",
     "005_relational_graph.sql",
     "006_durable_jobs.sql",
+    "007_japanese_fts.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 
@@ -92,6 +95,20 @@ def migrate(url: str) -> None:
                 continue
             sql = files("pg_agmemory").joinpath("storage", name).read_text()
             conn.execute(sql)
+            if name == "007_japanese_fts.sql":
+                rebuild(conn)
             conn.execute(
                 "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)", (version,)
             )
+
+
+def reindex_lexical(url: str) -> dict[str, str | int]:
+    with psycopg.connect(url) as conn:
+        conn.execute("SET LOCAL lock_timeout = '5s'")
+        conn.execute("SELECT pg_advisory_xact_lock(742091830)")
+        versions = conn.execute(
+            "SELECT version FROM public.pgag_schema_migration ORDER BY version"
+        ).fetchall()
+        if versions != [(version,) for version in range(1, SCHEMA_VERSION + 1)]:
+            raise RuntimeError("Database schema version mismatch; run matching migrations")
+        return rebuild(conn)

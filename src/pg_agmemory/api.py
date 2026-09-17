@@ -20,6 +20,7 @@ from pg_agmemory.database import SCHEMA_VERSION, Settings, validate_runtime
 from pg_agmemory.effects import ToolEffects
 from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.jobs import Jobs
+from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
     AssertionExplanation,
     CheckpointEnvelope,
@@ -142,7 +143,12 @@ class TransactionBoundary:
             error = MemoryError("unauthenticated", 401)
         except MemoryError as exc:
             error = exc
-        except (psycopg.OperationalError, psycopg.errors.QueryCanceled, TimeoutError) as exc:
+        except (
+            psycopg.OperationalError,
+            psycopg.errors.QueryCanceled,
+            TimeoutError,
+            TokenizerUnavailable,
+        ) as exc:
             logger.warning(
                 "dependency_unavailable request_id=%s type=%s", request_id, type(exc).__name__
             )
@@ -214,12 +220,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-durable-jobs",
+            "stage": "m2-japanese-fts",
             "features": [
                 "observe",
                 "structured_remember",
                 "assertion_revisions",
                 "fts_recall",
+                "japanese_fts",
                 "explain",
                 "forget",
                 "checkpoints",
@@ -239,6 +246,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "tool_effect_ledger": True,
             "temporal_revisions": True,
             "vector_search": False,
+            "search_profiles": SEARCH_PROFILES,
+            "default_search_profile": "simple-v1",
+            "japanese_fts": {
+                "profile": JAPANESE_PROFILE,
+                "tokenizer": "Janome",
+                "version": "0.5.0",
+                "dictionary": "mecab-ipadic-2.7.0-20070801 bundled with Janome 0.5.0",
+                "normalization": "none",
+                "segmentation": "japanese-script-runs",
+            },
             "tokenizer": "utf8-bytes-v1",
             "exact_token_count": False,
             "idempotency_retention": "tenant_lifetime",

@@ -25,6 +25,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from pg_agmemory import lexical
 from pg_agmemory.api import create_app
 from pg_agmemory.database import Settings, migrate, validate_runtime
 
@@ -151,6 +152,24 @@ def database():
     seed_v5_graph(url, legacy[0])
     with pytest.raises(RuntimeError, match="schema version mismatch"):
         asyncio.run(validate_runtime(runtime_url))
+    seed_v6_job(url, legacy[0])
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+
+        def fail_after_backfill(conn):
+            lexical.rebuild(conn)
+            raise RuntimeError("simulated backfill failure")
+
+        patch.setattr("pg_agmemory.database.rebuild", fail_after_backfill)
+        with pytest.raises(RuntimeError, match="simulated backfill failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute("SELECT to_regclass('memory.episode_lexical')").fetchone()[0] is None
+        assert (
+            admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
+            == 6
+        )
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
@@ -537,6 +556,83 @@ def seed_v5_graph(url, record):
             (record["tenant"], relation, record["scope"], target),
         )
     record["graph"] = {"source": source, "target": target, "relation": relation}
+
+
+def seed_v6_job(url, record):
+    source, job = uuid4(), uuid4()
+    key = str(uuid4())
+    memory = {
+        "scope_id": str(record["scope"]),
+        "subject": "東京都",
+        "predicate": "contract_tier",
+        "value": "Gold",
+        "evidence": [{"memory_id": str(source), "quote": "Gold"}],
+        "explicit_intent": True,
+        "valid_from": None,
+        "valid_to": None,
+    }
+    body = {"kind": "structured_remember", "memory": memory}
+    result = {
+        "job_id": str(job),
+        "kind": "structured_remember",
+        "recipe_version": "structured-remember-v1",
+    }
+    with psycopg.connect(url) as conn:
+        conn.execute(files("pg_agmemory").joinpath("storage/006_durable_jobs.sql").read_text())
+        conn.execute("INSERT INTO public.pgag_schema_migration(version) VALUES (6)")
+        secret = conn.execute(
+            "SELECT dedup_secret FROM memory.tenant WHERE id = %s", (record["tenant"],)
+        ).fetchone()[0]
+
+        def digest(value):
+            return hmac.new(bytes(secret), value.encode(), hashlib.sha256).hexdigest()
+
+        intent = digest("structured-remember-v1:" + json.dumps(memory, sort_keys=True))
+        identity = digest("job-identity-v1:" + intent + ":None")
+        request = digest(json.dumps({"retry_of": None, "request": body}, sort_keys=True))
+        for object_id, kind in ((source, "episode"), (job, "job")):
+            conn.execute(
+                """INSERT INTO memory.object(tenant_id,id,scope_id,kind)
+                   VALUES (%s,%s,%s,%s)""",
+                (record["tenant"], object_id, record["scope"], kind),
+            )
+        conn.execute(
+            """INSERT INTO memory.episode
+               (tenant_id,id,scope_id,occurred_at,content,consent_reference)
+               VALUES (%s,%s,%s,'2026-09-01','東京都の契約はGoldです。','v6-consent')""",
+            (record["tenant"], source, record["scope"]),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.job
+               (tenant_id,id,scope_id,principal_id,kind,recipe_version,intent_digest,payload,
+                reference_count,captured_access_epoch,captured_deletion_epoch)
+               VALUES (%s,%s,%s,%s,'structured_remember','structured-remember-v1',%s,%s,1,1,1)""",
+            (
+                record["tenant"],
+                job,
+                record["scope"],
+                record["principal"],
+                intent,
+                Jsonb(memory),
+            ),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.job_input(tenant_id,job_id,scope_id,source_id)
+               VALUES (%s,%s,%s,%s)""",
+            (record["tenant"], job, record["scope"], source),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.job_identity
+               (tenant_id,scope_id,principal_id,input_digest,job_id) VALUES (%s,%s,%s,%s,%s)""",
+            (record["tenant"], record["scope"], record["principal"], identity, job),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.idempotency
+               (tenant_id,principal_id,operation,key_digest,request_digest,result)
+               VALUES (%s,%s,'enqueue_job',%s,%s,%s)""",
+            (record["tenant"], record["principal"], digest(key), request, Jsonb(result)),
+        )
+    record["job"] = {"body": body, "key": key, "result": result, "source": source}
 
 
 @pytest.fixture

@@ -9,13 +9,15 @@ from uuid import uuid4
 import psycopg
 import uvicorn
 
-from pg_agmemory.database import migrate
+from pg_agmemory.database import migrate, reindex_lexical
 from pg_agmemory.worker import run
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pg-agmemory")
-    parser.add_argument("command", choices=["serve", "migrate", "provision", "worker"])
+    parser.add_argument(
+        "command", choices=["serve", "migrate", "provision", "worker", "reindex-lexical"]
+    )
     parser.add_argument(
         "--subject", help="Trusted issuer subject for provisioning or fixed-principal worker"
     )
@@ -25,8 +27,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.once and args.command != "worker":
         parser.error("--once is only supported by worker")
+    if args.command == "reindex-lexical" and args.subject is not None:
+        parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
     if args.command == "migrate":
         migrate(os.environ["PGAG_ADMIN_DATABASE_URL"])
+    elif args.command == "reindex-lexical":
+        print(json.dumps(reindex_lexical(os.environ["PGAG_ADMIN_DATABASE_URL"])))
     elif args.command == "worker":
         if not args.subject or not 1 <= len(args.subject) <= 256:
             parser.error("worker requires --subject with 1 to 256 characters")

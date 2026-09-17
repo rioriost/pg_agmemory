@@ -11,6 +11,7 @@ EntityType = Literal[
     "person", "organization", "project", "component", "incident", "task", "decision", "other"
 ]
 RelationType = Literal["depends_on", "part_of", "affects", "works_for", "decides"]
+SearchProfile = Literal["simple-v1", "ja-janome-0.5.0-v1"]
 
 
 class Contract(BaseModel):
@@ -81,6 +82,7 @@ class Recall(Contract):
     token_budget: Annotated[int, Field(ge=64, le=8000)] = 2000
     max_items: Annotated[int, Field(ge=1, le=100)] = 20
     tokenizer_id: Literal["utf8-bytes-v1"] = "utf8-bytes-v1"
+    search_profile: SearchProfile = "simple-v1"
 
     @model_validator(mode="after")
     def implicit_budget(self) -> "Recall":
@@ -236,6 +238,7 @@ class Coverage(BaseModel):
     retrieval_complete: bool
     synthesis_pending: Literal[False]
     jobs_pending: bool = False
+    lexical_incomplete: bool = False
     graph_used: Literal[False]
     truncated: bool
 
@@ -250,7 +253,8 @@ class RecallResult(BaseModel):
     context_pack: ContextPack
     coverage: Coverage
     consistency: Consistency
-    empty_reason: Literal["budget_exhausted", "not_found"] | None
+    search_profile: SearchProfile
+    empty_reason: Literal["budget_exhausted", "not_found", "index_incomplete"] | None
 
 
 class ExplainedSource(BaseModel):

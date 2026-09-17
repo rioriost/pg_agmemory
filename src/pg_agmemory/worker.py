@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from pg_agmemory.database import validate_runtime
 from pg_agmemory.jobs import job_transaction
+from pg_agmemory.lexical import TokenizerUnavailable
 from pg_agmemory.models import JobError, Remember
 from pg_agmemory.service import MemoryError
 
@@ -43,7 +44,7 @@ async def run_once(url: str, subject: str) -> dict[str, Any]:
             code, retry = "invalid_input", False
         else:
             raise
-    except (psycopg.OperationalError, psycopg.errors.QueryCanceled):
+    except (psycopg.OperationalError, psycopg.errors.QueryCanceled, TokenizerUnavailable):
         code = "dependency_unavailable"
     logger.warning("job_attempt_failed job_id=%s code=%s", job_id, code)
     try:

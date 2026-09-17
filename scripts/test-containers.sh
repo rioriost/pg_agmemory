@@ -140,12 +140,16 @@ smoke_host="$(container_host "$smoke_db")"
 public_key="$("$engine" run --name "$key_name" --network "$network" "$runtime_image" python -c '
 import importlib.util
 import os
+import sys
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pg_agmemory.lexical import segment
 
 assert os.geteuid() != 0, "Production image must not run as root"
 for package in ("pytest", "ruff", "mypy"):
     assert importlib.util.find_spec(package) is None, f"Development dependency in runtime: {package}"
+assert segment("\u6771\u4eac\u90fd").split() == ["\u6771\u4eac", "\u90fd"]
+print("Production Japanese tokenizer smoke passed", file=sys.stderr)
 print(rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
     serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
 ).decode(), end="")

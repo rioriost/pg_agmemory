@@ -271,6 +271,15 @@ wheels = [
 ]
 
 [[package]]
+name = "janome"
+version = "0.5.0"
+source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
+sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/janome/0.5/Janome-0.5.0.tar.gz", hash = "sha256:ce4a3ed7a4635c2f80139639327d5b1e0381858ad74a3c4a61e8cc83f820400e" }
+wheels = [
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/janome/0.5/Janome-0.5.0-py2.py3-none-any.whl", hash = "sha256:d098670394a77881ce2f6b7d696c0ea5ff74c0c8cf74a8a882159ec82c0e6dc7" },
+]
+
+[[package]]
 name = "librt"
 version = "0.15.0"
 source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
@@ -443,10 +452,11 @@ wheels = [
 
 [[package]]
 name = "pg-agmemory"
-version = "0.0.6"
+version = "0.0.7"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "janome" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
@@ -465,6 +475,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
+    { name = "janome", specifier = "==0.5.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15,<2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.10,<3" },
