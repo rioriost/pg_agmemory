@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`。project MITを変更せず、二言語文書を維持
 - 受入: M0〜M3全体、MVP、本番、性能、記憶品質、DR、完全消去のgateは未完了
 
+**過去版の注記:** このADRは当時の依存/起動版の決定を含む、
+検証済みv0.0.11/schema 8の記録です。
+[ADR 0012](0012-python-sdk-jp.md)はschema 8とvector契約を維持する
+application-only v0.0.12 Python SDKの追加であり、localと両native CI検査に合格しました。
+最終v0.0.11 docs CI 35190495385は実装CI 35189448403と区別して
+[過去の証拠](../STATUS-jp.md#v0011--schema-8)に記録します。
+
 ## 決定と権限境界
 
 明示的でprovider非依存のvector projectionとexact/hybrid retrievalを追加します。

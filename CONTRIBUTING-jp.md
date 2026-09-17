@@ -19,8 +19,9 @@ container system start
 ./scripts/test-containers.sh
 ```
 
-scriptはtest imageをbuildし、Ruff、mypy、unitテスト、PostgreSQL integrationテストを
-実行します。MCP SDKなしの実core-only/hook-only installを検査した後、
+scriptはtest imageをbuildし、Ruff、mypy、SDK利用側のstrict型検査、
+unitテスト、PostgreSQL integrationテストを実行します。
+MCP SDKなしの実core-only/hook-only/SDK-only installを検査した後、
 non-root runtime imageをbuild・起動して、日本語tokenizer、API liveness、
 worker、MCP両protocol mode、暗黙recall hook全3eventを確認します。
 atomic capture smokeでは実workerによる公開、検索、再送、source purgeも検査します。
@@ -28,6 +29,9 @@ pgvector smokeではepisode/assertionの合成vectorでexact/hybrid検索とpurg
 実embedding modelの意味検索品質を認定するものではありません。
 DB imageはPostgreSQL 18.6とpgvector 0.8.6を固定します。schema 8とextensionの
 要件は[ADR 0011](docs/adr/0011-pgvector-retrieval-jp.md)を参照してください。
+Python SDK smokeではtyped capture/replay、job/input読取り、明示vector検索、削除を検査します。
+SDK requestはcaller管理keyとNativeの認可/結果不明の契約を維持する必要があります。
+[ADR 0012](docs/adr/0012-python-sdk-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

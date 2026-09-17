@@ -7,8 +7,9 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**現在の上限付きmilestoneはv0.0.11/schema 8のpgvector exact/hybrid retrieval基盤です。
-実装、local Apple Container、native Docker両architectureを検証済みです。v0.0.10以前の結果は過去の証拠として維持します。
+**現在の上限付きmilestoneはv0.0.12/schema 8の型付き非同期Python SDKです。
+実装、local Apple Container、native Docker両architectureを検証済みです。
+以下の検証済みv0.0.11以前の結果は過去の証拠であり、v0.0.12の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -25,10 +26,85 @@ assertion公開済み、自動capture、自然言語synthesis、検索品質の�
 
 別assertion間のsupersession/fact調停、provider receipt検証、vendor固有harness adapter、
 自動enqueue/抽出、汎用multi-tenant scheduling、自動embedding生成、ANN/HNSW、
-AGE/SQL/PGQ、remote MCP HTTP/SSE/OAuth/delegation、application SDK、
+AGE/SQL/PGQ、remote MCP HTTP/SSE/OAuth/delegation、同期/TypeScript SDK、
 postgresem連携は今後の実装対象です。
 性能・記憶品質・災害復旧・完全消去の受入は未測定または未認定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
+
+## Python SDK
+
+**v0.0.12/schema 8で実装・検証済みです。** 対応するcheckoutから導入します。
+
+```bash
+python -m pip install '.[sdk]'
+```
+
+任意の`pg-agmemory[sdk]` extraが追加するのは**httpx==0.28.1だけ**です。
+FastAPI、psycopg、Janomeを含む既存core distributionのままであり、
+独立した軽量SDK packageでも、PyPI公開済みという主張でもありません。
+PEP 561の`py.typed` markerを追加します。`mcp`/`hook`が提供するHTTPXでも
+import依存を満たし、HTTPXがなければ固定の導入案内`ImportError`となります。
+
+memory/tool入力でなく、信頼する設定から明示引数を渡してください。
+以下の環境変数名は例であり、**SDKは自動で読みません**。
+scopeは事前にprovision・認可済みである必要があります。
+読取り専用の例で、private memory、token、入力、raw error応答を出力しません。
+
+```python
+import asyncio
+import os
+from uuid import UUID
+
+from pg_agmemory.models import Recall
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+
+async def main() -> None:
+    request = Recall(
+        scope_ids=[UUID(os.environ["PGAG_SDK_SCOPE_ID"])],
+        query="synthetic fixture",
+        purpose="read-only SDK example",
+    )
+    try:
+        async with AsyncMemoryClient(
+            os.environ["PGAG_SDK_API_URL"], os.environ["PGAG_SDK_API_TOKEN"]
+        ) as memory:
+            result = await memory.recall(request)
+            if not result.coverage.retrieval_complete:
+                print("Recall coverage is incomplete; do not infer absence.")
+    except MemoryClientError as exc:
+        if exc.error.outcome_unknown:
+            print("Outcome unknown: retain the existing key and body; reconcile.")
+        else:
+            print("Memory request failed; no automatic retry was attempted.")
+
+
+asyncio.run(main())
+```
+
+`NativeSettings`の設定errorはsanitized `ValueError`であり、`MemoryClientError`ではありません。
+request model構築では別にPydantic `ValidationError`が発生し得ます。
+そこに含まれるprivate入力詳細をlogに出さないでください。
+SDK call時の検証はsanitized SDK errorを返します。
+
+`AsyncMemoryClient`は固定HTTPS originまたはloopback HTTP originとtokenの形を検査し、
+実際のtoken認証はserverが行います。context entryで所有HTTP clientを作成し、
+認証付きcapabilitiesの**service 0.0.12 / API v1 / schema 8**完全一致を要求します。
+一つのcontext内だけで使い、再entryや自動retryはありません。
+未完了taskはawaitするかcancel後にawaitして、**contextをexitする前に完了を確認**してください。
+client closeはrequestのschedule/cancel管理でもDB rollbackでもありません。
+exitで閉じるのは接続であり、**保存memoryは消去しません**。
+scopeはserver ACLを狭めるだけです。返されたmemoryは根拠であって、
+信頼する指示や現在の事実の保証ではありません。
+
+明示embedding、job、graph、checkpoint、tool effectを含む全24 public memory resource
+methodを対象とし、CLI管理やworker実行は対象外です。
+すべての変更にはcallerが保持するkeyword-onlyの`idempotency_key`が必須です。
+処理中のcancelを含む変更結果不明時は**同じkeyとbody**で照合し、
+新keyへの交換やrollbackの推測をしてはいけません。
+[型付きmethod/error契約](docs/STATUS-jp.md#python-sdk)、
+[運用と更新](docs/operations/README-jp.md#python-sdk-operations)、
+[ADR 0012](docs/adr/0012-python-sdk-jp.md)を参照してください。schema 9 migrationはありません。
 
 ## コンテナ検証
 
@@ -69,7 +145,20 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.11/schema 8を2026-09-17 JSTに検証しました。** Apple Containerとnative Docker
+**2026-09-17 JSTにv0.0.12最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**426テスト、既存warning 1件**、
+Ruff、strict mypy（**source 18ファイル**）、別のstrict型付きconsumer（**1ファイル**）、
+真のcore/hook/sdk wheel導入検査、同梱`py.typed`、
+新SDK lifecycleを含むnon-root production全smokeが合格しました。
+既存345テストに**SDK unit 76 + integration 5テスト（新規81）**を加えた結果です。
+実装
+[88e1206](https://github.com/rioriost/pg_agmemory/commit/88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f)は
+[CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/35193004945)に合格しました。
+native実logで完全一致SHA、件数、全検査を確認しています。
+所要時間は**local 292.76秒 / amd64 484.79秒 / arm64 472.49秒**であり、性能benchmarkではありません。
+[検証証拠](docs/STATUS-jp.md#v0012--schema-8)を参照してください。
+
+**過去のv0.0.11/schema 8を2026-09-17 JSTに検証しました。** Apple Containerとnative Docker
 amd64/arm64は各**345テスト、既存warning 1件**、Ruff、strict mypy（**source 17ファイル**）、
 core-only/hook-only導入検査、non-root productionの全smokeに合格しました。
 episode/assertion vectorのexact/hybrid検索とpurgeも対象です。
@@ -77,6 +166,12 @@ episode/assertion vectorのexact/hybrid検索とpurgeも対象です。
 実装[f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)は
 [CI 35189448403](https://github.com/rioriost/pg_agmemory/actions/runs/35189448403)に合格しました。
 [検証証拠](docs/STATUS-jp.md#v0011--schema-8)を参照してください。
+最終v0.0.11 docs
+[dccd5cb](https://github.com/rioriost/pg_agmemory/commit/dccd5cb5571873515aace8621ce4adb3de250d3a)も
+[CI 35190495385](https://github.com/rioriost/pg_agmemory/actions/runs/35190495385)に合格し、
+両native実logで**345テスト、warning 1件**、Ruff、mypy **source 17ファイル**、
+導入検査、全smokeを確認しました。**amd64 506.38秒 / arm64 460.18秒**です。
+これは上記実装runとは別のdocs run観測値であり、どちらもv0.0.12の検証ではありません。
 
 採用DB profileはprebuilt
 `docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a`です。
@@ -86,7 +181,8 @@ PostgreSQL版は18.6のままですが、**base digestが異なる新しい上�
 旧library PostgreSQL imageを変更していないという意味ではありません。
 このprofileに新DB Dockerfile、source build、host APT workflowはありません。
 artifact検証は上記のapplication/migration/CI合格証拠とは別です。
-Python依存はproject版metadata以外変更せず、raw parameter-bound vector castにpgvector Python packageは不要です。
+過去のv0.0.11ではPython依存はproject版metadata以外変更せず、
+raw parameter-bound vector castにpgvector Python packageは不要でした。
 
 **過去のv0.0.10/schema 7の最終localとnative結果を2026-09-17 JSTに確認しました。**
 Apple Containerとnative Docker amd64/arm64は各**304テスト、既存warning 1件**に合格しました。
@@ -201,7 +297,9 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.11はschema 8と新しい`008_pgvector.sql`を必要とします。**
+**v0.0.12はschema 8を維持し、schema 9 migrationは追加しません。**
+[application-only更新](docs/operations/README-jp.md#v0012-application-update)に従ってください。
+古いDBには引き続きv0.0.11の`008_pgvector.sql` migrationが必要です。
 PostgreSQLは**`public`内の`vector` 0.8.6**を必要とし、
 migrationは版/schemaが異なる既存extensionを拒否します。prebuilt profileは対応extensionを提供します。
 API、worker、`migrate`はschema 8記録済みでもこれを検査します。
@@ -209,7 +307,7 @@ API、worker、`migrate`はschema 8記録済みでもこれを検査します。
 backupと現在の削除/ACL記録を保全してoffline migrationを行います。
 古いDBにはmigration 007のlexical backfillを含む既存migrationも適用します。
 **embedding backfillや自動embedding再構築はありません**。
-対応するv0.0.11 processだけを再起動し、API/workerは厳密な履歴
+対応するv0.0.12 processだけを再起動し、API/workerは厳密な履歴
 `[1, 2, 3, 4, 5, 6, 7, 8]`とschema `public`内のextension `vector` 0.8.6を要求します。
 schema 7 processとschema 8のrolling混在互換性はありません。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
@@ -338,13 +436,14 @@ Native HTTP response-drainとhost消去の境界は変更しません。
 
 ## Local stdio MCP
 
-通常の`pg-agmemory` package導入では任意の`mcp`/`hook`依存を**導入しません**。
-MCPには`pg-agmemory[mcp]`、recall-hookには`pg-agmemory[hook]`を選択してください。
-repositoryのDocker test/runtime imageは意図的に両extraを含みますが、
+通常の`pg-agmemory` package導入では任意の`mcp`/`hook`/`sdk`依存を**導入しません**。
+MCPには`pg-agmemory[mcp]`、recall-hookには`pg-agmemory[hook]`、
+Python SDKには`pg-agmemory[sdk]`を選択してください。
+repositoryのDocker test/runtime imageは意図的に3 extraすべてを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.11のtest/runtime両stageに
-`mcp`・`hook`両extraを含むrepository imageを使用します。
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.12のtest/runtime両stageに
+`mcp`・`hook`・`sdk`を含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
 信頼するlocal MCP hostから次を起動します。
@@ -357,7 +456,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.11`、schema `8`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.12`、schema `8`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -397,7 +496,7 @@ protocol検証の制限を含む[全契約](docs/STATUS-jp.md#local-stdio-mcp)�
 [ADR 0008](docs/adr/0008-local-mcp-jp.md)を参照してください。
 v0.0.11はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP semanticsを維持します。
 過去のv0.0.9 regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
-過去のv0.0.10と現在のv0.0.11の検査も合格しています。
+過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
 
 ## Implicit recall hook
 
@@ -405,7 +504,7 @@ v0.0.11はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP
 過去のv0.0.9 local/native検査は合格しています。
 任意の`pg-agmemory[hook]`を導入します（checkoutでは`uv sync --frozen --extra hook`）。
 固定依存は**httpx 0.28.1だけで、MCP SDKではありません**。
-Docker test/runtimeには両extraを含めます。
+Docker test/runtimeには`mcp`・`hook`・`sdk`を含めます。
 `pg-agmemory recall-hook`は一回実行のvendor-neutralなlocal Native HTTP clientです。
 hostへの自動登録はなく、Copilot・Claude・Codex連携を**主張しません**。
 外部model呼出しやDB資格情報は不要です。
@@ -437,7 +536,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.11` / API `v1` / schema `8`**を検査し、
+**service `0.0.12` / API `v1` / schema `8`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -512,7 +611,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-lexical projectionを再構築して、対応するv0.0.11 processだけを再起動します。
+lexical projectionを再構築して、対応するv0.0.12 processだけを再起動します。
 embeddingの投入/再構築は行いません。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
@@ -682,6 +781,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Implicit recall hookの決定](docs/adr/0009-implicit-recall-hook-jp.md) | [Implicit recall hook decisions](docs/adr/0009-implicit-recall-hook.md) |
 | [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) | [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) |
 | [Pgvector retrievalの決定](docs/adr/0011-pgvector-retrieval-jp.md) | [Pgvector retrieval decisions](docs/adr/0011-pgvector-retrieval.md) |
+| [Python SDKの決定](docs/adr/0012-python-sdk-jp.md) | [Python SDK decisions](docs/adr/0012-python-sdk.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

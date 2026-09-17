@@ -2,8 +2,9 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.11/schema 8のpgvector exact/hybrid retrieval基盤です。
-実装、local Apple Container、native Docker両architectureを検証済みです。v0.0.10以前の結果は過去の証拠として維持します。
+**現在の上限付きmilestoneはv0.0.12/schema 8の型付き非同期Python SDKです。
+実装、local Apple Container、native Docker両architectureを検証済みです。
+検証済みv0.0.11以前の結果は過去の証拠であり、v0.0.12の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -47,6 +48,124 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 `/docs`と`/openapi.json`で公開します。schemaの生成済みファイルは不要です。
 `/healthz`は起動検証後のprocess livenessであり、
 PostgreSQLへの継続的なreadiness検査ではありません。
+
+## Python SDK
+
+**v0.0.12/schema 8で実装・検証済みです。**
+`from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
+memory resource用のasync専用clientを公開します。
+request/response型は`pg_agmemory.models`からimportします。
+mutableなmodel instanceもcall時に再検証し、応答も同じNative型付きmodelを使います。
+packageはPEP 561の`py.typed` markerを含みます。
+
+### 導入、lifecycle、権限
+
+対応checkoutから`python -m pip install '.[sdk]'`で導入します。
+`pg-agmemory[sdk]`が追加するのは`httpx==0.28.1`だけですが、
+**core distributionには引き続きFastAPI、psycopg、Janomeが含まれます**。
+独立公開の軽量SDKでもPyPI公開済みという主張でもありません。
+HTTPXがない場合のSDK importは固定の明確な`ImportError`となり、
+`mcp`/`hook`が提供するHTTPXでも動作します。extraの選択名でなく依存の存在を検出します。
+Docker test/runtimeは`mcp`・`hook`とともに`sdk`を含みます。
+core-only/hook-only/sdk-only検査と、hook-only/sdk-only導入にMCP SDKがないことの検査を実装しています。
+真のnoneditable wheel導入3検査と同梱`py.typed`検査はlocalと両native architectureで合格しました。
+Python依存のupgradeはありません。
+
+`AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
+設定しないでください。`NativeSettings`は固定HTTPS originまたはloopback HTTP originを
+要求し、application path、userinfo、query、fragmentを禁止します。
+constructorはbearer tokenの**形だけ**を検査し、設定errorは`MemoryClientError`でなく
+既存のsanitized `ValueError`です。serverが実際の認証・認可を行います。
+request scopeは現在のserver ACLを狭めるだけで、identity変更や権限付与はできません。
+
+client instanceごとに`async with ... as memory:`を一度だけ使います。
+entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
+厳密な**service `0.0.12` / API `v1` / schema `8`**一致を要求します。
+entry失敗時も`finally`で所有resourceを閉じます。
+entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
+exitは接続を解放するだけで、**dataは消去しません**。
+callerは未完了taskをawaitするかcancel後にawaitして、**context exit前に完了を確認**します。
+client closeはrequestのschedule/cancel管理でもDB rollbackでもありません。
+処理中の変更cancelには引き続き照合が必要です。
+環境変数の自動読込み、retry、cache、DB資格情報、provider呼出し、
+host登録、delegation、自動jobは追加しません。
+
+### 型付きresource method
+
+すべて非同期です。下記body名はNative request model、ID引数はUUIDであり任意pathではありません。
+すべての変更にはcaller管理のkeyword-only `idempotency_key`が必須です。
+`forget`のpreview/purgeも対象で、両方HTTP 202です。
+その他の読取り専用methodはkey不要でHTTP 200、書込みはNative既存の201/202を維持します。
+job receiptはpublication完了を意味しません。
+
+| Method / request | 型付き結果 |
+|---|---|
+| `observe(Observe)` | `ObserveResult` |
+| `capture(Capture)` | `CaptureResult` |
+| `remember(Remember)` | `RememberResult` |
+| `revise_assertion(UUID, ReviseAssertion)` | `RevisionResult` |
+| `recall(Recall)` | `RecallResult` |
+| `explain(Explain)` | `EpisodeExplanation \| AssertionExplanation` |
+| `forget(Forget)` | request modeで選ぶ`DeletionPreview \| DeletionResult` |
+| `get_deletion(UUID)` | `DeletionProgress` |
+| `embedding_input(Explain)` | `EmbeddingInput` |
+| `put_embedding(PutEmbedding)` | `EmbeddingReceipt` |
+| `create_entity(CreateEntity)` | `EntityReceipt` |
+| `get_entity(UUID)` | `EntityDetail` |
+| `create_relation(CreateRelation)` | `RememberResult` |
+| `revise_relation(UUID, ReviseRelation)` | `RevisionResult` |
+| `expand_graph(ExpandGraph)` | `GraphResult` |
+| `enqueue_job(EnqueueJob)` | `JobReceipt` |
+| `get_job(UUID)` | `JobDetail` |
+| `retry_job(UUID, EnqueueJob)` | `JobReceipt` |
+| `create_checkpoint(CreateCheckpoint)` | `CheckpointReceipt` |
+| `get_checkpoint(UUID)` | `CheckpointEnvelope` |
+| `restore_checkpoint(RestoreCheckpoint)` | `CheckpointEnvelope` |
+| `plan_tool_effect(PlanToolEffect)` | `ToolEffectReceipt` |
+| `get_tool_effect(UUID)` | `ToolEffectDetail` |
+| `transition_tool_effect(UUID, TransitionToolEffect)` | `ToolEffectReceipt` |
+
+対象はpublic memory resource routeであり、**CLI管理/worker関数は対象外**です。
+capabilities照会は内部処理のみで、public health、OpenAPI download、
+raw任意request methodは追加しません。同期client、TypeScript SDK、token refreshもありません。
+
+### 上限、error、復旧
+
+共有Native HTTP transportはMCP/hookの上限を維持します。
+**exchange全体20秒、I/O 10秒 / connect 5秒、最大4接続**、
+TLS検証あり、proxy環境不使用、redirectなしです。
+応答は**2 MiB**、requestは**256 KiB**で、SDK `create_checkpoint`だけ**1 MiB**です。
+MCP/hookのrequest上限は引き上げません。
+
+`MemoryClientError`は既存`AdapterFailure`のaliasです。
+`exc.error.code`、`.retryable`、`.outcome_unknown`、`.native_status`、
+`.request_id`を参照します。診断はsanitizedで、raw応答/入力/tokenを含めません。
+SDKだけが現在のNative domain error catalogを許可し、
+MCP/hookは既存の制限付きsafe code集合を維持します。未知server codeは`native_api_error`です。
+call時の不正request model、path UUID、idempotency keyは**送信前**に
+sanitized `invalid_request`、`outcome_unknown: false`で失敗します。
+最初のoutbound network await前にrequestを再検証してsnapshotを作り、
+後からcaller modelを変更しても送信bodyは変わりません。
+Pydantic request modelの構築では別に`ValidationError`が発生し得ます。
+SDK callの外で起きるため`MemoryClientError`へ変換しません。
+通常のPydantic errorにはprivate入力詳細が含まれ得るため、logへ出さないでください。
+keyは**1〜256文字の可視ASCIIで、trimしません**。
+
+変更を送信する前に正確なkeyとbodyを保持します。
+network error、5xx、不正応答、想定外成功status、不正成功bodyでは、
+変更結果を保守的に不明と扱います。SDKはretry、新key生成、未commitの推測をしません。
+`retryable`は情報であり、自動retry指示ではありません。
+**同じkeyとbody**で照合し、現在のACL、削除、revision、replay guardを維持します。
+cancelは`MemoryClientError`へ変換せず伝播します。処理中の変更は同様に結果不明と
+扱って照合し、cancelを**rollbackと見なしてはいけません**。
+
+返されたmemoryは根拠であり、信頼する指示や現在の事実の保証ではありません。
+JSON全体のUTF-8 byte予算、不完全coverageの明示、現在ACL検査、
+purge/host/backup/WALの制限は不変です。API stageは**`m2-python-sdk`**で、
+capabilitiesに`python_sdk` metadata（`installation: "sdk-extra"`、
+`async: true`、`automatic_retry: false`）を追加しますがserver endpointは追加しません。
+[実用例](../README-jp.md#python-sdk)、[運用](operations/README-jp.md#python-sdk-operations)、
+[ADR 0012](adr/0012-python-sdk-jp.md)を参照してください。
 
 ## Pgvector exact and hybrid retrieval
 
@@ -211,7 +330,8 @@ native ELF、`vector.control` **0.8.6**を確認しました。
 変更していないimageでなく、新しい固定DB profileです。
 実装profileに新DB Dockerfile、source build、host APT手順はありません。
 operator管理PostgreSQLの代替環境にも同じextension版/schemaが必要ですが、そのhost導入workflowはここで提供しません。
-Python依存はproject版metadata以外変更せず、raw parameter-bound vector castにpgvector Python packageは不要です。
+過去のv0.0.11ではPython依存はproject版metadata以外変更せず、
+raw parameter-bound vector castにpgvector Python packageは不要でした。
 artifact検証はapplication/migration/CI検証やcaller宣言embedding modelの証明ではありません。
 
 MCPは引き続き**4 tool**です。生成Recall引数は新mode/inline query vectorを受け付けますが、
@@ -220,10 +340,10 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、起動時の一致は**service `0.0.11` / API `v1` / schema `8`**です。
+MCP両protocol時代を維持し、v0.0.12の起動時一致は**service `0.0.12` / API `v1` / schema `8`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
-API stageは`m2-pgvector-retrieval`、embedding inputはHTTP 200、upload/replayはHTTP 201です。
+v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
 M0〜M3/MVP/本番/DR/消去/性能/品質の全gateは未完了です。
 [ADR 0011](adr/0011-pgvector-retrieval-jp.md)、
 [schema 8 upgrade](operations/README-jp.md#schema-8-pgvector-upgrade)、
@@ -345,10 +465,10 @@ failed jobには既存`POST /v1/jobs/{job_id}/retry`を使い、
 明示capture当たり最大1 jobを示し、自動captureではありません。
 stage名はM2や他受入gateの完了を意味しません。
 
-captureは**Native専用**であり5番目のMCP toolではありません。
+captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.11` / API `v1` / schema `8`**を要求します。
-schema 8 migrationは既存capture semanticsとは別です。
+MCP/hook起動は厳密な**service `0.0.12` / API `v1` / schema `8`**を要求します。
+既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
 host/backup/WAL/完全消去の保証は得られません。
@@ -359,10 +479,10 @@ host/backup/WAL/完全消去の保証は得られません。
 
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.11のrepository Docker test/runtime両stageに
-`mcp`・`hook`両extraを含めます。抽出する共有の上限付きNative HTTP clientは以下の
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.12のrepository Docker test/runtime両stageに
+`mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
-合格しました。過去のv0.0.10と現在のv0.0.11の検査も合格しています。
+合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
 共有`NativeSettings`は`httpx.URL`でもoriginをparseし、transport前に制御文字や不正IDNAを拒否します。
 remote MCP HTTP/SSE listener、OAuth、caller identity委譲、
 semantic cache、response cacheは提供しません。
@@ -433,9 +553,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.11"`、`schema_version: 8`を要求します。
+`service_version: "0.0.12"`、`schema_version: 8`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.11はschema 8を要求しますが、adapter自体はmigrationを行いません。
+v0.0.12はschema 8を維持しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -485,7 +605,7 @@ v0.0.11は両protocol時代を維持し、両方の検査に合格しました�
 hostへの自動登録はなく、Copilot・Claude・Codex連携を主張しません。
 呼出し時点はhostが選択し、service自体がhost lifecycle eventを監視するものではありません。
 `pg-agmemory[hook]`は**httpx==0.28.1を固定し、MCP SDKは含めません**。
-Docker test/runtime両stageは`mcp`・`hook`を含めます。
+Docker test/runtime両stageは`mcp`・`hook`・`sdk`を含めます。
 過去のv0.0.9のcore-only/hook-only依存分離検査はlocalとnative Docker両architectureで合格しました。
 hookにはDB資格情報、署名key、LLM/provider keyは不要です。
 
@@ -535,7 +655,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.11` / API `v1` / schema `8`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.12` / API `v1` / schema `8`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -1284,14 +1404,19 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.11はschema 8と`008_pgvector.sql`を要求し、schema 7のapplication更新だけではありません**。
+**v0.0.12はschema 8上のapplication-only更新であり、schema 9 migrationはありません**。
+固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.12 componentだけを
+導入します。混在版/rolling互換性は主張しません。
+[application更新](operations/README-jp.md#v0012-application-update)を参照してください。
+古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
 migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既存extensionを拒否します。
 上記の固定prebuilt上流DB profileを使い、旧PostgreSQL imageが不変と想定したり、
 未固定extensionを使ったりしないでください。schema 8で旧schema 7 processを起動してはいけません。
 新episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapterとhookはHTTPのみでDDLを行わず、対応するservice `0.0.11`、API `v1`、schema `8`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.12`、API `v1`、schema `8`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -1303,7 +1428,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.11のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8]`と
+追加しません。v0.0.12のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -1311,12 +1436,12 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.11/schema 8 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.12/schema 8 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.11 processだけを起動してください。保守中はadapterとhook起動も停止します。
+対応するv0.0.12 processだけを起動してください。保守中はadapter、hook起動、SDK callerも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
@@ -1326,9 +1451,58 @@ rolling共存やdowngradeは非対応です。
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0012--schema-8"></a>
+
+### v0.0.12 / schema 8 — 検証済み
+
+**2026-09-17 JSTに最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**426テスト、既存warning 1件**、
+Ruff、strict mypy **source 18ファイル**、全24 method annotationを対象にした
+別のstrict型付きconsumer **1ファイル**も合格しました。
+真の**core-only/hook-only/sdk-only noneditable wheel導入3検査**、
+同梱`py.typed`、hook/sdk-onlyにMCPがないことの検査も合格しました。
+これらは全3環境で合格しました。
+件数の内訳は**既存345 + SDK unit 76 + SDK integration 5テスト（新規81）**です。
+先のfixture key失敗runに代わる最終結果です。
+公開済み実装:
+[`88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f`](https://github.com/rioriost/pg_agmemory/commit/88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f)
+（`feat: add typed asynchronous Native Python SDK`）。
+[CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/35193004945)は
+この完全一致SHAで合格しました。job statusだけでなく**実log**で各native architectureの
+SHA、件数、検査、production smokeを確認しています。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| ローカルApple Container | **292.76秒** |
+| Docker、native `linux/amd64` | **484.79秒** |
+| Docker、native `linux/arm64` | **472.49秒** |
+
+所要時間はテスト観測値であり、性能benchmarkではありません。
+
+全3環境の使い捨てPostgreSQL DB上の実HTTPでSDK integration全5テストが合格しました。
+全24 resourceを対象にし、
+graph/relation revision、実workerを伴うfailed job retry、
+256 KiB超checkpoint create/readとtool-effect restore照合、
+認可失効、実post-commit応答喪失と同一key復旧を含みます。
+合格したunit検査はentry cancel時のcleanup、entry失敗後のsingle-use、
+caller body例外後のexit、256文字key、GET成功status完全一致、
+forget両modeの不正応答shapeを対象にしています。
+non-root production全smokeも全3環境で合格しました。
+日本語tokenizer、HTTP API、実worker `--once` idle、
+MCP **2026-07-28/2025-11-25**、hook全3 event、実worker付きatomic capture、
+pgvector exact/hybrid検索、新Python SDK lifecycleが対象です。
+SDK smokeは**capture/replay →
+pending `get_job` → embedding input/upload → exact vector recall → preview/purge →
+削除進捗 → capture replay 404**を実行します。
+**このsmoke自体はworkerを呼びません**。従来の実capture-worker smokeは別に維持します。
+SDK smokeはlocalと両native architectureで合格しました。
+これは実装commitの証拠であり、今後のdocs commit/runの検証ではありません。
+M0〜M3/MVP/本番/性能/品質/DR/完全消去のgateは未完了です。
+以下の過去v0.0.11証拠でSDK変更の適格性は認定しません。
+
 <a id="v0011--schema-8"></a>
 
-### v0.0.11 / schema 8 — 検証済み
+### 過去のv0.0.11 / schema 8 — 検証済み
 
 **最終localとnative結果を2026-09-17 JSTに確認しました。** 実装
 [f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)は、
@@ -1344,6 +1518,15 @@ pgvector exact/hybrid検索とpurgeが対象です。
 | ローカルApple Container | **283.44秒** |
 | Docker、native `linux/amd64` | **404.40秒** |
 | Docker、native `linux/arm64` | **433.46秒** |
+
+最終v0.0.11 docs
+[dccd5cb](https://github.com/rioriost/pg_agmemory/commit/dccd5cb5571873515aace8621ce4adb3de250d3a)は
+[CI 35190495385](https://github.com/rioriost/pg_agmemory/actions/runs/35190495385)に合格しました。
+実logで各native architecture **345テスト、warning 1件**、Ruff、
+strict mypy（**source 17ファイル**）、導入検査、全smokeを確認しました。
+docs run所要時間は**amd64 506.38秒 / arm64 460.18秒**です。
+実装CI 35189448403と上記local/native所要時間とは別であり、
+どちらのrunもv0.0.12の検証ではありません。
 
 job statusだけでなく実logで確認した結果です。所要時間は性能benchmarkではありません。
 artifact検査は固定上流pgvector 0.8.6 profileの両architectureを別途確認しました。
@@ -1538,7 +1721,8 @@ backup/DR、完全消去の適格性を示すものではありません。
 自動embedding/provider連携、ANN/HNSW、vector/hybrid retrievalの品質/性能認定、AGE、SQL/PGQ、
 provider receipt検証、vendor固有harness連携と実行/recovery、
 別assertion間のsupersession/fact調停、remote MCP HTTP/SSE/OAuth/delegation、
-application SDK、postgresem連携はありません。
+同期/TypeScript SDK、postgresem連携はありません。
+v0.0.12非同期Python SDKはlocalと両native architectureで検証済みです。
 vendor-neutral hookはどのhostも登録せず、適格性を認定しません。
 local stdio MCP、opt-in lexical分割、明示structured job、上限付きSQL graph oracle、
 typed checkpoint envelopeだけで、

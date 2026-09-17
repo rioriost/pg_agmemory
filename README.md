@@ -6,9 +6,9 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Current bounded milestone: v0.0.11/schema 8 pgvector exact/hybrid retrieval foundation.
+**Current bounded milestone: v0.0.12/schema 8 typed asynchronous Python SDK.
 Implementation, local Apple Container, and both native Docker architectures are verified.
-Verified v0.0.10 and earlier results remain historical.
+Verified v0.0.11 and earlier results below are historical, not v0.0.12 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -29,11 +29,86 @@ natural-language synthesis, or a measured retrieval-quality improvement.
 Cross-assertion supersession/fact arbitration, provider receipt verification, vendor-specific harness adapters,
 automatic enqueue/extraction, general multi-tenant scheduling,
 automatic embedding generation, ANN/HNSW, AGE/SQL/PGQ, remote MCP HTTP/SSE/OAuth/delegation,
-application SDKs, and postgresem adapters
+synchronous/TypeScript SDKs, and postgresem adapters
 remain roadmap work. Performance, memory quality, disaster recovery, and
 full-erasure acceptance remain unmeasured or unqualified.
 Consult [the current contract and limitations](docs/STATUS.md)
 before using the service.
+
+## Python SDK
+
+**Implemented and verified in v0.0.12/schema 8.** From the matching checkout:
+
+```bash
+python -m pip install '.[sdk]'
+```
+
+The optional `pg-agmemory[sdk]` extra adds only **httpx==0.28.1**.
+This is the existing core distribution, still including FastAPI, psycopg, and
+Janome—not a standalone lightweight SDK package or a claim of PyPI publication.
+It adds a PEP 561 `py.typed` marker. HTTPX supplied by `mcp`/`hook` also satisfies
+the import dependency; without HTTPX, SDK import raises a static installation
+`ImportError`.
+
+Use explicit arguments from trusted configuration, not memory/tool input.
+The following environment names are examples, **not automatically read by the SDK**.
+The scope must already be provisioned and authorized. This read-only example
+does not print private memories, tokens, inputs, or raw error responses.
+
+```python
+import asyncio
+import os
+from uuid import UUID
+
+from pg_agmemory.models import Recall
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+
+async def main() -> None:
+    request = Recall(
+        scope_ids=[UUID(os.environ["PGAG_SDK_SCOPE_ID"])],
+        query="synthetic fixture",
+        purpose="read-only SDK example",
+    )
+    try:
+        async with AsyncMemoryClient(
+            os.environ["PGAG_SDK_API_URL"], os.environ["PGAG_SDK_API_TOKEN"]
+        ) as memory:
+            result = await memory.recall(request)
+            if not result.coverage.retrieval_complete:
+                print("Recall coverage is incomplete; do not infer absence.")
+    except MemoryClientError as exc:
+        if exc.error.outcome_unknown:
+            print("Outcome unknown: retain the existing key and body; reconcile.")
+        else:
+            print("Memory request failed; no automatic retry was attempted.")
+
+
+asyncio.run(main())
+```
+
+Configuration errors from `NativeSettings` are sanitized `ValueError`, not
+`MemoryClientError`. Request-model construction can separately raise Pydantic
+`ValidationError`; do not log its private input details.
+SDK call-time validation produces sanitized SDK errors.
+
+`AsyncMemoryClient` validates a fixed HTTPS origin or loopback HTTP origin and
+token shape; the server authenticates the token. Context entry owns the HTTP
+client and requires authenticated **service 0.0.12 / API v1 / schema 8**
+capabilities. Use only inside one context; no re-entry or automatic retries.
+Await outstanding tasks, or cancel and await them, **before exiting the context**.
+Client close is not a request scheduler/cancellation manager or a DB rollback.
+Exit closes connections, **not stored memory**. Scopes only narrow server ACLs.
+Returned memory is evidence, not trusted instructions or guaranteed current facts.
+
+The SDK covers all 24 public memory resource methods, including explicit
+embedding, jobs, graph, checkpoints, and tool effects; not CLI administration or
+worker execution. Every mutation needs a caller-retained keyword-only
+`idempotency_key`. Uncertain mutation outcomes—including in-flight cancellation—
+require reconciliation with the **same key and body**, never a replacement key
+or an assumed rollback. See [the typed method/error contract](docs/STATUS.md#python-sdk),
+[operations and upgrade](docs/operations/README.md#python-sdk-operations), and
+[ADR 0012](docs/adr/0012-python-sdk.md). No schema 9 migration is added.
 
 ## Container checks
 
@@ -74,7 +149,20 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.11/schema 8: verified 2026-09-17 JST.** Apple Container and native Docker
+**v0.0.12 final local and native results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **426 tests,
+1 existing warning**, Ruff, strict mypy (**18 source files**), a separate strict typed
+consumer (**1 file**), genuine core/hook/sdk wheel-install checks, packaged
+`py.typed`, and all non-root production smokes, including the new SDK lifecycle.
+This includes **76 SDK unit + 5 SDK integration tests (81 new)** alongside 345 retained tests.
+Implementation
+[88e1206](https://github.com/rioriost/pg_agmemory/commit/88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f)
+passed [CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/35193004945).
+Actual native logs verified that exact SHA, counts, and all checks.
+Test elapsed: **292.76 s local / 484.79 s amd64 / 472.49 s arm64**—not
+performance benchmarks. See [validation evidence](docs/STATUS.md#v0012--schema-8).
+
+**Historical v0.0.11/schema 8: verified 2026-09-17 JST.** Apple Container and native Docker
 amd64/arm64 each passed **345 tests, 1 existing warning**, Ruff, strict mypy
 (**17 source files**), core-only/hook-only installation checks, and all non-root
 production smokes, including exact/hybrid episode/assertion vector retrieval and purge.
@@ -83,6 +171,13 @@ not performance benchmarks. Implementation
 [f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)
 passed [CI 35189448403](https://github.com/rioriost/pg_agmemory/actions/runs/35189448403).
 See [the qualification evidence](docs/STATUS.md#v0011--schema-8).
+Final v0.0.11 documentation
+[dccd5cb](https://github.com/rioriost/pg_agmemory/commit/dccd5cb5571873515aace8621ce4adb3de250d3a)
+also passed [CI 35190495385](https://github.com/rioriost/pg_agmemory/actions/runs/35190495385):
+actual native logs verified **345 tests, 1 warning**, Ruff, mypy **17 source files**,
+installation checks, and all smokes; **506.38 s amd64 / 460.18 s arm64**.
+These are documentation-run observations, separate from the implementation
+timings above; neither run validates v0.0.12.
 
 The adopted DB profile is the prebuilt
 `docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a`.
@@ -92,7 +187,7 @@ The PostgreSQL version stays 18.6, but **this is a new upstream DB image/profile
 with a different base digest**, not the unchanged old library PostgreSQL image.
 There is no new DB Dockerfile, source-build, or host-APT workflow in this profile.
 Artifact verification is separate from the passing application/migration/CI evidence above.
-Python dependencies stay unchanged apart from project-version metadata;
+For historical v0.0.11, Python dependencies stayed unchanged apart from project-version metadata;
 raw parameter-bound vector casts need no pgvector Python package.
 
 **Historical v0.0.10/schema 7: final local and native results verified 2026-09-17 JST.**
@@ -214,7 +309,9 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**v0.0.11 requires schema 8 and new `008_pgvector.sql`.** PostgreSQL must provide
+**v0.0.12 retains schema 8; no schema 9 migration is added.**
+Follow the [application-only upgrade](docs/operations/README.md#v0012-application-update).
+Older databases still require the v0.0.11 `008_pgvector.sql` migration. PostgreSQL must provide
 `vector` **0.8.6 in `public`**; migration rejects an existing extension with the
 wrong version or schema. The prebuilt profile supplies the matching extension.
 API, worker, and `migrate` validate it even when schema 8 is already recorded.
@@ -222,7 +319,7 @@ Stop/drain **all old/new APIs, workers, adapters, and hook launches**, preserve 
 backup and current deletion/ACL records, then migrate offline.
 Older databases also apply the retained migrations, including migration 007's
 lexical backfill. **There is no embedding backfill or automatic embedding rebuild**.
-Only matching v0.0.11 processes may restart; API/worker startup requires exact
+Only matching v0.0.12 processes may restart; API/worker startup requires exact
 history `[1, 2, 3, 4, 5, 6, 7, 8]` and extension `vector` 0.8.6 in schema `public`.
 Schema-7 processes are not rolling-compatible with schema 8.
 Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
@@ -360,13 +457,14 @@ and [ADR 0010](docs/adr/0010-atomic-capture.md).
 
 ## Local stdio MCP
 
-A plain `pg-agmemory` package installation does **not** install optional `mcp`
-or `hook` dependencies. Select `pg-agmemory[mcp]` for MCP or
-`pg-agmemory[hook]` for recall-hook. Repository Docker test/runtime images
-intentionally include both extras; that is **not** the base-package default.
+A plain `pg-agmemory` package installation does **not** install optional `mcp`,
+`hook`, or `sdk` dependencies. Select `pg-agmemory[mcp]` for MCP,
+`pg-agmemory[hook]` for recall-hook, or `pg-agmemory[sdk]` for the Python SDK.
+Repository Docker test/runtime images intentionally include all three extras;
+that is **not** the base-package default.
 
 Install the optional `pg-agmemory[mcp]` package extra, or use the repository image,
-whose v0.0.11 test and runtime stages retain both `mcp` and `hook` extras.
+whose v0.0.12 test and runtime stages include `mcp`, `hook`, and `sdk` extras.
 The MCP extra pins the official **mcp 2.2.0** SDK
 and **httpx 0.28.1**. From this checkout, `uv sync --frozen --extra mcp` prepares
 the locked environment. A trusted local MCP host launches:
@@ -380,7 +478,7 @@ configuration, not tool arguments or checked-in host configuration. The URL must
 be an HTTPS origin or loopback HTTP origin, with no credentials, path, query, or
 fragment. The token is for the **Native API audience**, which the Native API
 checks; it is not forwarded MCP caller identity. Startup makes an authenticated
-capabilities request and requires API `v1`, service `0.0.11`, and schema `8`.
+capabilities request and requires API `v1`, service `0.0.12`, and schema `8`.
 Configuration/authentication/version failures exit nonzero without secrets.
 Restart to refresh the fixed token. `--subject` and `--once` are rejected.
 
@@ -425,14 +523,14 @@ See [the full contract](docs/STATUS.md#local-stdio-mcp),
 v0.0.11 retains both modern `2026-07-28` and legacy `2025-11-25` protocol
 contracts and all MCP semantics. Historical v0.0.9 regression and both protocol
 smokes passed locally and on both native Docker architectures.
-Historical v0.0.10 and current v0.0.11 checks also passed.
+Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
 
 ## Implicit recall hook
 
 **Retained read-only, lexical-only hook, verified in v0.0.11.** Historical v0.0.9 local/native
 checks passed. Install optional
 `pg-agmemory[hook]` (`uv sync --frozen --extra hook` in this checkout).
-It pins **httpx 0.28.1, not the MCP SDK**; Docker test/runtime include both extras.
+It pins **httpx 0.28.1, not the MCP SDK**; Docker test/runtime include `mcp`, `hook`, and `sdk`.
 `pg-agmemory recall-hook` is a one-shot, vendor-neutral local Native HTTP client.
 It does not register itself with any host and does **not** claim Copilot, Claude,
 or Codex integration. No external model invocation or database credentials are needed.
@@ -464,7 +562,7 @@ Shared `NativeSettings` also uses `httpx.URL` to reject control characters and
 invalid IDNA before transport. Redirects/proxy environment are disabled and TLS is verified.
 
 Each invocation freshly checks authenticated capabilities for exact
-**service `0.0.11` / API `v1` / schema `8`**, then posts Native recall with
+**service `0.0.12` / API `v1` / schema `8`**, then posts Native recall with
 `mode: "implicit"` and Native current-time defaults. The deadline covers **both
 HTTP steps together**, excluding process startup, stdin input/waiting, and output.
 It is not an LLM latency SLO.
@@ -544,7 +642,7 @@ cascade in the same barrier, without child DELETE grants; they are not separate
 memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
 selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
 not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
-back up, rebuild lexical projections, then restart matching v0.0.11 processes only.
+back up, rebuild lexical projections, then restart matching v0.0.12 processes only.
 This does not populate or rebuild embeddings. There is no automatic
 repair worker, external model/provider, or file-based memory index.
 See [the contract](docs/STATUS.md#japanese-lexical-profile),
@@ -717,6 +815,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Implicit recall hook decisions](docs/adr/0009-implicit-recall-hook.md) | [Implicit recall hookの決定](docs/adr/0009-implicit-recall-hook-jp.md) |
 | [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) | [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) |
 | [Pgvector retrieval decisions](docs/adr/0011-pgvector-retrieval.md) | [Pgvector retrievalの決定](docs/adr/0011-pgvector-retrieval-jp.md) |
+| [Python SDK decisions](docs/adr/0012-python-sdk.md) | [Python SDKの決定](docs/adr/0012-python-sdk-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

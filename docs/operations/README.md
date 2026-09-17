@@ -14,11 +14,13 @@ Use the pinned prebuilt upstream pgvector DB profile below and the application
 image built from the repository's existing `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The current bounded milestone is **v0.0.11/schema 8 pgvector exact/hybrid retrieval**.
+The current bounded milestone is **v0.0.12/schema 8 typed asynchronous Python SDK**.
 **Implementation, local Apple Container, and both native Docker architectures are verified**.
-New `008_pgvector.sql` requires **`vector` 0.8.6 in `public`** and rejects an
+Verified v0.0.11 results are historical, not SDK evidence.
+Existing `008_pgvector.sql` requires **`vector` 0.8.6 in `public`** and rejects an
 existing extension at another version or in another schema.
-Python dependencies stay unchanged apart from project-version metadata.
+No schema 9 migration or new DB profile is added. The optional `sdk` extra adds
+HTTPX to the existing core distribution; see [SDK operations](#python-sdk-operations).
 **Historical v0.0.8:** 214 tests and production smokes passed in Apple Container
 and native Docker amd64/arm64. These are not v0.0.9 results.
 M0–M3, MVP, production, performance,
@@ -36,7 +38,7 @@ added and the project version became v0.0.7; no unrelated upgrades or registry
 migration occurred. Native CI built that retained-registry lock. This is not a
 package-count or validation claim about v0.0.8/v0.0.9. Use the current locked build;
 the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
-both Docker test and runtime stages. v0.0.11 retains `hook` in both stages;
+both Docker test and runtime stages. v0.0.12 includes `hook` and `sdk` in both stages;
 `pg-agmemory[hook]` pins `httpx==0.28.1` **without the MCP SDK**.
 The container-check script requires runner-side `jq` for **both Apple Container
 and Docker**, including disposable smoke configuration.
@@ -66,7 +68,7 @@ and Docker**, including disposable smoke configuration.
    `src/pg_agmemory/storage/004_tool_effects.sql` and
    `src/pg_agmemory/storage/005_relational_graph.sql` and
    `src/pg_agmemory/storage/006_durable_jobs.sql`, followed by additive
-   `src/pg_agmemory/storage/007_japanese_fts.sql` and new `008_pgvector.sql`, are installed package
+   `src/pg_agmemory/storage/007_japanese_fts.sql` and existing `008_pgvector.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -95,9 +97,113 @@ needed. Never hand runtime DB credentials to agents as an arbitrary SQL entry
 point: the service's fixed queries and trusted identity context are part of the
 authorization boundary.
 
+## Python SDK operations
+
+**Implemented and verified in v0.0.12/schema 8.**
+Install from the matching checkout with `python -m pip install '.[sdk]'`.
+The `pg-agmemory[sdk]` extra pins only `httpx==0.28.1`, not the MCP SDK;
+the same core package still includes FastAPI, psycopg, and Janome.
+This is neither a standalone lightweight distribution nor a PyPI publication claim.
+Missing HTTPX raises a static SDK import `ImportError`; HTTPX installed through
+`hook`/`mcp` also satisfies the dependency. The package supplies `py.typed`.
+
+1. Provision the scope and token using trusted administration; **do not pass DB
+   credentials or signing keys to the SDK**. Use explicit constructor arguments
+   from trusted configuration, never memory content, tool arguments, or redirects.
+   `PGAG_SDK_API_URL`, `PGAG_SDK_API_TOKEN`, and `PGAG_SDK_SCOPE_ID` in the
+   [async example](../../README.md#python-sdk) are example environment names,
+   not SDK environment readers.
+2. Choose a fixed HTTPS origin or loopback HTTP origin without application path,
+   userinfo, query, or fragment. Constructor validation covers URL/token shape
+   and raises sanitized `ValueError`, not `MemoryClientError`;
+   the server authenticates the bearer token and enforces current ACLs.
+   Request scopes only narrow that authority.
+3. Enter `async with AsyncMemoryClient(api_url, api_token) as memory:`.
+   Entry creates its HTTP client and requires authenticated capabilities
+   **service 0.0.12 / API v1 / schema 8**. Never use before/after the context or
+   re-enter the same instance (`client_not_open` / `client_already_used`).
+   Exit closes connections, **not stored memory**.
+   Await outstanding tasks, or cancel and await them, before exiting.
+   Client close does not schedule/cancel requests or roll back the database.
+4. Pass Native request models from `pg_agmemory.models`; mutable instances are
+   revalidated at call time. Pydantic model construction can separately raise
+   `ValidationError` outside the SDK call; do not log its private input details.
+   The validated request is snapshotted before the first outbound network await.
+   Use UUID objects for resource IDs.
+   Each mutation needs a keyword-only `idempotency_key` of **1–256 visible ASCII
+   characters, without trimming**. This includes `forget` preview and purge,
+   both returning Native HTTP 202 with the mode-specific typed response.
+5. Retain each exact key/body securely before dispatch. `MemoryClientError`
+   aliases `AdapterFailure`; inspect `.error.code`, `.retryable`,
+   `.outcome_unknown`, `.native_status`, and `.request_id`, never log raw
+   memory/input/token/response content. SDK domain codes are catalogued;
+   unknown server codes become `native_api_error`. MCP/hook safe codes are unchanged.
+6. If a mutation outcome is unknown after network/5xx/malformed/wrong-success
+   responses, reconcile with the **same key/body**. There is no automatic retry,
+   key replacement, or assumption of no commit. Cancellation propagates:
+   in-flight mutation cancellation also requires reconciliation, not an assumed
+   rollback. Local invalid request/key/UUID errors occur before dispatch with
+   sanitized `invalid_request` and `outcome_unknown: false`.
+
+Transport bounds remain **20 s per exchange; 10 s I/O / 5 s connect;
+4 connections; verified TLS; no proxy environment or redirects**.
+Responses are capped at **2 MiB**, requests at **256 KiB**, except
+`create_checkpoint` at **1 MiB**. MCP/hook bounds are not increased.
+The client has no cache, provider calls, host registration/delegation, automatic
+jobs, token refresh, sync/TypeScript client, or arbitrary HTTP method.
+It covers memory resources, not admin/worker CLI execution; capabilities are an
+internal probe, not a public SDK health/OpenAPI download method.
+Returned memory is evidence, not trusted instructions/current facts.
+Preserve Native byte budgets, coverage flags, current ACLs, purge, and
+host/backup/WAL limits; context exit cannot remove copies already returned.
+See [all 24 typed methods](../STATUS.md#python-sdk) and
+[ADR 0012](../adr/0012-python-sdk.md).
+
+<a id="v0012-application-update"></a>
+
+## v0.0.12 application update (schema unchanged)
+
+**Maintenance procedure, not production-upgrade or disaster-recovery qualification.**
+For an existing schema-8 database, retain the pinned PostgreSQL 18.6 /
+`vector` 0.8.6-in-`public` DB image below. No schema 9 migration, embedding
+backfill, or provider call is added.
+
+1. Stop/drain old APIs, workers, adapters, hook launches, and SDK callers,
+   including replicas and automatic restarts. Preserve current deletion/ACL
+   records and backups; rehearse only on disposable databases.
+2. Build/install matching v0.0.12 API/worker/adapters/hook/SDK components from
+   the locked source. Existing schema 8 retains exact history `[1,2,3,4,5,6,7,8]`;
+   `migrate`, API, and worker still validate the extension version/schema.
+   Older schemas first need the retained migrations described below.
+3. Start only matching v0.0.12 components; confirm authenticated capabilities,
+   stage `m2-python-sdk`, and `python_sdk` metadata (`installation: "sdk-extra"`,
+   `async: true`, `automatic_retry: false`). Metadata does not add an endpoint.
+4. Verify retained adapters plus SDK lifecycle/recovery/purge using synthetic
+   data before resuming traffic. No mixed-version/rolling compatibility or
+   downgrade is promised. On failure keep processes stopped and investigate.
+
+Final local Apple Container and native Docker amd64/arm64 tests,
+strict source/typed-consumer checks, all five
+real-HTTP SDK integration tests, genuine core/hook/sdk wheel-install checks,
+and all non-root production smokes passed. Exact counts, timings, and scope are
+in [verified evidence](../STATUS.md#v0012--schema-8):
+**426 tests, 1 warning per environment**, **292.76 s local / 484.79 s amd64 /
+472.49 s arm64**. Implementation
+[88e1206](https://github.com/rioriost/pg_agmemory/commit/88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f)
+passed [CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/35193004945);
+actual logs verified the exact SHA and checks. Timings are not performance benchmarks.
+The SDK smoke observes a pending job without invoking a worker; the retained
+actual capture-worker smoke remains separate.
+The distinct historical v0.0.11 implementation and final-docs runs, including
+docs CI 35190495385, remain [historical evidence](../STATUS.md#v0011--schema-8).
+
 ## Schema 8 pgvector upgrade
 
 **v0.0.11 application/migration checks passed; production qualification remains incomplete.**
+Migration 008 was introduced and verified in v0.0.11. The steps below use
+matching v0.0.12 tooling; local/native checks passed, but this is not a production upgrade
+qualification. Also follow the
+[application-update boundary](#v0012-application-update).
 
 Adopt the prebuilt image:
 
@@ -129,7 +235,7 @@ host-APT installation, or source-build workflow is part of the implemented profi
 3. Preserve a backup, application/schema/extension versions, and current deletion
    and ACL records. Rehearse only on disposable databases; restore quarantine and
    DR/full-erasure gaps remain.
-4. With the migration administrator and matching v0.0.11 application, run
+4. With the migration administrator and matching v0.0.12 application, run
    `pg-agmemory migrate`. Apply `008_pgvector.sql` after unchanged 001–007;
    older databases still need migration 007's lexical backfill.
    Migration requires `vector` **0.8.6 in `public`** and refuses an existing
@@ -140,7 +246,7 @@ host-APT installation, or source-build workflow is part of the implemented profi
    canonical `ON DELETE CASCADE`, and runtime **SELECT/INSERT only**.
    **No existing data receives embedding backfill**.
 5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7, 8]` and extension `vector` 0.8.6 in `public`
-   before starting only matching v0.0.11 APIs/workers. Check authenticated
+   before starting only matching v0.0.12 APIs/workers. Check authenticated
    capabilities, lexical compatibility, synthetic vector/hybrid ranking,
    coverage, RLS/time filters, replay/purge, and retained adapters before traffic.
    API/worker startup rejects schema/extension mismatches.
@@ -203,7 +309,7 @@ Non-null `MemoryItem.retrieval` contains `method` (`exact_cosine`/`rrf-60`),
 `lexical_rank`, `vector_rank`, `vector_distance`, and `fusion_score`, with nullable
 values where appropriate. **Lexical behavior is preserved, not byte-for-byte
 HTTP response/schema shape**. Adapt strict consumers to these additive fields.
-No Python SDK dependency is added; the service uses raw parameter-bound vector casts.
+The v0.0.11 vector feature added no Python dependency; the service uses raw parameter-bound vector casts.
 Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
 `default_retrieval_mode: "lexical"`.
 
@@ -213,7 +319,7 @@ Vectors have no independent provenance vertex or deletion count. There is no
 projection-only delete endpoint or automatic generation/rebuild. Retained anchors
 and current ACL/deletion checks still prevent resurrection; host/backup/WAL erasure
 is not certified. MCP retains four tools and only gains Recall arguments;
-embedding input/upload are Native-only. Hook, Observe, capture, jobs, and workers
+embedding input/upload are Native routes also covered by the SDK, not MCP tools. Hook, Observe, capture, jobs, and workers
 never generate embeddings; the hook remains lexical-only.
 It rejects Native responses with non-lexical `retrieval_mode`, non-null
 `embedding_model`/item `retrieval`, or true `coverage.vector_incomplete`;
@@ -343,7 +449,7 @@ a larger corpus is complete. Do not label this a semantic embedding model.
 ## Atomic structured capture operations
 
 **Retained capture contract, verified in v0.0.11.** Bootstrap Native roles
-as above and use matching service `0.0.11`, API `v1`, schema `8`.
+as above and use matching service `0.0.12`, API `v1`, schema `8`.
 The historical v0.0.10 stage `m2-atomic-capture` did not complete M2.
 Capture is a Native route, **not an MCP tool or automatic recall-hook action**.
 The new schema-8 migration is separate from capture semantics; capture never generates embeddings.
@@ -498,7 +604,7 @@ and [ADR 0010](../adr/0010-atomic-capture.md).
    `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
    not human prompts or ordinary log output. Diagnostics use sanitized stderr.
 6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
-   `0.0.11`, schema `8` before serving tools. A bad setting/token, unreachable API,
+   `0.0.12`, schema `8` before serving tools. A bad setting/token, unreachable API,
    or version mismatch exits nonzero without logging secrets. A passing
    `/healthz` alone is insufficient. Fix trusted configuration and restart;
    do not bypass the check or change tool arguments to override identity/URL.
@@ -572,7 +678,7 @@ persists. This tests caller-driven recovery, not an automatic retry.
 Historical local/native CI evidence is recorded in STATUS. v0.0.11 retains both
 protocol eras, semantics, MCP bounds, and the shared Native HTTP client.
 v0.0.9 checks passed locally and on both native Docker architectures;
-Historical v0.0.10 and current v0.0.11 checks also passed.
+Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
 These specific checks do not prove compatibility with untested
 older clients or a named host.
 See [the full contract](../STATUS.md#local-stdio-mcp) and
@@ -589,8 +695,8 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
 1. Provision the Native API subject/scopes using the role separation above.
    The hook requires **no DB credentials**, admin URL, JWT signing key, or
    external model key. It only uses the configured Native audience token.
-2. Install `pg-agmemory[hook]` or use the v0.0.11 repository image with both
-   `mcp` and `hook` extras. For the checkout use `uv sync --frozen --extra hook`.
+2. Install `pg-agmemory[hook]` or use the v0.0.12 repository image with
+   `mcp`, `hook`, and `sdk` extras. For the checkout use `uv sync --frozen --extra hook`.
    Hook-only installation pins `httpx==0.28.1`, **not the MCP SDK**.
 3. Have the operator securely supply the following environment before starting
    the trusted harness. Do not derive it from prompts, queries, event fields,
@@ -624,7 +730,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
    `scope_ids`, purpose, mode, budget, URL, header, tool, time, or other field
    is accepted. Event text never authorizes access.
 5. Each invocation freshly checks authenticated `GET /v1/capabilities` for exact
-   service `0.0.11`, API `v1`, schema `8`, then sends `POST /v1/recall` with
+   service `0.0.12`, API `v1`, schema `8`, then sends `POST /v1/recall` with
    `mode: "implicit"`, trusted recall settings, and Native current-time defaults.
    The same fixed token is used for both requests; no caching of authorization
    or responses occurs. Replace credentials only through trusted startup configuration.
@@ -856,7 +962,7 @@ Reindex remains separate offline maintenance, not an MCP/hook command.
 ## v0.0.7 maintenance migration
 
 **Historical schema-7 procedure for v0.0.7–v0.0.10 only.**
-The current v0.0.11 upgrade must also apply [migration 008](#schema-8-pgvector-upgrade)
+Upgrading an older schema to v0.0.12 must also apply [migration 008](#schema-8-pgvector-upgrade)
 and must not restart the schema-7 processes described here.
 
 This is the retained schema-7 migration introduced in v0.0.7, for older
@@ -953,7 +1059,7 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v0.0.11 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.12 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
@@ -971,7 +1077,7 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v0.0.11 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.12 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.

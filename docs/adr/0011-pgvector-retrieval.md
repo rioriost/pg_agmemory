@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`; project MIT unchanged; bilingual documentation maintained
 - Acceptance: full M0–M3, MVP, production, performance, memory quality, DR, and full-erasure gates remain incomplete
 
+**Historical version notice:** this ADR records verified v0.0.11/schema 8,
+including its original dependency and startup-version decisions.
+[ADR 0012](0012-python-sdk.md) adds the application-only v0.0.12 Python SDK,
+retaining schema 8 and the vector contracts. Local and both native CI checks passed.
+Final v0.0.11 docs CI 35190495385 is recorded separately from implementation
+CI 35189448403 in [historical evidence](../STATUS.md#v0011--schema-8).
+
 ## Decision and authority boundary
 
 Add explicit, provider-independent vector projections and exact/hybrid retrieval.

@@ -2,9 +2,9 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Current bounded milestone: v0.0.11/schema 8 pgvector exact/hybrid retrieval foundation.
+**Current bounded milestone: v0.0.12/schema 8 typed asynchronous Python SDK.
 Implementation, local Apple Container, and both native Docker architectures are verified.
-Verified v0.0.10 and earlier results remain historical evidence.
+Verified v0.0.11 and earlier results remain historical evidence, not v0.0.12 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -50,6 +50,129 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/docs` and `/openapi.json`; no generated schema file is required.
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness.
+
+## Python SDK
+
+**Implemented and verified in v0.0.12/schema 8.**
+`from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
+async-only client for the existing public Native memory resources. Import
+request/response types from `pg_agmemory.models`; requests are revalidated at call
+time, including mutable model instances, and responses use those same typed models.
+The package includes a PEP 561 `py.typed` marker.
+
+### Installation, lifecycle, and authority
+
+Install the matching checkout with `python -m pip install '.[sdk]'`.
+`pg-agmemory[sdk]` adds only `httpx==0.28.1`; **the core distribution still includes
+FastAPI, psycopg, and Janome**. This is not a separately published lightweight
+SDK or a PyPI publication claim. SDK import without HTTPX raises a clear static
+`ImportError`; HTTPX supplied by `mcp`/`hook` also works. Detection is dependency
+availability, not the identity of the selected extra. Docker test/runtime include
+`sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
+including absence of the MCP SDK in hook-only and sdk-only installations.
+All three genuine noneditable wheel-install checks and packaged `py.typed`
+verification passed locally and on both native architectures. There are no Python dependency upgrades.
+
+Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
+per-call configuration. `NativeSettings` requires a fixed HTTPS origin or
+loopback HTTP origin, without application path, userinfo, query, or fragment.
+Constructor validation checks bearer-token **shape only** and retains sanitized
+`ValueError` configuration errors, not `MemoryClientError`; the server performs
+authentication and authorization. Request scopes narrow current server ACLs,
+never select another identity or grant access.
+
+Use `async with ... as memory:` exactly once per client instance. Entry creates
+an owned HTTP client and performs a mandatory authenticated capabilities probe
+requiring exact **service `0.0.12` / API `v1` / schema `8`** before resource use.
+Failed entry closes owned resources in `finally`. Calls before entry or after exit
+raise `client_not_open`; re-entry raises `client_already_used`.
+Exit releases connections only: **it does not forget data**.
+The caller must await its outstanding tasks, or cancel and await them, **before
+exiting the context**. Client close is not a request scheduling/cancellation
+manager or a DB rollback. Cancellation of in-flight mutations still needs reconciliation.
+No automatic environment loading, retry, cache, DB credentials, provider call,
+host registration, delegation, or automatic job is introduced.
+
+### Typed resource methods
+
+All methods are asynchronous. Body names below are native request models; ID
+arguments are UUIDs, not arbitrary paths. Every mutation requires a caller-owned
+keyword-only `idempotency_key`; this includes `forget` preview and purge,
+both HTTP 202. Other read-only methods need no key and preserve HTTP 200;
+writes retain their Native 201/202 status. A job receipt never means publication completed.
+
+| Method / request | Typed result |
+|---|---|
+| `observe(Observe)` | `ObserveResult` |
+| `capture(Capture)` | `CaptureResult` |
+| `remember(Remember)` | `RememberResult` |
+| `revise_assertion(UUID, ReviseAssertion)` | `RevisionResult` |
+| `recall(Recall)` | `RecallResult` |
+| `explain(Explain)` | `EpisodeExplanation \| AssertionExplanation` |
+| `forget(Forget)` | `DeletionPreview \| DeletionResult`, selected by request mode |
+| `get_deletion(UUID)` | `DeletionProgress` |
+| `embedding_input(Explain)` | `EmbeddingInput` |
+| `put_embedding(PutEmbedding)` | `EmbeddingReceipt` |
+| `create_entity(CreateEntity)` | `EntityReceipt` |
+| `get_entity(UUID)` | `EntityDetail` |
+| `create_relation(CreateRelation)` | `RememberResult` |
+| `revise_relation(UUID, ReviseRelation)` | `RevisionResult` |
+| `expand_graph(ExpandGraph)` | `GraphResult` |
+| `enqueue_job(EnqueueJob)` | `JobReceipt` |
+| `get_job(UUID)` | `JobDetail` |
+| `retry_job(UUID, EnqueueJob)` | `JobReceipt` |
+| `create_checkpoint(CreateCheckpoint)` | `CheckpointReceipt` |
+| `get_checkpoint(UUID)` | `CheckpointEnvelope` |
+| `restore_checkpoint(RestoreCheckpoint)` | `CheckpointEnvelope` |
+| `plan_tool_effect(PlanToolEffect)` | `ToolEffectReceipt` |
+| `get_tool_effect(UUID)` | `ToolEffectDetail` |
+| `transition_tool_effect(UUID, TransitionToolEffect)` | `ToolEffectReceipt` |
+
+This covers public memory resource routes, **not CLI admin/worker functions**.
+Capabilities probing is internal; no public health, OpenAPI-download, or raw
+arbitrary-request method is added. There is no sync client, TypeScript SDK, or
+token-refresh flow.
+
+### Bounds, errors, and recovery
+
+The shared Native HTTP transport retains MCP/hook bounds: **20 s per exchange,
+10 s I/O / 5 s connect**, at most **4 connections**, verified TLS,
+no proxy environment and no redirects. Response limit is **2 MiB**; requests
+are **256 KiB**, except SDK `create_checkpoint` at **1 MiB**. This does not raise
+MCP/hook request limits.
+
+`MemoryClientError` is an alias of existing `AdapterFailure`. Inspect
+`exc.error.code`, `.retryable`, `.outcome_unknown`, `.native_status`, and
+`.request_id`; diagnostics are sanitized, never raw response/input/token content.
+The SDK allows the catalog of current Native domain errors; MCP/hook keep their
+existing restricted safe-code set. Unknown server codes become `native_api_error`.
+Invalid call-time request models, path UUIDs, and idempotency keys fail **before
+dispatch** as sanitized `invalid_request`, with `outcome_unknown: false`.
+Validation snapshots the request before the first outbound network await;
+subsequent mutation of the caller's model does not change that dispatched body.
+Pydantic request-model construction can separately raise `ValidationError`;
+that happens outside the SDK call and is not converted to `MemoryClientError`.
+Ordinary Pydantic errors may contain private input details; do not log them.
+Keys must be **1–256 visible ASCII characters, without trimming**.
+
+Retain each mutation's exact key and body before dispatch. Network errors, 5xx,
+malformed responses, wrong success statuses, or invalid success bodies are
+conservatively outcome-unknown for mutations. The SDK does not retry, generate
+replacement keys, or infer that no commit occurred. `retryable` is information,
+not an automatic retry instruction. Reconcile with the **same key and body**;
+current ACL, deletion, revision, and replay guards still apply.
+Cancellation propagates rather than becoming `MemoryClientError`: an in-flight
+mutation must likewise be treated as unknown and reconciled. Cancellation is
+**not rollback**.
+
+Returned memory remains evidence, not trusted instructions or guaranteed
+current facts. Whole-JSON UTF-8 byte budgeting, explicit incomplete coverage,
+current ACL checks, and purge/host/backup/WAL limitations are unchanged.
+The API stage is **`m2-python-sdk`**; capabilities add `python_sdk`
+metadata (`installation: "sdk-extra"`, `async: true`, `automatic_retry: false`),
+not a server endpoint. See the [practical example](../README.md#python-sdk),
+[operations](operations/README.md#python-sdk-operations), and
+[ADR 0012](adr/0012-python-sdk.md).
 
 ## Pgvector exact and hybrid retrieval
 
@@ -222,7 +345,7 @@ old library PostgreSQL image. This is a new pinned DB profile, not an unchanged 
 There is no new DB Dockerfile, source-build, or host-APT procedure in the
 implemented profile. An operator-managed PostgreSQL alternative must provide the
 same extension version/schema; no such host-install workflow is supplied here.
-Python dependencies remain unchanged apart from project-version metadata:
+In historical v0.0.11, Python dependencies remained unchanged apart from project-version metadata:
 raw parameter-bound vector casts need no pgvector Python package.
 Artifact verification is not application/migration/CI validation or attestation
 of any caller-declared embedding model.
@@ -235,9 +358,9 @@ The fixed-startup hook stays **lexical-only and read-only**; event JSON cannot p
 `coverage.vector_incomplete`; it does not silently downgrade unexpected vector output.
 Observe, capture, jobs, and workers do not generate
 embeddings or call providers. Both MCP protocol eras remain; startup matching is
-**service `0.0.11` / API `v1` / schema `8`**.
+**service `0.0.12` / API `v1` / schema `8`** for v0.0.12.
 Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
-`default_retrieval_mode: "lexical"`. The API stage is `m2-pgvector-retrieval`;
+`default_retrieval_mode: "lexical"`. The v0.0.11 stage was `m2-pgvector-retrieval`;
 embedding input returns HTTP 200 and upload/replay returns HTTP 201. Full M0–M3/MVP/production/DR/erasure/
 performance/quality gates remain incomplete.
 See [ADR 0011](adr/0011-pgvector-retrieval.md),
@@ -361,9 +484,9 @@ The historical v0.0.10 API stage was **`m2-atomic-capture`**. Retained capabilit
 This describes at most one job per explicit capture, not automatic capture.
 The stage label does not complete M2 or any other acceptance gate.
 
-Capture is **Native-only**, not a fifth MCP tool. Recall-hook stays read-only;
+Capture is a **Native resource also covered by the SDK**, not a fifth MCP tool. Recall-hook stays read-only;
 neither adapter automatically captures. MCP/hook startup requires exact
-**service `0.0.11` / API `v1` / schema `8`**. The schema-8 migration is separate
+**service `0.0.12` / API `v1` / schema `8`**. The retained schema-8 migration is separate
 from the retained capture semantics. Capture does not generate embeddings,
 invoke LLM/providers, extract intent, perform natural-language/automatic synthesis,
 or establish semantic quality.
@@ -377,10 +500,10 @@ See [ADR 0010](adr/0010-atomic-capture.md) and the
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.11 Docker test/runtime stages retain both `mcp` and `hook` extras.
+v0.0.12 Docker test/runtime stages include `mcp`, `hook`, and `sdk` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
 below. Historical v0.0.9 checks passed locally and on both native Docker
-architectures. Historical v0.0.10 and current v0.0.11 checks also passed.
+architectures. Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
 Shared `NativeSettings` additionally parses origins with `httpx.URL`, rejecting
 control characters and invalid IDNA before transport. No remote MCP HTTP/SSE listener,
 OAuth, delegated caller identity, semantic cache, or response cache is provided.
@@ -460,9 +583,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.11"`, and `schema_version: 8`.
+`api_version: "v1"`, `service_version: "0.0.12"`, and `schema_version: 8`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. v0.0.11 requires schema 8; the adapter itself performs no migration.
+sanitized diagnostics. v0.0.12 retains schema 8; the adapter itself performs no migration.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -518,7 +641,7 @@ Native HTTP client. There is no automatic registration into a host and no
 Copilot, Claude, or Codex integration claim. The host chooses when to invoke it;
 the service does not observe host lifecycle events itself. `pg-agmemory[hook]`
 pins **httpx==0.28.1, not the MCP SDK**. Both Docker test/runtime stages include
-`mcp` and `hook`; historical v0.0.9 core-only/hook-only isolation checks passed
+`mcp`, `hook`, and `sdk`; historical v0.0.9 core-only/hook-only isolation checks passed
 locally and on both native Docker architectures.
 The hook needs no database credentials, signing key, or LLM/provider key.
 
@@ -569,7 +692,7 @@ and invalid IDNA before transport. These invalid-origin cases are covered by
 the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.11` / API `v1` / schema `8`**, then sends `POST /v1/recall`
+exact **service `0.0.12` / API `v1` / schema `8`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -1361,16 +1484,21 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.11 requires schema 8 and `008_pgvector.sql`; this is not a schema-7-only
-application update.** Migration requires **`vector` 0.8.6 in `public`** and rejects
+**v0.0.12 is application-only on schema 8; no schema 9 migration is added.**
+Retain the pinned PostgreSQL 18.6/pgvector 0.8.6 images.
+Stop/drain old APIs, workers, adapters, hooks, and SDK callers, then deploy only
+matching v0.0.12 components; no mixed-version/rolling-compatibility claim is made.
+See the [application update](operations/README.md#v0012-application-update).
+Older databases still need v0.0.11's `008_pgvector.sql`.
+Migration requires **`vector` 0.8.6 in `public`** and rejects
 an existing extension in another schema or at another version.
 Use the pinned prebuilt upstream DB profile above, not an assumed unchanged old
 PostgreSQL image or an unpinned extension. Do not start schema-7 processes against schema 8.
 The new episode/assertion-revision projections use forced RLS, canonical
 `ON DELETE CASCADE`, and runtime SELECT/INSERT only. **No embedding backfill**
 runs for existing data; generation/rebuild/provider calls remain explicit and external.
-The MCP adapter and hook use HTTP only, perform no DDL, and require matching
-service `0.0.11`, API `v1`, schema `8`.
+The MCP adapter, hook, and SDK use HTTP only, perform no DDL, and require matching
+service `0.0.12`, API `v1`, schema `8`.
 The retained migration history below still applies to databases older than schema 7.
 
 Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
@@ -1383,7 +1511,7 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.11 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8]`
+The v0.0.12 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8]`
 and extension `vector` 0.8.6 in schema `public`, rejecting mismatches and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
@@ -1391,13 +1519,13 @@ rights; migration also requires DDL rights, `btree_gist`, and the matching pgvec
 extension installed on the PostgreSQL server. `row_security = off`
 fails closed if RLS would filter backfill; it does not grant bypass privileges.
 `pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
-selected database. Use matching v0.0.11/schema-8 tooling with `PGAG_ADMIN_DATABASE_URL`.
+selected database. Use matching v0.0.12/schema-8 tooling with `PGAG_ADMIN_DATABASE_URL`.
 It atomically replaces only lexical projections under the migration lock, emitting the
 `profile` and `episodes`/`assertion_revisions` counts, not source content.
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.11 processes. Stop adapters and hook launches during maintenance too.
+then start only matching v0.0.12 processes. Stop adapters, hook launches, and SDK callers during maintenance too.
 Lexical reindex does not generate, populate, or rebuild vectors.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
@@ -1407,9 +1535,59 @@ No rolling coexistence or downgrade is supported. Follow
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
+<a id="v0012--schema-8"></a>
+
+### v0.0.12 / schema 8 — verified
+
+**Final local and native results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **426 tests,
+1 existing warning**, Ruff, strict mypy for **18 source files**, and the separate
+strict typed consumer for **1 file** covering all 24 method annotations.
+All three genuine **core-only/hook-only/sdk-only noneditable wheel-install
+checks** passed, including packaged `py.typed` and absence of MCP from hook/sdk-only
+installs. All checks passed in all three environments.
+The suite consists of **345 retained + 76 SDK unit + 5 SDK integration tests (81 new)**.
+These are final results, not the superseded fixture-key failure.
+Published implementation:
+[`88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f`](https://github.com/rioriost/pg_agmemory/commit/88e1206311e72b94b17d76e0d0a8b8c2e9a3bd6f)
+(`feat: add typed asynchronous Native Python SDK`).
+[CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/35193004945)
+passed on that exact SHA. **Actual logs**, not only job status, verified each
+native architecture's SHA, counts, checks, and production smokes.
+
+| Environment | Test elapsed |
+|---|---|
+| Local Apple Container | **292.76 s** |
+| Docker, native `linux/amd64` | **484.79 s** |
+| Docker, native `linux/arm64` | **472.49 s** |
+
+Elapsed times are test observations, not performance benchmarks.
+
+All five SDK integration tests passed over actual HTTP against disposable
+PostgreSQL databases in all three environments, covering all 24 resources:
+graph/relation revision, failed-job retry with an actual worker,
+checkpoint create/read above 256 KiB with tool-effect restore reconciliation,
+authorization revocation, and real post-commit response loss with same-key recovery.
+Passing unit checks include entry-cancellation cleanup, single-use after
+failed entry, exit after a caller-body exception, 256-character keys, exact GET
+success status, and wrong response shapes for both forget modes.
+All non-root production smokes passed in all three environments:
+Japanese tokenizer, HTTP API,
+actual worker `--once` idle, MCP **2026-07-28/2025-11-25**, all three hook events,
+atomic capture with an actual worker, pgvector exact/hybrid retrieval, and the
+new Python SDK lifecycle.
+The SDK smoke performs **capture/replay →
+pending `get_job` → embedding input/upload → exact vector recall → preview/purge →
+deletion progress → capture replay 404**. **It does not invoke a worker**;
+the earlier actual capture-worker smoke is retained separately.
+The SDK smoke passed locally and on both native architectures.
+This evidence validates the implementation commit, not a future documentation
+commit/run. M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
+Historical v0.0.11 evidence below does not qualify SDK changes.
+
 <a id="v0011--schema-8"></a>
 
-### v0.0.11 / schema 8 — verified
+### Historical v0.0.11 / schema 8 — verified
 
 **Final local and native results verified 2026-09-17 JST.** Implementation
 [f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)
@@ -1425,6 +1603,15 @@ hook events, atomic capture lifecycle, and pgvector exact/hybrid retrieval and p
 | Local Apple Container | **283.44 s** |
 | Docker, native `linux/amd64` | **404.40 s** |
 | Docker, native `linux/arm64` | **433.46 s** |
+
+Final v0.0.11 documentation
+[dccd5cb](https://github.com/rioriost/pg_agmemory/commit/dccd5cb5571873515aace8621ce4adb3de250d3a)
+passed [CI 35190495385](https://github.com/rioriost/pg_agmemory/actions/runs/35190495385).
+Actual logs verified **345 tests, 1 warning** per native architecture, Ruff,
+strict mypy (**17 source files**), installation checks, and all smokes.
+Docs-run elapsed: **506.38 s amd64 / 460.18 s arm64**.
+These are distinct from implementation CI 35189448403 and its local/native
+timings above; neither run validates v0.0.12.
 
 Actual logs, not only job status, establish these results. Test elapsed is not
 a performance benchmark. Artifact inspection separately verified the pinned
@@ -1638,7 +1825,8 @@ compaction, automatic embedding/provider integration, ANN/HNSW, qualified vector
 retrieval quality and performance, AGE, SQL/PGQ,
 provider receipt verification, vendor-specific harness integration and execution/recovery,
 cross-assertion supersession/fact arbitration, remote MCP HTTP/SSE/OAuth/delegation,
-application SDKs, and postgresem integration are absent. The vendor-neutral hook
+synchronous/TypeScript SDKs, and postgresem integration are absent.
+The v0.0.12 async Python SDK is verified locally and on both native architectures. The vendor-neutral hook
 does not register or qualify any host. Local stdio MCP,
 opt-in lexical segmentation, explicit structured jobs, the bounded SQL
 graph oracle, and typed checkpoint envelopes do not complete the planned
