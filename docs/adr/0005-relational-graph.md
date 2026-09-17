@@ -9,6 +9,10 @@
   and [ADR 0004](0004-tool-effects.md)
 - Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
 
+Historical scope: schema-5 requirements and evidence below remain v5-specific.
+[ADR 0006](0006-durable-jobs.md) adds durable jobs and schema 6; use current
+operations for API/worker upgrades, not this ADR's historical schema requirement.
+
 ## Decision and scope
 
 Use canonical PostgreSQL tables and fixed parameterized SQL joins as the graph

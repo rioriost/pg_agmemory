@@ -6,8 +6,8 @@
 remains `rioriost/pgag_memory`; the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.5/schema 5 SQL graph oracle implemented; local and native Docker checks passed.
-Not a completed M0/M1/M3, MVP, or production release.**
+**Status: v0.0.6/schema 6 durable jobs implemented; local and native Docker checks passed.
+Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
 explanation, transactional idempotency, and synchronous active-store purge.
@@ -15,12 +15,13 @@ Tenant/scope permissions are enforced in both the service and PostgreSQL RLS.
 Every mutation commits before its response is sent. Assertion revisions retain
 server-controlled system-time history and revision-specific evidence.
 Typed checkpoints support restore-to-new-branch envelopes and a durable
-tool-effect ledger. The new milestone adds explicit entity identities and
-revisioned relation assertions with bounded, read-only PostgreSQL graph traversal.
-It does not automatically use graphs in recall or execute tools.
+tool-effect ledger. Explicit entities and revisioned relation assertions support
+bounded, read-only SQL graph traversal. The new milestone adds explicitly queued
+structured memory publication through a fixed-principal worker—not automatic
+synthesis, natural-language extraction, or tool/provider execution.
 
 Cross-assertion supersession/fact arbitration, provider receipt verification, harness adapters,
-workers, automatic synthesis,
+automatic enqueue/extraction, general multi-tenant scheduling,
 pgvector, Japanese tokenization, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
 remain roadmap work. No performance or memory-quality acceptance targets have
 been measured. Consult [the current contract and limitations](docs/STATUS.md)
@@ -37,13 +38,17 @@ container system start
 ```
 
 The script builds locked Python dependencies, runs Ruff, mypy, and unit and
-PostgreSQL integration tests, then starts the production image and checks HTTP
-health. It uses isolated disposable PostgreSQL containers and removes only its
+PostgreSQL integration tests, then checks production API HTTP health and runs
+the actual `pg-agmemory worker --subject ... --once` in the **non-root production
+image**. The worker smoke uses a disposable provisioned principal and runtime-only
+credentials, asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
+It uses isolated disposable PostgreSQL containers and removes only its
 own containers/networks. Existing databases and containers are not touched.
 Python/PostgreSQL/uv image versions and digests are pinned in the container files.
 
 GitHub Actions executes the same script with Docker on native **linux/amd64**
-and **linux/arm64** runners, including runtime-image startup:
+and **linux/arm64** runners. The step is
+`Test containers and smoke-test production API and worker`:
 
 ```bash
 ./scripts/test-containers.sh docker
@@ -51,15 +56,15 @@ and **linux/arm64** runners, including runtime-image startup:
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For **v0.0.5/schema 5**, implementation commit
-[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16),
+For **v0.0.6/schema 6**, implementation commit
+[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
 Apple Container and native Docker **linux/amd64** and **linux/arm64** each passed
-**91 tests** (2 existing warnings), Ruff, strict mypy (9 source files), and
-production HTTP health smoke. Both full CI runs include the strengthened
-relation-context budget and DB target-integrity checks, also passed locally
-after the local full suite. See
-[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
-and the [validation evidence](docs/STATUS.md#validation-evidence).
+**114 tests** (2 existing warnings), Ruff, strict mypy (11 source files), and
+both non-root production API HTTP and actual CLI worker `--once` idle smoke.
+Both CI jobs ran that exact SHA; their actual logs confirm all checks. See
+[CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
+and the [validation evidence](docs/STATUS.md#validation-evidence), including
+timings and separately labeled historical v5 results.
 
 ## Run the API
 
@@ -90,12 +95,12 @@ Migration/provisioning access is administrative and must never be exposed as a
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading to v0.0.5 requires a maintenance stop and backup.** Stop all
-old/new API traffic and images, apply pending migrations through `005_relational_graph.sql`,
-then start only the new API. The new runtime requires schema history exactly
-`[1, 2, 3, 4, 5]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
-No rolling old-API compatibility or downgrade is supported. Follow the
-[migration procedure](docs/operations/README.md#v005-maintenance-migration).
+**Upgrading to v0.0.6 requires a maintenance stop and backup.** Stop/drain all
+old/new APIs **and workers**, apply pending migrations through `006_durable_jobs.sql`,
+then start only matching v6 APIs/workers. Both require schema history exactly
+`[1, 2, 3, 4, 5, 6]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
+No rolling coexistence or downgrade is supported. Follow the
+[migration procedure](docs/operations/README.md#v006-maintenance-migration).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -120,6 +125,51 @@ service does **not** verify an external consent registry or automatically
 redact secrets/PII. Only send approved, already-sanitized data.
 Interactive schema documentation is at `/docs`; OpenAPI is at `/openapi.json`.
 `/healthz` is process liveness after startup validation, not continuous DB readiness.
+
+## Durable structured-publication jobs
+
+`POST /v1/jobs` requires `Idempotency-Key` and
+`{kind: "structured_remember", memory: <unchanged Remember request>}`.
+Supply explicit intent and literal same-scope episode evidence under current
+read/write access. `202` returns `{job_id, kind, recipe_version:
+"structured-remember-v1"}`: a job reference, **not completed publication**.
+Identical canonical intent/recipe within one principal/scope deduplicates across
+HTTP keys; evidence order is canonicalized for job dedup, but the same HTTP key
+still requires the same normalized request.
+
+`GET /v1/jobs/{job_id}` returns safe state, attempts, timing, input references,
+and the original revision-1 result reference—not the request, lease token, or
+owner principal. Each scope allows 100 pending/running jobs, each with at most
+5 attempts. Terminal jobs erase request JSON. The owner can explicitly retry a
+failed job with `POST /v1/jobs/{job_id}/retry`, the full original body, and a key.
+Repeated retries of that parent reuse one child; retry the child if it later fails.
+
+Run with restricted `PGAG_DATABASE_URL` credentials after provisioning the subject:
+
+```bash
+pg-agmemory worker --subject TRUSTED_CONFIGURED_ISSUER_SUBJECT --once
+```
+
+Omit `--once` for continuous operation. The worker claims only that principal's
+jobs. `--subject` is trusted deployment configuration, not HTTP impersonation;
+the worker needs no JWT keys or admin URL. Committed claims, expiring tokenized
+leases, current authorization/epoch rechecks, and atomic assertion/job publication
+fence stale attempts. This is at-least-once processing with at most one committed
+result per job, not external exactly-once execution.
+Assertion recorded/system time starts at worker publication, not enqueue.
+Worker stdout/logged outcome references are historical, not current read
+authorization; job GET and explain recheck current access and deletion.
+
+`observe` still enqueues nothing (`synthesis_job_id: null`); synchronous
+`remember` is unchanged. Recall reports readable queued work through
+`coverage.jobs_pending`, retaining `synthesis_pending: false` and `graph_used: false`.
+Jobs are not recall/explain items or checkpoint/effect reference kinds.
+Source/result purge removes dependent jobs and retry descendants and fences
+running publishers. **Deleting only a job or retry chain does not delete its
+already-published assertion or source episodes**; purge the result/source explicitly
+to erase that fact. See [the contract](docs/STATUS.md#durable-jobs),
+[worker operations](docs/operations/README.md#durable-job-and-worker-operations),
+and [ADR 0006](docs/adr/0006-durable-jobs.md).
 
 ## Assertion corrections
 
@@ -236,6 +286,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Checkpoint decisions](docs/adr/0003-checkpoints.md) | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) |
 | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) |
 | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) |
+| [Durable-job decisions](docs/adr/0006-durable-jobs.md) | [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

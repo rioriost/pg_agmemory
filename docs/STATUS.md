@@ -2,8 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.5/schema 5 SQL graph oracle implemented; local and native Docker checks passed.
-This is not completion of M0/M1/M3, an MVP, or a production-qualified release.**
+**v0.0.6/schema 6 durable jobs implemented; local and native Docker checks passed.
+This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
 targets remain unmeasured or unqualified. Passing local and CI checks does not
@@ -11,13 +11,17 @@ complete these gates.
 
 ## Implemented surface
 
-PostgreSQL is the sole application persistence store. There is no external
-memory database, model service, durable queue, or file-based memory index.
+PostgreSQL is the sole application persistence store, including the durable job
+queue. There is no external memory database, model service, queue, or file-based
+memory index.
 
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
+| `POST /v1/jobs` | Explicitly queues structured memory publication; `202` is a job reference, not completion |
+| `GET /v1/jobs/{job_id}` | Returns currently readable state, safe errors/timing, exact input references, and original result revision 1 |
+| `POST /v1/jobs/{job_id}/retry` | Creates/deduplicates one child of an owned failed job after full intent and current-access checks |
 | `POST /v1/assertions/{memory_id}/revisions` | Appends a full replacement revision to the same assertion using an expected head, explicit intent, reason, and revision-specific episode evidence |
 | `POST /v1/entities` | Creates an immutable, evidence-backed, caller-reported entity identity at revision 1 |
 | `GET /v1/entities/{memory_id}` | Returns currently readable entity metadata and literal episode evidence |
@@ -66,6 +70,11 @@ This correctness-first drain prevents a purge from acknowledging its barrier
 while an earlier response for that tenant is still being sent by the service.
 It cannot retract already-delivered data or bytes already handed to the network.
 Slow clients can block that tenant; throughput has not been measured.
+API and worker share `principal_connection` identity lookup and `bind_identity`
+revalidation, and acquire the **same tenant session lock**. API response draining
+still extends past commit; worker claim/publication transactions are short, and
+payload preparation happens outside them. The worker's configured subject is a
+trusted deployment identity, not a public impersonation interface.
 
 Administrative membership changes must acquire the **same session lock**,
 update permissions and `access_epoch` in a transaction, commit, and only then
@@ -162,6 +171,10 @@ FTS candidates; recall never automatically expands the graph and retains
 `graph_used: false`. Items and assertion explanations include nullable
 `relation: {source_entity, target_entity}` for the exact returned revision.
 Relation context text includes both entity UUIDs within the same byte budget.
+`coverage.jobs_pending` reports currently readable pending/running jobs in the
+requested scopes, not query relevance, historical queue state, or completed
+synthesis. `synthesis_pending: false` and `graph_used: false` remain unchanged.
+Jobs themselves are excluded from recall/explain and checkpoint/effect references.
 
 Despite the request field name `token_budget`, `utf8-bytes-v1` budgets the
 serialized context pack in **UTF-8 bytes**, including its metadata and citations.
@@ -176,6 +189,109 @@ values of 64–8,000 (implicit mode at most 2,000). `coverage.truncated` signals
 item/budget omissions. An empty selection is `not_found` or `budget_exhausted`;
 `retrieval_complete` does not mean complete knowledge of the world. Implicit
 mode is a request option, not an implemented automatic harness hook.
+
+## Durable jobs
+
+### Explicit structured publication
+
+`POST /v1/jobs` requires `Idempotency-Key` and
+`{kind: "structured_remember", memory: <Remember request>}`. The only recipe is
+`structured-remember-v1`. `memory` has the unchanged synchronous `Remember`
+contract: scope, subject, predicate, value, 1–32 distinct readable same-scope
+episode IDs with literal quotes of 1–4,096 characters, `explicit_intent: true`,
+and optional aware valid bounds. Enqueue requires current scope read/write
+access. This is asynchronous **structured publication**, not automatic synthesis,
+natural-language extraction, an LLM/provider call, embedding, or compaction.
+`observe` still enqueues nothing and returns `synthesis_job_id: null`.
+Synchronous `remember`, including legacy normalized JSON/HMAC, is unchanged.
+
+`202` returns `{job_id, kind: "structured_remember",
+recipe_version: "structured-remember-v1"}`. It acknowledges a committed job
+reference, not a published assertion. Canonical intent plus recipe deduplicates
+within the same tenant/principal/scope, including across HTTP keys; evidence
+order is canonicalized for job identity. Same HTTP key still requires the same
+normalized request (`409 idempotency_conflict` on change). Another principal
+can submit its own job; different source identities are not semantically deduped.
+There are at most **100 pending/running jobs per scope** (`422 job_limit_exceeded`)
+and **5 attempts per job**.
+Capabilities advertise `durable_jobs`, `job_kinds: ["structured_remember"]`,
+`auto_synthesis: false`, and the 100-job/5-attempt/30-second lease limits;
+the `m2-durable-jobs` stage label is not full M2 acceptance.
+
+`GET /v1/jobs/{job_id}` requires current read access. Same-scope readers may read
+another principal's job but cannot claim, publish, or retry it. The response includes:
+
+| Field | Contract |
+|---|---|
+| `job_id`, `kind`, `recipe_version`, `retry_of` | Opaque job identity, fixed kind/recipe, and nullable retry parent |
+| `state` | `pending`, `running`, `succeeded`, or `failed` |
+| `attempt`, `max_attempts` | Attempts already claimed; maximum is 5 |
+| `available_at`, `lease_until`, `created_at`, `updated_at` | Scheduling/lease and server timestamps; lease is null outside running |
+| `error_code` | Null or `dependency_unavailable`, `stale_context`, `invalid_input`, `attempt_limit` |
+| `input_refs` | Exact immutable episode revision-1 references |
+| `result` | Null or the original assertion `{memory_id, revision: 1}`, even after later corrections |
+
+GET never exposes request payload, lease token, or owner principal. Both succeeded
+and failed terminal jobs erase request JSON; input ID references remain until
+purge. Terminal records are immutable.
+
+### Explicit retry of terminal failure
+
+`POST /v1/jobs/{job_id}/retry` requires `Idempotency-Key` and the full original
+`EnqueueJob` body. The owner must reprovide it because the failed payload is no
+longer stored. Current permissions/evidence are rechecked and the intent is
+verified against its HMAC. Changed intent gives `409 job_intent_conflict`;
+a nonfailed parent gives `409 job_retry_conflict`; a nonowner gets `404`.
+
+Retry creates **one new child** with a fresh five-attempt allowance, never resets
+the old terminal record. Repeated retries of the same failed parent reuse that
+child even across HTTP keys. If the child itself fails, retry the child ID for
+another explicit cycle. The fixed recipe cannot be reset or replaced through
+this endpoint. Retry lineage participates in purge.
+
+### Fixed-principal worker and publication fence
+
+`pg-agmemory worker --subject TRUSTED_CONFIGURED_ISSUER_SUBJECT [--once]` uses
+restricted `PGAG_DATABASE_URL` credentials and the API's startup role/schema
+checks. The subject must be preprovisioned within the configured issuer and is
+trusted deployment configuration. No JWT signing/public key or admin URL is
+needed. Superuser, owner-role, and `BYPASSRLS` runtime credentials are rejected.
+This initial profile claims only that principal's jobs, not a global multi-tenant
+scheduler; fairness and cost-pool behavior are not qualified.
+
+Claims use `FOR UPDATE SKIP LOCKED` in a short transaction and **commit before
+payload validation outside the transaction**. A fresh UUID lease token increments
+the attempt, captures current access/deletion epochs, and grants a 30-second lease
+(internal 1–300-second claim bounds exist for controlled tests, not CLI tuning).
+Current permissions and complete immutable episode inputs are checked.
+
+Publication rechecks principal/scope, exact original prepared body, input evidence,
+lease/token/expiry, and captured epochs. The shared assertion-publication helper
+commits the assertion, provenance, job success, and audit atomically. The final
+job update checks expiry again; mid-publication expiry rolls back the output.
+The assertion's `recorded_at`/system interval starts at **worker publication,
+not enqueue**; job `created_at` is not the assertion's adoption time. Caller
+valid-time bounds remain independent of this server-controlled system time.
+Lease expiry/takeover fences stale publishers. Internal heartbeat checks lease
+and epochs and renews the 30-second lease; no public claim/publish/heartbeat
+endpoint exists. The deterministic processor makes no external call and needs
+no long-running heartbeat task.
+
+Retriable job failures schedule `2^attempt + [0,1)` seconds of jittered backoff,
+up to five attempts. Nonretryable `invalid_input` fails immediately. An expired
+fifth claim becomes `failed`/`attempt_limit`; no sixth attempt is granted.
+Errors are logged as safe codes, without payloads. Processing is at-least-once
+attempts with **at most one committed result per job**, not external exactly-once.
+
+Continuous mode polls idle work every 1 second and delays 2 seconds after transient
+DB loop failures. `--once` processes at most one due job, emits a JSON outcome
+(`idle`, `succeeded`, `pending`, `failed`, or `lease_lost`) with applicable opaque
+IDs/result reference, then exits. Stdout/log outcome references are opaque
+historical records, not current read authorization or a live state snapshot.
+Job GET and exact-revision explain apply current access/deletion checks.
+It does not drain the queue and is rejected on other CLI commands.
+See [operations](operations/README.md#durable-job-and-worker-operations)
+and [ADR 0006](adr/0006-durable-jobs.md).
 
 ## Entities and SQL graph oracle
 
@@ -383,7 +499,7 @@ planning does not create a run, and a missing run returns `404`.
 | `action_hash` | Required lowercase 64-hex digest of the caller's canonical action; the server cannot verify it against an external call |
 | `memory_refs` | Up to 100 distinct exact same-scope references: episode/entity revision 1 or existing assertion revision 1–1000 (including relations); defaults to empty, omitted revision is 1, not latest |
 
-**Declare every memory dependency used by the action.** Checkpoints/effects are
+**Declare every memory dependency used by the action.** Checkpoints/effects/jobs are
 not permitted reference kinds; undeclared copied data is not discovered.
 The service persists only a tenant-HMAC `action_fingerprint` and a stable
 64-hex `external_idempotency_key`, not raw action hashes or arguments.
@@ -462,6 +578,14 @@ provenance cycles.
 Declared episode/entity/assertion-to-effect references add
 **source → tool effect → every checkpoint in that scope/run**, including old
 checkpoints with empty references and snapshots predating the effect.
+Jobs add **episode → job** through immutable inputs, **result assertion → job**,
+and **parent job → retry descendants**. Jobs count within the same closure limit.
+Deleting any source, including one used only by a later revision of a result
+assertion, purges that entire assertion history and dependent jobs.
+**Deleting a job/control record or failed-parent retry chain does not delete
+already-published independent assertion outputs or source episodes.** Outputs
+have direct episode provenance; purge the output/source explicitly to erase the
+fact. There is no job → result dependency cycle.
 The total limit is 10,000 dependents plus requested roots, not 10,000 per layer.
 Larger closures fail with `422` without partial purge. Any historical source
 conservatively removes the assertion's entire history and all dependent
@@ -480,7 +604,11 @@ reopened. Deleting a checkpoint does not delete its ancestors or source
 episodes. There is no regeneration. The existing tenant session lock keeps
 the closure, payload purge, run/branch invalidation, and read barrier atomic.
 
-Purge synchronously SQL-deletes target episode/entity/assertion/checkpoint/effect
+Purge deletes job input/request rows before assertion/episode payloads and
+tombstones, fencing running publishers under the same tenant barrier.
+Purged-job GET and exact HTTP replay return `404`; retained job identity prevents
+resurrection of the same exact job.
+Purge synchronously SQL-deletes target episode/entity/assertion/checkpoint/effect/job
 payloads, entity evidence, typed relation links, effect events (including reasons/
 receipt references), and dependent quotes/references,
 then inserts scope-bound opaque deletion markers with timestamps
@@ -490,7 +618,7 @@ The transaction also advances `deletion_epoch` and commits a receipt.
 HTTP `202` with `active_store_purged` is **not** a queued purge job or certification
 of complete erasure. Opaque operation registry/run flags, run/branch metadata,
 object records, tombstones, audit/receipt
-metadata, and tenant-keyed HMAC source/idempotency tombstones persist for the
+metadata, job identities, and tenant-keyed HMAC source/idempotency tombstones persist for the
 tenant lifetime; there is no automatic expiry or full tenant-erasure workflow.
 Historical references and replay cannot resurrect purged labels, values, or receipts.
 
@@ -504,61 +632,75 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-Additive schema `005_relational_graph.sql` follows unchanged migrations 001–004.
-It adds `entity`, `entity_evidence`, `relation`, and `relation_revision`, with RLS
-and same-scope foreign keys. Runtime receives no payload UPDATE grant. Deferred
-checks require complete entity evidence and the exact typed target/value for
-every relation assertion revision; typed markers/links cannot be stripped or
-generic values mutated to bypass them. Entity references extend checkpoint/effect
-foreign-key kinds. `assertion.is_relation DEFAULT false` protects legacy free-text
-assertions; `Remember` JSON field/hash ordering, saved checkpoint checksums, effect
-history, and assertion history are not rewritten.
-The v0.0.5 runtime requires the ledger to equal `[1, 2, 3, 4, 5]` exactly and rejects
-older, newer, or incomplete histories.
+Additive `006_durable_jobs.sql` follows unchanged migrations 001–005.
+`memory_ops.job` uses a `memory.object` anchor of kind `job`; `job_input` holds
+immutable same-scope episode references, and `job_identity` retains
+tenant/principal/scope HMAC deduplication. Forced RLS, same-scope foreign keys,
+input-completeness checks, limited lifecycle-column UPDATE grants, and transition
+guards enforce lease/attempt/cap/terminal rules. Intent is immutable; payload can
+be erased at terminal transition, not replaced.
+Typed graph/effect/checkpoint histories and guards remain unchanged, as do legacy
+`Remember` JSON/HMAC ordering, source identities, and checkpoint checksums.
+Jobs are not added to checkpoint/effect reference kinds.
+The v0.0.6 API **and worker** require exact history `[1, 2, 3, 4, 5, 6]` and reject
+older, newer, or incomplete histories and unsafe runtime roles.
 
 Migration requires a forced-RLS-bypassing administrator with DDL rights and
 `btree_gist`. Migration 002's `row_security = off` fails closed if RLS would filter
-its backfill; it does not grant bypass privileges. Stop all old/new API traffic,
-back up, migrate atomically, then start only the matching new API.
+its backfill; it does not grant bypass privileges. Stop/drain all old/new APIs
+**and workers**, back up, migrate atomically, then start only matching v6 processes.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
-No rolling old-API compatibility or downgrade is supported. Follow
-[operations](operations/README.md#v005-maintenance-migration).
+No rolling coexistence or downgrade is supported. Follow
+[operations](operations/README.md#v006-maintenance-migration).
 
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-For **v0.0.5/schema 5**, implementation commit
+For **v0.0.6/schema 6**, implementation commit
+[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
+final results were verified on **2026-09-17 JST**:
+
+| Environment | Command | Tests | Test elapsed |
+|---|---|---|---|
+| Local Apple Container | `./scripts/test-containers.sh` | 114 passed, 2 existing warnings | 209.97 s |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 114 passed, 2 existing warnings | 351.24 s |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 114 passed, 2 existing warnings | 299.66 s |
+
+All three final runs also passed **Ruff, strict mypy (11 source files), and
+non-root production API HTTP plus actual CLI worker smoke**. Both native Docker
+jobs in [CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
+ran the exact SHA above; actual logs verified the counts and checks, not just job
+status. Elapsed times are test-run observations, not performance benchmarks.
+
+Coverage includes job identity/retry/caps, lease expiry/takeover, atomic
+publication/rollback, current authorization/epochs, dependency purge, and
+preserved graph/effect/checkpoint and legacy idempotency behavior. For worker
+smoke, a disposable principal ran actual `pg-agmemory worker --subject ... --once`
+with runtime-only credentials in the non-root production image, verified
+`{"outcome":"idle"}`, and logged `Production worker smoke passed`.
+The CI step is `Test containers and smoke-test production API and worker`.
+This smoke checks worker startup/idle execution; queued publication is covered
+by the test suite, not established by an idle result.
+
+Historical **v0.0.5/schema 5** evidence only: implementation commit
 [3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16),
-the following results were verified on 2026-09-16:
-
-| Environment | Command | Result |
-|---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 91 tests, Ruff, strict mypy (9 source files), and production HTTP health smoke passed |
-
-Both Docker jobs' actual logs in
+verified 2026-09-16: Apple Container and native Docker amd64/arm64 each passed
+91 tests (2 existing warnings), Ruff, strict mypy (9 source files), and production
+HTTP health smoke.
 [CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
-confirmed the counts and checks, not just job success. All three full suites
-reported 2 existing warnings. After the local full suite, strengthened exact
-relation-context byte-budget and DB cross-scope target foreign-key/value-to-target
-integrity checks also passed locally. Both full CI suites include those strengthened
-cases; the collection remains 91 tests.
-
-Coverage includes two-tenant graph golden/temporal/hidden/budget/deletion cases,
-v4 effect/history preservation, and v3 checkpoint checksum/idempotency
-compatibility. The exact **1000-revision boundary** is verified for both free-text
-and typed relation assertions.
-Checks do not establish complete M0/M1/M3, measured performance/quality, external
+logs confirmed those results; they are not v6 validation.
+Checks do not establish complete M0/M1/M2/M3, measured performance/quality, external
 exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure qualification.
 
 ## Still roadmap work
 
-Workers, job enqueue/status APIs, automatic synthesis, separate working snapshots/
+Automatic enqueue/NL extraction/synthesis, LLM/provider processing, global
+multi-tenant scheduling/fairness/cost pools, separate working snapshots/
 compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ,
 provider receipt verification, actual harness integration/execution/recovery,
 cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
-are absent. The bounded SQL graph oracle and typed checkpoint envelopes do not complete the planned
+are absent. Explicit structured jobs, the bounded SQL graph oracle, and typed
+checkpoint envelopes do not complete the planned
 bitemporal, graph, provenance, or deletion architecture.
 
 See [ADR 0001](adr/0001-initial-slice.md) for these choices,

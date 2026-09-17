@@ -13,16 +13,17 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
-The v0.0.5 SQL graph oracle milestone requires schema 5. Apple Container and native
-Docker amd64/arm64 each passed 91 tests (2 existing warnings), Ruff, strict mypy
-(9 source files), and production HTTP health smoke. Final commit/CI links and
-the local strengthened-case follow-up are in
+The v0.0.6 durable-jobs milestone requires schema 6. Apple Container and native
+Docker amd64/arm64 each passed 114 tests (2 existing warnings), Ruff, strict mypy
+(11 source files), and non-root production API HTTP plus actual CLI worker
+`--once` idle smoke. Final SHA, CI logs, timings, and separate historical v5
+evidence are in
 [validation evidence](../STATUS.md#validation-evidence).
 
 | Setting | Consumer | Purpose |
 |---|---|---|
 | `PGAG_ADMIN_DATABASE_URL` | Administrative CLI only | Migration and private tenant/principal/scope provisioning |
-| `PGAG_DATABASE_URL` | API runtime | Dedicated restricted login belonging to `pgag_runtime` |
+| `PGAG_DATABASE_URL` | API and worker runtime | Dedicated restricted login belonging to `pgag_runtime` |
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | Static PEM RSA verification key, at least 2048 bits; never the signing private key |
 | `PGAG_JWT_ISSUER` | API runtime | Exact trusted issuer |
 | `PGAG_JWT_AUDIENCE` | API runtime | Exact audience for this service |
@@ -36,8 +37,9 @@ the local strengthened-case follow-up are in
 2. The unchanged `src/pg_agmemory/storage/001_initial.sql` and
    `src/pg_agmemory/storage/002_assertion_revisions.sql` and
    `src/pg_agmemory/storage/003_checkpoints.sql` and
-   `src/pg_agmemory/storage/004_tool_effects.sql`, followed by additive
-   `src/pg_agmemory/storage/005_relational_graph.sql`, are installed package
+   `src/pg_agmemory/storage/004_tool_effects.sql` and
+   `src/pg_agmemory/storage/005_relational_graph.sql`, followed by additive
+   `src/pg_agmemory/storage/006_durable_jobs.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
@@ -55,8 +57,9 @@ the local strengthened-case follow-up are in
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2, 3, 4, 5]` exactly; missing, older, newer, or incomplete history
-   is rejected.
+   ledger to equal `[1, 2, 3, 4, 5, 6]` exactly; missing, older, newer, or incomplete
+   history is rejected. The worker reuses these role/schema checks without
+   requiring the API's JWT settings.
 
 Keep the admin URL, signing private key, tokens, and tenant HMAC secrets out of
 source control, issue reports, logs, and the runtime environment where not
@@ -66,17 +69,18 @@ authorization boundary.
 
 <a id="v003-maintenance-migration"></a>
 <a id="v004-maintenance-migration"></a>
+<a id="v005-maintenance-migration"></a>
 
-## v0.0.5 maintenance migration
+## v0.0.6 maintenance migration
 
-**No rolling old/new API coexistence or downgrade is supported.**
+**No rolling old/new API/worker coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
 does not qualify a production upgrade or disaster recovery.
 Follow this maintenance protocol:
 
-1. Stop and drain **all old and new API traffic and processes**, including
-   replicas and automatic restarts. The migration advisory lock is not a
-   substitute for stopping API traffic.
+1. Stop and drain **all old and new APIs and workers**, including replicas,
+   continuous worker loops, and automatic restarts. The migration advisory lock
+   is not a substitute for stopping API traffic and worker claims/publication.
 2. Take a backup and record the old application/schema versions. Preserve the
    latest deletion ledger and ACL revocations independently as required for
    restore quarantine. Do not overwrite the only pre-migration backup.
@@ -84,27 +88,104 @@ Follow this maintenance protocol:
    `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
    transaction under the migration lock. A 5-second lock timeout aborts rather
    than waiting indefinitely; diagnose contention while traffic remains stopped.
-4. Migration 005 adds `entity`, `entity_evidence`, `relation`, and `relation_revision`,
-   their RLS/same-scope foreign keys, deferred completeness/typed-target checks,
-   and entity checkpoint/effect references. No payload UPDATE grant is added.
-   `assertion.is_relation DEFAULT false` leaves legacy free-text assertions untyped.
-   Migrations 001–004 remain unchanged; older DBs receive missing versions
-   sequentially. Preserve assertion/effect history, checkpoint checksums,
-   timestamps, source-event/idempotency records, and `Remember` JSON/hash ordering.
+4. Migration 006 adds `memory_ops.job`, immutable `job_input`, retained HMAC
+   `job_identity`, and the `job` object kind, with RLS, same-scope foreign keys,
+   input/lease/attempt/terminal guards, and limited job lifecycle UPDATE grants.
+   Migrations 001–005 remain unchanged; older DBs receive missing versions
+   sequentially. Preserve graph/assertion/effect histories, checkpoint checksums,
+   timestamps, source-event/idempotency records, and `Remember` JSON/HMAC ordering.
    The v4 ledger's stricter resume rules remain: untracked hints, even planned
    ones, block resumption.
-5. Confirm ledger versions are exactly `[1, 2, 3, 4, 5]`, then start **only the v5 API**
-   with restricted runtime credentials. Check its capabilities/schema and run
-   the milestone's two-tenant graph/temporal/hidden/budget/deletion checks and
-   v4 effect/history plus v3 checksum/idempotency compatibility checks before
-   restoring traffic. A health response alone does not validate these.
-6. On failure, leave traffic stopped. Do not launch the old image against the
+5. Confirm exact history `[1, 2, 3, 4, 5, 6]`, then start **only matching v6 APIs/workers**
+   with restricted runtime credentials and the intended fixed worker subjects.
+   Check capabilities/schema and the milestone's enqueue/retry, lease takeover,
+   expiry rollback, authorization/epoch, purge, worker, and historical-compatibility
+   behavior before restoring traffic. A health response alone does not validate these.
+6. On failure, leave APIs/workers stopped. Do not launch the old image against the
    changed schema or assume a downgrade exists. Any backup restore remains
    quarantined until the latest deletion/ACL state is reapplied and validated.
 
 **The old v0.0.1 API does not contain the new schema-compatibility guard.**
 It may start against an incompatible schema; operators must keep it stopped.
 The new runtime's refusal of schema mismatches does not protect old processes.
+
+## Durable-job and worker operations
+
+The worker publishes caller-supplied structured assertions; it is not an automatic
+synthesis/NL extraction/LLM/provider, embedding, compaction, or tool-effect executor.
+Provision a subject in advance, then run with only restricted `PGAG_DATABASE_URL`
+credentials and trusted deployment identity:
+
+```bash
+pg-agmemory worker --subject TRUSTED_CONFIGURED_ISSUER_SUBJECT --once
+```
+
+The subject is 1–256 characters and must match the preprovisioned principal in the
+configured issuer. It is not caller-controlled HTTP impersonation. Do not give
+agents runtime DB credentials or authority to select worker subjects. No JWT
+signing/public key or admin URL is needed by the worker; never use superuser,
+table-owner/owner-member, or `BYPASSRLS` credentials. Startup shares API role/schema
+validation. Only that principal's currently writable jobs can be claimed.
+Same-scope readers can GET jobs but cannot run or retry another principal's work.
+
+Omit `--once` for continuous operation: idle poll interval is 1 second, transient
+DB loop delay is 2 seconds. `--once` handles at most one due job and prints JSON
+`outcome` (`idle`, `succeeded`, `pending`, `failed`, or `lease_lost`), with applicable
+opaque IDs/result reference. It does not wait for the entire queue or retry cycle;
+other commands reject `--once`. Startup/unrecoverable errors are failures, not
+successful idle results. This fixed-principal profile is not a global scheduler
+or a qualified fairness/cost-pool implementation.
+Worker stdout/logs contain opaque historical outcome references, not current
+read authorization or a live snapshot. Read job GET/explain under current
+access/deletion checks instead of relying on an earlier CLI outcome.
+
+1. Submit `POST /v1/jobs` with an HTTP key and
+   `{kind: "structured_remember", memory: <original Remember body>}`. Use current
+   scope read/write access, explicit intent, and exact same-scope episode quotes.
+   `202` is the committed job reference with fixed recipe `structured-remember-v1`,
+   not publication completion. Save the original request securely for explicit
+   retry; sanitize it before submission.
+2. Retry uncertain enqueue with the same normalized request/key. Canonical
+   intent/recipe also deduplicates across keys within one principal/scope,
+   normalizing evidence order for job identity only. Another principal or
+   different source identity is not semantic deduplication.
+   Respect the scope's 100 pending/running cap; do not bypass it with other identities.
+3. Poll job GET for state, attempts (maximum 5), scheduling/lease timestamps,
+   safe error code, immutable episode input references, retry parent, and result.
+   GET never returns request JSON, owner principal, or lease token. Terminal
+   success/failure erases the request; succeeded results stay revision 1 after
+   later corrections. Use the result's exact assertion revision for explain.
+   Assertion recorded/system time begins at worker publication, not job enqueue;
+   do not substitute job `created_at` for the assertion's adoption time.
+4. Automatic retriable failures use `2^attempt + [0,1)` seconds of backoff/jitter.
+   `invalid_input` fails immediately; an expired fifth claim fails with
+   `attempt_limit`, without a sixth attempt. Diagnose safe
+   `dependency_unavailable`/`stale_context` codes without logging payloads.
+   `lease_lost` does not authorize another publication from an old prepared body.
+5. For an owned terminal failed job, POST the full original `EnqueueJob` body
+   to `/v1/jobs/{job_id}/retry` with a key. Current evidence/permissions and HMAC
+   intent are rechecked; changed intent is `409 job_intent_conflict`, nonfailed
+   parent is `409 job_retry_conflict`, and nonowner is `404`. Repeated retry of
+   that parent reuses one child even across keys. If the child fails, retry its
+   ID for another explicit five-attempt cycle. Never reset terminal rows/recipes in SQL.
+
+Claims commit under `FOR UPDATE SKIP LOCKED` before payload preparation outside
+the transaction. Default lease is 30 seconds with a fresh token and current epochs;
+internal 1–300-second claim bounds are for controlled tests, not operator tuning.
+Publication rechecks current identity/access, inputs/exact body, lease/token/expiry,
+and epochs; output/provenance/job success/audit commit together. Final-update expiry
+rolls back output. Internal heartbeat validates lease/epochs, but the deterministic
+processor needs no background heartbeat task or external call. There are no public
+claim/publish/heartbeat endpoints. At-least-once attempts produce at most one
+committed result per job, not external exactly-once execution.
+
+`observe` never auto-enqueues; synchronous `remember` and its legacy JSON/HMAC
+remain unchanged. Recall's `jobs_pending` covers readable pending/running jobs
+in requested scopes; `synthesis_pending` and `graph_used` remain false.
+Jobs are not recall/explain items or checkpoint/effect reference kinds.
+See [the contract](../STATUS.md#durable-jobs) and
+[ADR 0006](../adr/0006-durable-jobs.md); M0/M1/M2/M3, MVP/production, performance,
+quality, and DR acceptance remain incomplete.
 
 ## Entity and graph operations
 
@@ -305,7 +386,8 @@ not freeze targets; authorization and dependencies are evaluated again for
 purge. Only `preview` and `purge` are accepted, even though future-mode names
 may appear in internal schema constraints.
 
-Purge traverses episode/entity/assertion history, declared checkpoint/effect references, and
+Purge traverses episode/entity/assertion history, job dependencies/retry lineage,
+declared checkpoint/effect references, and
 every descendant/fork checkpoint through the complete parent lineage. Its
 limit is 10,000 dependents in total plus requested roots. A source used only
 by an old assertion revision still removes the entire assertion history and
@@ -315,12 +397,22 @@ purge follows the same relation dependencies. Direct entity references in
 checkpoints/effects participate. Other surviving entities are not removed merely
 because a relation disappears. Semantic relation cycles are not provenance cycles:
 entities depend only on episodes.
+Job closure follows episode inputs → jobs, result assertions → jobs, and parent
+jobs → retry descendants within the same 10,000-dependent bound.
+**Deleting a job or failed-parent retry chain does not delete an already-published
+independent assertion or source episode.** Purge its output/source explicitly to
+erase the fact. Output assertions retain their own direct episode provenance;
+any revision-source deletion removes the whole assertion and its dependent jobs.
+There is no job → result dependency cycle.
 Branches whose heads are affected are permanently
 invalidated; do not try to reopen their IDs or remove lineage to avoid deletion.
 Purging any effect also removes **all checkpoint payloads in that scope/run**,
 including older empty snapshots, and permanently sets `effects_invalidated`.
 It blocks new plans, dispatch, checkpoints, and resumption, but does not purge
 independent effects merely for sharing the run; surviving records remain reconcilable.
+Job request/input rows are removed before assertion/episode rows and tombstones
+under the same tenant barrier, fencing running publishers. Purged-job GET/replay
+returns `404`; retained job identity prevents exact-job resurrection.
 Payloads, entity evidence, typed links, quotes, references, and effect events
 (reason/receipt references included)
 are SQL-deleted from active tables before timestamped markers enter
@@ -332,7 +424,7 @@ Purge does not enqueue a worker or rebuild affected content.
 The receipt's `active_store_purged` is not
 full erasure.
 
-Opaque operation registry/run flags, run/branch metadata, objects and tombstones,
+Opaque job identities, operation registry/run flags, run/branch metadata, objects and tombstones,
 audit/receipt metadata, and
 tenant-keyed HMAC source/idempotency tombstones remain for the tenant lifetime.
 Do not manually remove
@@ -357,7 +449,7 @@ automated restore replay, HA/PITR workflow, or verified RPO/RTO.
 
 Required restoration boundary, **not yet an implemented automated procedure**:
 
-1. Keep any restored database quarantined: no API, agent, or user access.
+1. Keep any restored database quarantined: no API, worker, agent, or user access.
 2. Obtain the latest deletion ledger and ACL revocations from a source that
    was not rolled back with the backup; the old backup's own records are not
    sufficient.
@@ -372,3 +464,12 @@ compliance from this checklist or a health probe. Record actual test commands,
 environment, architecture, and outcomes separately from the plan's unmeasured
 targets. See [contributing](../../CONTRIBUTING.md) for the Apple Container and
 native dual-architecture Docker CI checks.
+
+`scripts/test-containers.sh` covers both production API HTTP smoke and actual
+worker CLI smoke in the non-root production image. It provisions a disposable
+principal, supplies runtime-only credentials to `worker --subject ... --once`,
+asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
+The CI step is `Test containers and smoke-test production API and worker`.
+This idle-worker check is not a publication test or production/DR qualification.
+Final v6 local and native Docker results are recorded in
+[STATUS](../STATUS.md#validation-evidence).

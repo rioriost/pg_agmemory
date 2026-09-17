@@ -12,16 +12,16 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
-v0.0.5 SQL graph oracle milestoneにはschema 5が必要です。
-Apple Containerとnative Docker amd64/arm64の各環境で、91テスト（既存warning 2件）、
-Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが合格しました。
-最終commit/CI linkとローカルでの強化ケースの追加確認は
-[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
+v0.0.6 durable job milestoneにはschema 6が必要です。
+Apple Containerとnative Docker amd64/arm64の各環境で114テスト（既存warning 2件）、
+Ruff、strict mypy（source 11ファイル）、non-root production API HTTPと実CLI worker
+`--once` idle smokeが合格しました。最終SHA、CI log、所要時間と、
+区別した過去のv5証拠は[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
 | `PGAG_ADMIN_DATABASE_URL` | 管理CLIのみ | migrationとprivate tenant/principal/scopeの作成 |
-| `PGAG_DATABASE_URL` | API runtime | `pgag_runtime`に所属する専用の制限付きlogin |
+| `PGAG_DATABASE_URL` | API/worker runtime | `pgag_runtime`に所属する専用の制限付きlogin |
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | 2048 bit以上の静的PEM RSA検証公開鍵。署名用秘密鍵は渡さない |
 | `PGAG_JWT_ISSUER` | API runtime | 信頼するissuerの完全一致値 |
 | `PGAG_JWT_AUDIENCE` | API runtime | 本サービスのaudienceの完全一致値 |
@@ -34,8 +34,9 @@ Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが�
 2. 変更しない`src/pg_agmemory/storage/001_initial.sql`、
    `src/pg_agmemory/storage/002_assertion_revisions.sql`、
    `src/pg_agmemory/storage/003_checkpoints.sql`、
-   `src/pg_agmemory/storage/004_tool_effects.sql`に続き、追加的な
-   `src/pg_agmemory/storage/005_relational_graph.sql`をpackage resourceとして
+   `src/pg_agmemory/storage/004_tool_effects.sql`、
+   `src/pg_agmemory/storage/005_relational_graph.sql`に続き、追加的な
+   `src/pg_agmemory/storage/006_durable_jobs.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
@@ -51,8 +52,9 @@ Ruff、strict mypy（source 9ファイル）、production HTTP health smokeが�
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4, 5]`であることを
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4, 5, 6]`であることを
    要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
+   workerもこのrole/schema検査を使いますが、APIのJWT設定は不要です。
 
 admin URL、署名用秘密鍵、token、tenant HMAC secretをsource管理、issue、
 logへ残さず、不要なものをruntime環境へ渡さないでください。
@@ -61,42 +63,111 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 
 <a id="v003の保守migration"></a>
 <a id="v004の保守migration"></a>
+<a id="v005の保守migration"></a>
 
-## v0.0.5の保守migration
+## v0.0.6の保守migration
 
-**旧版/新版APIのrolling共存やdowngradeは非対応です。**
+**旧版/新版API/workerのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
 migrationテストの合格は、本番upgradeや災害復旧の適格性を示すものではありません。
 次の保守protocolに従ってください。
 
-1. replicaと自動再起動を含め、**旧版・新版の全API traffic/processを停止・drain**します。
-   migration advisory lockはAPI traffic停止の代わりにはなりません。
+1. replica、worker継続loop、自動再起動を含め、**旧版・新版の全APIとworkerを停止/drain**します。
+   migration advisory lockはAPI trafficやworker claim/publication停止の代わりにはなりません。
 2. backupを取得し、旧application/schema版を記録します。
    restore隔離の要件に従い、最新削除台帳とACL失効を独立して保全してください。
    唯一のmigration前backupを上書きしてはいけません。
 3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
    migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
    lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
-4. migration 005は`entity`、`entity_evidence`、`relation`、`relation_revision`、
-   RLS/同一scope外部key、遅延する完全性/typed target検査、checkpoint/effectのentity参照を
-   追加します。payload UPDATE権限は付与しません。
-   `assertion.is_relation DEFAULT false`で旧free-text assertionをuntypedのまま維持します。
-   migration 001〜004は変更せず、旧DBへ未適用版を順に適用します。
-   assertion/effect履歴、checkpoint checksum、timestamp、source-event/idempotency記録、
-   `Remember` JSON/hash順を維持してください。
+4. migration 006は`memory_ops.job`、不変の`job_input`、保持HMAC `job_identity`、
+   `job` object kind、RLS、同一scope外部key、入力/lease/試行回数/terminal guard、
+   限定したjob lifecycle UPDATE権限を追加します。
+   migration 001〜005は変更せず、旧DBへ未適用版を順に適用します。
+   graph/assertion/effect履歴、checkpoint checksum、timestamp、source-event/idempotency記録、
+   `Remember` JSON/HMAC順を維持してください。
    v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
-5. ledgerの版が厳密に`[1, 2, 3, 4, 5]`であることを確認してから、
-   制限付きruntime資格情報で**v5 APIだけを起動**します。
-   capabilities/schemaを確認し、traffic再開前にmilestoneの2 tenant graph/時間/非公開/
-   予算/削除検査と、v4 effect/履歴・v3 checksum/idempotency互換性検査を実行してください。
+5. 厳密な履歴`[1, 2, 3, 4, 5, 6]`を確認してから、制限付きruntime資格情報と
+   意図した固定worker subjectで**対応するv6 API/workerだけを起動**します。
+   capabilities/schemaを確認し、traffic再開前にmilestoneのenqueue/retry、
+   lease引継ぎ、期限切れrollback、認可/epoch、purge、worker、過去互換動作を検査してください。
    health応答だけではこれらを検証できません。
-6. 失敗時はtraffic停止を維持します。変更済みschemaへ旧imageを接続したり、
+6. 失敗時はAPI/worker停止を維持します。変更済みschemaへ旧imageを接続したり、
    downgradeがあると想定したりしないでください。
    backup restoreも最新削除/ACL状態の再適用・検証まで隔離します。
 
 **旧v0.0.1 APIには新しいschema互換性guardがありません。**
 不整合なschemaでも起動し得るため、運用側で停止を維持する必要があります。
 新runtimeによるschema不一致の拒否は、旧processを保護しません。
+
+## Durable jobとworkerの運用
+
+workerはcaller指定の構造化assertionを公開し、自動synthesis/自然言語抽出/LLM/provider、
+embedding、compaction、tool-effect実行は行いません。subjectを事前provisionしてから、
+制限付き`PGAG_DATABASE_URL`資格情報と信頼する配置identityだけで実行します。
+
+```bash
+pg-agmemory worker --subject TRUSTED_CONFIGURED_ISSUER_SUBJECT --once
+```
+
+subjectは1〜256文字で、設定issuer内のprovision済みprincipalと一致させます。
+caller指定のHTTP偽装ではありません。agentへruntime DB資格情報やworker subject選択権限を
+与えてはいけません。workerにJWT署名/公開鍵やadmin URLは不要です。
+superuser、table owner/owner所属、`BYPASSRLS`資格情報は使わないでください。
+起動時はAPIのrole/schema検査を共有し、そのprincipalが現在write可能なjobだけをclaimします。
+同一scope readerはGETできますが、他principalのjobを実行/retryできません。
+
+`--once`省略時は継続実行し、idle pollは1秒、一時的DB loop障害後は2秒待ちます。
+`--once`は実行時刻に達したjobを最大一つ処理し、JSON `outcome`
+（`idle`、`succeeded`、`pending`、`failed`、`lease_lost`）と該当opaque ID/結果参照を返します。
+queue全体やretry cycleの完了は待たず、他commandでの`--once`は拒否します。
+起動/回復不能errorは失敗であり、成功したidle結果ではありません。
+固定principal profileであり、global schedulerや公平性/cost poolの適格な実装ではありません。
+worker stdout/logはopaqueな過去outcome参照を含み、現在のread許可やlive snapshotではありません。
+以前のCLI outcomeを信用せず、現在のアクセス権/削除状態を検査するjob GET/explainで読んでください。
+
+1. HTTP keyと`{kind: "structured_remember", memory: <元のRemember body>}`を
+   `POST /v1/jobs`へ送ります。現在のscope read/write権限、明示intent、
+   正確な同一scope episode引用を使います。`202`は固定recipe `structured-remember-v1`の
+   commit済みjob参照であり、公開完了ではありません。
+   明示retry用に元requestを安全に保管し、投入前に機密情報を除去してください。
+2. 不明なenqueue結果は同じ正規化request/keyで再送します。
+   canonical intent/recipeは同一principal/scope内でkeyをまたいでも重複抑止し、
+   根拠順の正規化はjob identityだけに適用します。
+   別principalや異なるsource identityの意味的重複は抑止しません。
+   scopeのpending/running上限100件を守り、別identityで回避してはいけません。
+3. job GETでstate、試行回数（最大5）、scheduling/lease時刻、安全なerror code、
+   不変episode入力参照、retry parent、resultを確認します。
+   GETはrequest JSON、owner principal、lease tokenを返しません。
+   terminal成功/失敗ではrequestを消去し、成功resultは後の訂正後もrevision 1です。
+   explainには結果の正確なassertion revisionを使います。
+   assertionのrecorded/system timeはjob enqueueでなくworker publication時に始まります。
+   jobの`created_at`をassertionの採用時刻として使ってはいけません。
+4. 自動retry可能な失敗は`2^attempt + [0,1)`秒のbackoff/jitterを使います。
+   `invalid_input`は即時失敗で、期限切れの5回目claimは`attempt_limit`となり6回目はありません。
+   payloadをlogへ出さず、安全な`dependency_unavailable`/`stale_context` codeで診断します。
+   `lease_lost`は古い準備bodyからの再publication許可ではありません。
+5. 所有するterminal failed jobには、元の`EnqueueJob` body全体とkeyを
+   `/v1/jobs/{job_id}/retry`へPOSTします。現在の根拠/権限とHMAC intentを再検査し、
+   intent変更は`409 job_intent_conflict`、failed以外のparentは`409 job_retry_conflict`、
+   非ownerは`404`です。同じparentの再試行はkeyをまたいでも一つのchildを再利用します。
+   childが失敗したらそのIDで別の明示5試行cycleを開始し、terminal行/recipeをSQLでresetしません。
+
+claimは`FOR UPDATE SKIP LOCKED`下でcommitしてからtransaction外でpayloadを準備します。
+既定leaseは新tokenと現在epoch付きの30秒で、内部1〜300秒上限は制御されたテスト用、
+運用設定ではありません。publicationは現在のidentity/権限、入力/正確なbody、
+lease/token/期限、epochを再検査し、output/provenance/job成功/auditを同時commitします。
+最後の更新時に期限切れならoutputをrollbackします。内部heartbeatはlease/epochを検査しますが、
+決定的processorにbackground heartbeat taskや外部呼出しは不要です。
+公開claim/publish/heartbeat endpointはありません。
+at-least-once試行でjob当たり最大一つのcommit済み結果を作り、外部exactly-once実行ではありません。
+
+`observe`は自動enqueueせず、同期`remember`とlegacy JSON/HMACは変更しません。
+recallの`jobs_pending`は要求scopeの読取り可能なpending/running jobを対象にし、
+`synthesis_pending`と`graph_used`はfalseのままです。
+jobはrecall/explain itemやcheckpoint/effect参照kindではありません。
+[契約](../STATUS-jp.md#durable-job)と[ADR 0006](../adr/0006-durable-jobs-jp.md)を参照してください。
+M0/M1/M2/M3、MVP/本番、性能、品質、DRの受入は未完了です。
 
 ## Entityとgraphの運用
 
@@ -285,18 +356,27 @@ previewは対象を固定せず、purge時に認可と依存関係を再評価�
 内部schema constraintに将来mode名があっても、
 受け付けるmodeは`preview`と`purge`のみです。
 
-purgeはepisode/entity/assertion履歴、宣言済みcheckpoint/effect参照、完全なparent lineageを介した
+purgeはepisode/entity/assertion履歴、job依存/retry lineage、宣言済みcheckpoint/effect参照、完全なparent lineageを介した
 全子孫/fork checkpointを辿ります。上限は要求rootに加えて依存物全体で10,000件です。
 旧assertion revisionだけのsourceでもassertion全履歴と影響する全checkpoint stateを削除します。
 episode根拠からentity、さらにそのentityをsourceまたは**過去のどのtargetとしてでも**
 使うrelation全履歴へ伝播します。entityの直接purgeも同じrelation依存を辿り、
 checkpoint/effectへの直接entity参照も対象です。relationが消えただけで他の生存entityは消しません。
 entityはepisodeだけに依存するため、意味的relation cycleはprovenance cycleではありません。
+job closureは同じ10,000依存上限内でepisode入力 → job、result assertion → job、
+parent job → retry子孫を辿ります。
+**jobやfailed parentのretry chainを削除しても、公開済みの独立assertionやsource episodeは
+消えません。** factを消すにはoutput/sourceを明示purgeします。
+output assertionは自身の直接episode provenanceを維持し、どのrevision-sourceの削除でも
+assertion全体と依存jobを消します。job → resultの依存cycleはありません。
 headが影響を受けるbranchは永続失効するため、同じIDの再開やlineage除去による回避を
 試みないでください。どのeffectでもpurgeすると、古い空snapshotを含む
 **同一scope/runの全checkpoint payload**を削除し、`effects_invalidated`を永続設定します。
 新plan、dispatch、checkpoint、再開を禁止しますが、同じrunというだけで
 独立effectまでpurgeせず、生存記録の照合は可能です。
+job request/入力行をassertion/episode行とtombstoneより先に同じtenant barrierで削除し、
+実行中publisherを拒否します。purge済みjobのGET/再送は`404`となり、
+保持job identityがexact jobの復活を防ぎます。
 payload、entity根拠、typed link、引用、参照、reason/receipt参照を含むeffect eventをactive tableから先にSQL削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
@@ -306,7 +386,7 @@ tenant session lockがclosure、run/branch失効、read drainを覆います。
 workerへのenqueueや影響本文の再構築は行いません。
 receiptの`active_store_purged`は完全消去ではありません。
 
-opaque operation registry/run flag、run/branch metadata、objectとtombstone、
+opaque job identity、operation registry/run flag、run/branch metadata、objectとtombstone、
 audit/receipt metadata、tenant-keyed HMACの
 source/idempotency tombstoneはtenantの存続期間中残します。
 purgeを「完了」させようとして手動削除したり`dedup_secret`を変更したりしないでください。
@@ -331,7 +411,7 @@ backup保持期限の強制、自動restore replay、HA/PITR workflow、
 
 必要なrestore境界は次のとおりですが、**自動手順としては未実装です**。
 
-1. 復元DBを隔離し、API・agent・userからアクセスさせません。
+1. 復元DBを隔離し、API・worker・agent・userからアクセスさせません。
 2. backupと一緒に巻き戻されていないsourceから、最新の削除台帳とACL失効記録を
    取得します。古いbackup内の記録だけでは不十分です。
 3. 公開を検討する前に、該当epochを含む削除と権限を適用します。
@@ -345,3 +425,11 @@ DRや本番complianceを主張してはいけません。実行したcommand、�
 結果を、計画上の未測定目標とは分けて記録してください。
 Apple Containerとnative両architectureのDocker CI検証は
 [貢献方法](../../CONTRIBUTING-jp.md)を参照してください。
+
+`scripts/test-containers.sh`はproduction API HTTP smokeに加え、
+non-root production image内の実worker CLI smokeを実行します。
+使い捨てprincipalをprovisionし、runtime専用資格情報で`worker --subject ... --once`を
+実行して`{"outcome":"idle"}`を検査し、`Production worker smoke passed`をlogに出します。
+CI step名は`Test containers and smoke-test production API and worker`です。
+idle-worker検査はpublicationテストや本番/DR適格性確認ではありません。
+最終v6 local/native Docker結果は[STATUS](../STATUS-jp.md#検証証拠)に記録しています。

@@ -7,20 +7,20 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.5/schema 5のSQL graph oracleを実装済みで、ローカルとnative Dockerの検査は合格しています。
-M0/M1/M3全体の完了、MVP完成版、本番リリースではありません。**
+**v0.0.6/schema 6のdurable jobを実装済みで、ローカルとnative Dockerの検査は合格しています。
+M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
 稼働DBからの同期purgeを実装しています。tenant/scope権限をサービスと
 PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
 assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
 typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳を提供します。
-新milestoneでは明示的entity identity、revision付きrelation assertion、
-上限付きの読取り専用PostgreSQL graph探索を追加します。
-recallでgraphを自動利用したり、toolを実行したりはしません。
+明示entityとrevision付きrelation assertionは上限付きの読取り専用SQL graph探索を提供します。
+新milestoneは固定principal workerによる明示queue型の構造化記憶publicationを追加し、
+自動synthesis、自然言語抽出、tool/provider実行は行いません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、harness adapter、
-worker、自動抽出、pgvector、日本語tokenizer、
+自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、日本語tokenizer、
 AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
@@ -36,13 +36,17 @@ container system start
 ```
 
 このスクリプトは固定したPython依存関係をビルドし、Ruff、mypy、unitテスト、
-PostgreSQL integrationテストを実行した後、production imageを起動してHTTP
-healthを確認します。専用の使い捨てPostgreSQLコンテナを利用し、
+PostgreSQL integrationテスト後にproduction APIのHTTP healthを確認し、
+**non-root production image**内で実際の`pg-agmemory worker --subject ... --once`を実行します。
+worker smokeは使い捨てのprovision済みprincipalとruntime専用資格情報を使い、
+`{"outcome":"idle"}`を検査して`Production worker smoke passed`をlogに出します。
+専用の使い捨てPostgreSQLコンテナを利用し、
 自分が作ったコンテナ・ネットワークだけを片付けます。
 既存のDBやコンテナは変更しません。Python/PostgreSQL/uvのimage版とdigestは固定しています。
 
 GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDockerで
-同じスクリプトを実行し、runtime imageの起動も確認します。
+同じスクリプトを実行します。
+step名は`Test containers and smoke-test production API and worker`です。
 
 ```bash
 ./scripts/test-containers.sh docker
@@ -50,14 +54,14 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.5/schema 5**の実装commit
-[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16)は、
+**v0.0.6/schema 6**の実装commit
+[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8)は、
 Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
-それぞれ**91テスト**（既存warning 2件）、Ruff、strict mypy（source 9ファイル）、
-production HTTP health smokeが合格しました。両CIの全suiteは強化したrelation-context予算と
-DB target整合性の検査を含み、これらはローカル全suite後にも個別に合格しています。
-[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)と、
-[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+それぞれ**114テスト**（既存warning 2件）、Ruff、strict mypy（source 11ファイル）、
+non-root production API HTTPと実CLI worker `--once` idle smokeの両方が合格しました。
+両CI jobは同じ完全一致SHAで実行し、実logで全検査を確認しています。
+[CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)と、
+所要時間・過去のv5結果を区別した[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
 
 ## APIの起動
 
@@ -88,13 +92,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provisionは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.5への更新には保守停止とbackupが必要です。**
-旧版・新版すべてのAPI trafficとimageを停止し、`005_relational_graph.sql`までの
-未適用migrationを適用してから新版APIだけを起動します。
-新版runtimeはschema履歴が厳密に`[1, 2, 3, 4, 5]`であることを要求します。
+**v0.0.6への更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI**とworker**を停止/drainし、`006_durable_jobs.sql`までの
+未適用migrationを適用してから対応するv6 API/workerだけを起動します。
+両者ともschema履歴が厳密に`[1, 2, 3, 4, 5, 6]`であることを要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
-旧APIとのrolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v005の保守migration)に従ってください。
+rolling共存やdowngradeは非対応です。
+[migration手順](docs/operations/README-jp.md#v006の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -118,6 +122,49 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 検証やsecret/PIIの自動除去は行いません。保存が許可され、除去処理済みのdataだけを送ってください。
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
+
+## Durableな構造化publication job
+
+`POST /v1/jobs`は`Idempotency-Key`と
+`{kind: "structured_remember", memory: <変更しないRemember request>}`を要求します。
+現在のread/write権限の下で明示intentと同一scopeのepisode原文根拠を指定します。
+`202`は`{job_id, kind, recipe_version: "structured-remember-v1"}`という
+job参照であり、**publication完了ではありません**。
+同一principal/scope内でcanonical intent/recipeが同じならHTTP keyをまたいで重複抑止します。
+job dedupでは根拠順を正規化しますが、同じHTTP keyには同じ正規化requestが必要です。
+
+`GET /v1/jobs/{job_id}`は安全なstate、試行回数、時刻、入力参照、元のrevision 1結果参照を
+返し、request、lease token、owner principalは返しません。
+scope当たりpending/runningは100件、job当たり最大5試行です。
+terminal jobはrequest JSONを消去します。ownerは`POST /v1/jobs/{job_id}/retry`へ
+元のbody全体とkeyを送り、failed jobを明示再試行できます。
+同じparentの再試行は一つのchildを再利用し、そのchildが失敗したらchildを再試行します。
+
+subjectのprovision後、制限付き`PGAG_DATABASE_URL`資格情報で実行します。
+
+```bash
+pg-agmemory worker --subject TRUSTED_CONFIGURED_ISSUER_SUBJECT --once
+```
+
+`--once`省略時は継続実行します。workerはそのprincipalのjobだけをclaimします。
+`--subject`は信頼する配置設定でありHTTP偽装機能ではなく、workerにJWT key/admin URLは不要です。
+commit済みclaim、期限付きtoken lease、現在の認可/epoch再検査、
+assertion/jobの原子的publicationで古い試行を拒否します。
+at-least-once処理とjob当たり最大一つのcommit済み結果であり、外部exactly-once実行ではありません。
+assertionのrecorded/system timeはenqueueでなくworker publication時に始まります。
+worker stdout/logのoutcome参照は過去の記録であり、現在のread許可ではありません。
+job GET/explainが現在のアクセス権と削除状態を再検査します。
+
+`observe`は引き続きenqueueせず（`synthesis_job_id: null`）、同期`remember`も変更しません。
+recallは読取り可能な待機作業を`coverage.jobs_pending`で示し、
+`synthesis_pending: false`と`graph_used: false`を維持します。
+jobはrecall/explain itemでもcheckpoint/effectの参照kindでもありません。
+source/result purgeは依存jobとretry子孫を削除し、実行中publisherを拒否します。
+**jobやretry chainだけの削除では、公開済みassertionやsource episodeは消えません。**
+factを消すにはresult/sourceを明示purgeしてください。
+[契約](docs/STATUS-jp.md#durable-job)、
+[worker運用](docs/operations/README-jp.md#durable-jobとworkerの運用)、
+[ADR 0006](docs/adr/0006-durable-jobs-jp.md)を参照してください。
 
 ## Assertionの訂正
 
@@ -233,6 +280,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Checkpointの決定](docs/adr/0003-checkpoints-jp.md) | [Checkpoint decisions](docs/adr/0003-checkpoints.md) |
 | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) |
 | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) |
+| [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) | [Durable-job decisions](docs/adr/0006-durable-jobs.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

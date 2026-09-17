@@ -9,6 +9,10 @@
   assertion revision、宣言済みcheckpoint/effect依存、purge
 - 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
 
+過去の範囲: 以下のschema 5要件と証拠はv5時点のものです。
+[ADR 0006](0006-durable-jobs-jp.md)がdurable jobとschema 6を追加します。
+API/worker更新には本ADRの過去schema要件ではなく、現在の運用手順を使ってください。
+
 ## 決定と範囲
 
 canonical PostgreSQL tableと固定parameterized SQL joinをgraphの正しさの比較基準にします。
