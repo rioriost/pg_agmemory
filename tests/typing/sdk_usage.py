@@ -31,6 +31,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     PutEmbedding,
     Recall,
+    RecallFilters,
     RecallResult,
     Remember,
     RememberResult,
@@ -77,6 +78,16 @@ async def typed_calls(
             await memory.revise_assertion(identity, revise, idempotency_key=key), RevisionResult
         )
         assert_type(await memory.recall(recall), RecallResult)
+        assert_type(
+            await memory.recall(
+                Recall(
+                    scope_ids=[identity],
+                    purpose="typed-filter-example",
+                    filters=RecallFilters(kind="assertion", subject="ACME", predicate="tier"),
+                )
+            ),
+            RecallResult,
+        )
         assert_type(await memory.explain(explain), EpisodeExplanation | AssertionExplanation)
         assert_type(
             await memory.forget(forget, idempotency_key=key), DeletionPreview | DeletionResult

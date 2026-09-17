@@ -147,6 +147,7 @@ def test_exact_configuration_boundaries_and_environment(monkeypatch):
                 "required_memory_refs": [{"memory_id": str(uuid4()), "revision": 1}],
             }
         ).encode(),
+        b'{"event":"session_start","query":"","filters":{"subject":"SECRET"}}',
     ],
 )
 def test_invalid_input_is_not_an_empty_success(raw):

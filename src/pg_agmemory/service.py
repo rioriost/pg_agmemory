@@ -400,6 +400,8 @@ class MemoryService:
                      AND vec.model_name = %(model_name)s
                      AND vec.model_revision = %(model_revision)s
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
+                      AND (%(kind)s::text IS NULL OR %(kind)s = 'episode')
+                      AND %(subject)s::text IS NULL AND %(predicate)s::text IS NULL
                       AND o.created_at <= COALESCE(%(known)s, statement_timestamp())
                       AND e.occurred_at <= COALESCE(%(as_of)s, statement_timestamp())
                     UNION ALL
@@ -425,6 +427,9 @@ class MemoryService:
                     LEFT JOIN memory.relation_revision endpoint ON endpoint.tenant_id = r.tenant_id
                       AND endpoint.assertion_id = r.assertion_id AND endpoint.revision = r.revision
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
+                      AND (%(kind)s::text IS NULL OR %(kind)s = 'assertion')
+                      AND (%(subject)s::text IS NULL OR a.subject COLLATE "C" = %(subject)s)
+                      AND (%(predicate)s::text IS NULL OR a.predicate COLLATE "C" = %(predicate)s)
                       AND (NOT a.is_relation OR endpoint.assertion_id IS NOT NULL)
                       AND r.valid_time @> COALESCE(%(as_of)s, statement_timestamp())
                       AND r.system_time @> COALESCE(%(known)s, statement_timestamp())
@@ -435,6 +440,9 @@ class MemoryService:
             "profile": data.search_profile,
             "tenant": self.tenant,
             "scopes": data.scope_ids,
+            "kind": data.filters.kind if data.filters else None,
+            "subject": data.filters.subject if data.filters else None,
+            "predicate": data.filters.predicate if data.filters else None,
             "as_of": data.as_of if data.as_of is not None else clock["at"],
             "known": data.known_at if data.known_at is not None else clock["at"],
             "limit": data.max_items - len(data.required_memory_refs) + 1,

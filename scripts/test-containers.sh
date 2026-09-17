@@ -511,6 +511,50 @@ print("Production required context smoke passed: required prefix, item limit, bu
 
 "$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
 import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import Evidence, Forget, MemoryReference, Observe, Recall, RecallFilters, Remember
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-filters", source_event_id="filter-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Synthetic Gold evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="filters-source")
+        target = await sdk.remember(Remember(
+            scope_id=scope, subject="SyntheticFilters", predicate="tier", value="Gold",
+            evidence=[Evidence(memory_id=source.memory_id, quote="Gold")], explicit_intent=True,
+        ), idempotency_key="filters-assertion")
+        request = Recall(
+            scope_ids=[scope], purpose="synthetic-smoke", max_items=1,
+            filters=RecallFilters(kind="assertion", subject="SyntheticFilters", predicate="tier"),
+        )
+        result = await sdk.recall(request)
+        assert [value.memory_id for value in result.items] == [target.memory_id]
+        assert not result.coverage.truncated
+        try:
+            await sdk.recall(request.model_copy(update={
+                "required_memory_refs": [MemoryReference(memory_id=source.memory_id)],
+            }))
+        except MemoryClientError as error:
+            assert error.error.code == "not_found" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Required reference bypassed structured filters")
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="filters-purge")
+        assert purged.object_count == 2 and not (await sdk.recall(request)).items
+
+asyncio.run(smoke())
+print("Production recall filters smoke passed: exact filters, required mismatch, source purge")
+' "$scope_id"
+
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
 import json
 import os
 import subprocess

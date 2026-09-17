@@ -9,6 +9,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
 Content = Annotated[str, Field(min_length=1, max_length=65536)]
 Revision = Annotated[int, Field(ge=1, le=1000, strict=True)]
+Predicate = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 EntityType = Literal[
     "person", "organization", "project", "component", "incident", "task", "decision", "other"
 ]
@@ -89,7 +90,7 @@ def validate_assertion_content(
 class Remember(Contract):
     scope_id: UUID
     subject: ShortText
-    predicate: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+    predicate: Predicate
     value: Content
     evidence: Annotated[list[Evidence], Field(min_length=1, max_length=32)]
     explicit_intent: Literal[True]
@@ -104,7 +105,7 @@ class Remember(Contract):
 
 class CapturedMemory(Contract):
     subject: ShortText
-    predicate: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+    predicate: Predicate
     value: Content
     evidence_quote: Annotated[str, Field(min_length=1, max_length=4096)]
     explicit_intent: Literal[True]
@@ -149,6 +150,18 @@ class ReviseAssertion(Contract):
         return self
 
 
+class RecallFilters(Contract):
+    kind: Literal["episode", "assertion"] | None = None
+    subject: ShortText | None = None
+    predicate: Predicate | None = None
+
+    @model_validator(mode="after")
+    def assertion_fields(self) -> "RecallFilters":
+        if self.kind == "episode" and (self.subject is not None or self.predicate is not None):
+            raise ValueError("subject and predicate filters require assertion candidates")
+        return self
+
+
 class Recall(Contract):
     query: Annotated[str, Field(max_length=4096)] = ""
     scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
@@ -165,6 +178,7 @@ class Recall(Contract):
     required_memory_refs: Annotated[list[MemoryReference], Field(max_length=16)] = Field(
         default_factory=list
     )
+    filters: RecallFilters | None = None
 
     @model_validator(mode="after")
     def implicit_budget(self) -> "Recall":

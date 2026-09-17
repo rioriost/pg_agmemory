@@ -263,7 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-required-context",
+            "stage": "m2-structured-recall",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -312,6 +312,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "max_refs": 16,
                 "order": "request_order",
                 "budget_policy": "all_required_or_error",
+            },
+            "recall_filters": {
+                "fields": ["kind", "subject", "predicate"],
+                "match": "exact",
+                "combination": "and",
+                "retrieval_modes": ["lexical", "vector", "hybrid"],
             },
             "embeddings": {
                 "extension": "pgvector",
