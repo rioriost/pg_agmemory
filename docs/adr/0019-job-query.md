@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/production/DR qualification
 
+**Historical version notice:** this ADR records verified v0.0.19/schema 10.
+[ADR 0020](0020-assertion-history.md) records assertion metadata history in
+v0.0.20/schema 10 with 28 Native/SDK resources, verified locally and on both native architectures.
+Separate final v19 docs CI 35244626331 is recorded in
+[historical evidence](../STATUS.md#v0019--schema-10), distinct from implementation CI.
+
 ## Decision and request boundary
 
 Add authenticated read-only `POST /v1/jobs/query`, without `Idempotency-Key`

@@ -64,6 +64,10 @@ The job-query smoke checks caller-owned keyset pages, current state filtering,
 and source purge. Apply current visibility and ownership before the page limit;
 each cursor is a position, not authority or a stable snapshot. Reuse job GET
 integrity checks; see [ADR 0019](docs/adr/0019-job-query.md).
+The assertion-history smoke checks descending metadata pages, exact-revision
+explanation, and source purge. Do not include full values or evidence quotes in
+history pages or treat an ordinal cursor as authority or a fixed snapshot;
+see [ADR 0020](docs/adr/0020-assertion-history.md). Current ACLs apply to every page.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

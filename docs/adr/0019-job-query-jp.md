@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRは検証済みv0.0.19/schema 10を記録しています。
+[ADR 0020](0020-assertion-history-jp.md)はv0.0.20/schema 10のassertion metadata履歴を記録し、
+Native/SDK resourceは28です。localと両native architectureで検証済みです。
+別の最終v19 docs CI 35244626331は実装CIと分けて
+[過去の証拠](../STATUS-jp.md#v0019--schema-10)へ記録しています。
+
 ## 決定とrequest境界
 
 認証付きread-only `POST /v1/jobs/query`を追加し、`Idempotency-Key`やwrite権限は不要です。

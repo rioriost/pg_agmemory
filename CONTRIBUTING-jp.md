@@ -64,6 +64,10 @@ job-query smokeではcaller所有jobのkeyset page、現在のstate条件、sour
 現在の可視性・所有者条件を件数制限より前に適用してください。
 cursorは位置であり、権限や固定snapshotではありません。job GETと同じ完全性検査を再利用します。
 [ADR 0019](docs/adr/0019-job-query-jp.md)を参照してください。
+assertion-history smokeでは降順のmetadata page、指定revisionのexplain、
+source purgeを検査します。履歴pageにvalue全文や根拠引用を含めず、
+revision cursorを権限や固定snapshotとみなさないでください。
+[ADR 0020](docs/adr/0020-assertion-history-jp.md)を参照してください。各pageに現在のACLを適用します。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。
