@@ -8,6 +8,10 @@
   [ADR 0005](0005-relational-graph-jp.md)のgraph/checkpoint/effect履歴を維持
 - 命名: ローカルdirectory/package/serviceは`pg_agmemory`、公開repositoryは`rioriost/pgag_memory`
 
+過去の範囲: 下記schema 6の要件と証拠はv0.0.6だけを記述します。
+schema 7のlexical indexと現在の保守要件は[ADR 0007](0007-japanese-fts-jp.md)を参照し、
+v6の結果を新milestoneの検証として扱わないでください。
+
 ## 決定と範囲
 
 明示要求された非同期の**構造化記憶publication**をPostgreSQLに保存し、

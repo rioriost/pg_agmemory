@@ -2,7 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**v0.0.6/schema 6 durable jobs implemented; local and native Docker checks passed.
+**v0.0.7/schema 7 opt-in Japanese lexical FTS implemented;
+local and native Docker checks passed.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -12,8 +13,9 @@ complete these gates.
 ## Implemented surface
 
 PostgreSQL is the sole application persistence store, including the durable job
-queue. There is no external memory database, model service, queue, or file-based
-memory index.
+queue and lexical projections. There is no external memory database, model
+service, queue, or file-based memory index. Janome's packaged dictionary is a
+software dependency, not stored application memory.
 
 | Endpoint | Current behavior |
 |---|---|
@@ -34,7 +36,7 @@ memory index.
 | `POST /v1/tool-effects` | Records/deduplicates an intent within an existing checkpoint run; returns its initial revision reference |
 | `POST /v1/tool-effects/{memory_id}/transitions` | Appends a CAS-checked ledger transition; does not call the tool |
 | `GET /v1/tool-effects/{memory_id}` | Returns current state, immutable event history, references, HMAC identifiers, and the run-invalidated flag |
-| `POST /v1/recall` | Retrieves authorized episodes/assertions with PostgreSQL full-text search and builds a deterministic, byte-budgeted context pack |
+| `POST /v1/recall` | Retrieves authorized episodes/assertions with a default simple or opt-in Japanese lexical profile, echoes `search_profile`, and builds a deterministic, byte-budgeted context pack |
 | `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
 | `POST /v1/forget` | Accepts explicit IDs with `preview` or `purge`; no arbitrary selector or `suppress` mode |
 | `GET /v1/deletions/{receipt_id}` | Returns an authorized deletion receipt and the unresolved, operator-managed backup status |
@@ -57,7 +59,7 @@ PostgreSQL readiness.
   narrow access; service checks and RLS enforce membership and permissions.
   Hidden or deleted object access returns `404` without an existence distinction.
 - Runtime credentials must not be superuser, bypass RLS, or own application
-  tables, including through owner-role membership. Admin migration/provisioning
+  tables, including through owner-role membership. Admin migration/provisioning/rebuild
   credentials are separate.
 - JWKS discovery/rotation, delegated identities, multiple-issuer identity
   management, and public membership-administration APIs are not implemented.
@@ -160,12 +162,17 @@ include `recorded_at` (system start), `known_until` (system end, null for the
 current head), and `correction_reason` (null for revision 1), alongside that
 revision's evidence. See [ADR 0002](adr/0002-assertion-revisions.md).
 
+For exact `known_at` revision-boundary checks, use the server-returned assertion
+`recorded_at`, not a host/VM wall-clock sample.
+
 ## Retrieval and budgets
 
-Full-text search uses PostgreSQL's `simple` configuration, `plainto_tsquery`,
-and `ts_rank_cd`. It is not BM25, Japanese word segmentation, vector search,
-or hybrid retrieval. An empty `query` is allowed and selects accessible items
-under scope/time constraints, subject to item and byte limits.
+Recall defaults to `search_profile: "simple-v1"`, preserving PostgreSQL's `simple`
+configuration, `plainto_tsquery`, and `ts_rank_cd`. The optional Japanese profile
+below adds segmentation, not BM25, vector search, or hybrid retrieval. Responses
+echo `search_profile`; unsupported profiles return `422`. An empty `query` is
+allowed and browses canonical accessible items under scope/time constraints,
+subject to item and byte limits, even if lexical projections are incomplete.
 Entities themselves are excluded from recall/explain. Relation assertions remain
 FTS candidates; recall never automatically expands the graph and retains
 `graph_used: false`. Items and assertion explanations include nullable
@@ -180,15 +187,90 @@ Despite the request field name `token_budget`, `utf8-bytes-v1` budgets the
 serialized context pack in **UTF-8 bytes**, including its metadata and citations.
 The response declares `budget_unit: "utf8_bytes"`, `token_count: null`, and
 `exact_token_count: false`. This is a conservative fallback, not an exact model
-tokenizer or a size limit for the entire HTTP response. Items are omitted whole;
+tokenizer or a size limit for the entire HTTP response. This context
+`tokenizer_id` is unrelated to Japanese search segmentation. Items are omitted whole;
 if even pack metadata will not fit, the request returns `422`.
 
 Limits include a 1 MiB body for checkpoint creation and 256 KiB for other
 endpoints, 100 returned recall items at most, and budget
 values of 64–8,000 (implicit mode at most 2,000). `coverage.truncated` signals
-item/budget omissions. An empty selection is `not_found` or `budget_exhausted`;
+item/budget omissions. An empty selection is `not_found`, `budget_exhausted`, or
+`index_incomplete` as defined below;
 `retrieval_complete` does not mean complete knowledge of the world. Implicit
 mode is a request option, not an implemented automatic harness hook.
+
+### Japanese lexical profile
+
+Select `search_profile: "ja-janome-0.5.0-v1"` explicitly. Exact dependency
+**Janome 0.5.0** uses bundled **mecab-ipadic-2.7.0-20070801**, including Janome
+additions. Only matching Japanese-script runs in source and query text undergo
+surface/wakati segmentation; ASCII identifiers and English pass through the
+segmenter unchanged before PostgreSQL lexical processing. There is no
+Unicode/width normalization, lemma/stemming, synonym expansion, or claim of
+segmentation/recall quality. Han-script ranges also affect Chinese characters;
+Chinese recall is not qualified. No external model/provider is called.
+Preserving Latin text does not turn `simple-v1` into substring search: an
+embedded `Gold` without a token boundary need not match standalone `Gold`.
+
+Janome is lazy-imported only when a Japanese-script run requires segmentation;
+API import and English-only segmentation do not load it. The matcher's
+input-prefix cache is disabled with `max_cached_word_len=0`; only packaged
+dictionary-resource caches are retained, not source text or token streams.
+Both test and runtime container builds sequentially precompile only static
+Janome package bytecode, including dictionary modules. This is code preparation,
+not a memory index/cache. A fresh Linux subprocess regression guard requires
+no Janome import for English-only operations and initialization peak RSS
+**below 256 MiB**. It is not a deployed memory limit, a bound on request/backfill
+memory use, or release qualification on its own; cold uncompiled host installations and
+deployment resource sizing remain unqualified.
+
+`memory.episode_lexical` and `memory.assertion_lexical` store derived `tsvector`
+payloads for this profile. Episode rows represent revision 1; assertion rows
+identify the exact revision. Forced RLS and same-scope canonical foreign keys
+apply, with `ON DELETE CASCADE`. Runtime grants are `SELECT`/`INSERT` only, with
+no `UPDATE` or direct `DELETE`; canonical parent purge cascades without child
+DELETE grants. Episode content and
+assertion subject/predicate/exact-revision value are segmented, then indexed
+with `to_tsvector('simple', ...)`. The query uses segmented text with
+`plainto_tsquery('simple', ...)` and `ts_rank_cd`; the simple profile still uses
+the existing canonical vectors. Entities and jobs do not become recall items.
+
+Observe and all assertion publication/revision paths write projections in the
+same transaction, including typed relations and durable-job publication.
+Canonical IDs, timestamps, evidence, synchronous normalized JSON/HMAC, and
+historical revision selection are unchanged. Migration backfills all retained
+episodes and **all assertion revisions**, not only current heads, and skips
+tombstones. Offline administrative rebuild uses the same canonical sources.
+Japanese episode content retains the **65,536-character** limit; **65,537**
+characters are rejected rather than truncated. The separate 256 KiB HTTP body
+cap still applies, including JSON encoding overhead.
+
+For the Japanese profile, any missing projection among currently authorized,
+requested-scope, time-eligible canonical candidates sets
+`coverage.lexical_incomplete: true` and `coverage.retrieval_complete: false`.
+This check is independent of query relevance and the item limit. There is **no
+silent fallback** to simple search or automatic repair worker. Available matches
+may still be returned with the incomplete flag; an empty query still browses
+canonical items. No query candidates plus missing projections gives
+`empty_reason: "index_incomplete"`; candidates that cannot fit the context retain
+`"budget_exhausted"`, and a nonempty result has null `empty_reason`.
+Without missing projections, `lexical_incomplete` is false and ordinary
+`not_found`/budget rules apply. Projection coverage is not query relevance,
+queue state, or knowledge/quality completeness; `jobs_pending` remains separate.
+Janome corrupt-dictionary diagnostics are sanitized to `japanese_dictionary_error`
+without input text. Library `SystemExit` becomes tokenizer-unavailable:
+API `503 dependency_unavailable`, not an incomplete-index success; workers use
+the existing bounded `dependency_unavailable` retry path without input echo.
+
+Capabilities report stage `m2-japanese-fts`, feature `japanese_fts`, both
+`search_profiles`, `default_search_profile: "simple-v1"`, and pinned tokenizer/
+dictionary metadata with `normalization: "none"` and
+`segmentation: "japanese-script-runs"`. Context budgeting stays `utf8-bytes-v1`;
+`vector_search`, `auto_synthesis`, and recall `graph_used` remain false.
+The stage label is not full M2 acceptance. See
+[ADR 0007](adr/0007-japanese-fts.md),
+[offline rebuild](operations/README.md#lexical-profile-and-reindex-operations),
+and [dependency licensing](../README.md#dependency-licensing).
 
 ## Durable jobs
 
@@ -215,8 +297,8 @@ can submit its own job; different source identities are not semantically deduped
 There are at most **100 pending/running jobs per scope** (`422 job_limit_exceeded`)
 and **5 attempts per job**.
 Capabilities advertise `durable_jobs`, `job_kinds: ["structured_remember"]`,
-`auto_synthesis: false`, and the 100-job/5-attempt/30-second lease limits;
-the `m2-durable-jobs` stage label is not full M2 acceptance.
+`auto_synthesis: false`, and the 100-job/5-attempt/30-second lease limits.
+These bounded jobs are not full M2 acceptance.
 
 `GET /v1/jobs/{job_id}` requires current read access. Same-scope readers may read
 another principal's job but cannot claim, publish, or retry it. The response includes:
@@ -380,7 +462,7 @@ count toward the global path budget. A limit-plus-one probe detects additional
 eligible paths; at most `max_paths` are returned. Incoming/both changes traversal
 orientation only; edge source/target and reported facts are not inverted.
 
-Results contain `backend: "sql"`, `projection_watermark: null` (no projection,
+Results contain `backend: "sql"`, `projection_watermark: null` (no graph projection,
 lag, or watermark guarantee is needed), effective `as_of`/`known_at`, and:
 - `nodes`: canonical entity summaries, without full evidence quotes;
 - `edges`: canonical assertion ID/revision, source/target UUIDs, predicate,
@@ -621,6 +703,10 @@ object records, tombstones, audit/receipt
 metadata, job identities, and tenant-keyed HMAC source/idempotency tombstones persist for the
 tenant lifetime; there is no automatic expiry or full tenant-erasure workflow.
 Historical references and replay cannot resurrect purged labels, values, or receipts.
+Canonical deletion also cascades every affected episode/assertion lexical
+revision under the same tenant barrier, before tombstones commit. These derived
+payloads are not separate memory identities or provenance vertices. Rebuild
+skips tombstones and does not regenerate purged content.
 
 Receipts report `backup_status: "operator_managed"` and
 `backup_retention_deadline: null`. Old database pages, WAL, replicas, backups,
@@ -632,63 +718,82 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-Additive `006_durable_jobs.sql` follows unchanged migrations 001–005.
-`memory_ops.job` uses a `memory.object` anchor of kind `job`; `job_input` holds
-immutable same-scope episode references, and `job_identity` retains
-tenant/principal/scope HMAC deduplication. Forced RLS, same-scope foreign keys,
-input-completeness checks, limited lifecycle-column UPDATE grants, and transition
-guards enforce lease/attempt/cap/terminal rules. Intent is immutable; payload can
-be erased at terminal transition, not replaced.
-Typed graph/effect/checkpoint histories and guards remain unchanged, as do legacy
-`Remember` JSON/HMAC ordering, source identities, and checkpoint checksums.
-Jobs are not added to checkpoint/effect reference kinds.
-The v0.0.6 API **and worker** require exact history `[1, 2, 3, 4, 5, 6]` and reject
+Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
+the two lexical projection tables; the migration runner performs Python backfill
+in the **same transaction** before recording schema 7. All retained episodes and
+assertion revisions are covered without changing canonical IDs/system times,
+receipts, or tombstones. Failure even after backfill completes rolls back
+projection DDL/data and the schema ledger together: a schema-6 upgrade remains at
+6. Failed explicit reindex instead preserves existing schema-7 projections.
+Typed graph/job/effect/checkpoint histories and guards,
+legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
+remain unchanged. Projections add no checkpoint/effect reference kinds.
+The v0.0.7 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7]` and reject
 older, newer, or incomplete histories and unsafe runtime roles.
 
-Migration requires a forced-RLS-bypassing administrator with DDL rights and
-`btree_gist`. Migration 002's `row_security = off` fails closed if RLS would filter
-its backfill; it does not grant bypass privileges. Stop/drain all old/new APIs
-**and workers**, back up, migrate atomically, then start only matching v6 processes.
+Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
+rights; migration also requires DDL rights and `btree_gist`. `row_security = off`
+fails closed if RLS would filter backfill; it does not grant bypass privileges.
+`pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
+selected database. It uses `PGAG_ADMIN_DATABASE_URL`, requires schema 7, and
+atomically replaces only projections under the migration lock, emitting the
+`profile` and `episodes`/`assertion_revisions` counts, not source content.
+`--subject` is explicitly rejected, not a principal/scope filter; `--once` is
+also rejected as worker-only.
+Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
+then start only matching v7 processes.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
-[operations](operations/README.md#v006-maintenance-migration).
+[operations](operations/README.md#v007-maintenance-migration).
 
 ## Validation evidence
 
 Public repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory).
-For **v0.0.6/schema 6**, implementation commit
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
+For **v0.0.7/schema 7**, implementation commit
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
 final results were verified on **2026-09-17 JST**:
 
 | Environment | Command | Tests | Test elapsed |
 |---|---|---|---|
-| Local Apple Container | `./scripts/test-containers.sh` | 114 passed, 2 existing warnings | 209.97 s |
-| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 114 passed, 2 existing warnings | 351.24 s |
-| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 114 passed, 2 existing warnings | 299.66 s |
+| Local Apple Container | `./scripts/test-containers.sh` | 144 passed, 2 existing warnings | 206.54 s |
+| Docker, native `linux/amd64` | `./scripts/test-containers.sh docker` | 144 passed, 2 existing warnings | 386.32 s |
+| Docker, native `linux/arm64` | `./scripts/test-containers.sh docker` | 144 passed, 2 existing warnings | 331.59 s |
 
-All three final runs also passed **Ruff, strict mypy (11 source files), and
-non-root production API HTTP plus actual CLI worker smoke**. Both native Docker
-jobs in [CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
+All three final runs also passed **Ruff, strict mypy (12 source files), and all
+three non-root production smokes: Japanese tokenizer, API HTTP, and actual CLI
+worker**. Both native Docker jobs in
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
 ran the exact SHA above; actual logs verified the counts and checks, not just job
 status. Elapsed times are test-run observations, not performance benchmarks.
 
-Coverage includes job identity/retry/caps, lease expiry/takeover, atomic
-publication/rollback, current authorization/epochs, dependency purge, and
-preserved graph/effect/checkpoint and legacy idempotency behavior. For worker
-smoke, a disposable principal ran actual `pg-agmemory worker --subject ... --once`
-with runtime-only credentials in the non-root production image, verified
+Coverage includes default/opt-in lexical behavior, Japanese/ASCII handling,
+exact 65,536-character indexing and 65,537-character rejection, lazy loading and
+the fresh Linux initialization guard, temporal/RLS and incomplete-index/budget
+behavior, and canonical purge without child DELETE grants. It also covers
+schema-6 rollback after actual initial backfill, preservation of old projections
+after partial reindex failure, rejected reindex scope/worker flags, and retained
+job/graph/effect/checkpoint and legacy idempotency behavior. Exact historical
+checks use server-recorded assertion times, not VM wall-clock samples.
+
+The tokenizer smoke checks `東京都` → `東京` / `都` and logs
+`Production Japanese tokenizer smoke passed`; API smoke checks HTTP health.
+For worker smoke, a disposable principal ran actual
+`pg-agmemory worker --subject ... --once` with runtime-only credentials in the
+non-root production image, verified
 `{"outcome":"idle"}`, and logged `Production worker smoke passed`.
 The CI step is `Test containers and smoke-test production API and worker`.
-This smoke checks worker startup/idle execution; queued publication is covered
-by the test suite, not established by an idle result.
+These smokes check packaged tokenizer behavior, API liveness, and worker startup/
+idle execution, not end-to-end recall quality or queued-publication correctness;
+publication behavior is covered separately by the test suite.
 
-Historical **v0.0.5/schema 5** evidence only: implementation commit
-[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16),
-verified 2026-09-16: Apple Container and native Docker amd64/arm64 each passed
-91 tests (2 existing warnings), Ruff, strict mypy (9 source files), and production
-HTTP health smoke.
-[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
-logs confirmed those results; they are not v6 validation.
+The final lock retains the prior package-feed registry. All **36 packages'**
+versions, dependency metadata, and artifact hashes were verified byte-for-byte
+equivalent to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0
+was added and the project version changed to v0.0.7; there were no unrelated
+upgrades or registry migration. Native CI built the final retained-registry lock.
+
+Earlier v5 evidence remains historical in [ADR 0005](adr/0005-relational-graph.md);
+v6 decisions/evidence remain in [ADR 0006](adr/0006-durable-jobs.md).
 Checks do not establish complete M0/M1/M2/M3, measured performance/quality, external
 exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure qualification.
 
@@ -696,11 +801,11 @@ exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure 
 
 Automatic enqueue/NL extraction/synthesis, LLM/provider processing, global
 multi-tenant scheduling/fairness/cost pools, separate working snapshots/
-compaction, embeddings/pgvector, Japanese tokenization, AGE, SQL/PGQ,
+compaction, embeddings/pgvector, vector/hybrid retrieval, AGE, SQL/PGQ,
 provider receipt verification, actual harness integration/execution/recovery,
 cross-assertion supersession/fact arbitration, MCP, SDKs, and postgresem integration
-are absent. Explicit structured jobs, the bounded SQL graph oracle, and typed
-checkpoint envelopes do not complete the planned
+are absent. Opt-in lexical segmentation, explicit structured jobs, the bounded SQL
+graph oracle, and typed checkpoint envelopes do not complete the planned
 bitemporal, graph, provenance, or deletion architecture.
 
 See [ADR 0001](adr/0001-initial-slice.md) for these choices,

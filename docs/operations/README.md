@@ -13,16 +13,22 @@ databases or real user histories.
 Use PostgreSQL 18 and an image built from the repository's `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub remains `rioriost/pgag_memory`.
-The v0.0.6 durable-jobs milestone requires schema 6. Apple Container and native
-Docker amd64/arm64 each passed 114 tests (2 existing warnings), Ruff, strict mypy
-(11 source files), and non-root production API HTTP plus actual CLI worker
-`--once` idle smoke. Final SHA, CI logs, timings, and separate historical v5
-evidence are in
+The v0.0.7 opt-in Japanese lexical FTS milestone requires schema 7.
+Apple Container and native Docker amd64/arm64 each passed **144 tests**
+(2 existing warnings), Ruff, strict mypy (12 source files), and all three non-root
+production smokes: Japanese tokenizer, API HTTP, and actual worker CLI `--once`
+idle execution. Final SHA, CI logs, and timings are in
 [validation evidence](../STATUS.md#validation-evidence).
+
+Use the final lock, which retains the existing package-feed registry. All
+36 packages' versions, dependency metadata, and artifact hashes are byte-for-byte
+equivalent to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0 was
+added and the project version became v0.0.7; no unrelated upgrades or registry
+migration occurred. Native CI built this retained-registry lock.
 
 | Setting | Consumer | Purpose |
 |---|---|---|
-| `PGAG_ADMIN_DATABASE_URL` | Administrative CLI only | Migration and private tenant/principal/scope provisioning |
+| `PGAG_ADMIN_DATABASE_URL` | Administrative CLI only | Migration, offline all-tenant lexical rebuild, and private tenant/principal/scope provisioning |
 | `PGAG_DATABASE_URL` | API and worker runtime | Dedicated restricted login belonging to `pgag_runtime` |
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | Static PEM RSA verification key, at least 2048 bits; never the signing private key |
 | `PGAG_JWT_ISSUER` | API runtime | Exact trusted issuer |
@@ -38,14 +44,16 @@ evidence are in
    `src/pg_agmemory/storage/002_assertion_revisions.sql` and
    `src/pg_agmemory/storage/003_checkpoints.sql` and
    `src/pg_agmemory/storage/004_tool_effects.sql` and
-   `src/pg_agmemory/storage/005_relational_graph.sql`, followed by additive
-   `src/pg_agmemory/storage/006_durable_jobs.sql`, are installed package
+   `src/pg_agmemory/storage/005_relational_graph.sql` and
+   `src/pg_agmemory/storage/006_durable_jobs.sql`, followed by additive
+   `src/pg_agmemory/storage/007_japanese_fts.sql`, are installed package
    resources. Do not substitute the illustrative DDL in the plan or expect
    generated files. The administrator must be superuser or a qualified
    `BYPASSRLS` role with the required ownership/DDL, role/schema creation, and
    `btree_gist` extension installation rights. Bypass alone does not grant DDL.
-   Migration 002 uses `row_security = off` to fail closed if RLS would filter
-   its backfill; that setting does not bypass forced RLS by itself.
+   Backfills, including migration 007's Python rebuild, use `row_security = off`
+   to fail closed if RLS would filter rows; that setting does not bypass forced
+   RLS by itself.
 3. With a separate administrator, create a dedicated runtime login using
    `NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime` and securely assign its password.
    Grant neither table ownership nor membership in the migration owner's role.
@@ -57,7 +65,7 @@ evidence are in
 5. Supply only the runtime settings and run `pg-agmemory serve`. The process
    rejects superuser, RLS-bypass, and application-table-owner connections at
    startup, including owner-role membership. It also requires the schema
-   ledger to equal `[1, 2, 3, 4, 5, 6]` exactly; missing, older, newer, or incomplete
+   ledger to equal `[1, 2, 3, 4, 5, 6, 7]` exactly; missing, older, newer, or incomplete
    history is rejected. The worker reuses these role/schema checks without
    requiring the API's JWT settings.
 
@@ -70,8 +78,9 @@ authorization boundary.
 <a id="v003-maintenance-migration"></a>
 <a id="v004-maintenance-migration"></a>
 <a id="v005-maintenance-migration"></a>
+<a id="v006-maintenance-migration"></a>
 
-## v0.0.6 maintenance migration
+## v0.0.7 maintenance migration
 
 **No rolling old/new API/worker coexistence or downgrade is supported.**
 Rehearse upgrades only in disposable test databases. Passing migration tests
@@ -85,22 +94,30 @@ Follow this maintenance protocol:
    latest deletion ledger and ACL revocations independently as required for
    restore quarantine. Do not overwrite the only pre-migration backup.
 3. With the privileged migration administrator and the new image, run
-   `pg-agmemory migrate`. It applies pending scripts and ledger updates in one
-   transaction under the migration lock. A 5-second lock timeout aborts rather
+   `pg-agmemory migrate`. It applies pending scripts, Python lexical backfill,
+   and ledger updates in one transaction under the migration lock.
+   A 5-second lock timeout aborts rather
    than waiting indefinitely; diagnose contention while traffic remains stopped.
-4. Migration 006 adds `memory_ops.job`, immutable `job_input`, retained HMAC
-   `job_identity`, and the `job` object kind, with RLS, same-scope foreign keys,
-   input/lease/attempt/terminal guards, and limited job lifecycle UPDATE grants.
-   Migrations 001–005 remain unchanged; older DBs receive missing versions
-   sequentially. Preserve graph/assertion/effect histories, checkpoint checksums,
-   timestamps, source-event/idempotency records, and `Remember` JSON/HMAC ordering.
+4. Migration 007 adds `memory.episode_lexical` and `memory.assertion_lexical`,
+   with forced RLS, same-scope canonical foreign keys, and cascade deletion.
+   Runtime grants are `SELECT`/`INSERT` only: no `UPDATE` or direct `DELETE`.
+   Canonical parent purge cascades without child DELETE grants.
+   Python backfill covers all retained episodes and every
+   assertion revision, skips tombstones, and completes before schema 7 is recorded.
+   Failure even after backfill completes rolls back projection DDL/data and the
+   schema ledger together; a schema-6 upgrade remains at 6.
+   Migrations 001–006 remain unchanged; older DBs receive missing versions
+   sequentially. Preserve graph/job/assertion/effect histories, checkpoint checksums,
+   canonical IDs/system times, source-event/idempotency receipts, and `Remember`
+   JSON/HMAC ordering. Use the pinned Janome 0.5.0 dependency and bundled dictionary.
    The v4 ledger's stricter resume rules remain: untracked hints, even planned
    ones, block resumption.
-5. Confirm exact history `[1, 2, 3, 4, 5, 6]`, then start **only matching v6 APIs/workers**
+5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7]`, then start **only matching v7 APIs/workers**
    with restricted runtime credentials and the intended fixed worker subjects.
-   Check capabilities/schema and the milestone's enqueue/retry, lease takeover,
-   expiry rollback, authorization/epoch, purge, worker, and historical-compatibility
-   behavior before restoring traffic. A health response alone does not validate these.
+   Check capabilities/schema, default/opt-in recall and projection coverage,
+   historical revision selection, authorization, purge, atomic publication, and
+   compatibility before restoring traffic. A health response alone does not
+   validate these. Migration/rebuild duration and resource use are unqualified.
 6. On failure, leave APIs/workers stopped. Do not launch the old image against the
    changed schema or assume a downgrade exists. Any backup restore remains
    quarantined until the latest deletion/ACL state is reapplied and validated.
@@ -108,6 +125,84 @@ Follow this maintenance protocol:
 **The old v0.0.1 API does not contain the new schema-compatibility guard.**
 It may start against an incompatible schema; operators must keep it stopped.
 The new runtime's refusal of schema mismatches does not protect old processes.
+
+## Lexical profile and reindex operations
+
+Recall defaults to `search_profile: "simple-v1"`; explicitly request
+`"ja-janome-0.5.0-v1"` for Japanese-script surface/wakati segmentation. The
+response echoes the selected profile. Janome 0.5.0 uses bundled
+mecab-ipadic-2.7.0-20070801 with Janome additions. ASCII identifiers/English pass
+through the segmenter unchanged; PostgreSQL still performs lexical processing.
+There is no Unicode/width normalization, lemma/stemming, synonym matching, or
+segmentation/recall-quality qualification. Han handling can affect Chinese
+characters without qualifying Chinese recall. This is not vector/hybrid search,
+an external model/provider, or a file-based memory index; context budgeting
+remains the separate `utf8-bytes-v1` contract.
+
+Use the supported container build profile: test and runtime builds sequentially
+precompile **only static Janome package bytecode**, including dictionary modules.
+It is packaged code, not a memory index/cache or compiled user input. Janome is
+lazy-imported only for Japanese-script runs; English-only operations do not load
+it. `max_cached_word_len=0` disables matcher input-prefix caching, retaining only
+packaged dictionary-resource caches. Cold host installations without precompiled
+dictionary code can have much larger initialization peaks.
+The fresh Linux subprocess guard requires initialization peak RSS **below 256 MiB**
+and no Janome import for English-only operations. Do not use that test threshold
+as a deployment memory limit: request processing, concurrency, migration/rebuild,
+and resource sizing are not qualified. See the bounded diagnostic observations
+in [ADR 0007](../adr/0007-japanese-fts.md#runtime-initialization-boundary).
+
+For the Japanese profile, missing currently authorized, requested-scope,
+time-eligible projections set `coverage.lexical_incomplete: true` and
+`coverage.retrieval_complete: false`, regardless of query relevance or job state.
+Available matches may still return; an empty query browses canonical items even
+with the flag. No candidates with missing projections gives
+`empty_reason: "index_incomplete"`; candidates dropped for budget still give
+`"budget_exhausted"`. There is no silent simple-profile fallback or repair worker.
+Choosing simple search does not repair the Japanese projection.
+Corrupt-dictionary logs are sanitized to `japanese_dictionary_error`, without
+input text. Janome `SystemExit` becomes tokenizer-unavailable and API
+`503 dependency_unavailable`, not `index_incomplete`; workers follow existing
+bounded dependency retries without input echo.
+
+Reindex rebuilds **all tenants in the selected database**, not one worker
+principal or scope. `--subject` is explicitly rejected rather than narrowing
+access; `--once` is also rejected as worker-only.
+To rebuild an existing schema-7 database from canonical data:
+
+1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
+   as for migration. This is offline maintenance, not a live administrative API.
+2. Use the matching v7 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+   bypass and the required table privileges, then run:
+
+   ```bash
+   pg-agmemory reindex-lexical
+   ```
+
+3. The command requires exact history `[1, 2, 3, 4, 5, 6, 7]`, takes the migration
+   advisory lock with a 5-second lock timeout, and replaces both projection
+   tables in one transaction. It segments every retained episode and assertion
+   revision, not just heads, excluding tombstones. Canonical IDs, system times,
+   evidence, receipts, and synchronous request hashes do not change.
+   JSON output contains `profile: "ja-janome-0.5.0-v1"` and integer
+   `episodes`/`assertion_revisions` counts only, never source text or tokens.
+4. On failure, even after partial replacement, the old schema-7 projections
+   remain intact. Keep traffic stopped and diagnose
+   schema, privileges, or lock contention. Never grant runtime bypass or edit
+   canonical text, timestamps, or receipts to repair an index.
+5. Restart only matching v7 APIs/workers. Before reopening traffic, inspect
+   profile/coverage and authorized current/historical recall with approved test
+   data. For exact `known_at` boundaries, use server-returned assertion
+   `recorded_at`, not host/VM wall-clock samples.
+   Counts alone do not certify relevance, completeness of world knowledge,
+   or performance. No automatic recovery or DR guarantee is implied.
+
+The packaged dictionary is a code dependency, while projections live only in
+PostgreSQL. Preserve Janome's Apache-2.0 license and bundled IPADIC copyright/
+license notices when redistributing images; see
+[dependency licensing](../../README.md#dependency-licensing) and
+[ADR 0007](../adr/0007-japanese-fts.md). M0/M1/M2/M3 and MVP/production acceptance
+remain incomplete.
 
 ## Durable-job and worker operations
 
@@ -215,7 +310,7 @@ quality, and DR acceptance remain incomplete.
    seeds may be returned with no paths. Empty/bounded results do not prove absence.
 5. Treat `409 graph_invalidated` as an invalidated read and DB `503` as failure,
    never as an empty graph. PostgreSQL canonical joins need no AGE/SQL/PGQ
-   installation, projection rebuild, or lag/watermark operation:
+   installation, graph projection rebuild, or lag/watermark operation:
    `backend: "sql"`, `projection_watermark: null`. There is no dynamic graph
    SQL/Cypher/label input. Recall remains FTS with `graph_used: false`.
 6. Declare every copied entity revision 1 or exact assertion revision in
@@ -413,6 +508,10 @@ independent effects merely for sharing the run; surviving records remain reconci
 Job request/input rows are removed before assertion/episode rows and tombstones
 under the same tenant barrier, fencing running publishers. Purged-job GET/replay
 returns `404`; retained job identity prevents exact-job resurrection.
+Canonical episode/assertion deletion cascades all corresponding lexical
+revisions in that same barrier before tombstones commit. These rows are derived
+payload, not separate memory/provenance vertices; rebuild skips tombstones and
+cannot recover purged source content.
 Payloads, entity evidence, typed links, quotes, references, and effect events
 (reason/receipt references included)
 are SQL-deleted from active tables before timestamped markers enter
@@ -469,7 +568,14 @@ native dual-architecture Docker CI checks.
 worker CLI smoke in the non-root production image. It provisions a disposable
 principal, supplies runtime-only credentials to `worker --subject ... --once`,
 asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
+It also checks `東京都` → `東京` / `都` segmentation in the non-root runtime image
+and emits `Production Japanese tokenizer smoke passed` on success. This tests
+packaged tokenizer initialization/segmentation, not end-to-end recall or quality.
 The CI step is `Test containers and smoke-test production API and worker`.
 This idle-worker check is not a publication test or production/DR qualification.
-Final v6 local and native Docker results are recorded in
-[STATUS](../STATUS.md#validation-evidence).
+Final v7 implementation
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)
+passed local Apple Container and exact-SHA native Docker
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029);
+all three production smokes passed in each environment. Detailed results are in
+[STATUS](../STATUS.md#validation-evidence), not a production/DR acceptance claim.

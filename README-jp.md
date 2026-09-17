@@ -7,7 +7,8 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**v0.0.6/schema 6のdurable jobを実装済みで、ローカルとnative Dockerの検査は合格しています。
+**v0.0.7/schema 7のopt-in日本語lexical FTSを実装済み。
+ローカルとnative Dockerの検査は合格しています。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -16,11 +17,12 @@ PostgreSQL RLSの両方で強制し、変更はcommit後に応答します。
 assertion revisionはサーバー管理のsystem-time履歴とrevision固有の根拠を維持します。
 typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳を提供します。
 明示entityとrevision付きrelation assertionは上限付きの読取り専用SQL graph探索を提供します。
-新milestoneは固定principal workerによる明示queue型の構造化記憶publicationを追加し、
-自動synthesis、自然言語抽出、tool/provider実行は行いません。
+固定principal workerによる明示queue型の構造化publicationも提供します。
+新milestoneはopt-inのversion付き日本語lexical search profileを追加します。
+vector/hybrid retrieval、自動synthesis、分割/recall品質の測定済み改善ではありません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、harness adapter、
-自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、日本語tokenizer、
+自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、
 AGE/SQL/PGQ、MCP、SDK、postgresem連携は今後の実装対象です。
 性能・記憶品質の受入目標は未測定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
@@ -40,6 +42,9 @@ PostgreSQL integrationテスト後にproduction APIのHTTP healthを確認し、
 **non-root production image**内で実際の`pg-agmemory worker --subject ... --once`を実行します。
 worker smokeは使い捨てのprovision済みprincipalとruntime専用資格情報を使い、
 `{"outcome":"idle"}`を検査して`Production worker smoke passed`をlogに出します。
+non-root runtime imageのtokenizer smokeは`東京都` → `東京` / `都`も検査し、
+成功時に`Production Japanese tokenizer smoke passed`を出力します。
+end-to-end recallや分割品質の評価ではありません。
 専用の使い捨てPostgreSQLコンテナを利用し、
 自分が作ったコンテナ・ネットワークだけを片付けます。
 既存のDBやコンテナは変更しません。Python/PostgreSQL/uvのimage版とdigestは固定しています。
@@ -54,14 +59,20 @@ step名は`Test containers and smoke-test production API and worker`です。
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.6/schema 6**の実装commit
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8)は、
+**v0.0.7/schema 7**の実装commit
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
 Apple Containerとnative Dockerの**linux/amd64**・**linux/arm64**で、
-それぞれ**114テスト**（既存warning 2件）、Ruff、strict mypy（source 11ファイル）、
-non-root production API HTTPと実CLI worker `--once` idle smokeの両方が合格しました。
+それぞれ**144テスト**（既存warning 2件）、Ruff、strict mypy（source 12ファイル）、
+non-root productionの日本語tokenizer、API HTTP、実CLI worker `--once` idle実行という
+全3種のsmokeが合格しました。最終結果は**2026-09-17 JST**に確認しました。
 両CI jobは同じ完全一致SHAで実行し、実logで全検査を確認しています。
-[CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)と、
-所要時間・過去のv5結果を区別した[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)と、
+[検証証拠](docs/STATUS-jp.md#検証証拠)を参照してください。
+
+最終lockは既存package-feed registryを維持し、全**36 package**のversion、依存metadata、
+artifact hashはテスト済みPyPI解決lockとbyte単位で同一です。v6との差分はJanome 0.5.0の
+追加とprojectのv0.0.7へのversion更新だけで、無関係なupgradeやregistry移行はありません。
+native CIはこの最終retained-registry lockからbuildしました。
 
 ## APIの起動
 
@@ -89,16 +100,17 @@ PostgreSQL 18を使用します。以下のアプリケーションコマンド�
 
 runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 組込みcredential、既定token、認証回避設定はありません。
-migration/provisionは管理操作であり、public endpointとして公開してはいけません。
+migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.6への更新には保守停止とbackupが必要です。**
-旧版・新版すべてのAPI**とworker**を停止/drainし、`006_durable_jobs.sql`までの
-未適用migrationを適用してから対応するv6 API/workerだけを起動します。
-両者ともschema履歴が厳密に`[1, 2, 3, 4, 5, 6]`であることを要求します。
+**v0.0.7への更新には保守停止とbackupが必要です。**
+旧版・新版すべてのAPI**とworker**を停止/drainし、`007_japanese_fts.sql`までの
+未適用migrationと原子的Python lexical backfillを適用してから、
+対応するv7 API/workerだけを起動します。
+両者とも厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求します。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 rolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v006の保守migration)に従ってください。
+[migration手順](docs/operations/README-jp.md#v007の保守migration)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -122,6 +134,44 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 検証やsecret/PIIの自動除去は行いません。保存が許可され、除去処理済みのdataだけを送ってください。
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
+
+## Opt-inの日本語lexical recall
+
+`POST /v1/recall`の既定は`search_profile: "simple-v1"`で、
+PostgreSQL `simple`/`plainto_tsquery`/`ts_rank_cd`を維持します。
+日本語scriptのsurface/wakati分割には`"ja-janome-0.5.0-v1"`を明示選択し、
+応答はそのprofileを返します。Janome **0.5.0**と、Janome追加語を含む同梱
+**mecab-ipadic-2.7.0-20070801**を使います。対象の日本語script連続部分だけを分割し、
+ASCII識別子/英語はsegmenterをそのまま通過します。Unicode/全半角正規化、原形化/stemming、
+同義語処理、分割品質の保証はありません。漢字scriptの処理は中国語文字にも及びますが、
+中国語recallの適格性は未確認です。
+
+Janomeは日本語script連続部分がある場合だけlazy importします。
+入力prefix cacheは無効（`max_cached_word_len=0`）で、保持するcacheは同梱辞書resourceだけです。
+test/runtime container buildは**静的Janome package bytecodeだけ**を逐次事前compileし、
+user textやmemory index/cacheは作りません。この事前compileのないcold host installationでは
+初期化時のpeakが大幅に増える可能性があり、配置時のresource sizingは適格性未確認です。
+
+`tokenizer_id: "utf8-bytes-v1"`は引き続きcontext byte予算用で、日本語token数ではありません。
+scope、時間、根拠、ACL、削除、byte上限を維持します。
+認可済み・時間条件内の日本語projectionが欠けると、黙ってfallbackせず
+`coverage.lexical_incomplete: true`と`coverage.retrieval_complete: false`を返します。
+projection欠落があり候補もなければ`empty_reason: "index_incomplete"`となり、
+既存の予算不足とは区別します。空queryはindex不完全flagがあってもcanonical itemをbrowseします。
+flagはprojection coverageであり、query関連性やqueue状態ではありません。
+
+書込みはepisodeと全assertion revisionを原子的にindex化し、typed relation/job publicationも
+含みます。lexical runtime権限は`SELECT`/`INSERT`だけで、`UPDATE`や直接`DELETE`は
+付与しません。canonical parent purgeが同じbarrierでFK cascadeにより派生行を消し、
+子tableのDELETE権限は不要です。別memoryとしては扱いません。
+offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
+**選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
+`--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
+対応するv7だけを再起動します。
+自動修復worker、外部model/provider、fileベースのmemory indexはありません。
+[契約](docs/STATUS-jp.md#日本語lexical-profile)、
+[保守](docs/operations/README-jp.md#lexical-profileとreindexの運用)、
+[ADR 0007](docs/adr/0007-japanese-fts-jp.md)を参照してください。
 
 ## Durableな構造化publication job
 
@@ -281,8 +331,17 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) |
 | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) |
 | [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) | [Durable-job decisions](docs/adr/0006-durable-jobs.md) |
+| [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) | [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 
-[LICENSE](LICENSE)を参照してください。依存ライブラリには各自のlicenseが適用されます。
-model weights、第三者dataset、benchmark用会話履歴は同梱していません。
+## 依存ライセンス
+
+project codeは[MIT](LICENSE)ですが、**依存関係すべてがMITではありません**。
+[Janome 0.5.0はApache-2.0](https://github.com/mocobeta/janome/blob/0.5.0/LICENSE.txt)です。
+同梱mecab-ipadic辞書/統計dataには別の
+[IPADIC copyright/license notice（NAIST/ICOT）](https://github.com/mocobeta/janome/blob/0.5.0/NOTICE.txt)
+が適用され、[Janomeの辞書追加語](https://github.com/mocobeta/janome/blob/0.5.0/ipadic/Noun.proper.csv.patch)
+もこの固定releaseに含まれます。package/image再配布時は上流のlicense/notice fileを保持してください。
+同梱辞書はcode依存でありuser memoryではなく、memory projectionの保存先はPostgreSQLだけです。
+LLM weightsやbenchmark用会話履歴は同梱していません。

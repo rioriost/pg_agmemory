@@ -2,7 +2,8 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**v0.0.6/schema 6のdurable jobを実装済みで、ローカルとnative Dockerの検査は合格しています。
+**v0.0.7/schema 7のopt-in日本語lexical FTSを実装済み。
+ローカルとnative Dockerの検査は合格しています。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -10,8 +11,9 @@ M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しま
 
 ## 実装済みの範囲
 
-durable job queueを含め、アプリケーションの永続化先はPostgreSQLのみです。
+durable job queueとlexical projectionを含め、アプリケーションの永続化先はPostgreSQLのみです。
 外部memory DB、モデルサービス、外部queue、ファイルベースのmemory indexはありません。
+Janome同梱辞書はsoftware依存であり、保存されたapplication memoryではありません。
 
 | Endpoint | 現在の動作 |
 |---|---|
@@ -32,7 +34,7 @@ durable job queueを含め、アプリケーションの永続化先はPostgreSQ
 | `POST /v1/tool-effects` | 既存checkpoint run内のintentを記録/重複抑止し、初期revision参照を返す |
 | `POST /v1/tool-effects/{memory_id}/transitions` | CAS付きledger遷移を追記。toolは呼び出さない |
 | `GET /v1/tool-effects/{memory_id}` | 現在の状態、不変event履歴、参照、HMAC識別子、run失効flagを返す |
-| `POST /v1/recall` | PostgreSQL全文検索で許可済みepisode/assertionを検索し、byte予算内の決定的context packを生成 |
+| `POST /v1/recall` | 既定simpleまたはopt-in日本語lexical profileで許可済みepisode/assertionを検索し、`search_profile`とbyte予算内の決定的context packを返す |
 | `POST /v1/explain` | 指定したassertion revisionと根拠を返す。省略時は最新ではなく引き続き`1`。episodeはrevision `1`のみ。ranking trace APIはない |
 | `POST /v1/forget` | 明示IDによる`preview`または`purge`。任意selectorや`suppress` modeは受け付けない |
 | `GET /v1/deletions/{receipt_id}` | 許可された削除receiptと、未解決のoperator-managed backup状態を返す |
@@ -56,7 +58,7 @@ PostgreSQLへの継続的なreadiness検査ではありません。
   非公開または削除済みobjectへのアクセスは、存在を区別せず`404`です。
 - runtime資格情報はsuperuser、RLS bypass、アプリケーションtable ownerに
   できません。owner role経由の所属も禁止します。
-  migration/provision用の管理者資格情報を分離します。
+  migration/provision/rebuild用の管理者資格情報を分離します。
 - JWKS discovery/rotation、delegated identity、複数issuerのidentity管理、
   公開membership管理APIは未実装です。
 
@@ -155,12 +157,16 @@ assertionの説明には、該当revisionの根拠に加え、
 `correction_reason`（revision 1はnull）を含めます。
 [ADR 0002](adr/0002-assertion-revisions-jp.md)を参照してください。
 
+正確な`known_at`のrevision境界検査には、host/VMのwall-clock値ではなく、
+serverが返したassertionの`recorded_at`を使ってください。
+
 ## 検索と予算
 
-全文検索はPostgreSQLの`simple`設定、`plainto_tsquery`、`ts_rank_cd`を使います。
-BM25、日本語の分かち書き、vector検索、hybrid retrievalではありません。
-空の`query`を許可し、scope・時間条件で参照可能なitemを、
-件数とbyteの上限内で取得します。
+recallの既定は`search_profile: "simple-v1"`で、PostgreSQLの`simple`設定、
+`plainto_tsquery`、`ts_rank_cd`を維持します。下記の任意日本語profileは分割を追加しますが、
+BM25、vector検索、hybrid retrievalではありません。応答は`search_profile`を返し、
+未対応profileは`422`です。空の`query`はlexical projectionが不完全でも、
+scope・時間条件内のcanonical itemを件数とbyteの上限内でbrowseします。
 entity自体はrecall/explainから除外します。relation assertionはFTS候補のままで、
 recallが自動的にgraphを展開することはなく、`graph_used: false`を維持します。
 itemとassertion説明には返却revisionに対応するnullableな
@@ -176,14 +182,80 @@ serialized context packの**UTF-8 byte数**を予算として扱います。
 応答には`budget_unit: "utf8_bytes"`、`token_count: null`、
 `exact_token_count: false`を明示します。保守的なfallbackであり、
 モデルの正確なtokenizerやHTTP応答全体のsize制限ではありません。
+このcontext `tokenizer_id`は日本語検索の分割とは無関係です。
 item単位で除外し、packのmetadataすら収まらない場合は`422`を返します。
 
 request bodyはcheckpoint作成のみ1 MiB、他endpointは256 KiBです。
 recallの返却itemは最大100件、予算値は64〜8,000
 （implicit modeは最大2,000）です。件数・予算による省略を`coverage.truncated`で
-示します。空の選択結果は`not_found`または`budget_exhausted`です。
+示します。空の選択結果は`not_found`、`budget_exhausted`、
+または下記の`index_incomplete`です。
 `retrieval_complete`は世界の知識の完全性を意味しません。
 implicit modeはrequest optionであり、自動harness hookの実装ではありません。
+
+### 日本語lexical profile
+
+`search_profile: "ja-janome-0.5.0-v1"`を明示選択します。厳密に固定した依存
+**Janome 0.5.0**は、Janome追加語を含む同梱**mecab-ipadic-2.7.0-20070801**を使います。
+source/query textの対象日本語script連続部分だけをsurface/wakati分割し、
+ASCII識別子や英語はsegmenterをそのまま通過してPostgreSQLのlexical処理へ渡します。
+Unicode/全半角正規化、原形化/stemming、同義語展開、分割/recall品質の保証はありません。
+漢字script範囲は中国語文字にも及びますが、中国語recallの適格性は未確認です。
+外部model/providerは呼び出しません。
+Latin textを維持しても`simple-v1`が部分文字列検索になるわけではなく、
+token境界なしで埋め込まれた`Gold`は単独の`Gold`に一致するとは限りません。
+
+Janomeは日本語script連続部分の分割が必要なときだけlazy importし、
+API importや英語だけの分割ではloadしません。matcherの入力prefix cacheは
+`max_cached_word_len=0`で無効にし、source text/token streamでなく同梱辞書resourceの
+cacheだけを保持します。test/runtime両container buildは辞書moduleを含む静的Janome package
+bytecodeだけを逐次事前compileします。code準備でありmemory index/cacheではありません。
+fresh Linux subprocessのregression guardは、英語だけの操作でJanomeをimportしないことと、
+初期化peak RSSが**256 MiB未満**であることを要求します。
+配置時のmemory上限やrequest/backfillのmemory使用量上限ではなく、単独でrelease適格性を示しません。
+事前compileのないcold host installationやresource sizingは適格性未確認です。
+
+`memory.episode_lexical`と`memory.assertion_lexical`は、このprofileの派生`tsvector`
+payloadを保存します。episode行はrevision 1、assertion行は正確なrevisionに対応します。
+forced RLSと同一scope canonical外部keyを適用し、`ON DELETE CASCADE`を使い、
+runtime権限は`SELECT`/`INSERT`だけです。`UPDATE`や直接`DELETE`は付与せず、
+canonical parent purgeは子tableのDELETE権限なしでcascadeします。
+episode本文とassertionのsubject/predicate/正確なrevisionの
+valueを分割後、`to_tsvector('simple', ...)`でindex化します。queryは分割textを
+`plainto_tsquery('simple', ...)`と`ts_rank_cd`へ渡します。
+simple profileは既存canonical vectorを維持し、entity/jobはrecall itemになりません。
+
+observeと全assertion publication/revision経路は同一transactionでprojectionを書き込み、
+typed relationとdurable job publicationも含みます。canonical ID、timestamp、根拠、
+同期正規化JSON/HMAC、過去revisionの選択は変わりません。migrationは現headだけでなく、
+全保持episodeと**全assertion revision**をbackfillし、tombstoneをskipします。
+offline管理rebuildも同じcanonical sourceを使います。
+日本語episode本文も**65,536文字**上限を維持し、**65,537文字**は切り詰めず拒否します。
+JSON encoding overheadを含む別の256 KiB HTTP body上限も適用します。
+
+日本語profileでは、現在認可済み・要求scope内・時間条件内のcanonical候補に一つでも
+projection欠落があると、`coverage.lexical_incomplete: true`と
+`coverage.retrieval_complete: false`を返します。この検査はquery関連性やitem上限とは独立です。
+**simple検索への黙ったfallbackはなく**、自動修復workerもありません。
+利用可能な一致結果を不完全flag付きで返せ、空queryはcanonical itemをbrowseします。
+query候補なしでprojection欠落があれば`empty_reason: "index_incomplete"`、
+候補がcontextに収まらなければ従来の`"budget_exhausted"`、結果があれば`empty_reason`はnullです。
+projection欠落がなければ`lexical_incomplete`はfalseで、通常の`not_found`/予算規則を使います。
+projection coverageはquery関連性、queue状態、知識/品質の完全性ではなく、
+`jobs_pending`は独立したflagです。
+Janomeの破損辞書診断は入力textを含まない`japanese_dictionary_error`へ除去処理します。
+libraryの`SystemExit`はtokenizer-unavailableへ変換し、index不完全の成功応答ではなく
+APIの`503 dependency_unavailable`となります。
+workerは入力をechoせず既存の上限付き`dependency_unavailable` retry経路を使います。
+
+capabilitiesはstage `m2-japanese-fts`、feature `japanese_fts`、両`search_profiles`、
+`default_search_profile: "simple-v1"`、固定tokenizer/辞書metadata、
+`normalization: "none"`と`segmentation: "japanese-script-runs"`を返します。
+context予算は`utf8-bytes-v1`のままで、`vector_search`、`auto_synthesis`、
+recallの`graph_used`はfalseです。stage名はM2全体の受入を意味しません。
+[ADR 0007](adr/0007-japanese-fts-jp.md)、
+[offline再構築](operations/README-jp.md#lexical-profileとreindexの運用)、
+[依存ライセンス](../README-jp.md#依存ライセンス)を参照してください。
 
 ## Durable job
 
@@ -209,7 +281,7 @@ assertion公開完了ではありません。canonical intentとrecipeで同一t
 **job当たり最大5試行**です。
 capabilitiesは`durable_jobs`、`job_kinds: ["structured_remember"]`、
 `auto_synthesis: false`と、100 job/5試行/30秒lease上限を公開します。
-stage名`m2-durable-jobs`はM2全体の受入を意味しません。
+この上限付きjobはM2全体の受入を意味しません。
 
 `GET /v1/jobs/{job_id}`には現在のread権限が必要です。同一scopeのreaderは他principalの
 jobを読めますが、claim、publish、retryはできません。応答は次のfieldを含みます。
@@ -367,7 +439,7 @@ assertion ID/revision/次entity ID順です。同一path内でentityを繰り返
 返却は最大`max_paths`件です。incoming/bothは探索方向だけを変え、
 edgeのsource/targetやreported factを反転しません。
 
-応答は`backend: "sql"`、`projection_watermark: null`（projection/lag/watermark保証は不要）、
+応答は`backend: "sql"`、`projection_watermark: null`（graph projection/lag/watermark保証は不要）、
 実効`as_of`/`known_at`と次のfieldを含みます。
 - `nodes`: canonical entity summary。完全な根拠quoteは含めない。
 - `edges`: canonical assertion ID/revision、source/target UUID、predicate、
@@ -590,6 +662,10 @@ opaque operation registry/run flag、run/branch metadata、object記録、tombst
 job identity、tenant-keyed HMACのsource/idempotency tombstoneはtenantの存続期間中保持します。
 自動期限切れやtenant完全消去workflowはありません。
 過去参照や再送からpurge済みlabel、value、receiptを復活させることはできません。
+canonical削除は同じtenant barrierで対象episode/assertionの全lexical revisionへもcascadeし、
+tombstone commitより先に消去します。これらは派生payloadであり、
+別memory identityやprovenance vertexではありません。
+rebuildはtombstoneをskipし、purge済み本文を再生成しません。
 
 receiptは`backup_status: "operator_managed"`、
 `backup_retention_deadline: null`を返します。旧DB page、WAL、replica、backup、
@@ -599,61 +675,76 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-変更しないmigration 001〜005に続き、追加的な`006_durable_jobs.sql`を適用します。
-`memory_ops.job`はkind `job`の`memory.object` anchorを使い、
-`job_input`は不変の同一scope episode参照、`job_identity`はtenant/principal/scopeの
-HMAC重複抑止を保持します。forced RLS、同一scope外部key、入力完全性検査、
-lifecycle列だけのUPDATE権限、遷移guardでlease/試行回数/上限/terminal規則を強制します。
-intentは不変で、payloadはterminal遷移で消去できますが差替えはできません。
-typed graph/effect/checkpointの履歴とguard、legacy `Remember` JSON/HMAC順、
-source identity、checkpoint checksumは変更しません。
-jobをcheckpoint/effect参照kindへ追加しません。
-v0.0.6のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6]`を要求し、
+変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
+二つのlexical projection tableを作成し、migration runnerがschema 7記録前の
+**同一transaction**内でPython backfillを行います。全保持episode/assertion revisionを
+対象にし、canonical ID/system time、receipt、tombstoneは変えません。
+backfill完了後の失敗でもprojection DDL/dataとschema ledgerをまとめてrollbackし、
+schema 6からのupgradeは6のままです。一方、明示reindexの失敗は既存schema 7の
+projectionを維持します。
+typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
+source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
+追加しません。v0.0.7のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、
 旧版・将来版・不完全な履歴と安全でないruntime roleを拒否します。
 
-migrationにはforced RLSをbypassできるDDL権限付き管理者と`btree_gist`が必要です。
-migration 002の`row_security = off`はbackfillがRLSでfilterされる場合にfail-closedにする設定で、
-bypass権限を付与するものではありません。旧版・新版の全API**とworker**を停止/drainし、
-backup、原子的migrationの後に、対応するv6 processだけを起動してください。
+migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
+migrationにはDDL権限と`btree_gist`も必要です。`row_security = off`はbackfillがRLSで
+filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
+`pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
+`PGAG_ADMIN_DATABASE_URL`を使い、schema 7を要求し、migration lock下でprojectionだけを
+原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
+出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
+`--once`もworker専用として拒否します。
+旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
+対応するv7 processだけを起動してください。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
-[運用](operations/README-jp.md#v006の保守migration)に従ってください。
+[運用](operations/README-jp.md#v007の保守migration)に従ってください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pgag_memory](https://github.com/rioriost/pgag_memory)。
-**v0.0.6/schema 6**の実装commit
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8)について、
+**v0.0.7/schema 7**の実装commit
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)について、
 **2026-09-17 JST**に最終結果を確認しました。
 
 | 環境 | Command | テスト | テスト所要時間 |
 |---|---|---|---|
-| ローカルApple Container | `./scripts/test-containers.sh` | 114合格、既存warning 2件 | 209.97秒 |
-| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 114合格、既存warning 2件 | 351.24秒 |
-| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 114合格、既存warning 2件 | 299.66秒 |
+| ローカルApple Container | `./scripts/test-containers.sh` | 144合格、既存warning 2件 | 206.54秒 |
+| Docker、native `linux/amd64` | `./scripts/test-containers.sh docker` | 144合格、既存warning 2件 | 386.32秒 |
+| Docker、native `linux/arm64` | `./scripts/test-containers.sh docker` | 144合格、既存warning 2件 | 331.59秒 |
 
-3環境の最終実行で**Ruff、strict mypy（source 11ファイル）、
-non-root production API HTTPと実CLI worker smoke**も合格しました。
-[CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
+3環境の最終実行で**Ruff、strict mypy（source 12ファイル）、
+non-root productionの日本語tokenizer、API HTTP、実CLI workerという全3種のsmoke**も合格しました。
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
 の両native Docker jobは上記SHAと完全一致し、job状態だけでなく実logで件数と各検査を確認しました。
 所要時間はテスト実行の観測値であり、性能benchmarkではありません。
 
-job identity/retry/上限、lease失効/引継ぎ、publicationの原子性/rollback、
-現在の認可/epoch、依存purge、graph/effect/checkpointとlegacy冪等性の維持を検査しています。
+既定/opt-in lexical動作、日本語/ASCII処理、正確な65,536文字のindex化と65,537文字の拒否、
+lazy load/fresh Linux初期化guard、時間/RLSとindex不完全/予算動作、
+子table DELETE権限なしのcanonical purgeを検査しています。
+実際の初回backfill後のschema 6へのrollback、一部reindex失敗時の旧projection維持、
+reindexのscope/worker flag拒否、job/graph/effect/checkpointとlegacy冪等性の維持も対象です。
+正確な過去照会検査にはVMのwall-clock値でなくserver記録のassertion時刻を使います。
+
+tokenizer smokeは`東京都` → `東京` / `都`を検査し、
+`Production Japanese tokenizer smoke passed`をlogに出します。API smokeはHTTP healthを検査します。
 worker smokeでは使い捨てprincipalとruntime専用資格情報で、
 実際の`pg-agmemory worker --subject ... --once`をnon-root production image内で実行し、
 `{"outcome":"idle"}`を確認して`Production worker smoke passed`をlogに記録しました。
 CI step名は`Test containers and smoke-test production API and worker`です。
-このsmokeはworker起動/idle実行を確認するもので、queue済みpublicationは別途test suiteの
-検査対象であり、idle結果によって証明されるものではありません。
+これらのsmokeは同梱tokenizer動作、API liveness、worker起動/idle実行を確認するもので、
+end-to-end recall品質やqueue済みpublicationの正しさを認定しません。
+publication動作は別途test suiteの検査対象です。
 
-過去の**v0.0.5/schema 5**の証拠のみ: 実装commit
-[3331226](https://github.com/rioriost/pgag_memory/commit/3331226cda38a294efc889203fc4ecc7a45f2a16)について、
-2026-09-16にApple Containerとnative Docker amd64/arm64の各環境で、
-91テスト（既存warning 2件）、Ruff、strict mypy（source 9ファイル）、
-production HTTP health smokeの合格を確認しました。
-[CI run 35102538289](https://github.com/rioriost/pgag_memory/actions/runs/35102538289)
-のlogで確認した結果であり、v6の検証ではありません。
+最終lockは従来のpackage-feed registryを維持しています。全**36 package**のversion、
+依存metadata、artifact hashはテスト済みPyPI解決lockとbyte単位で同一と確認しました。
+v6との差分はJanome 0.5.0の追加とprojectのv0.0.7へのversion更新だけで、
+無関係なupgradeやregistry移行はありません。
+native CIは最終retained-registry lockからbuildしました。
+
+それ以前のv5証拠は[ADR 0005](adr/0005-relational-graph-jp.md)に過去のものとして残し、
+v6の決定/証拠は[ADR 0006](adr/0006-durable-jobs-jp.md)に保持します。
 検査はM0/M1/M2/M3全体の完了、性能/品質の測定、外部exactly-once、MVP、本番readiness、
 backup/DR、完全消去の適格性を示すものではありません。
 
@@ -661,10 +752,10 @@ backup/DR、完全消去の適格性を示すものではありません。
 
 自動enqueue/自然言語抽出/synthesis、LLM/provider処理、global multi-tenant scheduling/
 公平性/cost pool、別のworking snapshot/compaction、
-embedding/pgvector、日本語tokenizer、AGE、SQL/PGQ、
+embedding/pgvector、vector/hybrid retrieval、AGE、SQL/PGQ、
 provider receipt検証、実際のharness連携/実行/recovery、
 別assertion間のsupersession/fact調停、MCP、SDK、postgresem連携はありません。
-明示structured job、上限付きSQL graph oracle、typed checkpoint envelopeだけで、
+opt-in lexical分割、明示structured job、上限付きSQL graph oracle、typed checkpoint envelopeだけで、
 計画上の二時点・graph・provenance・削除architectureが完了したとは扱いません。
 
 選択理由は[ADR 0001](adr/0001-initial-slice-jp.md)、

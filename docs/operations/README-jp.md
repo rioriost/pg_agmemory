@@ -12,15 +12,21 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 PostgreSQL 18と、repositoryの`Dockerfile`から構築したimageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは引き続き`rioriost/pgag_memory`です。
-v0.0.6 durable job milestoneにはschema 6が必要です。
-Apple Containerとnative Docker amd64/arm64の各環境で114テスト（既存warning 2件）、
-Ruff、strict mypy（source 11ファイル）、non-root production API HTTPと実CLI worker
-`--once` idle smokeが合格しました。最終SHA、CI log、所要時間と、
-区別した過去のv5証拠は[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
+v0.0.7 opt-in日本語lexical FTS milestoneにはschema 7が必要です。
+Apple Containerとnative Docker amd64/arm64の各環境で**144テスト**（既存warning 2件）、
+Ruff、strict mypy（source 12ファイル）、non-root productionの日本語tokenizer、
+API HTTP、実worker CLI `--once` idle実行という全3種のsmokeが合格しました。
+最終SHA、CI log、所要時間は[検証証拠](../STATUS-jp.md#検証証拠)を参照してください。
+
+既存package-feed registryを維持した最終lockを使ってください。
+全36 packageのversion、依存metadata、artifact hashはテスト済みPyPI解決lockと
+byte単位で同一です。v6との差分はJanome 0.5.0の追加とprojectのv0.0.7へのversion更新だけで、
+無関係なupgradeやregistry移行はありません。native CIはこのretained-registry lockから
+buildしました。
 
 | 設定 | 利用者 | 用途 |
 |---|---|---|
-| `PGAG_ADMIN_DATABASE_URL` | 管理CLIのみ | migrationとprivate tenant/principal/scopeの作成 |
+| `PGAG_ADMIN_DATABASE_URL` | 管理CLIのみ | migration、offline全tenant lexical rebuild、private tenant/principal/scopeの作成 |
 | `PGAG_DATABASE_URL` | API/worker runtime | `pgag_runtime`に所属する専用の制限付きlogin |
 | `PGAG_JWT_PUBLIC_KEY` | API runtime | 2048 bit以上の静的PEM RSA検証公開鍵。署名用秘密鍵は渡さない |
 | `PGAG_JWT_ISSUER` | API runtime | 信頼するissuerの完全一致値 |
@@ -35,13 +41,14 @@ Ruff、strict mypy（source 11ファイル）、non-root production API HTTPと�
    `src/pg_agmemory/storage/002_assertion_revisions.sql`、
    `src/pg_agmemory/storage/003_checkpoints.sql`、
    `src/pg_agmemory/storage/004_tool_effects.sql`、
-   `src/pg_agmemory/storage/005_relational_graph.sql`に続き、追加的な
-   `src/pg_agmemory/storage/006_durable_jobs.sql`をpackage resourceとして
+   `src/pg_agmemory/storage/005_relational_graph.sql`、
+   `src/pg_agmemory/storage/006_durable_jobs.sql`に続き、追加的な
+   `src/pg_agmemory/storage/007_japanese_fts.sql`をpackage resourceとして
    同梱します。計画の例示DDLで代用したり、生成済みfileを想定したりしないでください。
    管理者はsuperuser、または必要な所有権/DDL・role/schema作成・`btree_gist`
    extension導入権限を持つ適格な`BYPASSRLS` roleである必要があります。
-   bypassだけではDDL権限を与えません。migration 002の`row_security = off`は、
-   backfillがRLSでfilterされる場合にfail-closedにする設定で、
+   bypassだけではDDL権限を与えません。migration 007のPython rebuildを含むbackfillの
+   `row_security = off`は、行がRLSでfilterされる場合にfail-closedにする設定で、
    それ自体がforced RLSをbypassするものではありません。
 3. 別の管理者で`NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime`の専用runtime
    loginを作り、passwordを安全に設定します。table所有権もmigration owner roleへの
@@ -52,7 +59,7 @@ Ruff、strict mypy（source 11ファイル）、non-root production API HTTPと�
    設定した信頼するissuerが発行したsubjectを使ってください。
 5. runtime設定のみを渡して`pg-agmemory serve`を実行します。
    起動時にsuperuser、RLS bypass、アプリtable ownerとしての接続を拒否します。
-   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4, 5, 6]`であることを
+   owner role経由の所属も対象です。またschema ledgerが厳密に`[1, 2, 3, 4, 5, 6, 7]`であることを
    要求し、欠落・旧版・将来版・不完全な履歴は拒否します。
    workerもこのrole/schema検査を使いますが、APIのJWT設定は不要です。
 
@@ -64,8 +71,9 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 <a id="v003の保守migration"></a>
 <a id="v004の保守migration"></a>
 <a id="v005の保守migration"></a>
+<a id="v006の保守migration"></a>
 
-## v0.0.6の保守migration
+## v0.0.7の保守migration
 
 **旧版/新版API/workerのrolling共存やdowngradeは非対応です。**
 upgradeの予行は使い捨てtest DBに限定してください。
@@ -78,20 +86,28 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
    restore隔離の要件に従い、最新削除台帳とACL失効を独立して保全してください。
    唯一のmigration前backupを上書きしてはいけません。
 3. 特権migration管理者と新imageで`pg-agmemory migrate`を実行します。
-   migration lock下で未適用scriptとledger更新を一つのtransactionで適用します。
+   migration lock下で未適用script、Python lexical backfill、ledger更新を
+   一つのtransactionで適用します。
    lock timeoutは5秒で、無期限に待たず中断します。traffic停止を維持して競合を調査します。
-4. migration 006は`memory_ops.job`、不変の`job_input`、保持HMAC `job_identity`、
-   `job` object kind、RLS、同一scope外部key、入力/lease/試行回数/terminal guard、
-   限定したjob lifecycle UPDATE権限を追加します。
-   migration 001〜005は変更せず、旧DBへ未適用版を順に適用します。
-   graph/assertion/effect履歴、checkpoint checksum、timestamp、source-event/idempotency記録、
-   `Remember` JSON/HMAC順を維持してください。
+4. migration 007は`memory.episode_lexical`と`memory.assertion_lexical`を追加し、
+   forced RLS、同一scope canonical外部key、cascade削除を適用します。
+   runtime権限は`SELECT`/`INSERT`だけで、`UPDATE`や直接`DELETE`は付与しません。
+   canonical parent purgeは子tableのDELETE権限なしでcascadeします。
+   Python backfillは全保持episodeと全assertion revisionを対象にし、
+   tombstoneをskipしてschema 7記録前に完了します。
+   backfill完了後の失敗でもprojection DDL/dataとschema ledgerをまとめてrollbackし、
+   schema 6からのupgradeは6のままです。
+   migration 001〜006は変更せず、旧DBへ未適用版を順に適用します。
+   graph/job/assertion/effect履歴、checkpoint checksum、canonical ID/system time、
+   source-event/idempotency receipt、`Remember` JSON/HMAC順を維持してください。
+   固定したJanome 0.5.0依存と同梱辞書を使用します。
    v4台帳の厳格な再開規則は維持し、未追跡hintはplannedでも再開を阻止します。
-5. 厳密な履歴`[1, 2, 3, 4, 5, 6]`を確認してから、制限付きruntime資格情報と
-   意図した固定worker subjectで**対応するv6 API/workerだけを起動**します。
-   capabilities/schemaを確認し、traffic再開前にmilestoneのenqueue/retry、
-   lease引継ぎ、期限切れrollback、認可/epoch、purge、worker、過去互換動作を検査してください。
-   health応答だけではこれらを検証できません。
+5. 厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を確認してから、制限付きruntime資格情報と
+   意図した固定worker subjectで**対応するv7 API/workerだけを起動**します。
+   traffic再開前にcapabilities/schema、既定/opt-in recallとprojection coverage、
+   過去revision選択、認可、purge、原子的publication、互換性を検査してください。
+   health応答だけではこれらを検証できません。migration/rebuildの時間・resource使用量は
+   適格性未確認です。
 6. 失敗時はAPI/worker停止を維持します。変更済みschemaへ旧imageを接続したり、
    downgradeがあると想定したりしないでください。
    backup restoreも最新削除/ACL状態の再適用・検証まで隔離します。
@@ -99,6 +115,76 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 **旧v0.0.1 APIには新しいschema互換性guardがありません。**
 不整合なschemaでも起動し得るため、運用側で停止を維持する必要があります。
 新runtimeによるschema不一致の拒否は、旧processを保護しません。
+
+## Lexical profileとreindexの運用
+
+recallの既定は`search_profile: "simple-v1"`です。
+日本語scriptのsurface/wakati分割は`"ja-janome-0.5.0-v1"`を明示指定し、
+応答は選択profileを返します。Janome 0.5.0はJanome追加語付きの同梱
+mecab-ipadic-2.7.0-20070801を使用します。ASCII識別子/英語はsegmenterをそのまま通過し、
+PostgreSQLが引き続きlexical処理を行います。Unicode/全半角正規化、原形化/stemming、
+同義語照合、分割/recall品質の適格性確認はありません。漢字処理は中国語文字にも及びますが、
+中国語recallを適格としません。vector/hybrid検索、外部model/provider、
+fileベースのmemory indexではなく、context予算は別の`utf8-bytes-v1`契約を維持します。
+
+対応container build profileを使ってください。test/runtime buildは辞書moduleを含む
+**静的Janome package bytecodeだけ**を逐次事前compileします。
+package codeでありmemory index/cacheやcompile済みuser入力ではありません。
+Janomeは日本語script連続部分がある場合だけlazy importし、英語だけの操作ではloadしません。
+`max_cached_word_len=0`でmatcher入力prefix cacheを無効化し、同梱辞書resource cacheだけを
+保持します。辞書codeを事前compileしていないcold host installationでは初期化peakが
+大幅に増える可能性があります。fresh Linux subprocessのguardは初期化peak RSS
+**256 MiB未満**と、英語だけの操作でJanomeをimportしないことを要求します。
+このtest閾値を配置時のmemory上限に使ってはいけません。request処理、並行性、
+migration/rebuild、resource sizingの適格性は未確認です。
+限定的な診断観測値は[ADR 0007](../adr/0007-japanese-fts-jp.md#runtime初期化の境界)を参照してください。
+
+日本語profileでは、現在認可済み・要求scope内・時間条件内のprojectionが欠けると、
+query関連性やjob状態とは無関係に`coverage.lexical_incomplete: true`と
+`coverage.retrieval_complete: false`を返します。利用可能な一致結果は返せ、
+空queryはflagがあってもcanonical itemをbrowseします。候補なしでprojection欠落があれば
+`empty_reason: "index_incomplete"`、予算で候補を除外した場合は`"budget_exhausted"`です。
+simple profileへの黙ったfallbackや修復workerはありません。
+simple検索の選択は日本語projectionを修復しません。
+破損辞書logは入力textを含まない`japanese_dictionary_error`へ除去処理します。
+Janomeの`SystemExit`はtokenizer-unavailableへ変換し、`index_incomplete`ではなく
+APIの`503 dependency_unavailable`となります。
+workerは入力をechoせず既存の上限付き依存障害retryを使います。
+
+reindexはworkerのprincipal/scope単位でなく、**選択DBの全tenant**を再構築します。
+`--subject`は範囲を狭めるoptionではなく明示拒否し、`--once`もworker専用として拒否します。
+既存schema 7 DBをcanonical dataから再構築する手順:
+
+1. 自動再起動を含む**全API/workerを停止/drain**し、migration同様にbackupします。
+   offline保守であり、稼働中の管理APIではありません。
+2. 対応するv7 imageと**`PGAG_ADMIN_DATABASE_URL`**を使用し、forced RLS bypassと
+   必要なtable権限を持つ管理者で次を実行します。
+
+   ```bash
+   pg-agmemory reindex-lexical
+   ```
+
+3. commandは厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求し、5秒のlock timeoutで
+   migration advisory lockを取得して、両projection tableを一つのtransactionで置換します。
+   tombstoneを除く全保持episode/assertion revisionを分割し、headだけに限定しません。
+   canonical ID、system time、根拠、receipt、同期request hashは変えません。
+   JSON出力は`profile: "ja-janome-0.5.0-v1"`と整数の
+   `episodes`/`assertion_revisions`件数だけで、source本文/tokenは含みません。
+4. 一部置換後の失敗でも旧schema 7のprojectionを維持します。
+   traffic停止を維持し、schema、権限、lock競合を調査します。
+   index修復のためruntime bypassを付与したり、canonical本文、timestamp、receiptを
+   編集したりしてはいけません。
+5. 対応するv7 API/workerだけを再起動します。traffic再開前に許可済みtest dataで
+   profile/coverageと認可された現在/過去recallを確認してください。
+   正確な`known_at`境界にはhost/VMのwall-clock値でなく、
+   serverが返すassertionの`recorded_at`を使います。
+   件数だけでは関連性、世界知識の完全性、性能を認定できず、自動復旧/DR保証もありません。
+
+同梱辞書はcode依存で、projectionの保存先はPostgreSQLだけです。
+image再配布時はJanome Apache-2.0 licenseと同梱IPADIC copyright/license noticeを保持します。
+[依存ライセンス](../../README-jp.md#依存ライセンス)と
+[ADR 0007](../adr/0007-japanese-fts-jp.md)を参照してください。
+M0/M1/M2/M3とMVP/本番の受入は未完了です。
 
 ## Durable jobとworkerの運用
 
@@ -194,7 +280,7 @@ M0/M1/M2/M3、MVP/本番、性能、品質、DRの受入は未完了です。
    非公開seedは返さず、可視の孤立seedはpathなしでも返り得ます。空/上限付き結果は不在の証明ではありません。
 5. `409 graph_invalidated`は失効した読取り、DB `503`は障害として扱い、空graphと
    みなしてはいけません。canonical PostgreSQL joinなのでAGE/SQL/PGQ導入、
-   projection再構築、lag/watermark操作は不要です。
+   graph projection再構築、lag/watermark操作は不要です。
    `backend: "sql"`、`projection_watermark: null`を返し、
    動的graph SQL/Cypher/label入力はありません。recallはFTSで`graph_used: false`のままです。
 6. graph由来を含むコピーした全entity revision 1または正確なassertion revisionを
@@ -377,6 +463,9 @@ headが影響を受けるbranchは永続失効するため、同じIDの再開�
 job request/入力行をassertion/episode行とtombstoneより先に同じtenant barrierで削除し、
 実行中publisherを拒否します。purge済みjobのGET/再送は`404`となり、
 保持job identityがexact jobの復活を防ぎます。
+canonical episode/assertion削除は同じbarrierで対応する全lexical revisionへcascadeし、
+tombstone commit前に消去します。これらは派生payloadであり別memory/provenance vertexでは
+ありません。rebuildはtombstoneをskipし、purge済みsource本文を復元できません。
 payload、entity根拠、typed link、引用、参照、reason/receipt参照を含むeffect eventをactive tableから先にSQL削除し、
 同じtransactionでscopeに束縛された時刻付きmarkerを`memory_ops.object_tombstone`へ
 挿入します。objectのSELECT RLSがそのanchorを非公開にし、
@@ -430,6 +519,14 @@ Apple Containerとnative両architectureのDocker CI検証は
 non-root production image内の実worker CLI smokeを実行します。
 使い捨てprincipalをprovisionし、runtime専用資格情報で`worker --subject ... --once`を
 実行して`{"outcome":"idle"}`を検査し、`Production worker smoke passed`をlogに出します。
+non-root runtime image内で`東京都` → `東京` / `都`の分割も検査し、
+成功時に`Production Japanese tokenizer smoke passed`を出力します。
+同梱tokenizerの初期化/分割の検査であり、end-to-end recallや品質の評価ではありません。
 CI step名は`Test containers and smoke-test production API and worker`です。
 idle-worker検査はpublicationテストや本番/DR適格性確認ではありません。
-最終v6 local/native Docker結果は[STATUS](../STATUS-jp.md#検証証拠)に記録しています。
+最終v7実装
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473)は、
+local Apple Containerと完全一致SHAのnative Docker
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)で合格し、
+各環境で全3種のproduction smokeも合格しました。
+詳細は[STATUS](../STATUS-jp.md#検証証拠)に記録していますが、本番/DR受入の主張ではありません。

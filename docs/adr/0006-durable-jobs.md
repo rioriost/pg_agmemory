@@ -8,6 +8,10 @@
   graph, checkpoint, and effect histories from [ADR 0005](0005-relational-graph.md)
 - Naming: local directory/package/service `pg_agmemory`; public repository `rioriost/pgag_memory`
 
+Historical scope: schema-6 requirements and evidence below describe v0.0.6 only.
+Schema-7 lexical indexing and current maintenance requirements are in
+[ADR 0007](0007-japanese-fts.md); v6 results do not validate that milestone.
+
 ## Decision and scope
 
 Store explicitly requested asynchronous **structured memory publication** in

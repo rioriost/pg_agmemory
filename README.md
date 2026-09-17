@@ -6,7 +6,8 @@
 remains `rioriost/pgag_memory`; the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Status: v0.0.6/schema 6 durable jobs implemented; local and native Docker checks passed.
+**Status: v0.0.7/schema 7 opt-in Japanese lexical FTS implemented;
+local and native Docker checks passed.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -16,13 +17,14 @@ Every mutation commits before its response is sent. Assertion revisions retain
 server-controlled system-time history and revision-specific evidence.
 Typed checkpoints support restore-to-new-branch envelopes and a durable
 tool-effect ledger. Explicit entities and revisioned relation assertions support
-bounded, read-only SQL graph traversal. The new milestone adds explicitly queued
-structured memory publication through a fixed-principal worker—not automatic
-synthesis, natural-language extraction, or tool/provider execution.
+bounded, read-only SQL graph traversal, alongside explicitly queued structured
+publication through a fixed-principal worker. The new milestone adds an opt-in,
+versioned Japanese lexical search profile—not vector/hybrid retrieval, automatic
+synthesis, or a measured segmentation/recall-quality improvement.
 
 Cross-assertion supersession/fact arbitration, provider receipt verification, harness adapters,
 automatic enqueue/extraction, general multi-tenant scheduling,
-pgvector, Japanese tokenization, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
+pgvector, AGE/SQL/PGQ, MCP, SDKs, and postgresem adapters
 remain roadmap work. No performance or memory-quality acceptance targets have
 been measured. Consult [the current contract and limitations](docs/STATUS.md)
 before using the service.
@@ -42,6 +44,9 @@ PostgreSQL integration tests, then checks production API HTTP health and runs
 the actual `pg-agmemory worker --subject ... --once` in the **non-root production
 image**. The worker smoke uses a disposable provisioned principal and runtime-only
 credentials, asserts `{"outcome":"idle"}`, and logs `Production worker smoke passed`.
+The non-root runtime-image tokenizer smoke also checks `東京都` → `東京` / `都`
+and emits `Production Japanese tokenizer smoke passed` on success; this is not
+an end-to-end recall or segmentation-quality assessment.
 It uses isolated disposable PostgreSQL containers and removes only its
 own containers/networks. Existing databases and containers are not touched.
 Python/PostgreSQL/uv image versions and digests are pinned in the container files.
@@ -56,15 +61,21 @@ and **linux/arm64** runners. The step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-For **v0.0.6/schema 6**, implementation commit
-[a4aa7f6](https://github.com/rioriost/pgag_memory/commit/a4aa7f6c8a9ccc52f906619c64e70a8d00eae0d8),
+For **v0.0.7/schema 7**, implementation commit
+[678ba24](https://github.com/rioriost/pgag_memory/commit/678ba2410fcc6adf73102bb44b3b36681cf47473),
 Apple Container and native Docker **linux/amd64** and **linux/arm64** each passed
-**114 tests** (2 existing warnings), Ruff, strict mypy (11 source files), and
-both non-root production API HTTP and actual CLI worker `--once` idle smoke.
+**144 tests** (2 existing warnings), Ruff, strict mypy (12 source files), and all
+three non-root production smokes: Japanese tokenizer, API HTTP, and actual CLI
+worker `--once` idle execution. Final results were verified **2026-09-17 JST**.
 Both CI jobs ran that exact SHA; their actual logs confirm all checks. See
-[CI run 35168437396](https://github.com/rioriost/pgag_memory/actions/runs/35168437396)
-and the [validation evidence](docs/STATUS.md#validation-evidence), including
-timings and separately labeled historical v5 results.
+[CI run 35173023029](https://github.com/rioriost/pgag_memory/actions/runs/35173023029)
+and the [validation evidence](docs/STATUS.md#validation-evidence).
+
+The final lock retains the existing package-feed registry. All **36 packages'**
+versions, dependency metadata, and artifact hashes are byte-for-byte equivalent
+to the tested PyPI-resolved lock. Relative to v6, only Janome 0.5.0 was added and
+the project version became v0.0.7: no unrelated upgrades or registry migration.
+Native CI built this final retained-registry lock.
 
 ## Run the API
 
@@ -91,16 +102,17 @@ image built from `Dockerfile` (the final stage is the runtime image).
 
 Keep the admin URL and signing private key out of the runtime environment.
 There are no built-in credentials, default tokens, or authentication bypasses.
-Migration/provisioning access is administrative and must never be exposed as a
+Migration/provisioning/rebuild access is administrative and must never be exposed as a
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**Upgrading to v0.0.6 requires a maintenance stop and backup.** Stop/drain all
-old/new APIs **and workers**, apply pending migrations through `006_durable_jobs.sql`,
-then start only matching v6 APIs/workers. Both require schema history exactly
-`[1, 2, 3, 4, 5, 6]`. Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
+**Upgrading to v0.0.7 requires a maintenance stop and backup.** Stop/drain all
+old/new APIs **and workers**, apply pending migrations through `007_japanese_fts.sql`
+with its atomic Python lexical backfill, then start only matching v7 APIs/workers.
+Both require exact history `[1, 2, 3, 4, 5, 6, 7]`.
+Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling coexistence or downgrade is supported. Follow the
-[migration procedure](docs/operations/README.md#v006-maintenance-migration).
+[migration procedure](docs/operations/README.md#v007-maintenance-migration).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -125,6 +137,46 @@ service does **not** verify an external consent registry or automatically
 redact secrets/PII. Only send approved, already-sanitized data.
 Interactive schema documentation is at `/docs`; OpenAPI is at `/openapi.json`.
 `/healthz` is process liveness after startup validation, not continuous DB readiness.
+
+## Opt-in Japanese lexical recall
+
+`POST /v1/recall` defaults to `search_profile: "simple-v1"`, preserving PostgreSQL
+`simple`/`plainto_tsquery`/`ts_rank_cd`. Select `"ja-janome-0.5.0-v1"` explicitly
+for Japanese-script surface/wakati segmentation; the response echoes the profile.
+Janome **0.5.0** uses bundled **mecab-ipadic-2.7.0-20070801** with Janome additions.
+Only matching Japanese-script runs are segmented; ASCII identifiers/English pass
+through the segmenter unchanged. No Unicode/width normalization, lemma/stemming,
+synonyms, or segmentation-quality guarantee is provided. Han-script handling
+also affects Chinese characters; Chinese recall is not qualified.
+
+Janome is lazy-imported only for Japanese-script runs. Its input-prefix cache is
+disabled (`max_cached_word_len=0`); only packaged dictionary-resource caches are
+retained. Test/runtime container builds sequentially precompile **only static
+Janome package bytecode**, not user text or a memory index/cache. Cold host
+installations without that precompilation can have much larger initialization
+peaks; deployment resource sizing remains unqualified.
+
+`tokenizer_id: "utf8-bytes-v1"` still budgets context bytes, not Japanese tokens.
+Scope, time, evidence, ACL, deletion, and byte limits remain in force.
+Missing authorized time-eligible Japanese projections set
+`coverage.lexical_incomplete: true` and `coverage.retrieval_complete: false`, without
+silently falling back. No candidates with missing projections gives
+`empty_reason: "index_incomplete"`; existing budget exhaustion remains distinct.
+An empty query still browses canonical items, even with an incomplete-index flag.
+The flag measures projection coverage, not query relevance or queued work.
+
+Writes index episodes and every assertion revision atomically, including typed
+relations and job publication. Lexical runtime grants are `SELECT`/`INSERT` only:
+no `UPDATE` or direct `DELETE`. Canonical parent purge removes derived rows by FK
+cascade in the same barrier, without child DELETE grants; they are not separate
+memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
+selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
+not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
+back up, rebuild, then restart matching v7 only. There is no automatic
+repair worker, external model/provider, or file-based memory index.
+See [the contract](docs/STATUS.md#japanese-lexical-profile),
+[maintenance](docs/operations/README.md#lexical-profile-and-reindex-operations),
+and [ADR 0007](docs/adr/0007-japanese-fts.md).
 
 ## Durable structured-publication jobs
 
@@ -287,8 +339,18 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Tool-effect ledger decisions](docs/adr/0004-tool-effects.md) | [Tool-effect ledgerの決定](docs/adr/0004-tool-effects-jp.md) |
 | [SQL graph oracle decisions](docs/adr/0005-relational-graph.md) | [SQL graph oracleの決定](docs/adr/0005-relational-graph-jp.md) |
 | [Durable-job decisions](docs/adr/0006-durable-jobs.md) | [Durable jobの決定](docs/adr/0006-durable-jobs-jp.md) |
+| [Japanese lexical FTS decisions](docs/adr/0007-japanese-fts.md) | [日本語lexical FTSの決定](docs/adr/0007-japanese-fts-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 
-See [LICENSE](LICENSE). Dependencies retain their own licenses; no model
-weights, third-party datasets, or benchmark conversation histories are bundled.
+## Dependency licensing
+
+Project code is [MIT-licensed](LICENSE); **dependencies are not all MIT**.
+[Janome 0.5.0 is Apache-2.0](https://github.com/mocobeta/janome/blob/0.5.0/LICENSE.txt).
+Its bundled mecab-ipadic dictionary/statistical data has separate
+[IPADIC copyright/license notices (NAIST/ICOT)](https://github.com/mocobeta/janome/blob/0.5.0/NOTICE.txt);
+[Janome's dictionary additions](https://github.com/mocobeta/janome/blob/0.5.0/ipadic/Noun.proper.csv.patch)
+are part of that pinned release. Preserve upstream license/notice files when
+redistributing packages or images. The packaged dictionary is a code dependency,
+not stored user memory; only PostgreSQL stores memory projections.
+No LLM weights or benchmark conversation histories are bundled.
