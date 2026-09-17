@@ -1,3 +1,5 @@
+import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -5,8 +7,10 @@ from uuid import uuid4
 import psycopg
 import pytest
 
+from pg_agmemory.database import connect
 from pg_agmemory.graphs import SqlGraph
-from pg_agmemory.models import MemoryItem
+from pg_agmemory.models import EntityPage, Identity, MemoryItem, QueryEntities
+from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
 from pg_agmemory.service import MemoryError, MemoryService, build_context
 
 pytestmark = pytest.mark.integration
@@ -24,12 +28,284 @@ def entity_body(env, label, index=0, **overrides):
     }
 
 
-def create_entity(env, label, index=0):
-    body = entity_body(env, label, index)
+def create_entity(env, label, index=0, **overrides):
+    body = entity_body(env, label, index, **overrides)
     headers = env.headers(index)
     response = env.client.post("/v1/entities", json=body, headers=headers)
     assert response.status_code == 201, response.text
     return {**response.json(), "body": body, "headers": headers}
+
+
+def query_entities(env, index=0, **overrides):
+    headers = env.headers(index)
+    del headers["Idempotency-Key"]
+    return env.client.post(
+        "/v1/entities/query",
+        headers=headers,
+        json={"scope_ids": [str(env.scopes[index])], **overrides},
+    )
+
+
+def entity_ids(response):
+    assert response.status_code == 200, response.text
+    return [row["memory_id"] for row in response.json()["entities"]]
+
+
+def test_entity_query_exact_labels_types_and_metadata_do_not_merge_identities(env):
+    types = [
+        "person",
+        "organization",
+        "project",
+        "component",
+        "incident",
+        "task",
+        "decision",
+        "other",
+    ]
+    typed = [create_entity(env, "Same", entity_type=kind) for kind in types]
+    assert entity_ids(query_entities(env, canonical_label=" Same ")) == [
+        item["memory_id"] for item in reversed(typed)
+    ]
+    for kind, item in zip(types, typed, strict=True):
+        assert entity_ids(query_entities(env, entity_type=kind, canonical_label="Same")) == [
+            item["memory_id"]
+        ]
+    labels = ["same", "Same suffix", "東京", "東", "%_", "é", "e\u0301", "Ｅ"]
+    distinct = [create_entity(env, label) for label in labels]
+    for label, item in zip(labels, distinct, strict=True):
+        result = query_entities(env, canonical_label=label, entity_type="component")
+        assert entity_ids(result) == [item["memory_id"]]
+        detail = env.client.get("/v1/entities/" + item["memory_id"], headers=env.headers()).json()
+        assert result.json()["entities"][0] == {
+            key: value for key, value in detail.items() if key != "evidence"
+        }
+        assert (
+            "evidence" not in result.text
+            and item["body"]["evidence"][0]["memory_id"] not in result.text
+        )
+    for label in ("Sam", "E", "unknown"):
+        assert entity_ids(query_entities(env, canonical_label=label)) == []
+    assert entity_ids(query_entities(env, canonical_label="東京", entity_type="person")) == []
+    assert (
+        query_entities(env).json()
+        == query_entities(env, canonical_label=None, entity_type=None, before=None).json()
+    )
+
+
+def test_entity_query_scopes_and_shared_read_access_apply_before_page_limits(env):
+    own = create_entity(env, "Shared")
+    foreign = create_entity(env, "Shared", index=1)
+    shared = create_entity(env, "Shared", index=2)
+    scopes = [str(scope) for scope in env.scopes] + [str(uuid4())]
+    first = query_entities(env, scope_ids=scopes, max_items=1)
+    assert entity_ids(first) == [own["memory_id"]] and first.json()["next_cursor"] is None
+    with scope_access(
+        env.admin_url,
+        ScopeAccessRequest(
+            operation="set",
+            tenant_id=env.tenants[0],
+            scope_id=env.scopes[2],
+            principal_id=env.principals[0],
+            expected_access_epoch=1,
+            permissions=("read",),
+            no_expiry=True,
+        ),
+    ):
+        pass
+    page = query_entities(env, scope_ids=scopes)
+    assert entity_ids(page) == [shared["memory_id"], own["memory_id"]]
+    assert foreign["memory_id"] not in page.text and page.json()["consistency"]["access_epoch"] == 2
+    assert entity_ids(query_entities(env, scope_ids=[str(env.scopes[1]), str(uuid4())])) == []
+
+
+def test_entity_query_exact_hundred_item_page_and_uuid_ties(env):
+    source = env.observe("Same").json()["memory_id"]
+    entities = []
+    for _ in range(101):
+        response = env.client.post(
+            "/v1/entities",
+            headers=env.headers(),
+            json={
+                "scope_id": str(env.scopes[0]),
+                "entity_type": "component",
+                "canonical_label": "Same",
+                "explicit_intent": True,
+                "evidence": [{"memory_id": source, "quote": "Same"}],
+            },
+        )
+        assert response.status_code == 201
+        entities.append(response.json()["memory_id"])
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            "UPDATE memory.object SET created_at='2026-09-01T00:00:00Z' WHERE tenant_id=%s",
+            (env.tenants[0],),
+        )
+    expected = sorted(entities, reverse=True)
+    first = query_entities(env, max_items=100)
+    assert entity_ids(first) == expected[:100]
+    assert first.json()["next_cursor"] == {
+        "recorded_at": "2026-09-01T00:00:00Z",
+        "memory_id": expected[99],
+    }
+    second = query_entities(env, max_items=100, before=first.json()["next_cursor"])
+    assert entity_ids(second) == expected[100:] and second.json()["next_cursor"] is None
+    assert len(first.content) < 2 * 1024 * 1024
+    assert (
+        entity_ids(
+            query_entities(
+                env,
+                before={
+                    "recorded_at": "2026-09-01T00:00:00Z",
+                    "memory_id": expected[-1],
+                },
+            )
+        )
+        == []
+    )
+
+
+def test_entity_cursor_survives_deletion_and_does_not_freeze_new_rows_or_permissions(env):
+    oldest, newest = [create_entity(env, "Same") for _ in range(2)]
+    first = query_entities(env, max_items=1)
+    assert entity_ids(first) == [newest["memory_id"]]
+    before = first.json()["next_cursor"]
+    later = create_entity(env, "Same")
+    assert entity_ids(query_entities(env, before=before)) == [oldest["memory_id"]]
+    deleted = env.client.post(
+        "/v1/forget",
+        headers=env.headers(),
+        json={
+            "memory_ids": [newest["body"]["evidence"][0]["memory_id"]],
+            "reason": "test",
+        },
+    )
+    assert deleted.status_code == 202 and deleted.json()["object_count"] == 2
+    page = query_entities(env, before=before)
+    assert entity_ids(page) == [oldest["memory_id"]]
+    assert page.json()["consistency"]["deletion_epoch"] == 2
+    assert entity_ids(
+        query_entities(
+            env,
+            before={
+                "recorded_at": "2100-01-01T00:00:00Z",
+                "memory_id": str(uuid4()),
+            },
+        )
+    ) == [later["memory_id"], oldest["memory_id"]]
+    assert (
+        entity_ids(
+            query_entities(
+                env,
+                before={
+                    "recorded_at": "1900-01-01T00:00:00Z",
+                    "memory_id": str(uuid4()),
+                },
+            )
+        )
+        == []
+    )
+    for operation, epoch, permissions in (("set", 1, ("read",)), ("revoke", 2, ())):
+        options = {"permissions": permissions, "no_expiry": True} if operation == "set" else {}
+        with scope_access(
+            env.admin_url,
+            ScopeAccessRequest(
+                operation=operation,
+                tenant_id=env.tenants[0],
+                scope_id=env.scopes[0],
+                principal_id=env.principals[0],
+                expected_access_epoch=epoch,
+                **options,
+            ),
+        ):
+            pass
+        page = query_entities(env, before=before)
+        assert entity_ids(page) == ([oldest["memory_id"]] if operation == "set" else [])
+        assert page.json()["consistency"]["access_epoch"] == epoch + 1
+
+
+def test_entity_query_rejects_incomplete_selected_evidence_without_partial_page(env, monkeypatch):
+    entities = [create_entity(env, name) for name in ("A", "B")]
+    original = psycopg.AsyncCursor.fetchall
+
+    async def damaged(cursor):
+        rows = await original(cursor)
+        if rows and isinstance(rows[0], dict) and "evidence_count" in rows[0]:
+            rows[-1]["evidence_count"] = 0
+        return rows
+
+    monkeypatch.setattr(psycopg.AsyncCursor, "fetchall", damaged)
+    result = query_entities(env)
+    assert result.status_code == 409 and result.json()["code"] == "entity_invalidated"
+    assert "entities" not in result.json()
+    assert all(item["memory_id"] not in result.text for item in entities)
+
+
+def test_entity_query_is_read_only_and_has_no_audit_or_receipt_side_effect(env):
+    create_entity(env, "A")
+    statement = """SELECT
+        (SELECT count(*) FROM memory_ops.audit_event WHERE tenant_id=%s),
+        (SELECT count(*) FROM memory_ops.idempotency WHERE tenant_id=%s)"""
+    with psycopg.connect(env.admin_url) as conn:
+        before = conn.execute(statement, (env.tenants[0],) * 2).fetchone()
+
+    async def read_only():
+        async with await connect(env.settings.database_url) as conn:
+            async with conn.transaction():
+                await conn.execute("SET TRANSACTION READ ONLY")
+                await conn.execute(
+                    """SELECT set_config('pgag.tenant_id',%s,true),
+                              set_config('pgag.principal_id',%s,true)""",
+                    (str(env.tenants[0]), str(env.principals[0])),
+                )
+                memory = MemoryService(
+                    conn,
+                    Identity(tenant_id=env.tenants[0], principal_id=env.principals[0]),
+                )
+                return await SqlGraph(memory).query_entities(
+                    QueryEntities(scope_ids=[env.scopes[0]])
+                )
+
+    direct = EntityPage.model_validate(asyncio.run(read_only())).model_dump(mode="json")
+    assert direct == query_entities(env).json()
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(statement, (env.tenants[0],) * 2).fetchone() == before
+
+
+def test_entity_query_openapi_auth_body_and_empty_contract(env):
+    assert query_entities(env).json() == {
+        "entities": [],
+        "next_cursor": None,
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+    body = {"scope_ids": [str(env.scopes[0])]}
+    assert env.client.post("/v1/entities/query", json=body).status_code == 401
+    raw = json.dumps(body).encode()
+    padded = raw + b" " * (262144 - len(raw))
+    headers = {**env.headers(), "Content-Type": "application/json"}
+    assert env.client.post("/v1/entities/query", content=padded, headers=headers).status_code == 200
+    assert (
+        env.client.post(
+            "/v1/entities/query",
+            content=padded + b" ",
+            headers=headers,
+        ).status_code
+        == 413
+    )
+    invalid = query_entities(env, principal_id="PRIVATE")
+    assert invalid.status_code == 422 and "PRIVATE" not in invalid.text
+    cap = env.client.get("/v1/capabilities", headers=env.headers()).json()
+    assert cap["entity_query"] == {
+        "endpoint": "/v1/entities/query",
+        "match": "exact",
+        "order": ["recorded_at_desc", "memory_id_desc"],
+        "pagination": "exclusive_keyset",
+        "max_items": 100,
+    }
+    operation = env.client.get("/openapi.json").json()["paths"]["/v1/entities/query"]["post"]
+    assert operation["security"] == [{"BearerAuth": []}]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/EntityPage",
+    }
 
 
 def relation_body(env, source, target, index=0, **overrides):

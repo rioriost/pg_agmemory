@@ -29,6 +29,7 @@ from pg_agmemory.models import (
     DeletionResult,
     EmbeddingModel,
     EnqueueJob,
+    EntityPage,
     EpisodeExplanation,
     Evidence,
     ExpandGraph,
@@ -39,6 +40,7 @@ from pg_agmemory.models import (
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryEntities,
     QueryJobs,
     Recall,
     Remember,
@@ -523,6 +525,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/embedding-inputs",
         "/v1/embeddings",
         "/v1/entities",
+        "/v1/entities/query",
         "/v1/entities/{memory_id}",
         "/v1/relations",
         "/v1/relations/{memory_id}/revisions",
@@ -546,7 +549,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 28
+    assert len(methods) == len(expected) == 29
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])
@@ -778,6 +781,144 @@ def test_real_sdk_assertion_history_exact_revisions_and_purge(env, api_process):
                 assert purged.object_count == 2
                 with pytest.raises(MemoryClientError, match="not_found"):
                     await sdk.get_assertion_history(request)
+
+        asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "outcome", ["page", "invalidated", "wrong_status", "bad_cursor", "too_many", "lost"]
+)
+def test_sdk_entity_query_is_read_only_bounded_and_never_auto_pages(monkeypatch, outcome):
+    body = QueryEntities(scope_ids=[uuid4()], max_items=1, canonical_label="Same")
+    item = {
+        "memory_id": str(uuid4()),
+        "revision": 1,
+        "scope_id": str(body.scope_ids[0]),
+        "entity_type": "component",
+        "canonical_label": "Same",
+        "recorded_at": "2026-09-01T00:00:00Z",
+    }
+    page = {
+        "entities": [item],
+        "next_cursor": {"recorded_at": item["recorded_at"], "memory_id": item["memory_id"]},
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+    }
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/entities/query"
+        assert json.loads(request.content) == body.model_dump(mode="json")
+        assert "idempotency-key" not in request.headers
+        if outcome == "lost":
+            raise httpx.ReadError("PRIVATE simulated entity query response loss")
+        if outcome == "invalidated":
+            return response(
+                409,
+                {
+                    "code": "entity_invalidated",
+                    "request_id": str(uuid4()),
+                    "retryable": False,
+                },
+            )
+        if outcome == "bad_cursor":
+            return response(200, page | {"next_cursor": {}})
+        if outcome == "too_many":
+            return response(200, page | {"entities": [item] * 101})
+        return response(201 if outcome == "wrong_status" else 200, page)
+
+    _, calls = mock_client(monkeypatch, handler)
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as sdk:
+            if outcome == "page":
+                result = await sdk.query_entities(body)
+                assert isinstance(result, EntityPage)
+                assert str(result.entities[0].memory_id) == item["memory_id"]
+                assert result.next_cursor.memory_id == result.entities[0].memory_id
+            else:
+                with pytest.raises(MemoryClientError) as error:
+                    await sdk.query_entities(body)
+                assert not error.value.error.outcome_unknown and "PRIVATE" not in str(error.value)
+                if outcome == "invalidated":
+                    assert error.value.error.code == "entity_invalidated"
+            assert len(calls) == 2
+            with pytest.raises(MemoryClientError, match="invalid_request"):
+                await sdk.query_entities(body.model_copy(update={"entity_type": "invalid"}))
+            assert len(calls) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+def test_real_sdk_entity_query_preserves_duplicate_identities_for_explicit_graph_seeds(
+    env, api_process
+):
+    with api_process("sdk-entity-query.log") as (http, _):
+
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                source = await sdk.observe(
+                    observation(env.scopes[0]),
+                    idempotency_key="entity-query-source",
+                )
+                saved = []
+                for number in range(2):
+                    saved.append(
+                        await sdk.create_entity(
+                            CreateEntity(
+                                scope_id=env.scopes[0],
+                                entity_type="component",
+                                canonical_label="ACME",
+                                evidence=[Evidence(memory_id=source.memory_id, quote="ACME")],
+                                explicit_intent=True,
+                            ),
+                            idempotency_key=f"entity-query-{number}",
+                        )
+                    )
+                relation = await sdk.create_relation(
+                    CreateRelation(
+                        scope_id=env.scopes[0],
+                        source_entity=saved[0].memory_id,
+                        target_entity=saved[1].memory_id,
+                        predicate="depends_on",
+                        evidence=[Evidence(memory_id=source.memory_id, quote="ACME")],
+                        explicit_intent=True,
+                    ),
+                    idempotency_key="entity-query-relation",
+                )
+                request = QueryEntities(
+                    scope_ids=[env.scopes[0]],
+                    canonical_label="ACME",
+                    entity_type="component",
+                    max_items=1,
+                )
+                first = await sdk.query_entities(request)
+                second = await sdk.query_entities(
+                    request.model_copy(update={"before": first.next_cursor})
+                )
+                assert (
+                    isinstance(first, EntityPage)
+                    and first.entities[0].memory_id == saved[1].memory_id
+                )
+                assert (
+                    second.entities[0].memory_id == saved[0].memory_id
+                    and second.next_cursor is None
+                )
+                detail = await sdk.get_entity(second.entities[0].memory_id)
+                assert detail.evidence[0].memory_id == source.memory_id
+                graph = await sdk.expand_graph(
+                    ExpandGraph(
+                        scope_ids=[env.scopes[0]],
+                        seeds=[second.entities[0].memory_id],
+                        relation_types=["depends_on"],
+                        purpose="explicit selected seed",
+                    )
+                )
+                assert graph.edges[0].assertion.memory_id == relation.memory_id
+                purged = await sdk.forget(
+                    Forget(memory_ids=[source.memory_id], reason="test"),
+                    idempotency_key="entity-query-purge",
+                )
+                assert purged.object_count == 4 and not (await sdk.query_entities(request)).entities
 
         asyncio.run(scenario())
 

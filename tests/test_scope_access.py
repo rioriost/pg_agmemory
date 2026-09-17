@@ -618,5 +618,5 @@ def test_schema9_migration_preserves_existing_memberships(env, database):
             "WHERE oid='memory_ops.scope_access_event'::regclass"
         ).fetchone() == (True, True)
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["schema_version"] == 10 and caps["stage"] == "m2-assertion-history"
+    assert caps["schema_version"] == 10 and caps["stage"] == "m2-entity-query"
     assert caps["scope_access_administration"]["transport"] == "admin-cli"

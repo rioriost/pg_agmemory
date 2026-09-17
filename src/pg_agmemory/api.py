@@ -49,6 +49,7 @@ from pg_agmemory.models import (
     EmbeddingReceipt,
     EnqueueJob,
     EntityDetail,
+    EntityPage,
     EntityReceipt,
     EntityType,
     EpisodeExplanation,
@@ -64,6 +65,7 @@ from pg_agmemory.models import (
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryEntities,
     QueryJobs,
     ReadinessStatus,
     Recall,
@@ -268,7 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-assertion-history",
+            "stage": "m2-entity-query",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -292,6 +294,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "graph_backend": "sql",
             "entity_types": list(get_args(EntityType)),
             "relation_types": list(get_args(RelationType)),
+            "entity_query": {
+                "endpoint": "/v1/entities/query",
+                "match": "exact",
+                "order": ["recorded_at_desc", "memory_id_desc"],
+                "pagination": "exclusive_keyset",
+                "max_items": 100,
+            },
             "auto_synthesis": False,
             "atomic_capture": {
                 "endpoint": "/v1/captures",
@@ -502,6 +511,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/entities", status_code=201, response_model=EntityReceipt)
     async def entity(data: CreateEntity, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await SqlGraph(service(request)).create_entity(data, idempotency_key)
+
+    @app.post("/v1/entities/query", response_model=EntityPage)
+    async def query_entities(data: QueryEntities, request: Request) -> Any:
+        return await SqlGraph(service(request)).query_entities(data)
 
     @app.get("/v1/entities/{memory_id}", response_model=EntityDetail)
     async def get_entity(memory_id: UUID, request: Request) -> Any:

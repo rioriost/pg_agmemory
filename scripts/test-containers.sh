@@ -733,6 +733,56 @@ asyncio.run(smoke())
 print("Production assertion history smoke passed: metadata pages, exact explanation, source purge")
 ' "$scope_id"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import CreateEntity, CreateRelation, Evidence, ExpandGraph, Forget, Observe, QueryEntities
+from pg_agmemory.sdk import AsyncMemoryClient
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        source = await sdk.observe(Observe(
+            scope_id=scope, source_namespace="production-entity-query", source_event_id="entity-query-smoke",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="SyntheticEntity evidence",
+            consent_reference="synthetic-smoke",
+        ), idempotency_key="entity-query-source")
+        entities = []
+        for number in range(2):
+            entities.append(await sdk.create_entity(CreateEntity(
+                scope_id=scope, entity_type="component", canonical_label="SyntheticEntity",
+                evidence=[Evidence(memory_id=source.memory_id, quote="SyntheticEntity")],
+                explicit_intent=True,
+            ), idempotency_key="entity-query-" + str(number)))
+        relation = await sdk.create_relation(CreateRelation(
+            scope_id=scope, source_entity=entities[0].memory_id, target_entity=entities[1].memory_id,
+            predicate="depends_on", explicit_intent=True,
+            evidence=[Evidence(memory_id=source.memory_id, quote="SyntheticEntity")],
+        ), idempotency_key="entity-query-relation")
+        request = QueryEntities(scope_ids=[scope], canonical_label="SyntheticEntity",
+                                entity_type="component", max_items=1)
+        first = await sdk.query_entities(request)
+        assert first.entities[0].memory_id == entities[1].memory_id and first.next_cursor
+        second = await sdk.query_entities(request.model_copy(update={"before": first.next_cursor}))
+        assert second.entities[0].memory_id == entities[0].memory_id and not second.next_cursor
+        detail = await sdk.get_entity(second.entities[0].memory_id)
+        assert detail.evidence[0].memory_id == source.memory_id
+        graph = await sdk.expand_graph(ExpandGraph(
+            scope_ids=[scope], seeds=[second.entities[0].memory_id], relation_types=["depends_on"],
+            purpose="synthetic explicit selection",
+        ))
+        assert graph.edges[0].assertion.memory_id == relation.memory_id
+        purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="synthetic-smoke"),
+                                  idempotency_key="entity-query-purge")
+        assert purged.object_count == 4 and not (await sdk.query_entities(request)).entities
+
+asyncio.run(smoke())
+print("Production entity query smoke passed: exact pages, duplicate identities, explicit graph seed, purge")
+' "$scope_id"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

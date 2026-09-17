@@ -11,6 +11,7 @@ from pg_agmemory.models import (
     CheckpointBranch,
     MemoryItem,
     Observe,
+    QueryEntities,
     QueryJobs,
     Recall,
     Remember,
@@ -191,3 +192,49 @@ def test_job_query_default_states_bounds_and_duplicate_scopes():
             scope_ids=[scope],
             before={"created_at": "2026-09-01T00:00:00Z", "job_id": uuid4(), "scope_id": scope},
         )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"scope_ids": []},
+        {"scope_ids": [uuid4() for _ in range(33)]},
+        {"entity_type": "unknown"},
+        {"entity_type": ["component"]},
+        {"canonical_label": ""},
+        {"canonical_label": " "},
+        {"canonical_label": "x" * 257},
+        {"max_items": 0},
+        {"max_items": 101},
+        {"max_items": True},
+        {"max_items": "2"},
+        {"before": {}},
+        {"before": {"recorded_at": "2026-09-01T00:00:00", "memory_id": str(uuid4())}},
+        {"before": {"recorded_at": "2026-09-01T00:00:00Z", "memory_id": "invalid"}},
+        {
+            "before": {
+                "recorded_at": "2026-09-01T00:00:00Z",
+                "memory_id": str(uuid4()),
+                "scope_id": str(uuid4()),
+            }
+        },
+        {"principal_id": str(uuid4())},
+        {"offset": 1},
+        {"known_at": "2026-09-01T00:00:00Z"},
+        {"query": "fuzzy"},
+    ],
+)
+def test_entity_query_filters_and_cursor_are_closed_and_bounded(changes):
+    with pytest.raises(ValidationError):
+        QueryEntities(**{"scope_ids": [uuid4()], **changes})
+
+
+def test_entity_query_defaults_bounds_and_duplicate_scopes():
+    scope = uuid4()
+    body = QueryEntities(scope_ids=[scope])
+    assert body.entity_type is None and body.canonical_label is None
+    assert body.before is None and body.max_items == 20
+    assert QueryEntities(scope_ids=[uuid4() for _ in range(32)], max_items=100)
+    assert QueryEntities(scope_ids=[scope], canonical_label=" ACME ").canonical_label == "ACME"
+    with pytest.raises(ValidationError):
+        QueryEntities(scope_ids=[scope, scope])

@@ -32,6 +32,7 @@ from pg_agmemory.models import (
     EmbeddingReceipt,
     EnqueueJob,
     EntityDetail,
+    EntityPage,
     EntityReceipt,
     EpisodeExplanation,
     ExpandGraph,
@@ -45,6 +46,7 @@ from pg_agmemory.models import (
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryEntities,
     QueryJobs,
     Recall,
     RecallResult,
@@ -300,6 +302,11 @@ class AsyncMemoryClient:
 
     async def get_entity(self, memory_id: UUID) -> EntityDetail:
         return await self._get(f"/v1/entities/{_id(memory_id)}", EntityDetail)
+
+    async def query_entities(self, request: QueryEntities) -> EntityPage:
+        return await self._post(
+            "/v1/entities/query", request, QueryEntities, TypeAdapter(EntityPage), mutation=False
+        )
 
     async def create_relation(
         self, request: CreateRelation, *, idempotency_key: str

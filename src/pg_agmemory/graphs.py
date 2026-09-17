@@ -11,6 +11,7 @@ from pg_agmemory.models import (
     GraphEdge,
     GraphPath,
     MemoryReference,
+    QueryEntities,
     Remember,
     ReviseAssertion,
     ReviseRelation,
@@ -49,6 +50,49 @@ class SqlGraph:
         if len(evidence) != row.pop("reference_count"):
             raise MemoryError("entity_invalidated", 409)
         return {**row, "revision": 1, "recorded_at": obj["created_at"], "evidence": evidence}
+
+    async def query_entities(self, data: QueryEntities) -> dict[str, Any]:
+        rows = await (
+            await self.conn.execute(
+                """SELECT e.id AS memory_id,e.scope_id,e.entity_type,e.canonical_label,
+                          o.created_at AS recorded_at,e.reference_count,
+                          (SELECT count(*) FROM memory.entity_evidence ee
+                           JOIN memory.episode p ON p.tenant_id=ee.tenant_id AND p.id=ee.source_id
+                           WHERE ee.tenant_id=e.tenant_id AND ee.entity_id=e.id) AS evidence_count
+                   FROM memory.entity e JOIN memory.object o USING (tenant_id,id)
+                   WHERE e.tenant_id=%(tenant)s AND e.scope_id=ANY(%(scopes)s)
+                     AND (%(type)s::text IS NULL OR e.entity_type=%(type)s)
+                     AND (%(label)s::text IS NULL
+                          OR e.canonical_label COLLATE "C"=%(label)s::text COLLATE "C")
+                     AND (%(before_time)s::timestamptz IS NULL
+                          OR (o.created_at,e.id)<(%(before_time)s,%(before_id)s::uuid))
+                   ORDER BY o.created_at DESC,e.id DESC LIMIT %(limit)s""",
+                {
+                    "tenant": self.tenant,
+                    "scopes": data.scope_ids,
+                    "type": data.entity_type,
+                    "label": data.canonical_label,
+                    "before_time": data.before.recorded_at if data.before else None,
+                    "before_id": data.before.memory_id if data.before else None,
+                    "limit": data.max_items + 1,
+                },
+            )
+        ).fetchall()
+        entities = []
+        for row in rows[: data.max_items]:
+            if row.pop("evidence_count") != row.pop("reference_count"):
+                raise MemoryError("entity_invalidated", 409)
+            entities.append(EntitySummary.model_validate(row))
+        return {
+            "entities": entities,
+            "next_cursor": {
+                "recorded_at": entities[-1].recorded_at,
+                "memory_id": entities[-1].memory_id,
+            }
+            if len(rows) > data.max_items
+            else None,
+            "consistency": await self.memory.epochs(),
+        }
 
     async def create_entity(self, data: CreateEntity, key: str) -> dict[str, Any]:
         await self.memory.scope(data.scope_id, "write")

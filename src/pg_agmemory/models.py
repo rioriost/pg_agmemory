@@ -569,6 +569,25 @@ class JobPage(BaseModel):
     consistency: Consistency
 
 
+class EntityCursor(Contract):
+    recorded_at: AwareDatetime
+    memory_id: UUID
+
+
+class QueryEntities(Contract):
+    scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
+    entity_type: EntityType | None = None
+    canonical_label: ShortText | None = None
+    max_items: Annotated[int, Field(ge=1, le=100, strict=True)] = 20
+    before: EntityCursor | None = None
+
+    @model_validator(mode="after")
+    def unique_scopes(self) -> "QueryEntities":
+        if len(set(self.scope_ids)) != len(self.scope_ids):
+            raise ValueError("scope IDs must be unique")
+        return self
+
+
 class EntityReceipt(BaseModel):
     memory_id: UUID
     revision: Literal[1] = 1
@@ -583,6 +602,12 @@ class EntitySummary(EntityReceipt):
 
 class EntityDetail(EntitySummary):
     evidence: list[ExplainedEvidence]
+
+
+class EntityPage(BaseModel):
+    entities: Annotated[list[EntitySummary], Field(max_length=100)]
+    next_cursor: EntityCursor | None
+    consistency: Consistency
 
 
 class GraphEdge(RelationEndpoints):

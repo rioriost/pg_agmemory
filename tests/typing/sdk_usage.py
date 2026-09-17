@@ -21,6 +21,7 @@ from pg_agmemory.models import (
     EmbeddingReceipt,
     EnqueueJob,
     EntityDetail,
+    EntityPage,
     EntityReceipt,
     EpisodeExplanation,
     ExpandGraph,
@@ -34,6 +35,7 @@ from pg_agmemory.models import (
     ObserveResult,
     PlanToolEffect,
     PutEmbedding,
+    QueryEntities,
     QueryJobs,
     Recall,
     RecallFilters,
@@ -106,6 +108,7 @@ async def typed_calls(
         assert_type(await memory.put_embedding(embedding, idempotency_key=key), EmbeddingReceipt)
         assert_type(await memory.create_entity(entity, idempotency_key=key), EntityReceipt)
         assert_type(await memory.get_entity(identity), EntityDetail)
+        assert_type(await memory.query_entities(QueryEntities(scope_ids=[identity])), EntityPage)
         assert_type(await memory.create_relation(relation, idempotency_key=key), RememberResult)
         assert_type(
             await memory.revise_relation(identity, revise_relation, idempotency_key=key),
