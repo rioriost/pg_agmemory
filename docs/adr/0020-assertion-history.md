@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/production/DR qualification
 
+**Historical version notice:** this ADR records verified v0.0.20/schema 10.
+[ADR 0021](0021-entity-query.md) records exact entity query in v0.0.21/schema 10
+with 29 Native/SDK resources, verified locally and on both native architectures.
+Separate final v20 docs CI 35249560753 is recorded in
+[historical evidence](../STATUS.md#v0020--schema-10), distinct from implementation CI.
+
 ## Decision and request boundary
 
 Add Native JWT authenticated read-only `POST /v1/assertions/history`, requiring

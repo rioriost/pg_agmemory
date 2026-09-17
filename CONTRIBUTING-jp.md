@@ -68,6 +68,10 @@ assertion-history smokeでは降順のmetadata page、指定revisionのexplain�
 source purgeを検査します。履歴pageにvalue全文や根拠引用を含めず、
 revision cursorを権限や固定snapshotとみなさないでください。
 [ADR 0020](docs/adr/0020-assertion-history-jp.md)を参照してください。各pageに現在のACLを適用します。
+entity-query smokeではscope内のlabel/type完全一致、同名の異なるidentity、
+明示的なgraph seed選択、source purgeを検査します。共有scopeの可視性を
+所有者限定のjob検索と区別し、同名でidentityを統合してはいけません。
+metadata pageに根拠引用は含めません。[ADR 0021](docs/adr/0021-entity-query-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

@@ -7,9 +7,9 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**現在の上限付き実装はv0.0.20/schema 10のassertion metadata履歴です。
-v0.0.20実装はlocalと両native architectureで検証済みです。
-以下の検証済みv0.0.19以前の結果は過去の証拠であり、v0.0.20の証拠ではありません。
+**現在の上限付き実装はv0.0.21/schema 10の完全一致entity照会とpaginationです。
+v0.0.21実装はlocalと両native architectureで検証済みです。
+以下の検証済みv0.0.20以前の結果は過去の証拠であり、v0.0.21の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -31,9 +31,60 @@ postgresem連携は今後の実装対象です。
 性能・記憶品質・災害復旧・完全消去の受入は未測定または未認定です。
 利用前に[現在の契約と制限](docs/STATUS-jp.md)を確認してください。
 
+## Exact entity query and pagination
+
+**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
+認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
+closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
+nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
+（既存の空白除去後1〜256文字の`ShortText`）、strict整数`max_items`（1〜100、既定20）、
+nullableな`before`（`EntityCursor`）を受け付けます。filterと`before`の既定はnullです。
+closed cursorはtimezone付き`recorded_at`とUUID `memory_id`が必須です。
+不正field、重複、空label、範囲違反は**422 `invalid_request`**です。
+
+typeとlabelのfilterは**LIMIT前にAND**で組み合わせます。
+labelは通常の空白除去後に**`C` collationで大文字小文字を区別する完全一致**です。
+filter省略/nullは要求scope内の現在読取り可能な全候補を対象にします。
+alias、fuzzy/substring/wildcard/Unicode正規化match、embedding検索、
+merge、自動identity選択はありません。
+同じlabelでもpageを通じて別IDを維持します。既存
+`GET /v1/entities/{memory_id}` / SDK `get_entity`で根拠を確認し、
+graph seedを明示選択してください。label一致はidentityの証明ではありません。
+
+所有job照会と異なり、**entity照会に所有権filterはありません**。
+現在tenant/scope/source RLSで読取り可能な共有scopeのentityも含みます。
+未知/非公開scopeは結果へ寄与せず、一致なしは**200**と
+`entities: []`、`next_cursor: null`で、非公開理由やtotal countは返しません。
+選択itemの`entity_evidence JOIN episode`による可視根拠件数が
+保存済み`reference_count`と一致しなければ、**409 `entity_invalidated`**で**全page失敗**です。
+黙ったskipや部分成功はなく、SQLはquoteを取得しません。
+各pageに現在のtenant response-delivery/drain barrierを適用します。
+
+順序は`recorded_at DESC, memory_id DESC`で、`recorded_at`はentity objectの
+`created_at`です。exclusiveな
+`(recorded_at, memory_id) < (before.recorded_at, before.memory_id)`を使います。
+`max_items + 1`件を取得し、overflowの場合だけlookaheadでなく**最後に返すitem**から
+`next_cursor`を作ります。署名なしcursorは位置であり、権限、snapshot、receipt、保持objectではありません。
+既存objectを指す必要はなく、古い/削除済み/偽造位置も現在認可された行を限定するだけです。
+境界より新しいentityには`before`なしの明示再開が必要です。
+
+正確な**200 `EntityPage`**は既存`EntitySummary`を最大100件
+（`memory_id`、revision 1、`scope_id`、`entity_type`、`canonical_label`、`recorded_at`）、
+`next_cursor`、`consistency`（`access_epoch`、`deletion_epoch`）として返します。
+evidence quote、source ID、total countはなく、既知IDの`EntityDetail`は不変です。
+labelは人間のtextであり、信頼できる指示や現在の真実ではありません。
+async SDK `query_entities(QueryEntities) -> EntityPage`は`mutation=False`、
+通常の**request 256 KiB / response 2 MiB**上限、read-only `outcome_unknown: false`を使い、
+自動paging/retryやprovider呼出しはありません。
+Native/SDKは**29 resource method**で、MCPの4 toolとclosed hookは不変です。
+schema 10にはmigration、依存/provider、AGE変更はありません。
+[契約](docs/STATUS-jp.md#exact-entity-query-and-pagination)、
+[paging例](docs/operations/README-jp.md#exact-entity-query-and-pagination)、
+[ADR 0021](docs/adr/0021-entity-query-jp.md)を参照してください。
+
 ## Assertion metadata history
 
-**v0.0.20/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -73,7 +124,7 @@ async SDK `get_assertion_history(AssertionHistory) -> AssertionHistoryPage`は
 `mutation=False`、通常の**request 256 KiB / response 2 MiB**上限、
 read-only `outcome_unknown: false`を使います。
 自動paging/retry、mutation、cache、provider呼出し、watch、retention objectは追加しません。
-Native/SDKは**28 resource method**となり、MCPの4 toolとclosed hookは不変で、
+Native/SDKは**29 resource method**となり、MCPの4 toolとclosed hookは不変で、
 history tool/fieldはありません。schema 10は不変です。
 [契約](docs/STATUS-jp.md#assertion-metadata-history)、
 [paging例](docs/operations/README-jp.md#assertion-metadata-history)、
@@ -81,7 +132,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.20/schema 10はlocalと両native architectureで検証済みです。**
+**v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -120,14 +171,14 @@ state遷移でも元の`created_at`は維持しますが、state/アクセス/�
 SDK `query_jobs(QueryJobs) -> JobPage`はasyncで`mutation=False`を使い、
 通常の**request 256 KiB / response 2 MiB**上限とread-only `outcome_unknown: false`を維持します。
 自動pagination/retry、claim、取消、worker/provider呼出し、state変更はありません。
-Native/SDKは**28 resource method**となり、MCPの4 toolとhookは不変でjob toolはありません。
+Native/SDKは**29 resource method**となり、MCPの4 toolとhookは不変でjob toolはありません。
 [契約](docs/STATUS-jp.md#owned-job-query-and-pagination)、
 [paging例](docs/operations/README-jp.md#owned-job-query-and-pagination)、
 [ADR 0019](docs/adr/0019-job-query-jp.md)を参照してください。
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.20はlocalと両native architectureで検証済みです。**
+**既存checkpoint head契約を維持します。v0.0.21はlocalと両native architectureで検証済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -161,15 +212,15 @@ restore先forkのbranch headは独立しています。
 SDK `get_checkpoint_head(CheckpointBranch) -> CheckpointEnvelope`はasync/read-only
 （`mutation=False`）で、通常の**request 256 KiB / response 2 MiB**上限、
 sanitized error、`outcome_unknown: false`、自動retryなしを維持します。
-assertion metadata履歴による現在のNative/SDK resourceは**28 method**で、MCPの**4 tool**とhookは不変でcheckpoint toolはありません。
-v19からのSQL migration、依存/provider/artifact固定値の変更はありません。
+entity照会による現在のNative/SDK resourceは**29 method**で、MCPの**4 tool**とhookは不変でcheckpoint toolはありません。
+v20からのSQL migration、依存/provider/artifact固定値の変更はありません。
 [契約](docs/STATUS-jp.md#checkpoint-head-lookup)、
 [照会例と更新](docs/operations/README-jp.md#checkpoint-head-lookup)、
 [ADR 0018](docs/adr/0018-checkpoint-head-jp.md)を参照してください。
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.20はlocalと両native architectureで検証済みです。**
+**既存recall filter契約を維持します。v0.0.21はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -195,9 +246,9 @@ required参照は別契約のlexical専用keyword迂回とrequest順を維持し
 filterにも一致が必要です。一つでも不一致ならIDや部分contextを返さず
 request全体を**404 `not_found`**にします。既存byte予算/error動作は不変です。
 
-**Native/SDK resource method 28、MCP tool 4**を維持し、safe error codeの追加はありません。
+**Native/SDK resource method 29、MCP tool 4**を維持し、safe error codeの追加はありません。
 hook入力は`filters`を拒否し、内部既定`None`で信頼する起動時境界を維持します。
-v19からのSQL migration、依存/provider/index変更、永続priority、cacheは追加しません。
+v20からのSQL migration、依存/provider/index変更、永続priority、cacheは追加しません。
 filterはcallerの選択条件であり、信頼する指示や検証済み真実ではありません。
 [契約](docs/STATUS-jp.md#exact-structured-recall-filters)、
 [例と更新](docs/operations/README-jp.md#exact-structured-recall-filters)、
@@ -205,7 +256,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.20はlocalと両native architectureで検証済みです。**
+**既存required-context契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -231,7 +282,7 @@ optional itemは従来のgreedyなitem単位除外と`coverage.truncated`を維�
 `lexical_incomplete`は欠落coverageを引き続き示します。
 index修復や必須制約の自動検出ではありません。caller指定参照は**policy権限や検証済み承認ではなく**、
 memoryは根拠であって信頼する指示ではありません。
-**Native/SDK resource method 28、MCP tool 4**を維持します。
+**Native/SDK resource method 29、MCP tool 4**を維持します。
 hookはこの入力fieldを拒否し、参照なしのrecallを構築するためhost pinningは追加しません。
 write、idempotency、永続priority、cache、推論、provider呼出し、schema migrationは追加しません。
 [契約](docs/STATUS-jp.md#required-context-recall)、
@@ -240,7 +291,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.20はlocalと両native architectureで検証済みです。**
+**既存job取消契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -262,7 +313,7 @@ source episode、dedup anchor、worker準備memory、WAL、backupは取消で消
 応答喪失時は**同じkey/body**か新しいGETで照合し、CAS値を盲目的に更新しません。
 failed専用retryはcancelled jobを拒否し、enqueue/captureのdedupは復活させずcancelled jobを返します。
 source purgeは引き続きjobを失効させ、取消replayを拒否します。
-SDKは`cancel_job`を維持し、所有job照会による現在のsurfaceは**28 method**です。
+SDKは`cancel_job`を維持し、entity照会による現在のsurfaceは**29 method**です。
 MCPの4 toolとread-only hookは変更しません。
 [完全な契約](docs/STATUS-jp.md#explicit-job-cancellation)、
 [運用とschema 10 migration](docs/operations/README-jp.md#explicit-job-cancellation)、
@@ -270,7 +321,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.20/schema 10はlocalと両native architectureで検証済みです。**
+**既存readiness契約を維持し、v0.0.21/schema 10はlocalと両native architectureで検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -292,14 +343,14 @@ resource routeはprobeを呼ばず、新たな永続readiness gateも取得し�
 readinessはtraffic制御に使い、依存障害でrestart stormを起こすlivenessとして使わないでください。
 失敗/復旧thresholdとperimeter制限/rate limitを設定します。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
-readinessはSDK/MCP/hook probe methodを追加せず、所有job照会による現在のNative/SDK memory surfaceは27です。
+readinessはSDK/MCP/hook probe methodを追加せず、entity照会による現在のNative/SDK memory surfaceは29です。
 [完全な契約](docs/STATUS-jp.md#runtime-readiness)、
 [probe運用](docs/operations/README-jp.md#runtime-readiness)、
 [ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.20はlocalと両native architectureで検証済みです。**
+**既存scope-access契約を維持し、v0.0.21はlocalと両native architectureで検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -321,13 +372,13 @@ purge済みdataも復活しません。auditは改ざん耐性の証明やDR sol
 
 `009_scope_access.sql`はschema 9でscope-access auditを導入し、schema 10も維持します。
 PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
-現在stageは`m2-assertion-history`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
+現在stageは`m2-entity-query`です。[完全な契約](docs/STATUS-jp.md#scope-access-administration)、
 [get → set → revoke例とmigration](docs/operations/README-jp.md#scope-access-administration)、
 [ADR 0013](docs/adr/0013-scope-access-jp.md)を参照してください。
 
 ## Python SDK
 
-**SDKはread-only assertion metadata履歴を追加し28 methodです。v0.0.20はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
+**SDKはread-only完全一致entity照会を追加し29 methodです。v0.0.21はlocalと両native architectureで検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -383,7 +434,7 @@ SDK call時の検証はsanitized SDK errorを返します。
 
 `AsyncMemoryClient`は固定HTTPS originまたはloopback HTTP originとtokenの形を検査し、
 実際のtoken認証はserverが行います。context entryで所有HTTP clientを作成し、
-認証付きcapabilitiesの**service 0.0.20 / API v1 / schema 10**完全一致を要求します。
+認証付きcapabilitiesの**service 0.0.21 / API v1 / schema 10**完全一致を要求します。
 一つのcontext内だけで使い、再entryや自動retryはありません。
 未完了taskはawaitするかcancel後にawaitして、**contextをexitする前に完了を確認**してください。
 client closeはrequestのschedule/cancel管理でもDB rollbackでもありません。
@@ -391,7 +442,7 @@ exitで閉じるのは接続であり、**保存memoryは消去しません**。
 scopeはserver ACLを狭めるだけです。返されたmemoryは根拠であって、
 信頼する指示や現在の事実の保証ではありません。
 
-明示job取消、embedding、job、graph、checkpoint、tool effectを含む全27 public memory resource
+entity照会、明示job取消、embedding、job、graph、checkpoint、tool effectを含む全29 public memory resource
 methodを対象とし、CLI管理やworker実行は対象外です。
 すべての変更にはcallerが保持するkeyword-onlyの`idempotency_key`が必須です。
 処理中のcancelを含む変更結果不明時は**同じkeyとbody**で照合し、
@@ -439,7 +490,18 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.20実装はlocalと両native architectureで検証済みです。**
+**v0.0.21実装はlocalと両native architectureで検証済みです。**
+Apple Containerのfull `./scripts/test-containers.sh`は
+**729合格、既存warning 1件、390.27秒**でした。実装
+[`a34477d7511f22202f0bd981772f51408634a9af`](https://github.com/rioriost/pg_agmemory/commit/a34477d7511f22202f0bd981772f51408634a9af)は
+完全一致SHAの[CI 35252290223](https://github.com/rioriost/pg_agmemory/actions/runs/35252290223)に合格しました。
+native amd64は**729合格、764.95秒**、arm64は**729合格、614.98秒**でした。
+Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
+従来の全production smokeとentity照会が全3環境で合格しました。
+これは実装結果であり、最終docs CI結果ではありません。
+[検証済み証拠](docs/STATUS-jp.md#v0021--schema-10)を参照してください。
+
+**過去のv0.0.20実装はlocalと両native architectureで検証済みです。**
 Apple Containerのfull `./scripts/test-containers.sh`は
 **695合格、既存warning 1件、359.74秒**でした。実装
 [`6f03b69bd3317bbb4ed1c40982d3a3aa565bbe97`](https://github.com/rioriost/pg_agmemory/commit/6f03b69bd3317bbb4ed1c40982d3a3aa565bbe97)は
@@ -447,8 +509,13 @@ Apple Containerのfull `./scripts/test-containers.sh`は
 native amd64は**695合格、527.99秒**、arm64は**695合格、615.07秒**でした。
 Ruff、mypy **source 19 + strict SDK consumer 1ファイル**、core/hook/sdk-only導入、
 従来の全production smokeとassertion historyが全3環境で合格しました。
-これは実装結果であり、最終docs CI結果ではありません。
-[検証済み証拠](docs/STATUS-jp.md#v0020--schema-10)を参照してください。
+別の最終v0.0.20 docs
+[`c8977088d92f060c1b9f2594db6300f79cea3963`](https://github.com/rioriost/pg_agmemory/commit/c8977088d92f060c1b9f2594db6300f79cea3963)は
+[CI 35249560753](https://github.com/rioriost/pg_agmemory/actions/runs/35249560753)に合格しました。
+native各**695 case**、**amd64 660.52秒 / arm64 642.26秒**で、
+従来のRuff/mypy **19 + 1**、全optional導入、全production smokeも合格しました。
+docs所要時間は実装CI 35247519977とは別で、両runともv0.0.21の適格性確認ではありません。
+[過去の証拠](docs/STATUS-jp.md#v0020--schema-10)を参照してください。
 
 **過去のv0.0.19実装はlocalと両native architectureで検証済みです。**
 Apple Containerの`./scripts/test-containers.sh`は**exit 0**で、
@@ -722,7 +789,7 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.20はschema 10を維持し、migrationを追加しません。** 既存schema 10 DBには
+**v0.0.21はschema 10を維持し、migrationを追加しません。** 既存schema 10 DBには
 [application-only更新](docs/operations/README-jp.md#schema-10-application-only-upgrade)を使います。
 古いschemaにはv0.0.15で導入した`010_job_cancellation.sql`が引き続き必要です。
 [既存migration sequence](docs/operations/README-jp.md#schema-10-job-cancellation-upgrade)に従ってください。
@@ -735,7 +802,7 @@ API、worker、`migrate`はschema 10記録済みでもこれを検査します�
 SDK caller、管理commandを停止/drain**し、backupと現在の削除/ACL記録を保全してoffline migrationを行います。
 古いDBにはmigration 007のlexical backfillを含む既存migrationも適用します。
 **embedding backfillや自動embedding再構築はありません**。
-対応するv0.0.20 processだけを再起動し、API/workerは厳密な履歴
+対応するv0.0.21 processだけを再起動し、API/workerは厳密な履歴
 `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`とschema `public`内のextension `vector` 0.8.6を要求します。
 古いschemaのprocessとschema 10のrolling混在互換性はありません。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
@@ -883,7 +950,7 @@ Python SDKには`pg-agmemory[sdk]`を選択してください。
 repositoryのDocker test/runtime imageは意図的に3 extraすべてを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.20のtest/runtime両stageに
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.21のtest/runtime両stageに
 `mcp`・`hook`・`sdk`を含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
@@ -897,7 +964,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.20`、schema `10`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.21`、schema `10`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -988,7 +1055,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.20` / API `v1` / schema `10`**を検査し、
+**service `0.0.21` / API `v1` / schema `10`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -1063,7 +1130,7 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-lexical projectionを再構築して、対応するv0.0.20 processだけを再起動します。
+lexical projectionを再構築して、対応するv0.0.21 processだけを再起動します。
 embeddingの投入/再構築は行いません。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
@@ -1136,6 +1203,9 @@ head不一致時は`409 revision_conflict`を返します。
 [ADR 0002](docs/adr/0002-assertion-revisions-jp.md)を参照してください。
 
 ## EntityとSQL graph oracle
+
+[完全一致entity照会](#exact-entity-query-and-pagination)で読取り可能scopeの別IDを発見し、
+各candidateのGET根拠を確認してgraph seedを明示選択してください。label一致はidentity解決ではありません。
 
 `POST /v1/entities`はallowlist内のtype、canonical label、同一scopeのepisode引用
 1〜32件、`explicit_intent: true`で不変のrevision 1 identityを作成します。
@@ -1250,6 +1320,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Checkpoint headの照会](docs/adr/0018-checkpoint-head-jp.md) | [Checkpoint-head lookup](docs/adr/0018-checkpoint-head.md) |
 | [所有jobの照会とpagination](docs/adr/0019-job-query-jp.md) | [Owned-job query and pagination](docs/adr/0019-job-query.md) |
 | [Assertion metadata履歴](docs/adr/0020-assertion-history-jp.md) | [Assertion metadata history](docs/adr/0020-assertion-history.md) |
+| [完全一致entity照会とpagination](docs/adr/0021-entity-query-jp.md) | [Exact entity query and pagination](docs/adr/0021-entity-query.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 

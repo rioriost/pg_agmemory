@@ -68,6 +68,10 @@ The assertion-history smoke checks descending metadata pages, exact-revision
 explanation, and source purge. Do not include full values or evidence quotes in
 history pages or treat an ordinal cursor as authority or a fixed snapshot;
 see [ADR 0020](docs/adr/0020-assertion-history.md). Current ACLs apply to every page.
+The entity-query smoke checks exact scoped label/type lookup, duplicate identities,
+explicit graph-seed selection, and source purge. Keep shared-scope visibility
+distinct from owner-only job discovery; equal labels must not merge identities.
+Metadata pages omit evidence quotes; see [ADR 0021](docs/adr/0021-entity-query.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

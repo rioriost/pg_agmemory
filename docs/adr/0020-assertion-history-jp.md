@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRは検証済みv0.0.20/schema 10を記録しています。
+[ADR 0021](0021-entity-query-jp.md)はv0.0.21/schema 10の完全一致entity照会を記録し、
+Native/SDK resourceは29です。localと両native architectureで検証済みです。
+別の最終v20 docs CI 35249560753は実装CIと分けて
+[過去の証拠](../STATUS-jp.md#v0020--schema-10)へ記録しています。
+
 ## 決定とrequest境界
 
 Native JWT認証付きread-only `POST /v1/assertions/history`を追加し、
