@@ -4,8 +4,8 @@
 
 Contributions to `pg_agmemory` are made under the project's [MIT license](LICENSE).
 The Python package/service is `pg_agmemory`. Git is already initialized; work
-on a branch rather than reinitializing the repository. This is an initial M1
-slice, not a completed MVP. Read [ADR 0001](docs/adr/0001-initial-slice.md) before
+on a branch rather than reinitializing the repository. This is an incremental
+implementation, not a completed MVP. Read [ADR 0001](docs/adr/0001-initial-slice.md) before
 changing authorization, evidence, transactions, or deletion.
 
 ## Container-first validation
@@ -24,7 +24,12 @@ integration tests. It verifies actual core-only and hook-only installations
 without the MCP SDK, then starts the non-root runtime image and checks the
 Japanese tokenizer, API liveness, worker, both MCP protocol modes, and all three
 implicit recall hook events. The atomic capture smoke also exercises the actual
-worker, retrieval, replay, and source purge. It uses separate disposable PostgreSQL containers for tests and
+worker, retrieval, replay, and source purge. The pgvector smoke uses synthetic
+episode/assertion vectors to check exact/hybrid retrieval and purge; this does
+not qualify a real embedding model's semantic quality. The database image pins
+PostgreSQL 18.6 and pgvector 0.8.6; see [ADR 0011](docs/adr/0011-pgvector-retrieval.md)
+for schema 8 and extension requirements.
+It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.
 `PGAG_TEST_DATABASE_URL` is for disposable test data only; prefer letting the

@@ -4,7 +4,7 @@
 
 `pg_agmemory`への貢献にはプロジェクトの[MIT license](LICENSE)を適用します。
 Python package/service名は`pg_agmemory`です。Gitは初期化済みなので、
-repositoryを再初期化せずbranchで作業してください。MVP完成版ではなくM1の初期sliceです。
+repositoryを再初期化せずbranchで作業してください。段階的な実装であり、MVP完成版ではありません。
 認可・根拠・transaction・削除を変更する前に
 [ADR 0001](docs/adr/0001-initial-slice-jp.md)を確認してください。
 
@@ -24,6 +24,10 @@ scriptはtest imageをbuildし、Ruff、mypy、unitテスト、PostgreSQL integr
 non-root runtime imageをbuild・起動して、日本語tokenizer、API liveness、
 worker、MCP両protocol mode、暗黙recall hook全3eventを確認します。
 atomic capture smokeでは実workerによる公開、検索、再送、source purgeも検査します。
+pgvector smokeではepisode/assertionの合成vectorでexact/hybrid検索とpurgeを確認します。
+実embedding modelの意味検索品質を認定するものではありません。
+DB imageはPostgreSQL 18.6とpgvector 0.8.6を固定します。schema 8とextensionの
+要件は[ADR 0011](docs/adr/0011-pgvector-retrieval-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

@@ -8,6 +8,10 @@
 - 命名/license: `rioriost/pg_agmemory`、package/service `pg_agmemory`。MITを変更せず、二言語文書を維持
 - 受入: M0〜M3全体、MVP、本番、性能、記憶品質、DR、完全消去のgateは未完了
 
+**過去版の範囲:** このADRはv0.0.10/schema 7と検証済み証拠を記録します。
+[ADR 0011](0011-pgvector-retrieval-jp.md)はv0.0.11/schema 8 vector retrievalを記録し、
+migration/起動要件は別です。captureはembeddingを自動生成しません。
+
 ## 決定と範囲
 
 Native **`POST /v1/captures`**を追加し、caller管理`Idempotency-Key`を必須にします。

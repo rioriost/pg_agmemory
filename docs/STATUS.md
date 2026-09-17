@@ -2,8 +2,9 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Bounded v0.0.10/schema 7 atomic structured capture implemented.
-Final local and native amd64/arm64 checks passed. v0.0.9 results remain historical evidence.
+**Current bounded milestone: v0.0.11/schema 8 pgvector exact/hybrid retrieval foundation.
+Implementation, local Apple Container, and both native Docker architectures are verified.
+Verified v0.0.10 and earlier results remain historical evidence.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -37,7 +38,9 @@ software dependency, not stored application memory.
 | `POST /v1/tool-effects` | Records/deduplicates an intent within an existing checkpoint run; returns its initial revision reference |
 | `POST /v1/tool-effects/{memory_id}/transitions` | Appends a CAS-checked ledger transition; does not call the tool |
 | `GET /v1/tool-effects/{memory_id}` | Returns current state, immutable event history, references, HMAC identifiers, and the run-invalidated flag |
-| `POST /v1/recall` | Retrieves authorized episodes/assertions with a default simple or opt-in Japanese lexical profile, echoes `search_profile`, and builds a deterministic, byte-budgeted context pack |
+| `POST /v1/recall` | Preserves default lexical recall and byte-budgeted packs; v0.0.11 adds opt-in exact vector/hybrid modes with explicit coverage |
+| `POST /v1/embedding-inputs` | HTTP 200 read-only canonical embedding input for an authorized episode/assertion revision; no idempotency key |
+| `POST /v1/embeddings` | HTTP 201 explicit immutable vector upload under the canonical parent's scope; mandatory caller-owned idempotency key |
 | `POST /v1/explain` | Returns the requested assertion revision and its evidence. Omitted revision still means `1`, not latest. Episodes have only revision `1`; no ranking trace API |
 | `POST /v1/forget` | Accepts explicit IDs with `preview` or `purge`; no arbitrary selector or `suppress` mode |
 | `GET /v1/deletions/{receipt_id}` | Returns an authorized deletion receipt and the unresolved, operator-managed backup status |
@@ -48,9 +51,202 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness.
 
+## Pgvector exact and hybrid retrieval
+
+**Implemented and verified in v0.0.11/schema 8.**
+The lexical default remains unchanged. This adds explicit, provider-independent
+vector storage and exact/hybrid ranking, not automatic embedding generation or
+qualified semantic retrieval. PostgreSQL remains the only application persistence store.
+
+### Canonical input and explicit upload
+
+Read-only **`POST /v1/embedding-inputs`** accepts the existing Explain body
+`{memory_id, revision}`; omitted revision means **1, not latest**.
+It needs no `Idempotency-Key` and accepts only currently readable episodes and
+assertion revisions, including relation assertions—not entities, jobs, checkpoints,
+or tool effects. The returned canonical input is:
+
+```text
+{memory_id, revision, type, text, input_digest, input_format: "memory-content-v1"}
+```
+
+Episode `text` is its normalized content. Assertion `text` is exactly
+`subject / predicate: value`, as `MemoryItem.content`, including a relation
+assertion's display value. IDs/times are not inserted into embedding text.
+`input_digest` is SHA-256 of UTF-8 `text`; it is not a model-quality measure,
+external verification, or proof that the supplied vector was generated from that text.
+This is private canonical content: **do not log it or send it to a third party
+without explicit approval**. Documentation fixtures are synthetic and invoke no model.
+
+**`POST /v1/embeddings`** requires a caller-owned `Idempotency-Key`:
+
+```text
+{
+  memory_id, revision: 1, input_digest: <64 lowercase hex characters>,
+  model: {
+    name: <1–256 characters>, revision: <1–256 characters>,
+    dimensions: 768, distance_metric: "cosine", normalization: "l2-f32-v1"
+  },
+  values: <exactly 768 finite JSON numbers>
+}
+```
+
+Canonical `revision` defaults to 1; model `revision` is a separate required string.
+Identity/scope are derived from the canonical parent, with current **read and write**
+authorization. Model metadata is **caller-declared**, not a registry, trusted
+origin, provider attestation, or semantic-quality claim. Model spaces separate the
+full name/revision pair; equal dimensions never make different spaces compatible.
+Dimensions, metric, and normalization are fixed as above.
+
+Server L2 normalization computes in float64, then stores pgvector float32 values.
+Reject zero, non-finite, or un-normalizable vectors, booleans, numeric strings,
+and any length other than 768. There is no truncation or dimension coercion.
+The submitted digest must match the exact currently authorized canonical revision:
+otherwise **409 `embedding_input_mismatch`**.
+
+| Situation | Result |
+|---|---|
+| Same canonical revision/model, same normalized float32 vector and digest | Deduplicate, including across HTTP keys |
+| Different vector for the same parent revision/model | **409 `embedding_conflict`**; use a new model revision for replacement |
+| Same HTTP key, different validated request | **409 `idempotency_conflict`**; do not change keys to resolve an uncertain response |
+| Ninth model version for one canonical revision | **422 `embedding_limit_exceeded`** |
+| Existing duplicate at the eight-model limit | Still allowed |
+
+The cap is **8 model versions total per canonical revision**, not eight per model
+name. Request hashing preserves the validated values **before L2 normalization**:
+rescaling a vector with the same HTTP key conflicts even if its normalized
+projection would match. Keep the same key and body after an uncertain response.
+A successful upload returns `{memory_id, revision, model, input_digest}`,
+with **no independent embedding object ID**. Projection creation, idempotency
+receipt, and audit are atomic. Same-key replay checks that both the canonical
+parent remains live/readable and the projection still exists.
+The **stored idempotency result contains only `{memory_id, revision}`**:
+no plaintext input digest, model names, or vectors are retained in that receipt.
+The full response model/digest is rebuilt from the currently readable canonical
+input and matching projection; request HMACs and opaque anchors persist.
+If the parent is live but an administrator removed only the projection, replay
+returns **409 `embedding_unavailable`**, not a reconstructed projection.
+No endpoint deletes only a projection, and no provider/rebuild/generation runs automatically.
+
+### Recall modes, exact ranking, and coverage
+
+Recall adds `retrieval_mode` (default **`"lexical"`**) and `vector_query`
+(default **null**). A vector query contains the same `model` and 768-value format
+as an upload and uses the same normalization/validation rules.
+`retrieval_mode` is separate from the existing implicit/explicit `mode`; it
+selects a retrieval path, not identity or authority.
+
+| Mode | Text `query` | `vector_query` | Ranking |
+|---|---|---|---|
+| `lexical` | Existing empty browsing/nonempty FTS behavior | Must be null | Existing lexical semantics |
+| `vector` | Must be empty | Required | Exact cosine distance |
+| `hybrid` | Must be nonempty | Required | Lexical/vector reciprocal-rank fusion |
+
+Do not silently ignore text, select a different model, or fall back to another mode.
+Existing scopes, `as_of`, `known_at`, byte budget, item limits, and `search_profile`
+rules remain. Historical revision vectors may be populated separately; a vector
+for another revision is not a substitute for the revision selected by time.
+Past reads never override **current ACLs or deletion**.
+Omitted `as_of`/`known_at` are frozen once per recall before selection and coverage;
+both paths use those resolved times, so a future boundary cannot split them.
+Explicit time values are unchanged.
+
+Vector ranking operates over **`MATERIALIZED` currently authorized and time-eligible
+canonical candidates for the requested model**, with those filters applied
+**before distance/ranking**. It is exact cosine, not ANN/HNSW, approximate
+neighbor expansion, or a tenant/scope-widening search.
+Hybrid uses the existing FTS rank and exact vector rank, both deterministic, with
+**RRF k=60**:
+
+```text
+fusion_score = 1 / (60 + lexical_rank) + 1 / (60 + vector_rank)
+```
+
+An absent path contributes zero. A lexical match without a vector may participate
+in hybrid results, but missing-vector coverage must remain explicit.
+Missing **any eligible visible projection** for the requested model sets
+`coverage.vector_incomplete: true`; hidden/ineligible items never contribute to
+coverage or counts. Lexical defaults set `vector_incomplete: false`.
+Existing Japanese `lexical_incomplete` applies only to the lexical/hybrid path.
+`retrieval_complete` is false if either active path is incomplete.
+For an empty selection with no candidates, missing active-index coverage yields
+`index_incomplete`; a truly empty authorized corpus yields `not_found`.
+Candidates that cannot fit retain `budget_exhausted`; nonempty results retain
+null `empty_reason` while still exposing incomplete coverage.
+Never turn missing-index retrieval into an unqualified empty success.
+
+The additive defaults are `MemoryItem.retrieval: null`,
+`RecallResult.retrieval_mode: "lexical"`, `embedding_model: null`, and
+`coverage.vector_incomplete: false`. Non-null `MemoryItem.retrieval` contains
+`method` (`exact_cosine` or `rrf-60`), `lexical_rank`, `vector_rank`,
+`vector_distance`, and `fusion_score`. Rank/distance/fusion fields are nullable
+when their path/scoring method does not supply them; vector-only fusion score is null.
+UUID breaks ties in the actual computed distance/score. This does **not** promise
+bitwise-identical arbitrary floating-point results or rankings across all CPUs.
+These fields are **additive response/schema changes**: unchanged default lexical
+semantics do not promise byte-for-byte identical HTTP JSON or generated MCP schemas.
+These are **ranking measurements, not confidence, calibration, or truth**.
+The context-pack format and **whole compact JSON UTF-8 byte budget** remain unchanged,
+as do reported assertions and null/uncalibrated confidence.
+Exact SQL remains subject to the existing **5 s DB statement timeout**, not a
+performance SLO. Retrieval quality, performance, and untrusted-vector robustness are unqualified.
+
+### Projection lifecycle, packaging, and adapters
+
+New **`008_pgvector.sql`** requires **`vector` 0.8.6 in `public`**, refuses an
+existing extension with the wrong version/schema, and adds per-episode and
+per-assertion-revision projections with `ON DELETE CASCADE`, forced RLS, and
+runtime **SELECT/INSERT only**. There is **no existing-data embedding backfill**.
+API, worker, and `migrate` validate the extension version/schema even when
+schema 8 is already recorded; an already-applied migration does not bypass this guard.
+Canonical parent purge removes vectors, digests, and declared model names alongside
+lexical projections. They are not new provenance vertices or deletion-count objects.
+There is no standalone model registry retaining this metadata.
+Retained canonical source/idempotency anchors still prevent resurrection.
+The Native response-drain boundary and incomplete host/backup/WAL erasure guarantees remain.
+
+The adopted prebuilt DB image is
+`docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a`.
+[pgvector 0.8.6](https://github.com/pgvector/pgvector/tree/v0.8.6) is the verified
+stable release of **2026-07-29**, official tag commit
+`8ee86c96f0fd72390f890aa8a336fda6d3ab4c6c`
+([pinned changelog](https://github.com/pgvector/pgvector/blob/8ee86c96f0fd72390f890aa8a336fda6d3ab4c6c/CHANGELOG.md)),
+under the **PostgreSQL License**. Preserve its upstream license.
+Both final native images retain `/usr/share/doc/pgvector/LICENSE`, verified
+byte-identical to the pinned upstream license, SHA-256
+`6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87`.
+Artifact inspection verified both native amd64/arm64 final images: installed
+PostgreSQL **18.6-1.pgdg12+2**, native ELF, and `vector.control` **0.8.6**.
+**PostgreSQL stays 18.6, but the upstream DB image/base digest changes** from the
+old library PostgreSQL image. This is a new pinned DB profile, not an unchanged image.
+There is no new DB Dockerfile, source-build, or host-APT procedure in the
+implemented profile. An operator-managed PostgreSQL alternative must provide the
+same extension version/schema; no such host-install workflow is supplied here.
+Python dependencies remain unchanged apart from project-version metadata:
+raw parameter-bound vector casts need no pgvector Python package.
+Artifact verification is not application/migration/CI validation or attestation
+of any caller-declared embedding model.
+
+MCP still exposes **four tools**. Generated Recall arguments accept the new modes
+and inline query vectors, but no embedding-input/upload tool is added.
+The fixed-startup hook stays **lexical-only and read-only**; event JSON cannot pass
+`retrieval_mode`/`vector_query`. It also rejects a Native response with non-lexical
+`retrieval_mode`, non-null `embedding_model`/item `retrieval`, or true
+`coverage.vector_incomplete`; it does not silently downgrade unexpected vector output.
+Observe, capture, jobs, and workers do not generate
+embeddings or call providers. Both MCP protocol eras remain; startup matching is
+**service `0.0.11` / API `v1` / schema `8`**.
+Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
+`default_retrieval_mode: "lexical"`. The API stage is `m2-pgvector-retrieval`;
+embedding input returns HTTP 200 and upload/replay returns HTTP 201. Full M0–M3/MVP/production/DR/erasure/
+performance/quality gates remain incomplete.
+See [ADR 0011](adr/0011-pgvector-retrieval.md),
+[schema-8 upgrade](operations/README.md#schema-8-pgvector-upgrade), and
+[the synthetic example](operations/README.md#synthetic-vector-example).
+
 ## Atomic structured capture
 
-**v0.0.10 delta: final local and both native checks passed.** `POST /v1/captures` requires
+**Retained v0.0.10 contract, also verified in v0.0.11.** `POST /v1/captures` requires
 `Idempotency-Key` and one body:
 
 ```text
@@ -148,7 +344,7 @@ not that child, even after the child has been created. See [durable jobs](#durab
 
 ### Scope and capabilities
 
-The implemented API stage is **`m2-atomic-capture`**, with capability feature
+The historical v0.0.10 API stage was **`m2-atomic-capture`**. Retained capability feature
 **`atomic_structured_capture`**. The exact `atomic_capture` metadata fragment is:
 
 ```json
@@ -167,10 +363,10 @@ The stage label does not complete M2 or any other acceptance gate.
 
 Capture is **Native-only**, not a fifth MCP tool. Recall-hook stays read-only;
 neither adapter automatically captures. MCP/hook startup requires exact
-**service `0.0.10` / API `v1` / schema `7`**. No new dependency, DDL, or migration
-is needed for an existing schema-7 DB; only project version/lock metadata changes.
-No LLM/provider, extraction, natural-language synthesis, automatic synthesis,
-pgvector, or semantic-quality claim is added.
+**service `0.0.11` / API `v1` / schema `8`**. The schema-8 migration is separate
+from the retained capture semantics. Capture does not generate embeddings,
+invoke LLM/providers, extract intent, perform natural-language/automatic synthesis,
+or establish semantic quality.
 The tenant HTTP response-drain barrier is unchanged: no atomic host-context
 delivery, retraction, or host/backup/WAL/full-erasure guarantee follows.
 See [ADR 0010](adr/0010-atomic-capture.md) and the
@@ -181,10 +377,10 @@ See [ADR 0010](adr/0010-atomic-capture.md) and the
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.10 Docker test/runtime stages retain both `mcp` and `hook` extras.
+v0.0.11 Docker test/runtime stages retain both `mcp` and `hook` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
 below. Historical v0.0.9 checks passed locally and on both native Docker
-architectures. v0.0.10 final local and both native checks also passed.
+architectures. Historical v0.0.10 and current v0.0.11 checks also passed.
 Shared `NativeSettings` additionally parses origins with `httpx.URL`, rejecting
 control characters and invalid IDNA before transport. No remote MCP HTTP/SSE listener,
 OAuth, delegated caller identity, semantic cache, or response cache is provided.
@@ -264,9 +460,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.10"`, and `schema_version: 7`.
+`api_version: "v1"`, `service_version: "0.0.11"`, and `schema_version: 8`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. There is **no migration 008/009/010**: v0.0.10 retains schema 7.
+sanitized diagnostics. v0.0.11 requires schema 8; the adapter itself performs no migration.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -308,15 +504,15 @@ followed by same-key/body retry and an assertion that only one assertion exists.
 There is no automatic retry. Exact 256/257-character key boundaries and rejection
 without whitespace trimming are also covered.
 
-Historical v0.0.8/v0.0.9 local/native CI results are recorded below. v0.0.10
-retains both protocol eras; final local and both native checks passed. These exercised paths do not qualify
+Historical v0.0.8/v0.0.9/v0.0.10 local/native CI results are recorded below.
+v0.0.11 retains and passes both protocol eras. These exercised paths do not qualify
 untested older clients, named host applications, or every protocol version.
 See [ADR 0008](adr/0008-local-mcp.md) and
 [operations](operations/README.md#local-stdio-mcp-operations).
 
 ## Implicit recall hook
 
-**Retained read-only contract; v0.0.10 final local and both native checks passed.**
+**Retained read-only, lexical-only contract, verified in v0.0.11.**
 `pg-agmemory recall-hook` is an optional, vendor-neutral **harness-side** local
 Native HTTP client. There is no automatic registration into a host and no
 Copilot, Claude, or Codex integration claim. The host chooses when to invoke it;
@@ -373,7 +569,7 @@ and invalid IDNA before transport. These invalid-origin cases are covered by
 the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.10` / API `v1` / schema `7`**, then sends `POST /v1/recall`
+exact **service `0.0.11` / API `v1` / schema `8`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -608,10 +804,10 @@ For exact `known_at` revision-boundary checks, use the server-returned assertion
 
 ## Retrieval and budgets
 
-Recall defaults to `search_profile: "simple-v1"`, preserving PostgreSQL's `simple`
+Recall defaults to `retrieval_mode: "lexical"` and `search_profile: "simple-v1"`, preserving PostgreSQL's `simple`
 configuration, `plainto_tsquery`, and `ts_rank_cd`. The optional Japanese profile
-below adds segmentation, not BM25, vector search, or hybrid retrieval. Responses
-echo `search_profile`; unsupported profiles return `422`. An empty `query` is
+below adds segmentation, not BM25 or vectors; vector/hybrid modes are separate.
+Responses echo `search_profile`; unsupported profiles return `422`. In lexical mode an empty `query` is
 allowed and browses canonical accessible items under scope/time constraints,
 subject to item and byte limits, even if lexical projections are incomplete.
 Entities themselves are excluded from recall/explain. Relation assertions remain
@@ -640,7 +836,7 @@ values of 64–8,000 (implicit mode at most 2,000). `coverage.truncated` signals
 item/budget omissions. An empty selection is `not_found`, `budget_exhausted`, or
 `index_incomplete` as defined below;
 `retrieval_complete` does not mean complete knowledge of the world. Native implicit
-mode remains a request option. The v0.0.9 [hook](#implicit-recall-hook) invokes it
+mode remains a request option. The retained [hook](#implicit-recall-hook) invokes it
 only when a trusted harness launches the command; no host is automatically registered.
 
 ### Japanese lexical profile
@@ -694,7 +890,7 @@ requested-scope, time-eligible canonical candidates sets
 `coverage.lexical_incomplete: true` and `coverage.retrieval_complete: false`.
 This check is independent of query relevance and the item limit. There is **no
 silent fallback** to simple search or automatic repair worker. Available matches
-may still be returned with the incomplete flag; an empty query still browses
+may still be returned with the incomplete flag; in lexical mode an empty query still browses
 canonical items. No query candidates plus missing projections gives
 `empty_reason: "index_incomplete"`; candidates that cannot fit the context retain
 `"budget_exhausted"`, and a nonempty result has null `empty_reason`.
@@ -710,9 +906,11 @@ Capabilities retain feature `japanese_fts`, both
 `search_profiles`, `default_search_profile: "simple-v1"`, and pinned tokenizer/
 dictionary metadata with `normalization: "none"` and
 `segmentation: "japanese-script-runs"`. Context budgeting stays `utf8-bytes-v1`;
-`vector_search`, `auto_synthesis`, and recall `graph_used` remain false.
-The historical stage `m2-japanese-fts` becomes `m2-atomic-capture`
-in v0.0.10 without changing the lexical contract. The stage label is not full M2 acceptance. See
+`auto_synthesis` and recall `graph_used` remain false. The v0.0.11 vector/hybrid
+foundation adds `retrieval_modes: ["lexical", "vector", "hybrid"]` and
+`default_retrieval_mode: "lexical"` without changing lexical defaults.
+Historical stages `m2-japanese-fts` and `m2-atomic-capture`
+never represented full M2 acceptance. See
 [ADR 0007](adr/0007-japanese-fts.md),
 [offline rebuild](operations/README.md#lexical-profile-and-reindex-operations),
 and [dependency licensing](../README.md#dependency-licensing).
@@ -1163,11 +1361,17 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.10 keeps exact schema 7; no migration 008/009/010 is added to v0.0.7/v0.0.8/v0.0.9.**
-The MCP adapter and recall hook use HTTP only and perform no DDL/backfill.
-Their authenticated startup checks require a matching v0.0.10/schema-7 Native API,
-not just a compatible database version.
-The following migration history still applies to databases older than schema 7.
+**v0.0.11 requires schema 8 and `008_pgvector.sql`; this is not a schema-7-only
+application update.** Migration requires **`vector` 0.8.6 in `public`** and rejects
+an existing extension in another schema or at another version.
+Use the pinned prebuilt upstream DB profile above, not an assumed unchanged old
+PostgreSQL image or an unpinned extension. Do not start schema-7 processes against schema 8.
+The new episode/assertion-revision projections use forced RLS, canonical
+`ON DELETE CASCADE`, and runtime SELECT/INSERT only. **No embedding backfill**
+runs for existing data; generation/rebuild/provider calls remain explicit and external.
+The MCP adapter and hook use HTTP only, perform no DDL, and require matching
+service `0.0.11`, API `v1`, schema `8`.
+The retained migration history below still applies to databases older than schema 7.
 
 Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
 the two lexical projection tables; the migration runner performs Python backfill
@@ -1179,31 +1383,71 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.10 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7]` and reject
-older, newer, or incomplete histories and unsafe runtime roles.
+The v0.0.11 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8]`
+and extension `vector` 0.8.6 in schema `public`, rejecting mismatches and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
-rights; migration also requires DDL rights and `btree_gist`. `row_security = off`
+rights; migration also requires DDL rights, `btree_gist`, and the matching pgvector
+extension installed on the PostgreSQL server. `row_security = off`
 fails closed if RLS would filter backfill; it does not grant bypass privileges.
 `pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
-selected database. It uses `PGAG_ADMIN_DATABASE_URL`, requires schema 7, and
-atomically replaces only projections under the migration lock, emitting the
+selected database. Use matching v0.0.11/schema-8 tooling with `PGAG_ADMIN_DATABASE_URL`.
+It atomically replaces only lexical projections under the migration lock, emitting the
 `profile` and `episodes`/`assertion_revisions` counts, not source content.
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.10 processes. Stop adapters and hook launches during maintenance too.
+then start only matching v0.0.11 processes. Stop adapters and hook launches during maintenance too.
+Lexical reindex does not generate, populate, or rebuild vectors.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
-[operations](operations/README.md#v007-maintenance-migration).
+[schema-8 operations](operations/README.md#schema-8-pgvector-upgrade).
 
 ## Validation evidence
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
+<a id="v0011--schema-8"></a>
+
+### v0.0.11 / schema 8 — verified
+
+**Final local and native results verified 2026-09-17 JST.** Implementation
+[f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)
+passed [CI 35189448403](https://github.com/rioriost/pg_agmemory/actions/runs/35189448403)
+on that exact SHA. Apple Container and both native Docker jobs each passed
+**345 tests, 1 existing warning**, Ruff, strict mypy (**17 source files**),
+core-only/hook-only installation checks, and all non-root production smokes:
+Japanese tokenizer, HTTP API, worker, MCP **2026-07-28/2025-11-25**, all three
+hook events, atomic capture lifecycle, and pgvector exact/hybrid retrieval and purge.
+
+| Environment | Test elapsed |
+|---|---|
+| Local Apple Container | **283.44 s** |
+| Docker, native `linux/amd64` | **404.40 s** |
+| Docker, native `linux/arm64` | **433.46 s** |
+
+Actual logs, not only job status, establish these results. Test elapsed is not
+a performance benchmark. Artifact inspection separately verified the pinned
+upstream pgvector 0.8.6 profile on both architectures. Passing checks cover the new
+DB profile with schema-8 migration/role/extension-version/schema guards, canonical digest
+binding, float normalization/immutability/model isolation/eight-model cap,
+deterministic exact/RRF mathematics, pre-ranking ACL/time filters, coverage,
+purge/replay, and retained lexical/MCP/hook/capture behavior.
+Implemented fixtures additionally cover DB norm/dimension/composite-FK/eight-model
+guards, direct RLS visibility and denied updates, ACL revocation, and actual
+schema-7→8 migration ledger-failure rollback of DDL/extension followed by retry,
+without embedding backfill. The production vector smoke uploads **both episode
+and assertion projections**, checks basis-vector distances **[0, 1]** and RRF,
+then purges the source and checks upload replay `404`. These checks passed in all
+three environments.
+Tests and the synthetic basis-vector example cannot establish semantic quality,
+production performance, provider provenance, or robustness to untrusted vectors.
+No source-build workflow is part of the adopted profile.
+All original M0–M3/MVP/production/DR/full-erasure/performance/quality gates remain incomplete.
+
 <a id="v0010--schema-7"></a>
 
-### v0.0.10 / schema 7 — verified
+### Historical v0.0.10 / schema 7 — verified
 
 **Final local Apple Container and native CI results verified 2026-09-17 JST.**
 The final local source matches published implementation
@@ -1239,6 +1483,12 @@ after explicit creation of its retry child. These regressions passed locally
 and on both native Docker architectures.
 No dependency is added; project v0.0.10 lock metadata changes only.
 All M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
+Final v0.0.10 documentation
+[bd530a8](https://github.com/rioriost/pg_agmemory/commit/bd530a89c0832a45fac005b3c10566ccf90c6cb6)
+also passed **304 tests per native architecture** in
+[CI 35186202760](https://github.com/rioriost/pg_agmemory/actions/runs/35186202760).
+That docs run is distinct from the implementation-run timings above.
+Neither run validates v0.0.11/schema 8.
 
 <a id="v009--schema-7"></a>
 
@@ -1384,7 +1634,8 @@ exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure 
 
 Automatic enqueue/NL extraction/synthesis, LLM/provider processing, global
 multi-tenant scheduling/fairness/cost pools, separate working snapshots/
-compaction, embeddings/pgvector, vector/hybrid retrieval, AGE, SQL/PGQ,
+compaction, automatic embedding/provider integration, ANN/HNSW, qualified vector/hybrid
+retrieval quality and performance, AGE, SQL/PGQ,
 provider receipt verification, vendor-specific harness integration and execution/recovery,
 cross-assertion supersession/fact arbitration, remote MCP HTTP/SSE/OAuth/delegation,
 application SDKs, and postgresem integration are absent. The vendor-neutral hook

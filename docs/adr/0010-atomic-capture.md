@@ -8,6 +8,10 @@
 - Naming/license: `rioriost/pg_agmemory`; package/service `pg_agmemory`; MIT unchanged; bilingual documentation maintained
 - Acceptance: full M0–M3, MVP, production, performance, memory quality, DR, and full-erasure gates remain incomplete
 
+**Historical scope:** this ADR records v0.0.10/schema 7 and its verified evidence.
+[ADR 0011](0011-pgvector-retrieval.md) records v0.0.11/schema 8 vector retrieval;
+its migration and startup requirements are separate. Capture never automatically generates embeddings.
+
 ## Decision and scope
 
 Add Native **`POST /v1/captures`** with a mandatory caller-owned

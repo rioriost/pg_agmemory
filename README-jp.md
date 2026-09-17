@@ -7,8 +7,8 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**上限付きv0.0.10/schema 7のatomic structured captureを実装しました。
-最終localとnative amd64/arm64検査に合格しました。検証済みv0.0.9結果は過去の証拠として維持します。
+**現在の上限付きmilestoneはv0.0.11/schema 8のpgvector exact/hybrid retrieval基盤です。
+実装、local Apple Container、native Docker両architectureを検証済みです。v0.0.10以前の結果は過去の証拠として維持します。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
 PostgreSQL全文検索、根拠表示、トランザクション内の冪等性、
@@ -20,11 +20,11 @@ typed checkpointは新branchへのrestore envelopeとdurableなtool-effect台帳
 固定principal workerによる明示queue型の構造化publicationと、
 opt-inのversion付き日本語lexical search、Native API上のlocal・固定identity MCP adapterも提供します。
 任意のvendor-neutral implicit recall hookは読取り専用を維持します。
-v0.0.10差分はepisode一つと明示要求された構造化publication job一つを原子的にcommitします。
+既存v0.0.10 captureはepisode一つと明示要求された構造化publication job一つを原子的にcommitします。
 assertion公開済み、自動capture、自然言語synthesis、検索品質の測定済み改善ではありません。
 
 別assertion間のsupersession/fact調停、provider receipt検証、vendor固有harness adapter、
-自動enqueue/抽出、汎用multi-tenant scheduling、pgvector、
+自動enqueue/抽出、汎用multi-tenant scheduling、自動embedding生成、ANN/HNSW、
 AGE/SQL/PGQ、remote MCP HTTP/SSE/OAuth/delegation、application SDK、
 postgresem連携は今後の実装対象です。
 性能・記憶品質・災害復旧・完全消去の受入は未測定または未認定です。
@@ -69,7 +69,26 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 商用モデルのAPI keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v0.0.10/schema 7の最終localとnative結果を2026-09-17 JSTに確認しました。**
+**v0.0.11/schema 8を2026-09-17 JSTに検証しました。** Apple Containerとnative Docker
+amd64/arm64は各**345テスト、既存warning 1件**、Ruff、strict mypy（**source 17ファイル**）、
+core-only/hook-only導入検査、non-root productionの全smokeに合格しました。
+episode/assertion vectorのexact/hybrid検索とpurgeも対象です。
+テスト所要時間は**local 283.44秒、amd64 404.40秒、arm64 433.46秒**であり、性能benchmarkではありません。
+実装[f185572](https://github.com/rioriost/pg_agmemory/commit/f185572e0b5d3c9a2d79e3ad9b7b390de8464fc1)は
+[CI 35189448403](https://github.com/rioriost/pg_agmemory/actions/runs/35189448403)に合格しました。
+[検証証拠](docs/STATUS-jp.md#v0011--schema-8)を参照してください。
+
+採用DB profileはprebuilt
+`docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a`です。
+artifact検査で**amd64/arm64両image**のPostgreSQL **18.6-1.pgdg12+2**、
+native ELF、`vector.control` **0.8.6**を確認しました。
+PostgreSQL版は18.6のままですが、**base digestが異なる新しい上流DB image/profile**であり、
+旧library PostgreSQL imageを変更していないという意味ではありません。
+このprofileに新DB Dockerfile、source build、host APT workflowはありません。
+artifact検証は上記のapplication/migration/CI合格証拠とは別です。
+Python依存はproject版metadata以外変更せず、raw parameter-bound vector castにpgvector Python packageは不要です。
+
+**過去のv0.0.10/schema 7の最終localとnative結果を2026-09-17 JSTに確認しました。**
 Apple Containerとnative Docker amd64/arm64は各**304テスト、既存warning 1件**に合格しました。
 **Ruff、strict mypy（source 16ファイル）、真のcore-only/hook-only導入検査、
 non-root productionの全smoke**も全3環境で合格しました。
@@ -88,6 +107,11 @@ non-root productionの全smoke**も全3環境で合格しました。
 両native jobとも合格し、実logでjob statusだけでなく完全一致SHA、件数、所要時間、検査を確認しました。
 所要時間は性能benchmarkではありません。
 [v0.0.10証拠](docs/STATUS-jp.md#v0010--schema-7)を参照してください。
+最終v0.0.10 docs
+[bd530a8](https://github.com/rioriost/pg_agmemory/commit/bd530a89c0832a45fac005b3c10566ccf90c6cb6)も、
+[CI 35186202760](https://github.com/rioriost/pg_agmemory/actions/runs/35186202760)で
+**各native architecture 304テスト**に合格しました。
+このdocs runは上記実装runの所要時間とは別であり、両runともv0.0.11/schema 8を検証していません。
 
 **過去のv0.0.9/schema 7の最終結果を2026-09-17 JSTに確認しました。**
 全3環境で**274テスト、既存warning 1件**、Ruff、strict mypy（**source 15ファイル**）、
@@ -149,7 +173,8 @@ native CIはこのretained-registry lockからbuildしました。v0.0.8 MCP ext
 
 ## APIの起動
 
-PostgreSQL 18を使用します。以下のアプリケーションコマンドは
+上記の固定上流pgvector DB profile（PostgreSQL 18.6、pgvector 0.8.6）を使用します。
+以下のアプリケーションコマンドは
 `Dockerfile`で構築したimage内で実行します。最終stageがruntime imageです。
 
 1. 対象の空Memory DBを`PGAG_ADMIN_DATABASE_URL`に指定し、
@@ -176,18 +201,20 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
-**v0.0.10は厳密なschema 7を維持し、v0.0.7/v0.0.8/v0.0.9からのmigration 008/009/010、
-DDL、新backfillは不要です。** 新依存はなく、Python project版とそのlock metadataだけをv0.0.10へ更新します。
-旧API/worker/adapterを停止/drainしてから、対応するv0.0.10 processに置換してください。
-異なるversionの混在互換性を想定しないでください。
-schema 7より古いDBには保守停止とbackupが必要です。
-旧版・新版すべてのAPI**とworker**を停止/drainし、`007_japanese_fts.sql`までの
-未適用migrationと原子的Python lexical backfillを適用してから、
-対応するv0.0.10 API/workerだけを起動します。
-両者とも厳密な履歴`[1, 2, 3, 4, 5, 6, 7]`を要求します。
+**v0.0.11はschema 8と新しい`008_pgvector.sql`を必要とします。**
+PostgreSQLは**`public`内の`vector` 0.8.6**を必要とし、
+migrationは版/schemaが異なる既存extensionを拒否します。prebuilt profileは対応extensionを提供します。
+API、worker、`migrate`はschema 8記録済みでもこれを検査します。
+**旧版・新版の全API、worker、adapter、hook起動を停止/drain**し、
+backupと現在の削除/ACL記録を保全してoffline migrationを行います。
+古いDBにはmigration 007のlexical backfillを含む既存migrationも適用します。
+**embedding backfillや自動embedding再構築はありません**。
+対応するv0.0.11 processだけを再起動し、API/workerは厳密な履歴
+`[1, 2, 3, 4, 5, 6, 7, 8]`とschema `public`内のextension `vector` 0.8.6を要求します。
+schema 7 processとschema 8のrolling混在互換性はありません。
 旧imageは停止を維持してください。v0.0.1にはschema互換性guardがありません。
 rolling共存やdowngradeは非対応です。
-[migration手順](docs/operations/README-jp.md#v007の保守migration)に従ってください。
+[schema 8手順](docs/operations/README-jp.md#schema-8-pgvector-upgrade)に従ってください。
 
 shellに`MEMORY_URL`、`TOKEN`、作成済みの`SCOPE_ID`を設定して実行します。
 
@@ -212,9 +239,64 @@ curl --fail-with-body "$MEMORY_URL/v1/recall" \
 対話的schema表示は`/docs`、OpenAPIは`/openapi.json`です。
 `/healthz`は起動検証後のprocess livenessであり、継続的なDB readinessではありません。
 
+## Pgvector retrieval foundation
+
+**v0.0.11/schema 8で実装・検証済みです。**
+実験的なprovider非依存の数学的基盤であり、意味検索の品質認定ではありません。
+従来のlexical既定は変えず、vectorは明示的に渡します。
+
+- Native読取り専用`POST /v1/embedding-inputs`は既存Explain
+  `{memory_id, revision}`を受け取り（revision既定はlatestでなく**1**）、idempotency keyは不要です。
+  認可済みcanonical text、UTF-8 SHA-256の`input_digest`、
+  `input_format: "memory-content-v1"`を返します。
+  episode textは正規化content、assertion textはrelation display valueも含む正確な
+  `subject / predicate: value`で、ID/時刻を含めません。
+- Native `POST /v1/embeddings`は`Idempotency-Key`、正確なdigest、
+  caller宣言model名/revision、**768個の有限JSON数値**を要求します。
+  空間はcosine / `l2-f32-v1`固定で、serverはfloat64で正規化した後pgvector float32へ変換します。
+  boolean、数値文字列、zero vector、切詰め、次元変換は認めません。read/write scopeはcanonical parentから導出します。
+- canonical revision/model namespace当たり不変vector一つです。
+  同じ正規化float32値/digestは別HTTP keyでも重複抑止し、異なるvectorはconflictします。
+  置換には新model revisionが必要です。**canonical revision当たりmodel versionは最大8件**で、
+  上限時も既存duplicateは許可します。
+  保存idempotency resultは`{memory_id, revision}`だけで、平文digest/model名/vectorは含めません。
+  現在読取り可能なcanonical inputとprojectionから応答metadataを再構成し、
+  HMAC/opaque anchorは保持します。parentが生存していても管理者がprojectionだけを削除した場合、
+  replayは再構築せず**409 `embedding_unavailable`**を返します。
+- recallに`retrieval_mode: "lexical" | "vector" | "hybrid"`とinline `vector_query`を追加します。
+  lexicalはvectorを拒否し、vectorは空text query、hybridは非空textを要求します。
+  queryの黙った無視や広いfallbackはありません。vectorは現在の認可/時間条件を満たす
+  materialized候補のexact cosine、hybridは決定的lexical/vector rankを**RRF k=60**で統合します。
+  省略`as_of`/`known_at`はselection/coverage前に一度だけ確定し、明示時刻は変更しません。
+  実際のdistance/scoreの同順位はUUIDで解決しますが、
+  任意float結果/rankingの全CPU間bit単位一致を保証しません。
+  ANN/HNSWやneighborによるscope拡大はありません。
+- 可視・適格projectionの欠落は`vector_incomplete` coverageで明示し、非認可itemをcoverageへ含めません。
+  ranking metadataはconfidence/真実ではありません。JSON全体のUTF-8 context-pack予算は維持します。
+  parent purgeはvector/digest/model metadataへcascadeし、別memory identityやprovenance vertexを作りません。
+  独立model registryもありません。
+
+既定response fieldを追加し、`MemoryItem.retrieval: null`、
+`RecallResult.retrieval_mode: "lexical"`、`embedding_model: null`、
+`coverage.vector_incomplete: false`となります。
+non-nullの`retrieval`は`exact_cosine`/`rrf-60`のranking evidenceとnullableなrank/distance/fusion fieldを持ちます。
+既定lexical semanticsは維持しますが、**HTTP JSON形式のbyte単位互換を意味しません**。
+capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
+`default_retrieval_mode: "lexical"`を追加します。
+
+MCPは**4 tool**を維持し、生成Recall引数へvector/hybrid fieldを追加しますが、
+embedding input/upload toolは追加しません。hookは**読取り専用・lexical専用**です。
+Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
+trueの`coverage.vector_incomplete`を拒否します。
+capture、Observe、job、workerはembeddingを生成しません。
+canonical inputをlogへ出したり、明示承認なく第三者へ送ったりしないでください。
+[合成basis vector例](docs/operations/README-jp.md#synthetic-vector-example)は外部modelを呼ばず、
+本番embedding modelでもありません。[予定契約](docs/STATUS-jp.md#pgvector-exact-and-hybrid-retrieval)と
+[ADR 0011](docs/adr/0011-pgvector-retrieval-jp.md)を参照してください。
+
 ## Atomic structured capture
 
-**v0.0.10の最終localとnative両architecture検査に合格しました。**
+**既存capture契約はv0.0.11でも検証済みです。v0.0.10結果は過去の証拠です。**
 Native `POST /v1/captures`は`Idempotency-Key`と
 `{episode: <変更しないObserve>, memory: <一つの構造化intent>}`を要求します。
 memory intentは`subject`、`predicate`、`value`、一つの`evidence_quote`、
@@ -248,7 +330,7 @@ failed jobは既存job-retry操作で明示retryし、capture replayはretry chi
 IDは過去参照であり、fresh stateはGETで取得します。
 
 captureは**MCP toolではなく**、recall hookも自動captureしません。
-LLM/provider、抽出、自動synthesis、pgvector、意味的な真実の認定はありません。
+capture自体はembedding生成、LLM/provider呼出し、intent抽出、自動synthesis、意味的真実の認定を行いません。
 Native HTTP response-drainとhost消去の境界は変更しません。
 [全差分契約](docs/STATUS-jp.md#atomic-structured-capture)、
 [operator向けcurl例](docs/operations/README-jp.md#atomic-structured-captureの運用)、
@@ -261,7 +343,7 @@ MCPには`pg-agmemory[mcp]`、recall-hookには`pg-agmemory[hook]`を選択し�
 repositoryのDocker test/runtime imageは意図的に両extraを含みますが、
 **base packageの既定ではありません**。
 
-任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.10のtest/runtime両stageに
+任意の`pg-agmemory[mcp]` package extraを導入するか、v0.0.11のtest/runtime両stageに
 `mcp`・`hook`両extraを含むrepository imageを使用します。
 MCP extraは公式**mcp 2.2.0** SDKと**httpx 0.28.1**を固定しています。
 checkoutでは`uv sync --frozen --extra mcp`でlock済み環境を準備できます。
@@ -275,7 +357,7 @@ pg-agmemory mcp
 tool引数やcommitするhost設定には含めないでください。URLはHTTPS originまたはloopback HTTP
 originに限定し、credential/path/query/fragmentは禁止です。tokenは**Native API audience用**で、
 Native APIが検査します。MCP caller identityを転送するものではありません。
-起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.10`、schema `7`の一致を要求します。
+起動時に認証付きcapabilitiesを照会し、API `v1`、service `0.0.11`、schema `8`の一致を要求します。
 設定/認証/versionの失敗はsecretを出さず非zero終了します。
 固定tokenの更新には再起動が必要です。`--subject`と`--once`は拒否します。
 
@@ -313,13 +395,13 @@ buffer済み/配信済みcontextは回収できません。forget/ACL変更後�
 protocol検証の制限を含む[全契約](docs/STATUS-jp.md#local-stdio-mcp)、
 [起動と復旧](docs/operations/README-jp.md#local-stdio-mcpの運用)、
 [ADR 0008](docs/adr/0008-local-mcp-jp.md)を参照してください。
-v0.0.10はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP semanticsを維持します。
+v0.0.11はmodern `2026-07-28`とlegacy `2025-11-25`の両protocol契約と全MCP semanticsを維持します。
 過去のv0.0.9 regressionと両protocol smokeはlocalとnative Docker両architectureで合格しました。
-v0.0.10の最終localとnative両architecture検査も合格しました。
+過去のv0.0.10と現在のv0.0.11の検査も合格しています。
 
 ## Implicit recall hook
 
-**既存の読取り専用hookです。v0.0.10最終localとnative両architecture検査に合格しました。**
+**既存の読取り専用・lexical専用hookはv0.0.11でも検証済みです。**
 過去のv0.0.9 local/native検査は合格しています。
 任意の`pg-agmemory[hook]`を導入します（checkoutでは`uv sync --frozen --extra hook`）。
 固定依存は**httpx 0.28.1だけで、MCP SDKではありません**。
@@ -355,7 +437,7 @@ URL未設定は既定宛先でなく`invalid_hook_configuration`になります�
 redirect/proxy環境を無効化し、TLSを検証します。
 
 呼出しごとに新しく認証付きcapabilitiesで厳密な
-**service `0.0.10` / API `v1` / schema `7`**を検査し、
+**service `0.0.11` / API `v1` / schema `8`**を検査し、
 `mode: "implicit"`とNativeの現在時刻defaultでrecallをPOSTします。
 deadlineは**両HTTP処理の合計**に適用し、process起動・stdin入力/待機・出力は含みません。
 LLM latency SLOではありません。harness側には別のsubprocess timeoutが必要です。
@@ -420,7 +502,7 @@ scope、時間、根拠、ACL、削除、byte上限を維持します。
 認可済み・時間条件内の日本語projectionが欠けると、黙ってfallbackせず
 `coverage.lexical_incomplete: true`と`coverage.retrieval_complete: false`を返します。
 projection欠落があり候補もなければ`empty_reason: "index_incomplete"`となり、
-既存の予算不足とは区別します。空queryはindex不完全flagがあってもcanonical itemをbrowseします。
+既存の予算不足とは区別します。lexical modeの空queryはindex不完全flagがあってもcanonical itemをbrowseします。
 flagはprojection coverageであり、query関連性やqueue状態ではありません。
 
 書込みはepisodeと全assertion revisionを原子的にindex化し、typed relation/job publicationも
@@ -430,7 +512,8 @@ flagはprojection coverageであり、query関連性やqueue状態ではあり�
 offline `pg-agmemory reindex-lexical`は`PGAG_ADMIN_DATABASE_URL`で
 **選択DBの全tenant**を再構築します。`--subject`はscope filterではなく拒否し、
 `--once`もworker専用です。API/workerを停止/drainし、backup、再構築後に
-対応するv0.0.10 processだけを再起動します。
+lexical projectionを再構築して、対応するv0.0.11 processだけを再起動します。
+embeddingの投入/再構築は行いません。
 自動修復worker、外部model/provider、fileベースのmemory indexはありません。
 [契約](docs/STATUS-jp.md#日本語lexical-profile)、
 [保守](docs/operations/README-jp.md#lexical-profileとreindexの運用)、
@@ -598,6 +681,7 @@ effectを直接または宣言済みsource経由でpurgeすると、そのrunの
 | [Local MCPの決定](docs/adr/0008-local-mcp-jp.md) | [Local MCP decisions](docs/adr/0008-local-mcp.md) |
 | [Implicit recall hookの決定](docs/adr/0009-implicit-recall-hook-jp.md) | [Implicit recall hook decisions](docs/adr/0009-implicit-recall-hook.md) |
 | [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) | [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) |
+| [Pgvector retrievalの決定](docs/adr/0011-pgvector-retrieval-jp.md) | [Pgvector retrieval decisions](docs/adr/0011-pgvector-retrieval.md) |
 | [運用](docs/operations/README-jp.md) | [Operations](docs/operations/README.md) |
 | [貢献方法](CONTRIBUTING-jp.md) | [Contributing](CONTRIBUTING.md) |
 
@@ -611,3 +695,12 @@ project codeは[MIT](LICENSE)ですが、**依存関係すべてがMITではあ�
 もこの固定releaseに含まれます。package/image再配布時は上流のlicense/notice fileを保持してください。
 同梱辞書はcode依存でありuser memoryではなく、memory projectionの保存先はPostgreSQLだけです。
 LLM weightsやbenchmark用会話履歴は同梱していません。
+[pgvector 0.8.6](https://github.com/pgvector/pgvector/tree/v0.8.6)はprojectのMITでなく
+**PostgreSQL License**です。DB image再配布時は上流licenseを保持してください。
+stable release日は**2026-07-29**で、検証済み公式tag commitは
+`8ee86c96f0fd72390f890aa8a336fda6d3ab4c6c`です
+（[固定changelog](https://github.com/pgvector/pgvector/blob/8ee86c96f0fd72390f890aa8a336fda6d3ab4c6c/CHANGELOG.md)）。
+採用artifactは固定prebuilt上流imageであり、local source buildではありません。
+両native最終imageは`/usr/share/doc/pgvector/LICENSE`を保持し、
+固定上流licenseとbyte単位一致を検証済みです。SHA-256は
+`6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87`です。
