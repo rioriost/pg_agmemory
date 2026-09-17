@@ -18,8 +18,6 @@ from pydantic import ValidationError
 from pg_agmemory import __version__
 from pg_agmemory.database import SCHEMA_VERSION
 from pg_agmemory.mcp_adapter import (
-    MAX_REQUEST_BYTES,
-    MAX_RESPONSE_BYTES,
     TOOLS,
     AdapterFailure,
     AdapterSettings,
@@ -29,6 +27,7 @@ from pg_agmemory.mcp_adapter import (
     create_server,
 )
 from pg_agmemory.models import Explain, Forget, Recall, Remember
+from pg_agmemory.native_client import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES
 
 pytestmark = pytest.mark.integration
 NAMES = ["memory_recall", "memory_remember", "memory_explain", "memory_forget"]

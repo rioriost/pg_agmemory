@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and production API/worker/MCP smoke tests."
+    echo "Build and run lint, types, PostgreSQL tests, and production API/worker/MCP/hook smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -37,6 +37,7 @@ postgres_image="docker.io/library/postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0
 run_id="pgag-$(date +%s)-$$-${RANDOM}-${RANDOM}"
 test_image="pg-agmemory-test:${run_id}"
 runtime_image="pg-agmemory-runtime:${run_id}"
+extras_image="pg-agmemory-extras:${run_id}"
 test_db="${run_id}-test-db"
 smoke_db="${run_id}-smoke-db"
 test_name="${run_id}-tests"
@@ -76,7 +77,7 @@ cleanup() {
     if [[ "$network_created" == true ]]; then
         docker network rm "$network" >/dev/null 2>&1
     fi
-    "$engine" image rm "$test_image" "$runtime_image" >/dev/null 2>&1
+    "$engine" image rm "$test_image" "$runtime_image" "$extras_image" >/dev/null 2>&1
     exit "$status"
 }
 trap cleanup EXIT
@@ -126,6 +127,7 @@ echo "Running containerized lint, type checks, and PostgreSQL tests..."
 remove_container "$test_db"
 
 echo "Building and running the non-root production image..."
+"$engine" build --target adapter-extras-check --tag "$extras_image" .
 "$engine" build --target runtime --tag "$runtime_image" .
 
 # A second fresh cluster prevents test-created roles or schemas masking migration bugs.
@@ -245,4 +247,30 @@ async def smoke():
 asyncio.run(smoke())
 ' "$scope_id"
 
-echo "Container tests and production API/worker/MCP smoke passed ($engine)."
+"$engine" exec -e "PGAG_HOOK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import json
+import os
+import subprocess
+import sys
+
+settings = {
+    "PATH": os.environ["PATH"],
+    "PGAG_HOOK_API_URL": "http://127.0.0.1:8000",
+    "PGAG_HOOK_API_TOKEN": os.environ["PGAG_HOOK_API_TOKEN"],
+    "PGAG_HOOK_SCOPE_IDS": json.dumps([sys.argv[1]]),
+}
+for event in ("session_start", "task_switch", "after_compaction"):
+    process = subprocess.run(
+        ["pg-agmemory", "recall-hook"], env=settings,
+        input=json.dumps({"event": event, "query": ""}),
+        capture_output=True, text=True, timeout=20,
+    )
+    assert process.returncode == 0 and process.stderr == "", "Hook smoke failed"
+    output = json.loads(process.stdout)
+    assert output["status"] == "ok" and output["event"] == event and output["error"] is None
+    assert output["result"]["items"] == [] and output["result"]["empty_reason"] == "not_found"
+    assert output["result"]["context_pack"]["byte_count"] <= 2000
+    print("Production implicit recall hook smoke passed: " + event)
+' "$scope_id"
+
+echo "Container tests and production API/worker/MCP/hook smoke passed ($engine)."

@@ -8,6 +8,8 @@
 !src/**
 !tests/
 !tests/**
+!scripts/
+!scripts/check-adapter-extras.py
 **/__pycache__/
 **/*.py[cod]
 **/.pytest_cache/

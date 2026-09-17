@@ -578,7 +578,7 @@ wheels = [
 
 [[package]]
 name = "pg-agmemory"
-version = "0.0.8"
+version = "0.0.9"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -596,6 +596,9 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+hook = [
+    { name = "httpx" },
+]
 mcp = [
     { name = "httpx" },
     { name = "mcp" },
@@ -605,6 +608,7 @@ mcp = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
+    { name = "httpx", marker = "extra == 'hook'", specifier = "==0.28.1" },
     { name = "httpx", marker = "extra == 'mcp'", specifier = "==0.28.1" },
     { name = "janome", specifier = "==0.5.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = "==2.2.0" },
@@ -616,7 +620,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11,<1" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
 ]
-provides-extras = ["dev", "mcp"]
+provides-extras = ["dev", "mcp", "hook"]
 
 [[package]]
 name = "pluggy"

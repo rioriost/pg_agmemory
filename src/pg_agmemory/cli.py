@@ -16,7 +16,10 @@ from pg_agmemory.worker import run
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
-        "command", choices=["serve", "migrate", "provision", "worker", "reindex-lexical", "mcp"]
+        "command",
+        choices=[
+            "serve", "migrate", "provision", "worker", "reindex-lexical", "mcp", "recall-hook"
+        ],
     )
     parser.add_argument(
         "--subject", help="Trusted issuer subject for provisioning or fixed-principal worker"
@@ -29,7 +32,17 @@ def main() -> None:
         parser.error("--once is only supported by worker")
     if args.command == "reindex-lexical" and args.subject is not None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
-    if args.command == "mcp":
+    if args.command == "recall-hook":
+        if args.subject is not None:
+            parser.error("recall-hook uses its fixed startup token; --subject is not supported")
+        try:
+            from pg_agmemory.recall_hook import main as hook_main
+        except ModuleNotFoundError as exc:
+            if exc.name != "httpx":
+                raise
+            parser.error("recall-hook requires the pg-agmemory[hook] extra")
+        hook_main()
+    elif args.command == "mcp":
         if args.subject is not None:
             parser.error("mcp uses its fixed startup token; --subject is not supported")
         try:

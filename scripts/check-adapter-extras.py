@@ -1,0 +1,38 @@
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+
+from pg_agmemory.api import create_app
+
+profile = sys.argv[1]
+assert profile in ("core", "hook")
+assert callable(create_app)
+assert importlib.util.find_spec("mcp") is None
+assert (importlib.util.find_spec("httpx") is not None) == (profile == "hook")
+for command in ("mcp", "recall-hook"):
+    process = subprocess.run(
+        ["pg-agmemory", command],
+        input='{"event":"session_start","query":""}',
+        env={
+            "PATH": os.environ["PATH"],
+            "PGAG_HOOK_API_URL": "http://127.0.0.1:1",
+            "PGAG_HOOK_API_TOKEN": "fixed.identity.signature",
+            "PGAG_HOOK_SCOPE_IDS": '["00000000-0000-0000-0000-000000000001"]',
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if profile == "hook" and command == "recall-hook":
+        assert process.returncode == 1
+        result = json.loads(process.stdout)
+        assert result["status"] == "error" and result["result"] is None
+        assert result["error"]["code"] == "native_api_unavailable"
+    else:
+        assert process.returncode == 2 and process.stdout == ""
+        extra = "mcp" if command == "mcp" else "hook"
+        assert f"requires the pg-agmemory[{extra}] extra" in process.stderr
+    assert "Traceback" not in process.stderr
+print(f"Optional adapter installation smoke passed: {profile}")
