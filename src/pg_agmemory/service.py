@@ -437,7 +437,9 @@ class MemoryService:
             "scopes": data.scope_ids,
             "as_of": data.as_of if data.as_of is not None else clock["at"],
             "known": data.known_at if data.known_at is not None else clock["at"],
-            "limit": data.max_items + 1,
+            "limit": data.max_items - len(data.required_memory_refs) + 1,
+            "required_ids": [ref.memory_id for ref in data.required_memory_refs],
+            "required_revisions": [ref.revision for ref in data.required_memory_refs],
             "model_name": data.vector_query.model.name if data.vector_query else None,
             "model_revision": data.vector_query.model.revision if data.vector_query else None,
             "vector": data.vector_query.vector_literal() if data.vector_query else None,
@@ -446,8 +448,9 @@ class MemoryService:
         ranking = """SELECT *, CASE WHEN %(browse)s THEN 0::real
                             ELSE ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
                             END AS rank
-                     FROM candidates WHERE %(browse)s
-                       OR search_text @@ plainto_tsquery('simple',%(query)s)
+                     FROM candidates WHERE (%(browse)s
+                       OR search_text @@ plainto_tsquery('simple',%(query)s))
+                       AND NOT (id = ANY(%(required_ids)s::uuid[]))
                      ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s"""
         if data.vector_query is not None:
             ranking = """, lexical AS (
@@ -472,7 +475,25 @@ class MemoryService:
                      LEFT JOIN vectors v USING (id,revision)
                      WHERE l.lexical_rank IS NOT NULL OR v.vector_rank IS NOT NULL
                      ORDER BY fusion_score DESC,c.id LIMIT %(limit)s"""
-        rows = await (await self.conn.execute(candidates + ranking, parameters)).fetchall()
+        required = []
+        if data.required_memory_refs:
+            required = await (
+                await self.conn.execute(
+                    candidates + """SELECT * FROM candidates WHERE (id,revision) IN (
+                        SELECT * FROM unnest(%(required_ids)s::uuid[],
+                                             %(required_revisions)s::integer[])
+                    )""",
+                    parameters,
+                )
+            ).fetchall()
+            if len(required) != len(data.required_memory_refs):
+                raise MemoryError("not_found", 404)
+            by_reference = {(row["id"], row["revision"]): row for row in required}
+            required = [
+                by_reference[(ref.memory_id, ref.revision)] for ref in data.required_memory_refs
+            ]
+        ranked = await (await self.conn.execute(candidates + ranking, parameters)).fetchall()
+        rows = required + ranked
         lexical_incomplete = vector_incomplete = False
         if data.search_profile == JAPANESE_PROFILE or data.vector_query is not None:
             coverage = await (
@@ -534,7 +555,9 @@ class MemoryService:
                     else None,
                 )
             )
-        context, selected, budget_exhausted = build_context(items, data.token_budget)
+        context, selected, budget_exhausted = build_context(
+            items, data.token_budget, required_count=len(required)
+        )
         epoch = await (
             await self.conn.execute(
                 "SELECT access_epoch, deletion_epoch FROM memory.tenant WHERE id = %s",
@@ -818,8 +841,10 @@ class MemoryService:
 
 
 def build_context(
-    items: list[MemoryItem], budget: int
+    items: list[MemoryItem], budget: int, *, required_count: int = 0
 ) -> tuple[dict[str, Any], list[MemoryItem], bool]:
+    if not 0 <= required_count <= len(items):
+        raise ValueError("required_count must identify a prefix of items")
     pack: dict[str, Any] = {
         "format": "memory-context-v1",
         "text": "",
@@ -831,7 +856,7 @@ def build_context(
     }
     selected: list[MemoryItem] = []
     omitted = False
-    for item in items:
+    for index, item in enumerate(items):
         line = (
             f"\n[{item.memory_id}@{item.revision}; {item.epistemic_status}; "
             f"recorded={item.recorded_at.isoformat()}; refresh_required] "
@@ -849,6 +874,8 @@ def build_context(
                 json.dumps(candidate, ensure_ascii=False, separators=(",", ":")).encode()
             )
         if candidate["byte_count"] > budget:
+            if index < required_count:
+                raise MemoryError("budget_exhausted", 422)
             omitted = True
             continue
         pack = candidate

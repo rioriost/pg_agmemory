@@ -472,6 +472,45 @@ print("Production Python SDK smoke passed: capture, replay, typed reads, vector 
 
 "$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
 import asyncio
+import os
+import sys
+from datetime import UTC, datetime
+from uuid import UUID
+from pg_agmemory.models import Forget, MemoryReference, Observe, Recall
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+async def smoke():
+    async with AsyncMemoryClient("http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"]) as sdk:
+        scope = UUID(sys.argv[1])
+        ids = []
+        for event, content in [("required", "Required constraint"), ("optional", "Gold")]:
+            saved = await sdk.observe(Observe(
+                scope_id=scope, source_namespace="production-required", source_event_id=event,
+                occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content=content,
+                consent_reference="synthetic-smoke",
+            ), idempotency_key="required-" + event)
+            ids.append(saved.memory_id)
+        request = Recall(scope_ids=[scope], purpose="synthetic-smoke", query="Gold", max_items=1,
+                         required_memory_refs=[MemoryReference(memory_id=ids[0])])
+        result = await sdk.recall(request)
+        assert [value.memory_id for value in result.items] == [ids[0]]
+        assert result.coverage.truncated
+        try:
+            await sdk.recall(request.model_copy(update={"token_budget": 64}))
+        except MemoryClientError as error:
+            assert error.error.code == "budget_exhausted" and not error.error.outcome_unknown
+        else:
+            raise AssertionError("Required content silently dropped")
+        purged = await sdk.forget(Forget(memory_ids=ids, reason="synthetic-smoke"),
+                                  idempotency_key="required-purge")
+        assert purged.object_count == 2
+
+asyncio.run(smoke())
+print("Production required context smoke passed: required prefix, item limit, budget error, purge")
+' "$scope_id"
+
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
 import json
 import os
 import subprocess

@@ -263,7 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-job-cancellation",
+            "stage": "m2-required-context",
             "features": [
                 "observe",
                 "atomic_structured_capture",
@@ -307,6 +307,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "vector_search": True,
             "retrieval_modes": ["lexical", "vector", "hybrid"],
             "default_retrieval_mode": "lexical",
+            "required_context": {
+                "retrieval_modes": ["lexical"],
+                "max_refs": 16,
+                "order": "request_order",
+                "budget_policy": "all_required_or_error",
+            },
             "embeddings": {
                 "extension": "pgvector",
                 "extension_version": VECTOR_VERSION,

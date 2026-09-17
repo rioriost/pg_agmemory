@@ -21,6 +21,11 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class MemoryReference(Contract):
+    memory_id: UUID
+    revision: Revision = 1
+
+
 class ReadinessStatus(Contract):
     status: Literal["ready", "not_ready"]
 
@@ -157,6 +162,9 @@ class Recall(Contract):
     search_profile: SearchProfile = "simple-v1"
     retrieval_mode: RetrievalMode = "lexical"
     vector_query: VectorQuery | None = None
+    required_memory_refs: Annotated[list[MemoryReference], Field(max_length=16)] = Field(
+        default_factory=list
+    )
 
     @model_validator(mode="after")
     def implicit_budget(self) -> "Recall":
@@ -168,6 +176,15 @@ class Recall(Contract):
             raise ValueError("vector recall requires an empty text query")
         if self.retrieval_mode == "hybrid" and not self.query:
             raise ValueError("hybrid recall requires a text query")
+        if self.required_memory_refs:
+            if self.retrieval_mode != "lexical":
+                raise ValueError("required references currently require lexical recall")
+            if len(self.required_memory_refs) > self.max_items:
+                raise ValueError("required references must fit within max_items")
+            if len({ref.memory_id for ref in self.required_memory_refs}) != len(
+                self.required_memory_refs
+            ):
+                raise ValueError("required memory IDs must be unique")
         return self
 
 
@@ -437,11 +454,6 @@ class DeletionPreview(BaseModel):
     mode: Literal["preview"]
     object_count: int
     changed: Literal[False]
-
-
-class MemoryReference(Contract):
-    memory_id: UUID
-    revision: Revision = 1
 
 
 JobError = Literal["dependency_unavailable", "stale_context", "invalid_input", "attempt_limit"]

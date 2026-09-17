@@ -140,6 +140,13 @@ def test_exact_configuration_boundaries_and_environment(monkeypatch):
         b'{"event":"session_start","query":""}\n{}',
         b"[" * 2000,
         json.dumps({"event": "session_start", "query": "x" * 4097}).encode(),
+        json.dumps(
+            {
+                "event": "session_start",
+                "query": "",
+                "required_memory_refs": [{"memory_id": str(uuid4()), "revision": 1}],
+            }
+        ).encode(),
     ],
 )
 def test_invalid_input_is_not_an_empty_success(raw):

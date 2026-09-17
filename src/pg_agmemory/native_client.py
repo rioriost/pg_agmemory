@@ -26,6 +26,7 @@ SAFE_NATIVE_CODES = {
     "malformed_json",
     "body_too_large",
     "budget_too_small",
+    "budget_exhausted",
     "deletion_limit_exceeded",
     "relation_invalidated",
     "dependency_unavailable",
