@@ -2,9 +2,9 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Current bounded milestone: v0.0.12/schema 8 typed asynchronous Python SDK.
-Implementation, local Apple Container, and both native Docker architectures are verified.
-Verified v0.0.11 and earlier results remain historical evidence, not v0.0.12 results.
+**Current bounded milestone: v0.0.13/schema 9 privileged scope-access administration.
+Implementation is verified locally with Apple Container and on both native CI architectures.
+Verified v0.0.12 and earlier results remain historical evidence, not v0.0.13 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -51,9 +51,139 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness.
 
+## Scope-access administration
+
+**v0.0.13/schema 9: verified locally and on native Linux amd64/arm64.**
+`pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
+is a privileged administrative CLI, not an agent tool or runtime API.
+It targets **existing same-tenant** tenant/scope/principal records; it never
+creates identities or scopes. IDs are parsed as UUIDs and normalized for the
+lock key. Select approved opaque IDs from trusted administration, never retrieved text.
+The public Native memory surface remains 24 resource methods: **no HTTP, MCP,
+or Python SDK administration method** is added.
+
+### Authority and compare-and-swap
+
+Only `PGAG_ADMIN_DATABASE_URL` is accepted. The connected DB role must have
+`rolsuper` or `rolbypassrls` **and appropriate SQL table privileges**.
+Runtime credentials are rejected even for `get`; RLS bypass does not itself
+grant table privileges. There is no JWT, `--subject`, `--once`, or runtime-URL fallback.
+`get` uses no `FOR UPDATE`: a nonowner `BYPASSRLS` role can inspect with
+`USAGE` on `memory` and `SELECT` on schema history, tenant, scope, principal,
+and `scope_member`. Mutation privileges additionally include `UPDATE` on the
+tenant, the applicable `SELECT`/`UPDATE`/`INSERT`/`DELETE` on `scope_member`,
+and `USAGE` on `memory_ops` plus `INSERT` on `scope_access_event`.
+The session advisory barrier is still required for reads; read-only table
+privileges do not remove the mandatory RLS-bypassing role requirement.
+Before operation, the CLI checks the role, exact schema history **1–9**, and
+`vector` **0.8.6 in `public`**.
+
+| Operation | Required intent | Semantics |
+|---|---|---|
+| `get` | Three IDs only; no mutation options | Current membership and tenant epoch, evaluated under the response-drain barrier |
+| `set` | `--expected-access-epoch`, `--permissions`, and exactly one expiry choice | Full replacement of permissions and expiry, not merge |
+| `revoke` | `--expected-access-epoch`; no permission/expiry options | Delete the membership row; already absent at the current epoch is a no-op |
+
+Every mutation requires an explicit expected epoch in **1–9223372036854775807**.
+Compare against the **tenant-wide** `access_epoch` under lock, before checking
+whether the requested state already matches. A stale expectation always yields
+`access_epoch_conflict`; an unrelated scope change can conflict too.
+No automatic retry, HTTP `Idempotency-Key`, mutation receipt, or receipt queue exists.
+
+`set` accepts distinct flags from `read`, `write`, `delete`, or `admin` alone.
+Duplicates and mixing `admin` with other flags are rejected. Write-only and
+delete-only configurations are allowed as DB flags; they do not override
+Native operation requirements, including read access where required.
+Permissions are returned in canonical **read, write, delete, admin** order;
+reordering is equivalent and does not create a change.
+Choose **`--expires-at` with a timezone-aware ISO timestamp or `--no-expiry`**.
+Naive timestamps are invalid; an expiration at/before the DB clock sampled
+after acquiring the lock is rejected. Permanent access must be explicit:
+omitting expiry never silently removes it. Expiry-only changes advance the epoch.
+
+### Results, expiry, and audit
+
+Success is **one JSON line, with no result wrapper**:
+
+```text
+{
+  operation, tenant_id, scope_id, principal_id, access_epoch, changed,
+  membership_exists, permissions, expires_at, effective_permissions, evaluated_at
+}
+```
+
+Absent membership has `membership_exists: false`, `permissions: []`, and
+`expires_at: null`. A legacy empty-permission row still has
+`membership_exists: true`. `effective_permissions` is empty when expired at the
+DB `evaluated_at`, all four flags for effective `admin`, otherwise the configured
+flags. This is **point-in-time membership interpretation, not complete Native
+action authorization**; access can expire immediately after the result.
+Natural expiration does not advance `access_epoch`, delete payload/audit, or
+drain in-flight HTTP. Use an explicit revoke/barrier when strong drain is needed.
+
+New **`009_scope_access.sql`** creates privileged-only
+`memory_ops.scope_access_event`, with forced RLS and **no runtime policies/grants**.
+The primary key is `(tenant_id, access_epoch)`; same-tenant foreign keys bind the
+target scope/principal. Events record `set`/`revoke`, before/after permission and
+expiry values, DB `recorded_at`, and `database_role` captured from `current_user`.
+`recorded_at` uses the database clock; `evaluated_at` is response-only, not an audit field.
+This identifies the executing database role, not an impersonated end-user actor.
+They contain no plaintext memory content, external subjects, or DSNs.
+Existing ACL rows are preserved; **prior manual changes receive no audit backfill**.
+The command adds no implicit ownership or purge behavior.
+**Only actual changes** atomically update membership, increment the tenant epoch,
+and append an audit event. Reads, no-ops, conflicts, and rolled-back changes
+create no event or epoch advance. Epoch exhaustion rejects a change.
+Privileged administrators can alter the database: this is **not tamper-proof,
+a standalone revocation recovery ledger, or a DR solution**.
+
+### Response-drain barrier and failures
+
+A dedicated synchronous admin connection uses autocommit and **5 s connect,
+statement, and lock timeouts**. It acquires the API/worker's same **session**
+advisory lock, `pg_advisory_lock(hashtextextended(canonical_tenant_uuid, 0))`.
+Hold it through the membership transaction's commit **and the CLI JSON stdout
+flush**; closing the connection releases it. `get` and mutation no-ops also
+acquire the barrier. Do not pool this connection or substitute an xact-only lock.
+An earlier slow response can block administration; a lock timeout fails without
+change. Mid-change failure rolls back membership, epoch, and audit together.
+Failure cleanup closes the session and releases its lock.
+Cooperating same-version API clients can stay online during these commands;
+**migration still requires stopping/draining old processes**.
+
+Syntax, model, and configuration errors use static sanitized stderr, exit **2**,
+and no JSON. Invalid CLI syntax reports `invalid_scope_access_arguments`;
+missing `PGAG_ADMIN_DATABASE_URL` also produces a static stderr diagnostic,
+exit 2, and no stdout. DB/domain operational failures use stdout, exit **1**:
+
+```json
+{"error":{"code":"access_epoch_conflict","outcome_unknown":false}}
+```
+
+The error catalog is `admin_role_required`, `admin_privilege_required`,
+`schema_unavailable`, `schema_version_mismatch`, `extension_version_mismatch`,
+`not_found`, `access_epoch_conflict`, `access_epoch_exhausted`, `invalid_expiration`,
+`admin_database_unavailable`, and `admin_database_error`.
+No raw DB error, DSN, credentials, or private data is printed.
+Commit transport failure is conservatively `outcome_unknown: true`; a failure
+before commit attempt is false. Cancellation, process kill, or lost stdout can
+also leave a mutation outcome unknown. **Do not blindly replay a stale CAS**:
+inspect with `get` and privileged audit, then explicitly authorize a new operation
+using the freshly observed epoch. There is no automatic retry.
+
+The barrier cannot retract already-delivered context. Restoring latest ACL and
+deletion records remains manual; granting access cannot resurrect purged data.
+The API stage is **`m2-scope-access`**; capabilities add
+`scope_access_administration` metadata:
+`transport: "admin-cli"`, `command: "scope-access"`,
+`compare_and_swap: "tenant_access_epoch"`, `audit: "database_role"`.
+PostgreSQL 18.6/pgvector 0.8.6 pinned images and Python dependency versions are
+unchanged. See [operations and example](operations/README.md#scope-access-administration)
+and [ADR 0013](adr/0013-scope-access.md).
+
 ## Python SDK
 
-**Implemented and verified in v0.0.12/schema 8.**
+**Retained SDK contract; v0.0.13 local and native checks passed.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -83,7 +213,7 @@ never select another identity or grant access.
 
 Use `async with ... as memory:` exactly once per client instance. Entry creates
 an owned HTTP client and performs a mandatory authenticated capabilities probe
-requiring exact **service `0.0.12` / API `v1` / schema `8`** before resource use.
+requiring exact **service `0.0.13` / API `v1` / schema `9`** before resource use.
 Failed entry closes owned resources in `finally`. Calls before entry or after exit
 raise `client_not_open`; re-entry raises `client_already_used`.
 Exit releases connections only: **it does not forget data**.
@@ -168,7 +298,7 @@ mutation must likewise be treated as unknown and reconciled. Cancellation is
 Returned memory remains evidence, not trusted instructions or guaranteed
 current facts. Whole-JSON UTF-8 byte budgeting, explicit incomplete coverage,
 current ACL checks, and purge/host/backup/WAL limitations are unchanged.
-The API stage is **`m2-python-sdk`**; capabilities add `python_sdk`
+The historical v0.0.12 stage was **`m2-python-sdk`**; capabilities retain `python_sdk`
 metadata (`installation: "sdk-extra"`, `async: true`, `automatic_retry: false`),
 not a server endpoint. See the [practical example](../README.md#python-sdk),
 [operations](operations/README.md#python-sdk-operations), and
@@ -358,7 +488,7 @@ The fixed-startup hook stays **lexical-only and read-only**; event JSON cannot p
 `coverage.vector_incomplete`; it does not silently downgrade unexpected vector output.
 Observe, capture, jobs, and workers do not generate
 embeddings or call providers. Both MCP protocol eras remain; startup matching is
-**service `0.0.12` / API `v1` / schema `8`** for v0.0.12.
+**service `0.0.13` / API `v1` / schema `9`** for v0.0.13.
 Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
 `default_retrieval_mode: "lexical"`. The v0.0.11 stage was `m2-pgvector-retrieval`;
 embedding input returns HTTP 200 and upload/replay returns HTTP 201. Full M0–M3/MVP/production/DR/erasure/
@@ -486,7 +616,7 @@ The stage label does not complete M2 or any other acceptance gate.
 
 Capture is a **Native resource also covered by the SDK**, not a fifth MCP tool. Recall-hook stays read-only;
 neither adapter automatically captures. MCP/hook startup requires exact
-**service `0.0.12` / API `v1` / schema `8`**. The retained schema-8 migration is separate
+**service `0.0.13` / API `v1` / schema `9`**. The retained schema-8 migration is separate
 from the retained capture semantics. Capture does not generate embeddings,
 invoke LLM/providers, extract intent, perform natural-language/automatic synthesis,
 or establish semantic quality.
@@ -500,7 +630,7 @@ See [ADR 0010](adr/0010-atomic-capture.md) and the
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.12 Docker test/runtime stages include `mcp`, `hook`, and `sdk` extras.
+v0.0.13 Docker test/runtime stages retain `mcp`, `hook`, and `sdk` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
 below. Historical v0.0.9 checks passed locally and on both native Docker
 architectures. Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
@@ -583,9 +713,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.12"`, and `schema_version: 8`.
+`api_version: "v1"`, `service_version: "0.0.13"`, and `schema_version: 9`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. v0.0.12 retains schema 8; the adapter itself performs no migration.
+sanitized diagnostics. v0.0.13 requires schema 9; the adapter itself performs no migration.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -692,7 +822,7 @@ and invalid IDNA before transport. These invalid-origin cases are covered by
 the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.12` / API `v1` / schema `8`**, then sends `POST /v1/recall`
+exact **service `0.0.13` / API `v1` / schema `9`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -838,10 +968,11 @@ still extends past commit; worker claim/publication transactions are short, and
 payload preparation happens outside them. The worker's configured subject is a
 trusted deployment identity, not a public impersonation interface.
 
-Administrative membership changes must acquire the **same session lock**,
-update permissions and `access_epoch` in a transaction, commit, and only then
-release the lock or close the connection. Changes outside this protocol are
-not covered by the request/drain race guarantee. See the
+Use the privileged **scope-access CLI** for membership administration.
+It acquires the **same session lock**, compares the tenant epoch, atomically
+updates changed membership/epoch/audit, and holds the lock through commit and
+CLI JSON stdout flush before closing the connection. Changes outside this
+protocol are not covered by the request/drain race guarantee. See the
 [operations procedure](operations/README.md#membership-maintenance-and-request-drain).
 
 ## Evidence, consent, and time
@@ -1484,21 +1615,24 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.12 is application-only on schema 8; no schema 9 migration is added.**
+**v0.0.13 requires schema 9 and `009_scope_access.sql` for durable admin audit.**
+This is a schema change, unlike the historical application-only v0.0.12 update.
+The new privileged-only `memory_ops.scope_access_event` table uses forced RLS,
+no runtime policy/grant, and atomic membership/epoch/audit changes.
 Retain the pinned PostgreSQL 18.6/pgvector 0.8.6 images.
 Stop/drain old APIs, workers, adapters, hooks, and SDK callers, then deploy only
-matching v0.0.12 components; no mixed-version/rolling-compatibility claim is made.
-See the [application update](operations/README.md#v0012-application-update).
+matching v0.0.13 components; no mixed-version/rolling-compatibility claim is made.
+See the [schema-9 upgrade](operations/README.md#schema-9-scope-access-upgrade).
 Older databases still need v0.0.11's `008_pgvector.sql`.
 Migration requires **`vector` 0.8.6 in `public`** and rejects
 an existing extension in another schema or at another version.
 Use the pinned prebuilt upstream DB profile above, not an assumed unchanged old
-PostgreSQL image or an unpinned extension. Do not start schema-7 processes against schema 8.
-The new episode/assertion-revision projections use forced RLS, canonical
+PostgreSQL image or an unpinned extension. Do not start schema-8 processes against schema 9.
+The retained episode/assertion-revision projections use forced RLS, canonical
 `ON DELETE CASCADE`, and runtime SELECT/INSERT only. **No embedding backfill**
 runs for existing data; generation/rebuild/provider calls remain explicit and external.
 The MCP adapter, hook, and SDK use HTTP only, perform no DDL, and require matching
-service `0.0.12`, API `v1`, schema `8`.
+service `0.0.13`, API `v1`, schema `9`.
 The retained migration history below still applies to databases older than schema 7.
 
 Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
@@ -1511,7 +1645,7 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.12 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8]`
+The v0.0.13 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9]`
 and extension `vector` 0.8.6 in schema `public`, rejecting mismatches and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
@@ -1519,25 +1653,72 @@ rights; migration also requires DDL rights, `btree_gist`, and the matching pgvec
 extension installed on the PostgreSQL server. `row_security = off`
 fails closed if RLS would filter backfill; it does not grant bypass privileges.
 `pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
-selected database. Use matching v0.0.12/schema-8 tooling with `PGAG_ADMIN_DATABASE_URL`.
+selected database. Use matching v0.0.13/schema-9 tooling with `PGAG_ADMIN_DATABASE_URL`.
 It atomically replaces only lexical projections under the migration lock, emitting the
 `profile` and `episodes`/`assertion_revisions` counts, not source content.
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.12 processes. Stop adapters, hook launches, and SDK callers during maintenance too.
+then start only matching v0.0.13 processes. Stop adapters, hook launches, SDK callers, and admin commands during maintenance too.
 Lexical reindex does not generate, populate, or rebuild vectors.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
-[schema-8 operations](operations/README.md#schema-8-pgvector-upgrade).
+[schema-9 operations](operations/README.md#schema-9-scope-access-upgrade).
 
 ## Validation evidence
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
+<a id="v0013--schema-9"></a>
+
+### v0.0.13 / schema 9 — verified
+
+**Final local and native results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **464 tests,
+1 existing warning**, Ruff, strict mypy (**19 source files** plus the separate
+**1-file SDK consumer**), and genuine core-only/hook-only/sdk-only installation
+checks. The total is **426 retained + 22 scope-admin unit + 16 integration
+tests (38 new)**. Local `./scripts/test-containers.sh` exited **0**.
+Published implementation:
+[`fa5dc8055f0db885879e5a109e15d5fb148b4413`](https://github.com/rioriost/pg_agmemory/commit/fa5dc8055f0db885879e5a109e15d5fb148b4413).
+[CI 35196930448](https://github.com/rioriost/pg_agmemory/actions/runs/35196930448)
+passed on that exact SHA on both native Linux architectures. **Actual logs**,
+not only job status, verified each architecture's counts, checks, and smokes.
+
+| Environment | Test elapsed |
+|---|---|
+| Local Apple Container | **297.52 s (4:57)** |
+| Docker, native `linux/amd64` | **539.86 s** |
+| Docker, native `linux/arm64` | **460.73 s** |
+
+Test elapsed is not a performance benchmark.
+These results qualify the implementation SHA above; a subsequent final
+documentation publication/CI run is separate and is not reported here.
+
+Passing integration covers nonowner `BYPASSRLS` inspection without `FOR UPDATE`,
+maximum-epoch change rejection/no-op behavior, schema-8→9 ledger failure after
+DDL, transactional rollback and retry, and prior migrations. It also covers
+holding the output lock after real
+commit, consumer-failure connection cleanup, and injected `OperationalError`
+after a real commit: the stored ACL/audit remained committed,
+`outcome_unknown` was true, and replaying the stale expected epoch conflicted.
+Passing cases include a real 5 s lock timeout with no change, cross-scope
+tenant-global CAS with a legacy empty-permission row, and schema-9 legacy-ACL
+preservation/no audit backfill/forced RLS/capabilities.
+
+All non-root production smokes passed in all three environments: Japanese tokenizer, HTTP API,
+worker `--once` idle, MCP **2026-07-28/2025-11-25**, all three hook events, capture,
+pgvector, Python SDK, and scope-access.
+The scope-access CLI subprocess smoke uses dedicated admin
+credentials for **get → CAS set read-only → SDK read succeeds / write replay 404 →
+CAS revoke → SDK empty recall → get inactive**. Admin credentials belong only
+to the administrative subprocess, not the SDK/API. This verified lifecycle is
+not external ACL-provider integration. Production/quality/performance/DR/full-erasure
+gates remain incomplete.
+
 <a id="v0012--schema-8"></a>
 
-### v0.0.12 / schema 8 — verified
+### Historical v0.0.12 / schema 8 — verified
 
 **Final local and native results verified, 2026-09-17 JST:**
 Apple Container and native Docker amd64/arm64 each passed **426 tests,
@@ -1563,6 +1744,14 @@ native architecture's SHA, counts, checks, and production smokes.
 
 Elapsed times are test observations, not performance benchmarks.
 
+Final v0.0.12 documentation
+[0e00abd](https://github.com/rioriost/pg_agmemory/commit/0e00abdae930dcc1e2d2015fbf5931a74701fe7d)
+passed [CI 35194141510](https://github.com/rioriost/pg_agmemory/actions/runs/35194141510).
+Actual native logs verified **426 tests per architecture**, all checks and smokes;
+docs-run elapsed was **488.20 s amd64 / 454.88 s arm64**.
+This is distinct from implementation CI 35193004945 and the timings above.
+Neither v0.0.12 run validates v0.0.13/schema 9.
+
 All five SDK integration tests passed over actual HTTP against disposable
 PostgreSQL databases in all three environments, covering all 24 resources:
 graph/relation revision, failed-job retry with an actual worker,
@@ -1581,8 +1770,8 @@ pending `get_job` → embedding input/upload → exact vector recall → preview
 deletion progress → capture replay 404**. **It does not invoke a worker**;
 the earlier actual capture-worker smoke is retained separately.
 The SDK smoke passed locally and on both native architectures.
-This evidence validates the implementation commit, not a future documentation
-commit/run. M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
+The implementation and final-docs runs above are distinct historical evidence,
+not v0.0.13 qualification. M0–M3/MVP/production/performance/quality/DR/full-erasure gates remain incomplete.
 Historical v0.0.11 evidence below does not qualify SDK changes.
 
 <a id="v0011--schema-8"></a>

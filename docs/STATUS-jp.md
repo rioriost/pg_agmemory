@@ -2,9 +2,9 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.12/schema 8の型付き非同期Python SDKです。
-実装、local Apple Container、native Docker両architectureを検証済みです。
-検証済みv0.0.11以前の結果は過去の証拠であり、v0.0.12の結果ではありません。
+**現在の上限付きmilestoneはv0.0.13/schema 9の特権scope-access管理です。
+実装はlocal Apple Containerとnative CI両architectureで検証済みです。
+検証済みv0.0.12以前の結果は過去の証拠であり、v0.0.13の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -49,9 +49,133 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 `/healthz`は起動検証後のprocess livenessであり、
 PostgreSQLへの継続的なreadiness検査ではありません。
 
+## Scope-access administration
+
+**v0.0.13/schema 9はlocalとnative Linux amd64/arm64で検証済みです。**
+`pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
+は特権管理CLIであり、agent toolやruntime APIではありません。
+**既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
+IDはUUIDとしてparseし、lock keyを正規化します。取得memory本文ではなく、
+信頼する管理情報から承認済みopaque IDを選んでください。
+public Native memory surfaceは24 resource methodを維持し、
+**HTTP、MCP、Python SDK管理methodは追加しません**。
+
+### 権限とcompare-and-swap
+
+`PGAG_ADMIN_DATABASE_URL`のみを使います。接続DB roleは
+`rolsuper`または`rolbypassrls`**と適切なSQL table権限**を必要とします。
+`get`でもruntime資格情報を拒否し、RLS bypassだけではtable権限を与えません。
+JWT、`--subject`、`--once`、runtime URLへのfallbackはありません。
+`get`は`FOR UPDATE`を使わず、非ownerの`BYPASSRLS` roleも、
+`memory`の`USAGE`とschema履歴/tenant/scope/principal/`scope_member`の`SELECT`で照会できます。
+変更には追加でtenantの`UPDATE`、該当する`scope_member`の
+`SELECT`/`UPDATE`/`INSERT`/`DELETE`、`memory_ops`の`USAGE`と
+`scope_access_event`の`INSERT`が必要です。
+readもsession advisory barrierを取得し、table権限がread-onlyでもRLS bypass roleは必須です。
+操作前にrole、厳密なschema履歴**1〜9**、**`public`内の`vector` 0.8.6**を検査します。
+
+| 操作 | 必須intent | 意味 |
+|---|---|---|
+| `get` | 3 IDのみ。変更optionなし | response-drain barrier内で現在membershipとtenant epochを取得 |
+| `set` | `--expected-access-epoch`、`--permissions`、expiryの明示選択 | permissionとexpiryの全置換。mergeしない |
+| `revoke` | `--expected-access-epoch`。permission/expiry optionなし | membership行を削除。現在epochで既に不在ならno-op |
+
+すべての変更で**1〜9223372036854775807**のexpected epochを明示します。
+要求状態と既に一致するかを確認する前に、lock下で**tenant全体**の`access_epoch`と比較します。
+古い期待値は常に`access_epoch_conflict`となり、無関係なscope変更とも競合します。
+自動retry、HTTP `Idempotency-Key`、変更receipt、receipt queueはありません。
+
+`set`は`read`、`write`、`delete`の重複しないflag、または`admin`単独を受け付けます。
+重複や`admin`との混在を拒否します。write-only/delete-onlyもDB flagとして許可しますが、
+必要なread権限を含むNative操作の要件を上書きしません。
+permissionの返却順は**read、write、delete、admin**で、
+順序変更だけでは同等と扱い変更を作りません。
+**timezone-aware ISO timestampの`--expires-at`または`--no-expiry`**を必ず選びます。
+naive timestampは不正で、lock取得後のDB clock以下の期限も拒否します。
+無期限accessは明示必須で、expiry省略によって期限を消しません。
+expiryだけの変更もepochを進めます。
+
+### 結果、期限、audit
+
+成功は**result wrapperのないJSON 1行**です。
+
+```text
+{
+  operation, tenant_id, scope_id, principal_id, access_epoch, changed,
+  membership_exists, permissions, expires_at, effective_permissions, evaluated_at
+}
+```
+
+membership不在時は`membership_exists: false`、`permissions: []`、
+`expires_at: null`です。legacyの空permission行は`membership_exists: true`のままです。
+`effective_permissions`はDB `evaluated_at`時点で期限切れなら空、
+有効な`admin`なら全4 flag、それ以外は設定flagです。
+**ある時点のmembership解釈であり、Native action全体の認可判定ではありません**。
+結果直後に期限切れになることもあります。
+自然な期限切れは`access_epoch`を進めず、payload/auditを消さず、処理中HTTPもdrainしません。
+強いdrainが必要な場合は明示revoke/barrierを使います。
+
+新**`009_scope_access.sql`**は特権専用`memory_ops.scope_access_event`を作り、
+forced RLSと**runtime policy/grantなし**を適用します。
+主keyは`(tenant_id, access_epoch)`で、同一tenant FKが対象scope/principalを結びます。
+eventは`set`/`revoke`、変更前後のpermission/expiry、DB `recorded_at`、
+`current_user`由来の`database_role`を記録し、
+実行DB roleを示します。end-user actorを偽装するものではありません。
+`recorded_at`はDB clockを使い、`evaluated_at`はresponse専用でaudit fieldではありません。
+平文memory本文、external subject、DSNを含めません。
+既存ACL行を維持し、**過去の手動変更へaudit backfillは行いません**。
+暗黙のownership変更やpurge動作も追加しません。
+**実変更だけ**がmembership更新、tenant epoch増加、audit追記を原子的に行います。
+read、no-op、conflict、rollbackした変更はeventやepoch増加を作りません。
+epoch上限では変更を拒否します。
+特権管理者はDBを変更できるため、**改ざん耐性の証明、独立したrevocation復旧台帳、
+DR solutionではありません**。
+
+### Response-drain barrierと失敗
+
+専用同期admin connectionはautocommitと**connect/statement/lock各5秒timeout**を使います。
+API/workerと同じ**session** advisory lock
+`pg_advisory_lock(hashtextextended(canonical_tenant_uuid, 0))`を取得します。
+membership transactionのcommit**とCLI JSON stdout flush完了まで**保持し、
+connection closeで解放します。`get`と変更no-opもbarrierを取得します。
+このconnectionをpoolしたり、transactionだけのlockへ置き換えたりしてはいけません。
+先行する遅い応答は管理操作を止め得ます。lock timeoutは変更なしで失敗します。
+変更途中の失敗はmembership、epoch、auditをまとめてrollbackし、
+失敗cleanupでsessionを閉じてlockを解放します。
+協調する同じ版のAPI clientはこれらの管理操作中もonlineを維持できますが、
+**migrationは引き続き旧processの停止/drainが必要**です。
+
+syntax/model/config errorは固定sanitized stderr、exit **2**、JSONなしです。
+不正なCLI構文は`invalid_scope_access_arguments`を報告します。
+`PGAG_ADMIN_DATABASE_URL`未設定も固定stderr diagnostic、exit 2、stdoutなしです。
+DB/domain操作errorはstdout、exit **1**です。
+
+```json
+{"error":{"code":"access_epoch_conflict","outcome_unknown":false}}
+```
+
+error catalogは`admin_role_required`、`admin_privilege_required`、
+`schema_unavailable`、`schema_version_mismatch`、`extension_version_mismatch`、
+`not_found`、`access_epoch_conflict`、`access_epoch_exhausted`、`invalid_expiration`、
+`admin_database_unavailable`、`admin_database_error`です。
+raw DB error、DSN、資格情報、private dataは出力しません。
+commit通信失敗は保守的に`outcome_unknown: true`とし、commit試行前の失敗はfalseです。
+cancel、process kill、stdout喪失でも変更結果は不明になり得ます。
+**古いCASを盲目的に再送しないでください**。`get`と特権auditで確認し、
+新しく観測したepochを使う新操作を明示承認します。自動retryはありません。
+
+barrierは配信済みcontextを撤回できません。最新ACL/削除記録のrestoreは手動であり、
+grantによってpurge済みdataは復活しません。
+API stageは**`m2-scope-access`**です。capabilitiesに`scope_access_administration`
+metadataとして`transport: "admin-cli"`、`command: "scope-access"`、
+`compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`を追加します。
+PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しません。
+[運用と例](operations/README-jp.md#scope-access-administration)と
+[ADR 0013](adr/0013-scope-access-jp.md)を参照してください。
+
 ## Python SDK
 
-**v0.0.12/schema 8で実装・検証済みです。**
+**既存SDK契約を維持し、v0.0.13 localとnative検査は合格しました。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -80,7 +204,7 @@ request scopeは現在のserver ACLを狭めるだけで、identity変更や権�
 
 client instanceごとに`async with ... as memory:`を一度だけ使います。
 entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
-厳密な**service `0.0.12` / API `v1` / schema `8`**一致を要求します。
+厳密な**service `0.0.13` / API `v1` / schema `9`**一致を要求します。
 entry失敗時も`finally`で所有resourceを閉じます。
 entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
 exitは接続を解放するだけで、**dataは消去しません**。
@@ -161,7 +285,7 @@ cancelは`MemoryClientError`へ変換せず伝播します。処理中の変更�
 
 返されたmemoryは根拠であり、信頼する指示や現在の事実の保証ではありません。
 JSON全体のUTF-8 byte予算、不完全coverageの明示、現在ACL検査、
-purge/host/backup/WALの制限は不変です。API stageは**`m2-python-sdk`**で、
+purge/host/backup/WALの制限は不変です。過去v0.0.12のAPI stageは**`m2-python-sdk`**で、
 capabilitiesに`python_sdk` metadata（`installation: "sdk-extra"`、
 `async: true`、`automatic_retry: false`）を追加しますがserver endpointは追加しません。
 [実用例](../README-jp.md#python-sdk)、[運用](operations/README-jp.md#python-sdk-operations)、
@@ -340,7 +464,7 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、v0.0.12の起動時一致は**service `0.0.12` / API `v1` / schema `8`**です。
+MCP両protocol時代を維持し、v0.0.13の起動時一致は**service `0.0.13` / API `v1` / schema `9`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
 v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
@@ -467,7 +591,7 @@ stage名はM2や他受入gateの完了を意味しません。
 
 captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.12` / API `v1` / schema `8`**を要求します。
+MCP/hook起動は厳密な**service `0.0.13` / API `v1` / schema `9`**を要求します。
 既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
@@ -479,7 +603,7 @@ host/backup/WAL/完全消去の保証は得られません。
 
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.12のrepository Docker test/runtime両stageに
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.13のrepository Docker test/runtime両stageに
 `mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
 合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
@@ -553,9 +677,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.12"`、`schema_version: 8`を要求します。
+`service_version: "0.0.13"`、`schema_version: 9`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.12はschema 8を維持しますが、adapter自体はmigrationを行いません。
+v0.0.13はschema 9を要求しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -655,7 +779,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.12` / API `v1` / schema `8`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.13` / API `v1` / schema `9`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -797,9 +921,10 @@ APIとworkerは`principal_connection`のidentity lookupと`bind_identity`の再�
 workerのclaim/publication transactionは短命で、payload準備はその外で行います。
 workerのsubjectは信頼する配置identityであり、公開の偽装interfaceではありません。
 
-管理者によるmembership変更も**同一session lock**を取得し、
-transaction内で権限と`access_epoch`を更新してcommitした後に、
-lockを解放するかconnectionを閉じる必要があります。
+membership管理には特権**scope-access CLI**を使います。
+**同一session lock**を取得してtenant epochを比較し、
+実変更のmembership/epoch/auditを原子的に更新します。
+commitとCLI JSON stdout flushまでlockを保持してからconnectionを閉じます。
 この手順を使わない変更はrequest/drainの競合保証の対象外です。
 [運用手順](operations/README-jp.md#membership変更とrequest-drain)を参照してください。
 
@@ -1404,19 +1529,22 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.12はschema 8上のapplication-only更新であり、schema 9 migrationはありません**。
+**v0.0.13はdurable admin auditのためschema 9と`009_scope_access.sql`を要求します**。
+過去のapplication-only v0.0.12更新とは異なるschema変更です。
+新しい特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
+原子的membership/epoch/audit変更を使います。
 固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
-旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.12 componentだけを
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.13 componentだけを
 導入します。混在版/rolling互換性は主張しません。
-[application更新](operations/README-jp.md#v0012-application-update)を参照してください。
+[schema 9更新](operations/README-jp.md#schema-9-scope-access-upgrade)を参照してください。
 古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
 migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既存extensionを拒否します。
 上記の固定prebuilt上流DB profileを使い、旧PostgreSQL imageが不変と想定したり、
-未固定extensionを使ったりしないでください。schema 8で旧schema 7 processを起動してはいけません。
-新episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
+未固定extensionを使ったりしないでください。schema 9で旧schema 8 processを起動してはいけません。
+既存episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.12`、API `v1`、schema `8`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.13`、API `v1`、schema `9`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -1428,7 +1556,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.12のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8]`と
+追加しません。v0.0.13のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -1436,24 +1564,68 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.12/schema 8 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.13/schema 9 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.12 processだけを起動してください。保守中はadapter、hook起動、SDK callerも停止します。
+対応するv0.0.13 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
-[schema 8運用](operations/README-jp.md#schema-8-pgvector-upgrade)に従ってください。
+[schema 9運用](operations/README-jp.md#schema-9-scope-access-upgrade)に従ってください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0013--schema-9"></a>
+
+### v0.0.13 / schema 9 — 検証済み
+
+**2026-09-17 JSTに最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**464テスト、既存warning 1件**、
+Ruff、strict mypy（**source 19ファイル**と別の**SDK consumer 1ファイル**）、
+真のcore-only/hook-only/sdk-only導入検査が合格しました。
+内訳は**既存426 + scope-admin unit 22 + integration 16テスト（新規38）**です。
+localの`./scripts/test-containers.sh`は**exit 0**でした。公開済み実装:
+[`fa5dc8055f0db885879e5a109e15d5fb148b4413`](https://github.com/rioriost/pg_agmemory/commit/fa5dc8055f0db885879e5a109e15d5fb148b4413)
+は[CI 35196930448](https://github.com/rioriost/pg_agmemory/actions/runs/35196930448)に
+完全一致SHAで合格しました。job statusだけでなく**実log**で両native Linux architectureの
+件数、検査、smokeを確認しています。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| Local Apple Container | **297.52秒（4:57）** |
+| Docker、native `linux/amd64` | **539.86秒** |
+| Docker、native `linux/arm64` | **460.73秒** |
+
+所要時間は性能benchmarkではありません。
+これらは上記実装SHAの結果です。その後の最終文書公開/CI runは別であり、ここでは報告しません。
+
+合格integrationは非owner `BYPASSRLS` roleによる`FOR UPDATE`なしの照会、
+epoch最大値での変更拒否/no-op動作、schema 8→9のDDL後のledger記録失敗、
+transactional rollback/retry、以前のmigrationを含みます。
+実commit後も出力lockを保持すること、consumer失敗時のconnection cleanup、
+実commit後に注入した`OperationalError`を対象にします。保存ACL/auditはcommit済みのまま、
+`outcome_unknown`はtrueで、古いexpected epochの再送は競合しました。
+実5秒lock timeoutでの変更なし、別scope間のtenant-global CASとlegacy空permission行、
+schema 9での既存ACL維持/audit backfillなし/forced RLS/capabilitiesを対象にします。
+これらも合格しました。
+
+non-root productionの日本語tokenizer、HTTP API、worker `--once` idle、
+MCP **2026-07-28/2025-11-25**、hook全3 event、capture、pgvector、Python SDK、scope-accessの
+全smokeが全3環境で合格しました。
+scope-access CLI subprocess smokeは専用admin資格情報を使い、
+**get → CAS read-only set → SDK read成功 / write replay 404 →
+CAS revoke → SDK empty recall → get inactive**を確認します。
+admin資格情報は管理subprocessだけに渡し、SDK/APIには渡しません。
+この検証済みlifecycleは外部ACL provider連携ではありません。
+本番/品質/性能/DR/完全消去のgateは未完了です。
+
 <a id="v0012--schema-8"></a>
 
-### v0.0.12 / schema 8 — 検証済み
+### 過去のv0.0.12 / schema 8 — 検証済み
 
 **2026-09-17 JSTに最終localとnative結果を検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**426テスト、既存warning 1件**、
@@ -1479,6 +1651,13 @@ SHA、件数、検査、production smokeを確認しています。
 
 所要時間はテスト観測値であり、性能benchmarkではありません。
 
+最終v0.0.12 docs
+[0e00abd](https://github.com/rioriost/pg_agmemory/commit/0e00abdae930dcc1e2d2015fbf5931a74701fe7d)は
+[CI 35194141510](https://github.com/rioriost/pg_agmemory/actions/runs/35194141510)に合格しました。
+native実logで**各architecture 426テスト**、全検査/smokeを確認しました。
+docs run所要時間は**amd64 488.20秒 / arm64 454.88秒**で、
+実装CI 35193004945と上記所要時間とは別です。両v0.0.12 runともv0.0.13/schema 9の検証ではありません。
+
 全3環境の使い捨てPostgreSQL DB上の実HTTPでSDK integration全5テストが合格しました。
 全24 resourceを対象にし、
 graph/relation revision、実workerを伴うfailed job retry、
@@ -1496,7 +1675,7 @@ pending `get_job` → embedding input/upload → exact vector recall → preview
 削除進捗 → capture replay 404**を実行します。
 **このsmoke自体はworkerを呼びません**。従来の実capture-worker smokeは別に維持します。
 SDK smokeはlocalと両native architectureで合格しました。
-これは実装commitの証拠であり、今後のdocs commit/runの検証ではありません。
+上記実装/最終docs runは別々の過去証拠であり、v0.0.13の適格性確認ではありません。
 M0〜M3/MVP/本番/性能/品質/DR/完全消去のgateは未完了です。
 以下の過去v0.0.11証拠でSDK変更の適格性は認定しません。
 

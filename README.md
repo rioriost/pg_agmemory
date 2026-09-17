@@ -6,9 +6,9 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Current bounded milestone: v0.0.12/schema 8 typed asynchronous Python SDK.
-Implementation, local Apple Container, and both native Docker architectures are verified.
-Verified v0.0.11 and earlier results below are historical, not v0.0.12 evidence.
+**Current bounded milestone: v0.0.13/schema 9 privileged scope-access administration.
+Implementation is verified locally with Apple Container and on both native CI architectures.
+Verified v0.0.12 and earlier results below are historical, not v0.0.13 evidence.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
 with same-scope episode evidence, PostgreSQL full-text recall, evidence
@@ -35,9 +35,39 @@ full-erasure acceptance remain unmeasured or unqualified.
 Consult [the current contract and limitations](docs/STATUS.md)
 before using the service.
 
+## Scope-access administration
+
+**v0.0.13/schema 9: verified locally and on native Linux amd64/arm64.**
+The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
+for existing same-tenant scope/principal UUIDs. It requires
+`PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
+SQL privileges, and explicit caller-selected IDs—not JWTs, runtime credentials,
+or identity from retrieved text. There is **no HTTP/MCP/SDK admin method**.
+
+`get` returns current membership and the tenant-wide `access_epoch`.
+`set` fully replaces permissions and requires an explicit future aware expiry
+or `--no-expiry`; `revoke` deletes membership. Both require
+`--expected-access-epoch`. Stale CAS fails even if the desired state already
+matches. Actual changes atomically update membership, advance the epoch, and
+write a privileged-only audit event; reads and no-ops do neither.
+Natural expiry is not an epoch change or an in-flight response drain.
+
+The CLI holds the shared **tenant session advisory lock** through commit and
+JSON stdout flush. It can cooperate with online same-version API clients;
+migration still requires stop/drain. A lost mutation result requires inspection
+with `get` and privileged audit before an explicit new CAS operation—no blind
+retry or idempotency receipt. It cannot retract delivered context or resurrect
+purged data. The audit is not tamper-proof or a DR solution.
+
+New `009_scope_access.sql` requires schema 9; PostgreSQL 18.6/pgvector 0.8.6
+pinned images and dependency versions stay unchanged. The stage is
+`m2-scope-access`. See [the full contract](docs/STATUS.md#scope-access-administration),
+[get → set → revoke example and migration](docs/operations/README.md#scope-access-administration),
+and [ADR 0013](docs/adr/0013-scope-access.md).
+
 ## Python SDK
 
-**Implemented and verified in v0.0.12/schema 8.** From the matching checkout:
+**Retained SDK contract; v0.0.13 local and native checks passed.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -94,7 +124,7 @@ SDK call-time validation produces sanitized SDK errors.
 
 `AsyncMemoryClient` validates a fixed HTTPS origin or loopback HTTP origin and
 token shape; the server authenticates the token. Context entry owns the HTTP
-client and requires authenticated **service 0.0.12 / API v1 / schema 8**
+client and requires authenticated **service 0.0.13 / API v1 / schema 9**
 capabilities. Use only inside one context; no re-entry or automatic retries.
 Await outstanding tasks, or cancel and await them, **before exiting the context**.
 Client close is not a request scheduler/cancellation manager or a DB rollback.
@@ -108,7 +138,7 @@ worker execution. Every mutation needs a caller-retained keyword-only
 require reconciliation with the **same key and body**, never a replacement key
 or an assumed rollback. See [the typed method/error contract](docs/STATUS.md#python-sdk),
 [operations and upgrade](docs/operations/README.md#python-sdk-operations), and
-[ADR 0012](docs/adr/0012-python-sdk.md). No schema 9 migration is added.
+[ADR 0012](docs/adr/0012-python-sdk.md). SDK calls remain HTTP-only, not administration.
 
 ## Container checks
 
@@ -149,7 +179,21 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 No hosted model key or external memory database is required. Container images
 and Python dependencies must be downloadable on the first run.
-**v0.0.12 final local and native results verified, 2026-09-17 JST:**
+**v0.0.13 final local and native results verified, 2026-09-17 JST:**
+Apple Container and native Docker amd64/arm64 each passed **464 tests,
+1 existing warning**, Ruff, strict mypy (**19 source files + 1 SDK consumer**),
+genuine core/hook/sdk-only install checks, and all non-root production smokes,
+including scope-access. The total is **426 retained + 22 scope-admin unit +
+16 integration tests (38 new)**. Schema-8→9 rollback/retry and prior migrations passed.
+Implementation
+[`fa5dc8055f0db885879e5a109e15d5fb148b4413`](https://github.com/rioriost/pg_agmemory/commit/fa5dc8055f0db885879e5a109e15d5fb148b4413)
+passed [CI 35196930448](https://github.com/rioriost/pg_agmemory/actions/runs/35196930448).
+Actual native logs verified that exact SHA, counts, and all checks/smokes.
+Test elapsed: **297.52 s local / 539.86 s amd64 / 460.73 s arm64**—not
+performance benchmarks. See [validation evidence](docs/STATUS.md#v0013--schema-9).
+These are implementation results, not a subsequent final-docs CI run.
+
+**Historical v0.0.12 final local and native results verified, 2026-09-17 JST:**
 Apple Container and native Docker amd64/arm64 each passed **426 tests,
 1 existing warning**, Ruff, strict mypy (**18 source files**), a separate strict typed
 consumer (**1 file**), genuine core/hook/sdk wheel-install checks, packaged
@@ -161,6 +205,11 @@ passed [CI 35193004945](https://github.com/rioriost/pg_agmemory/actions/runs/351
 Actual native logs verified that exact SHA, counts, and all checks.
 Test elapsed: **292.76 s local / 484.79 s amd64 / 472.49 s arm64**—not
 performance benchmarks. See [validation evidence](docs/STATUS.md#v0012--schema-8).
+Final v0.0.12 docs [0e00abd](https://github.com/rioriost/pg_agmemory/commit/0e00abdae930dcc1e2d2015fbf5931a74701fe7d)
+also passed [CI 35194141510](https://github.com/rioriost/pg_agmemory/actions/runs/35194141510):
+actual logs verified 426 tests per native architecture and all checks/smokes,
+**488.20 s amd64 / 454.88 s arm64**. This is a separate docs run, not the
+implementation timings above or v0.0.13 validation.
 
 **Historical v0.0.11/schema 8: verified 2026-09-17 JST.** Apple Container and native Docker
 amd64/arm64 each passed **345 tests, 1 existing warning**, Ruff, strict mypy
@@ -309,22 +358,22 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
-**v0.0.12 retains schema 8; no schema 9 migration is added.**
-Follow the [application-only upgrade](docs/operations/README.md#v0012-application-update).
+**v0.0.13 requires schema 9 and new `009_scope_access.sql` for durable admin audit.**
+Follow the [schema-9 upgrade](docs/operations/README.md#schema-9-scope-access-upgrade).
 Older databases still require the v0.0.11 `008_pgvector.sql` migration. PostgreSQL must provide
 `vector` **0.8.6 in `public`**; migration rejects an existing extension with the
 wrong version or schema. The prebuilt profile supplies the matching extension.
-API, worker, and `migrate` validate it even when schema 8 is already recorded.
-Stop/drain **all old/new APIs, workers, adapters, and hook launches**, preserve a
+API, worker, and `migrate` validate it even when schema 9 is already recorded.
+Stop/drain **all old/new APIs, workers, adapters, hook launches, and SDK callers**, preserve a
 backup and current deletion/ACL records, then migrate offline.
 Older databases also apply the retained migrations, including migration 007's
 lexical backfill. **There is no embedding backfill or automatic embedding rebuild**.
-Only matching v0.0.12 processes may restart; API/worker startup requires exact
-history `[1, 2, 3, 4, 5, 6, 7, 8]` and extension `vector` 0.8.6 in schema `public`.
-Schema-7 processes are not rolling-compatible with schema 8.
+Only matching v0.0.13 processes may restart; API/worker startup requires exact
+history `[1, 2, 3, 4, 5, 6, 7, 8, 9]` and extension `vector` 0.8.6 in schema `public`.
+Schema-8 processes are not rolling-compatible with schema 9.
 Keep old images stopped; v0.0.1 lacks a schema-compatibility guard.
 No rolling coexistence or downgrade is supported. Follow the
-[schema-8 procedure](docs/operations/README.md#schema-8-pgvector-upgrade).
+[schema-9 procedure](docs/operations/README.md#schema-9-scope-access-upgrade).
 
 With `MEMORY_URL`, `TOKEN`, and the provisioned `SCOPE_ID` in your shell:
 
@@ -464,7 +513,7 @@ Repository Docker test/runtime images intentionally include all three extras;
 that is **not** the base-package default.
 
 Install the optional `pg-agmemory[mcp]` package extra, or use the repository image,
-whose v0.0.12 test and runtime stages include `mcp`, `hook`, and `sdk` extras.
+whose v0.0.13 test and runtime stages retain `mcp`, `hook`, and `sdk` extras.
 The MCP extra pins the official **mcp 2.2.0** SDK
 and **httpx 0.28.1**. From this checkout, `uv sync --frozen --extra mcp` prepares
 the locked environment. A trusted local MCP host launches:
@@ -478,7 +527,7 @@ configuration, not tool arguments or checked-in host configuration. The URL must
 be an HTTPS origin or loopback HTTP origin, with no credentials, path, query, or
 fragment. The token is for the **Native API audience**, which the Native API
 checks; it is not forwarded MCP caller identity. Startup makes an authenticated
-capabilities request and requires API `v1`, service `0.0.12`, and schema `8`.
+capabilities request and requires API `v1`, service `0.0.13`, and schema `9`.
 Configuration/authentication/version failures exit nonzero without secrets.
 Restart to refresh the fixed token. `--subject` and `--once` are rejected.
 
@@ -562,7 +611,7 @@ Shared `NativeSettings` also uses `httpx.URL` to reject control characters and
 invalid IDNA before transport. Redirects/proxy environment are disabled and TLS is verified.
 
 Each invocation freshly checks authenticated capabilities for exact
-**service `0.0.12` / API `v1` / schema `8`**, then posts Native recall with
+**service `0.0.13` / API `v1` / schema `9`**, then posts Native recall with
 `mode: "implicit"` and Native current-time defaults. The deadline covers **both
 HTTP steps together**, excluding process startup, stdin input/waiting, and output.
 It is not an LLM latency SLO.
@@ -642,7 +691,7 @@ cascade in the same barrier, without child DELETE grants; they are not separate
 memories. Offline `pg-agmemory reindex-lexical` rebuilds **all tenants in the
 selected database** using `PGAG_ADMIN_DATABASE_URL`; `--subject` is rejected,
 not a scope filter, and `--once` is worker-only. Stop/drain APIs and workers,
-back up, rebuild lexical projections, then restart matching v0.0.12 processes only.
+back up, rebuild lexical projections, then restart matching v0.0.13 processes only.
 This does not populate or rebuild embeddings. There is no automatic
 repair worker, external model/provider, or file-based memory index.
 See [the contract](docs/STATUS.md#japanese-lexical-profile),
@@ -816,6 +865,7 @@ See [the ledger contract](docs/STATUS.md#tool-effect-ledger),
 | [Atomic structured capture decisions](docs/adr/0010-atomic-capture.md) | [Atomic structured captureの決定](docs/adr/0010-atomic-capture-jp.md) |
 | [Pgvector retrieval decisions](docs/adr/0011-pgvector-retrieval.md) | [Pgvector retrievalの決定](docs/adr/0011-pgvector-retrieval-jp.md) |
 | [Python SDK decisions](docs/adr/0012-python-sdk.md) | [Python SDKの決定](docs/adr/0012-python-sdk-jp.md) |
+| [Scope-access administration](docs/adr/0013-scope-access.md) | [Scope-access管理](docs/adr/0013-scope-access-jp.md) |
 | [Operations](docs/operations/README.md) | [運用](docs/operations/README-jp.md) |
 | [Contributing](CONTRIBUTING.md) | [貢献方法](CONTRIBUTING-jp.md) |
 

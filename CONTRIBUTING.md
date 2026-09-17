@@ -29,10 +29,15 @@ worker, retrieval, replay, and source purge. The pgvector smoke uses synthetic
 episode/assertion vectors to check exact/hybrid retrieval and purge; this does
 not qualify a real embedding model's semantic quality. The database image pins
 PostgreSQL 18.6 and pgvector 0.8.6; see [ADR 0011](docs/adr/0011-pgvector-retrieval.md)
-for schema 8 and extension requirements. The Python SDK smoke exercises typed
+for pgvector requirements. Schema 9 additionally records administrative ACL changes.
+The Python SDK smoke exercises typed
 capture/replay, job/input reads, explicit vector recall, and deletion. SDK requests
 must preserve caller-owned keys and Native authorization/uncertainty semantics;
 see [ADR 0012](docs/adr/0012-python-sdk.md).
+The scope-access CLI smoke uses disposable administrative credentials to inspect,
+narrow, and revoke membership while checking Native read/write behavior. Preserve
+the tenant session-lock drain, epoch CAS, and atomic audit contract described in
+[ADR 0013](docs/adr/0013-scope-access.md); never grant runtime RLS bypass.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

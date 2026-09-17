@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not completion of M0–M3, MVP, production, performance, memory quality, DR, or full-erasure gates
 
+**Historical version notice:** this ADR records verified v0.0.12/schema 8,
+including its application-only upgrade and startup-version decisions.
+[ADR 0013](0013-scope-access.md) records verified privileged scope-access administration
+with schema 9; SDK resources remain unchanged, but matching v0.0.13 components
+are required. v0.0.13 local and both native checks passed. The separate final v0.0.12 docs
+CI 35194141510 is recorded in [historical evidence](../STATUS.md#v0012--schema-8).
+
 ## Decision
 
 Expose `AsyncMemoryClient` and `MemoryClientError` from `pg_agmemory.sdk`,

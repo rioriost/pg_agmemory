@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`。MITは不変、二言語文書
 - 受入: M0〜M3、MVP、本番、性能、記憶品質、DR、完全消去gateの完了ではない
 
+**過去版の注記:** このADRはapplication-only更新と起動版の決定を含む
+検証済みv0.0.12/schema 8の記録です。
+[ADR 0013](0013-scope-access-jp.md)は検証済みschema 9の特権scope-access管理を記録します。
+SDK resourceは維持しますが対応v0.0.13 componentが必要です。localと両native検査は合格しました。
+別の最終v0.0.12 docs CI 35194141510は
+[過去の証拠](../STATUS-jp.md#v0012--schema-8)に記録します。
+
 ## 決定
 
 `pg_agmemory.sdk`から`AsyncMemoryClient`と`MemoryClientError`を公開し、

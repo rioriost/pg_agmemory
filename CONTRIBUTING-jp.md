@@ -27,11 +27,16 @@ worker、MCP両protocol mode、暗黙recall hook全3eventを確認します。
 atomic capture smokeでは実workerによる公開、検索、再送、source purgeも検査します。
 pgvector smokeではepisode/assertionの合成vectorでexact/hybrid検索とpurgeを確認します。
 実embedding modelの意味検索品質を認定するものではありません。
-DB imageはPostgreSQL 18.6とpgvector 0.8.6を固定します。schema 8とextensionの
+DB imageはPostgreSQL 18.6とpgvector 0.8.6を固定します。pgvectorの
 要件は[ADR 0011](docs/adr/0011-pgvector-retrieval-jp.md)を参照してください。
+schema 9ではさらに管理者によるACL変更を記録します。
 Python SDK smokeではtyped capture/replay、job/input読取り、明示vector検索、削除を検査します。
 SDK requestはcaller管理keyとNativeの認可/結果不明の契約を維持する必要があります。
 [ADR 0012](docs/adr/0012-python-sdk-jp.md)を参照してください。
+scope-access CLI smokeでは使い捨ての管理者資格情報でmembershipを確認・縮小・失効し、
+Nativeの読取り/書込み動作を確認します。[ADR 0013](docs/adr/0013-scope-access-jp.md)の
+tenant session-lock drain、epoch CAS、原子的audit契約を維持し、
+runtimeにRLS bypassを付与してはいけません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。
