@@ -60,6 +60,10 @@ checkpoint-head smokeではscope内のhead取得、branch更新、過去IDのGET
 source purge後のfail-closed動作を検査します。head読取りでも完全性・照合要否を検査し、
 branch作成や過去のancestorへのfallbackをしてはいけません。
 [ADR 0018](docs/adr/0018-checkpoint-head-jp.md)を参照してください。読取りはCASの予約ではありません。
+job-query smokeではcaller所有jobのkeyset page、現在のstate条件、source purgeを検査します。
+現在の可視性・所有者条件を件数制限より前に適用してください。
+cursorは位置であり、権限や固定snapshotではありません。job GETと同じ完全性検査を再利用します。
+[ADR 0019](docs/adr/0019-job-query-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

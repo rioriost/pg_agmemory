@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/harness/compaction/general-recovery/production/DR qualification
 
+**Historical version notice:** this ADR records verified v0.0.18/schema 10.
+[ADR 0019](0019-job-query.md) records caller-owned job query/pagination in
+v0.0.19 on schema 10, with 27 Native/SDK resources, verified locally and on both native architectures.
+Separate final v18 docs CI 35237907862 is recorded in
+[historical evidence](../STATUS.md#v0018--schema-10), distinct from implementation CI.
+
 ## Decision and request boundary
 
 Add authenticated read-only `POST /v1/checkpoints/head`, requiring current scope

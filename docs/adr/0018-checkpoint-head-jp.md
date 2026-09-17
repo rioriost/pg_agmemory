@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/harness/compaction/汎用復旧/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRは検証済みv0.0.18/schema 10を記録します。
+[ADR 0019](0019-job-query-jp.md)はschema 10のv0.0.19でcaller所有jobの照会/paginationを記録し、
+Native/SDK resourceは27です。localと両native architectureで検証済みです。
+別の最終v18 docs CI 35237907862は実装CIとは別に
+[過去の証拠](../STATUS-jp.md#v0018--schema-10)へ記録します。
+
 ## 決定とrequest境界
 
 認証付きread-only `POST /v1/checkpoints/head`を追加し、scopeの現在のread権限を要求しますが、

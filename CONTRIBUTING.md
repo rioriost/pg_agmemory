@@ -60,6 +60,10 @@ The checkpoint-head smoke checks scoped head discovery, branch advancement,
 historical GET, and fail-closed lookup after source purge. Head reads must reuse
 integrity/reconciliation checks, never create branches or fall back to an ancestor;
 see [ADR 0018](docs/adr/0018-checkpoint-head.md). A head read does not reserve the CAS.
+The job-query smoke checks caller-owned keyset pages, current state filtering,
+and source purge. Apply current visibility and ownership before the page limit;
+each cursor is a position, not authority or a stable snapshot. Reuse job GET
+integrity checks; see [ADR 0019](docs/adr/0019-job-query.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.
