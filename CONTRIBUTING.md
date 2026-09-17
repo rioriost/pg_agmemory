@@ -52,6 +52,10 @@ The required-context smoke checks exact-reference selection ahead of optional
 keyword matches, item limits, all-required byte-budget errors, and source purge.
 Required references must never bypass scope, current authorization, or time filters;
 see [ADR 0016](docs/adr/0016-required-context.md). Schema 10 is unchanged.
+The structured-recall smoke checks exact kind/subject/predicate filtering and
+required-reference mismatches. Apply filters before every ranking and projection-
+coverage calculation, without bypassing current ACLs or temporal eligibility;
+see [ADR 0017](docs/adr/0017-recall-filters.md). Hook input remains unchanged.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

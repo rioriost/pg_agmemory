@@ -2,9 +2,9 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付き実装はv0.0.16/schema 10のrequired-context recallです。
+**現在の上限付き実装はv0.0.17/schema 10の構造化recall完全一致filterです。
 localとnative Docker amd64/arm64で検証済みです。
-検証済みv0.0.15以前の結果は過去の証拠であり、v0.0.16の結果ではありません。
+検証済みv0.0.16以前の結果は過去の証拠であり、v0.0.17の結果ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
@@ -37,7 +37,7 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 | `POST /v1/tool-effects` | 既存checkpoint run内のintentを記録/重複抑止し、初期revision参照を返す |
 | `POST /v1/tool-effects/{memory_id}/transitions` | CAS付きledger遷移を追記。toolは呼び出さない |
 | `GET /v1/tool-effects/{memory_id}` | 現在の状態、不変event履歴、参照、HMAC識別子、run失効flagを返す |
-| `POST /v1/recall` | byte予算pack付きlexical/vector/hybrid recall。任意の正確なrequired参照はlexical modeで全体またはerrorのprefixを構成 |
+| `POST /v1/recall` | ranking前の構造化完全一致filterとbyte予算pack付きlexical/vector/hybrid recall。required参照もfilter一致が必須でlexical専用 |
 | `POST /v1/embedding-inputs` | HTTP 200。認可済みepisode/assertion revisionの読取り専用canonical embedding input。idempotency key不要 |
 | `POST /v1/embeddings` | HTTP 201。canonical parentのscope内の明示的・不変vector upload。caller管理idempotency key必須 |
 | `POST /v1/explain` | 指定したassertion revisionと根拠を返す。省略時は最新ではなく引き続き`1`。episodeはrevision `1`のみ。ranking trace APIはない |
@@ -51,9 +51,76 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 PostgreSQLへの継続的なreadiness検査ではありません。
 `/readyz`は`/v1`の外で下記の上限付き検査を追加します。
 
+## Exact structured recall filters
+
+**v0.0.17/schema 10はlocalと両native architectureで検証済みです。**
+既存requestへ`Recall.filters: RecallFilters | None = None`を追加します。
+`RecallFilters`は共有の型付きclosed nested契約で、未知fieldを拒否します。
+
+| Field | 契約 |
+|---|---|
+| `kind` | `"episode"`、`"assertion"`、nullのいずれか。既定null |
+| `subject` | `ShortText`またはnull。既定null。既存の前後空白除去後1〜256文字 |
+| `predicate` | `^[a-z][a-z0-9_]{0,63}$`に一致するstringまたはnull。既定null |
+
+`kind: "episode"`とnon-null subject/predicateは組み合わせられません。
+不正field、形式、値、組合せは**422 `invalid_request`**です。
+field alias、任意SQL、model推論filter、range、array形式selectorはありません。
+省略、null、`{}`、全field nullはlexical/vector/hybrid全modeの既存結果を同一に維持します。
+
+### Query拡張ではない完全一致選択
+
+non-null fieldを**AND**で結合します。subjectまたはpredicateはrelationを含む
+assertion候補を意味します。`kind: "assertion"`だけでもrelation assertionを含み、
+`kind: "episode"`は全assertionを除外します。
+subject/predicateは通常の`Contract` string trim後、
+**`C` collationによる大文字小文字を区別した完全一致**で比較します。
+部分文字列/FTS、Unicode正規化、fuzzy一致、entity解決は行いません。
+subjectは保存assertionのsubjectであり、解決済みentity aliasではありません。
+空queryのlexical recallは完全一致filter後の候補をbrowseし、
+通常の非空lexical queryには引き続きlexical一致が必要です。filterはqueryを迂回しません。
+別のrequired参照契約だけがkeyword迂回を維持します。
+
+### 候補、ranking、coverageの境界
+
+filterはtop-K選択後でなく、**共有materialized候補relationの内部で、
+lexical/vector/hybridのranking、coverage、required参照の適格性より前**に適用します。
+rank、cosine候補、RRF寄与はfilter後の適格候補集合を使って計算します。
+同じ固定`as_of`/`known_at`、要求scope、現在RLS、根拠可視性/完全性、
+削除gateを維持し、filterは選択を狭めるだけです。
+lexical/vector欠落coverageは除外objectでなく、このfilter後の適格候補集合を反映し、
+引き続きquery関連性やitem上限とは独立です。
+`coverage.jobs_pending`は意図的に要求scope単位のsignalを維持し、
+job payloadの構造化一致を**意味しません**。
+
+空でない`required_memory_refs`はlexical専用で、既定revisionは**最新でなく1**、
+既存時刻選択とrequest順prefixを維持します。
+全required参照にもfilter一致が必要です。不一致なら欠落IDや部分packを返さず、
+**request全体を汎用404 `not_found`**にします。required参照はfilterを迂回しません。
+compact `ContextPack`全体のUTF-8 byte予算、optional除外/truncation、
+requiredの**422 `budget_exhausted`**、既存`budget_too_small`/成功時の空理由は不変です。
+
+### Surface、導入、制限
+
+既存の型付きSDK `recall(Recall)`とMCP `memory_recall`が追加fieldを公開します。
+**Native/SDK resource method 25、MCP tool 4**を維持し、routeやsafe error codeは追加しません。
+SDK recallはread-only、`outcome_unknown: false`、sanitized call時error、自動retryなしを維持します。
+hook入力は`filters`に**非対応**で、未知fieldを拒否します。
+内部`Recall.filters`は既定`None`で、信頼する起動時境界を維持します。
+filterは権限付与、内容検証、意図推論を行いません。
+v16からのSQL migration、依存/provider/index変更、永続priority、cacheは追加しません。
+schema 10と厳密な履歴1〜10を維持し、停止/drain後に対応する
+**service 0.0.17 / API v1 / schema 10** componentを使います。
+stageは`m2-structured-recall`で、capabilitiesへ`recall_filters`を追加します。
+`fields: ["kind", "subject", "predicate"]`、`match: "exact"`、`combination: "and"`、
+`retrieval_modes: ["lexical", "vector", "hybrid"]`です。
+MVP、意味品質、性能、本番、DRの適格性確認は主張しません。
+[運用](operations/README-jp.md#exact-structured-recall-filters)、
+[ADR 0017](adr/0017-recall-filters-jp.md)、[検証済み証拠](#v0017--schema-10)を参照してください。
+
 ## Required-context recall
 
-**v0.0.16/schema 10はlocalと両native architectureで検証済みです。**
+**既存required-context契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
 既存`Recall`への追加fieldであり、新routeやSDK methodではありません。
 
 | Request規則 | 契約 |
@@ -65,7 +132,7 @@ PostgreSQLへの継続的なreadiness検査ではありません。
 | Recall mode | explicit/implicit両方。既存implicit 2,000-byte上限を維持 |
 
 不正なfield組合せ、重複ID、件数超過、参照形式/範囲の不正は**422 `invalid_request`**です。
-field省略または`[]`なら既存lexical/vector/hybridの順序、結果、pack semanticsを維持します。
+field省略または`[]`なら選択した構造化filter内で既存lexical/vector/hybridの順序、結果、pack semanticsを維持します。
 新たなreadの書込み、idempotency要求、priority metadata、永続cache、
 model推論、provider呼出しは追加しません。
 
@@ -73,7 +140,8 @@ model推論、provider呼出しは追加しません。
 
 required参照は通常recallと**同じ現在認可済み・materializedなepisode/assertion候補relation**を使い、
 要求`scope_ids`と固定した`as_of`/`known_at`を適用します。
-scope拡張、ownership/ACL override、時間filter迂回、latest選択、別revisionへのfallbackはありません。
+scope拡張、ownership/ACL override、時間/[構造化filter](#exact-structured-recall-filters)迂回、
+latest選択、別revisionへのfallbackはありません。
 既存bitemporal規則により、ある`known_at`ではobject当たり一つのrevisionを選択します。
 relation assertionは同じfilter下で対象となりますが、entity objectは異なるkindの参照であり、
 recall候補ではありません。
@@ -119,18 +187,18 @@ hook入力は`required_memory_refs`に**非対応**で、追加fieldとして拒
 内部で構築する`Recall`は既定`[]`のままで、host pinningは追加しません。
 共有の制限付きsafe-code catalogに`budget_exhausted`を追加し、
 SDKはより広いNative error catalogを維持します。
-adapterは厳密な**service 0.0.16 / API v1 / schema 10**を要求します。
+adapterは厳密な**service 0.0.17 / API v1 / schema 10**を要求します。
 API/worker/readinessは厳密なschema履歴1〜10を維持します。
-v15→v16に**migration、依存upgrade、固定image変更はなく**、古いschemaは停止/drain後にmigrationします。
-stageは`m2-required-context`で、capabilitiesに`required_context`を追加します。
+v16→v17に**migration、依存upgrade、固定image変更はなく**、古いschemaは停止/drain後にmigrationします。
+stageは`m2-structured-recall`で、capabilitiesに`required_context`を維持します。
 `retrieval_modes: ["lexical"]`、`max_refs: 16`、`order: "request_order"`、
 `budget_policy: "all_required_or_error"`です。
 [運用](operations/README-jp.md#required-context-recall)、
-[ADR 0016](adr/0016-required-context-jp.md)、[検証済み証拠](#v0016--schema-10)を参照してください。
+[ADR 0016](adr/0016-required-context-jp.md)、[過去の証拠](#v0016--schema-10)を参照してください。
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.16はlocalと両native architectureで検証済みです。**
+**既存job取消契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative JWT認証とcallerの`Idempotency-Key`を要求します。
 `CancelJob`が受け付けるのは次のfieldだけです。
 
@@ -210,8 +278,8 @@ SDKの非同期`cancel_job(UUID, CancelJob, *, idempotency_key) -> JobReceipt`�
 modelを再検証し、正確なHTTP 200を要求してsafe Native error catalogへ`job_cancel_conflict`を追加します。
 Native resource/SDK surfaceは**25 method**となります。MCPの4 toolとread-only hookは変更しません。
 Python taskのcancelはこのjob取消endpointを呼びません。
-全adapterは**service 0.0.16 / API v1 / schema 10**を要求し、readinessは厳密な履歴1〜10を検査します。
-過去v0.0.15のstageは`m2-job-cancellation`、現在は`m2-required-context`です。
+全adapterは**service 0.0.17 / API v1 / schema 10**を要求し、readinessは厳密な履歴1〜10を検査します。
+過去v0.0.15のstageは`m2-job-cancellation`、現在は`m2-structured-recall`です。
 capabilitiesは`job_cancellation` metadataを維持します。
 `endpoint: "/v1/jobs/{job_id}/cancel"`、`compare_and_swap: ["state", "attempt"]`、
 `terminal_state: "cancelled"`、`provider_interruption: false`を追加します。
@@ -220,7 +288,7 @@ capabilitiesは`job_cancellation` metadataを維持します。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.16/schema 10はlocalと両native architectureで検証済みです。**
+**既存readiness契約を維持し、v0.0.17/schema 10はlocalと両native architectureで検証済みです。**
 health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
 `GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
 v0.0.14で導入した`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
@@ -286,12 +354,12 @@ busy 503も考慮したorchestrator失敗/復旧thresholdを設定し、
 deployment perimeterでpublic probeを制限/rate-limitします。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
 
-過去v0.0.14のstageは`m2-runtime-readiness`で、現在は`m2-required-context`です。認証付きcapabilitiesに
+過去v0.0.14のstageは`m2-runtime-readiness`で、現在は`m2-structured-recall`です。認証付きcapabilitiesに
 `health_probes` metadataとして`liveness: "/healthz"`、`readiness: "/readyz"`、
 `readiness_timeout_seconds: 5.0`、`readiness_max_in_flight_per_process: 1`を追加します。
 job取消によりpublic memory surfaceは**25 resource method**となり、health pathはSDK resource-route coverage対象外です。
 SDK/MCP/hook probe methodは追加しません。
-対応adapterはすべて**service 0.0.16 / API v1 / schema 10**を要求します。
+対応adapterはすべて**service 0.0.17 / API v1 / schema 10**を要求します。
 readiness動作は維持しますが、job取消のschema 10にはmigration 010が必要です。
 依存や固定imageは変更しません。
 [運用](operations/README-jp.md#runtime-readiness)と
@@ -299,7 +367,7 @@ readiness動作は維持しますが、job取消のschema 10にはmigration 010�
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.16はlocalと両native architectureで検証済みです。**
+**既存scope-access契約を維持し、v0.0.17はlocalと両native architectureで検証済みです。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
@@ -414,7 +482,7 @@ cancel、process kill、stdout喪失でも変更結果は不明になり得ま�
 
 barrierは配信済みcontextを撤回できません。最新ACL/削除記録のrestoreは手動であり、
 grantによってpurge済みdataは復活しません。
-過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-required-context`です。
+過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-structured-recall`です。
 capabilitiesは`scope_access_administration`
 metadataとして`transport: "admin-cli"`、`command: "scope-access"`、
 `compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`を追加します。
@@ -424,7 +492,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**SDKは25 methodを維持してrequired recall参照を受け付け、v0.0.16はlocalと両native architectureで検証済みです。**
+**SDKは25 methodを維持してrecall filterとrequired参照を受け付け、v0.0.17はlocalと両native architectureで検証済みです。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -441,7 +509,7 @@ HTTPXがない場合のSDK importは固定の明確な`ImportError`となり、
 `mcp`/`hook`が提供するHTTPXでも動作します。extraの選択名でなく依存の存在を検出します。
 Docker test/runtimeは`mcp`・`hook`とともに`sdk`を含みます。
 core-only/hook-only/sdk-only検査と、hook-only/sdk-only導入にMCP SDKがないことの検査を実装しています。
-真のnoneditable wheel導入3検査と同梱`py.typed`検査はv0.0.16のlocalと
+真のnoneditable wheel導入3検査と同梱`py.typed`検査はv0.0.17のlocalと
 両native architectureで合格しました。Python依存のupgradeはありません。
 
 `AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
@@ -453,7 +521,7 @@ request scopeは現在のserver ACLを狭めるだけで、identity変更や権�
 
 client instanceごとに`async with ... as memory:`を一度だけ使います。
 entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
-厳密な**service `0.0.16` / API `v1` / schema `10`**一致を要求します。
+厳密な**service `0.0.17` / API `v1` / schema `10`**一致を要求します。
 entry失敗時も`finally`で所有resourceを閉じます。
 entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
 exitは接続を解放するだけで、**dataは消去しません**。
@@ -637,6 +705,10 @@ vector queryはuploadと同じ`model`/768値形式で、同じ正規化/検証�
 空でない`required_memory_refs`はlexical専用で[required prefix](#required-context-recall)を先頭に置き、
 表のlexical順位はその後のoptional itemへ適用します。空/省略参照なら全modeは不変です。
 
+全3 modeは[構造化完全一致filter](#exact-structured-recall-filters)も受け付けます。
+rankingとindex coverageはtop-K後のfilterでなく、filter後の適格候補集合を使います。
+required参照もこの集合内に必要で、`coverage.jobs_pending`はscope単位を維持します。
+
 textの黙った無視、別model選択、別modeへのfallbackは行いません。
 既存scope、`as_of`、`known_at`、byte予算、item上限、`search_profile`規則を維持します。
 過去revisionのvectorも個別に投入できますが、別revisionのvectorを時間条件で選ばれたrevisionの代用にしません。
@@ -656,7 +728,7 @@ fusion_score = 1 / (60 + lexical_rank) + 1 / (60 + vector_rank)
 
 存在しないpathの寄与は0です。vectorなしのlexical一致もhybridへ参加できますが、
 vector欠落coverageを必ず明示します。
-要求modelで**適格かつ可視のprojectionが一つでも欠落**すれば
+要求modelで**構造化filter内の適格かつ可視のprojectionが一つでも欠落**すれば
 `coverage.vector_incomplete: true`とし、hidden/不適格itemをcoverageや件数へ含めません。
 lexical既定は`vector_incomplete: false`です。
 既存の日本語`lexical_incomplete`はlexical/hybrid pathだけに適用します。
@@ -723,7 +795,7 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、v0.0.16の起動時一致は**service `0.0.16` / API `v1` / schema `10`**です。
+MCP両protocol時代を維持し、v0.0.17の起動時一致は**service `0.0.17` / API `v1` / schema `10`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
 v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
@@ -850,7 +922,7 @@ stage名はM2や他受入gateの完了を意味しません。
 
 captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.16` / API `v1` / schema `10`**を要求します。
+MCP/hook起動は厳密な**service `0.0.17` / API `v1` / schema `10`**を要求します。
 既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
@@ -860,9 +932,12 @@ host/backup/WAL/完全消去の保証は得られません。
 
 ## Local stdio MCP
 
+`memory_recall`は[構造化filter契約](#exact-structured-recall-filters)の型付き`filters`を受け付けます。
+toolやsafe error codeを追加せず、required参照の適格性を迂回できません。
+
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.16のrepository Docker test/runtime両stageに
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.17のrepository Docker test/runtime両stageに
 `mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
 合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
@@ -939,9 +1014,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.16"`、`schema_version: 10`を要求します。
+`service_version: "0.0.17"`、`schema_version: 10`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.16はschema 10を維持しますが、adapter自体はmigrationを行いません。
+v0.0.17はschema 10を維持しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -985,6 +1060,9 @@ v0.0.11は両protocol時代を維持し、両方の検査に合格しました�
 [運用](operations/README-jp.md#local-stdio-mcpの運用)を参照してください。
 
 ## Implicit recall hook
+
+hook入力は`filters`を未知fieldとして拒否します。内部`Recall.filters`は既定`None`で、
+信頼する起動時設定をeventごとに上書きする機能はありません。
 
 Native/SDK/MCP recallと異なり、hook入力は`required_memory_refs`を拒否します。
 内部の`Recall`は`[]`のままで、host pinningを追加しません。
@@ -1046,7 +1124,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.16` / API `v1` / schema `10`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.17` / API `v1` / schema `10`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -1358,7 +1436,7 @@ offline管理rebuildも同じcanonical sourceを使います。
 日本語episode本文も**65,536文字**上限を維持し、**65,537文字**は切り詰めず拒否します。
 JSON encoding overheadを含む別の256 KiB HTTP body上限も適用します。
 
-日本語profileでは、現在認可済み・要求scope内・時間条件内のcanonical候補に一つでも
+日本語profileでは、現在認可済み・要求scope内・時間条件内で構造化filterに一致するcanonical候補に一つでも
 projection欠落があると、`coverage.lexical_incomplete: true`と
 `coverage.retrieval_complete: false`を返します。この検査はquery関連性やitem上限とは独立です。
 **simple検索への黙ったfallbackはなく**、自動修復workerもありません。
@@ -1807,7 +1885,7 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.16はschema 10を維持し、migrationを追加しません**。
+**v0.0.17はschema 10を維持し、migrationを追加しません**。
 既存schema 10 DBには[application-only更新](operations/README-jp.md#schema-10-application-only-upgrade)を使います。
 古いschemaにはv0.0.15でjob state/payload制約とterminal guard用に導入した
 `010_job_cancellation.sql`を、[既存migration sequence](operations/README-jp.md#schema-10-job-cancellation-upgrade)で適用します。
@@ -1815,7 +1893,7 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 既存の特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
 原子的membership/epoch/audit変更を使います。
 固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
-旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.16 componentだけを
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.17 componentだけを
 導入します。混在版/rolling互換性は主張しません。
 すべての古いschemaには010までの既存migrationが必要です。
 古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
@@ -1825,7 +1903,7 @@ migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既�
 既存episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.16`、API `v1`、schema `10`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.17`、API `v1`、schema `10`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -1837,7 +1915,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.16のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`と
+追加しません。v0.0.17のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -1845,12 +1923,12 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.16/schema 10 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.17/schema 10 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.16 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
+対応するv0.0.17 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
@@ -1860,9 +1938,53 @@ rolling共存やdowngradeは非対応です。
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0017--schema-10"></a>
+
+### v0.0.17 / schema 10 — 検証済み
+
+**2026-09-17 JSTに実装の最終localとnative結果を検証しました。**
+Apple Containerとnative Docker amd64/arm64で各**604テスト、既存warning 1件**が合格しました。
+localの`./scripts/test-containers.sh`は**exit 0**でした。
+内訳は**既存566 + 新規38テスト**で、**`tests/test_recall_filters.py`の37 case**と
+**実hook CLIのfilter拒否1 case**です。
+Ruff、strict mypy（**source 19ファイル + strict SDK consumer 1ファイル**）、
+真のcore-only/hook-only/sdk-only導入検査は全3環境で合格しました。
+consumerは`RecallFilters`を明示構築します。
+公開済み実装:
+[`22a64461475d4cd5666a842dbbe6afe83ab36894`](https://github.com/rioriost/pg_agmemory/commit/22a64461475d4cd5666a842dbbe6afe83ab36894)
+（`feat: add exact structured recall filters`）。
+[CI 35230044140](https://github.com/rioriost/pg_agmemory/actions/runs/35230044140)は
+この完全一致SHAで両native Linux architectureとも合格しました。
+job statusだけでなく**実log**で各architectureの件数、検査、smokeを確認しています。
+
+| 環境 | テスト所要時間 |
+|---|---|
+| Local Apple Container | **321.56秒（5:21）** |
+| Docker、native `linux/amd64` | **638.66秒** |
+| Docker、native `linux/arm64` | **544.33秒** |
+
+所要時間は性能benchmarkではありません。この証拠は実装revisionのもので、
+後続の最終文書commitやCI runの結果ではありません。
+
+全3 modeのranking前/coverage filter、required参照不一致、
+不正nested list/string filter、全3 modeのkind-only overflow、
+Unicodeの合成済み/分解済み表現を正規化しない完全一致、OpenAPI schema assertionが合格しました。
+後から追加した5 caseは最終件数に含まれ、別加算ではありません。
+共有`Predicate` aliasは既存`Remember`/`CapturedMemory`のfield順とsemanticsを維持します。
+
+全3環境で全non-root production smokeが合格しました。日本語tokenizer、HTTP、
+readiness障害/回復、worker、MCP両mode、hook全3 event、capture、pgvector、
+Python SDK、required context、構造化recall filter、job取消、scope accessを対象にします。
+新SDK smokeはobserve + remember → `max_items: 1`でtruncationなしの3 field完全一致 →
+required source参照とassertion filterの衝突
+（`404 not_found`、read-only `outcome_unknown: false`）→
+`object_count: 2`を返すsource purge → filter付き空readで合格しました。
+project版は0.0.17へ進め、schema 10、依存版、artifact固定値は不変です。
+MVP/意味品質/性能/本番/DRの適格性確認は主張しません。
+
 <a id="v0016--schema-10"></a>
 
-### v0.0.16 / schema 10 — 検証済み
+### 過去のv0.0.16 / schema 10 — 検証済み
 
 **2026-09-17 JSTに実装の最終localとnative結果を検証しました。**
 Apple Containerとnative Docker amd64/arm64で各**566テスト、既存warning 1件**が合格しました。
@@ -1884,8 +2006,13 @@ job statusだけでなく**実log**で各architectureの件数、検査、smoke�
 | Docker、native `linux/amd64` | **601.73秒** |
 | Docker、native `linux/arm64` | **565.34秒** |
 
-所要時間は性能benchmarkではありません。この証拠は実装revisionのもので、
-後続の最終文書commitやCI runの結果ではありません。
+所要時間は性能benchmarkではありません。別の最終v0.0.16 docs
+[`520990d95718b17ae93a7d5259d600e379991df2`](https://github.com/rioriost/pg_agmemory/commit/520990d95718b17ae93a7d5259d600e379991df2)は
+[CI 35226313891](https://github.com/rioriost/pg_agmemory/actions/runs/35226313891)に合格しました。
+native実logで各**566テスト、warning 1件**、
+**amd64 476.15秒 / arm64 478.08秒**、Ruff、strict mypy **source 19 + consumer 1ファイル**、
+全optional導入、全production smokeを確認しました。docs結果は実装CI 35224189967とは別で、
+両runともv0.0.17の適格性確認ではありません。
 
 実SQLの正確に16参照、正確なbyte境界と1 byte不足、scope/ACL filter、
 過去時刻での既定revision 1、latest fallbackなしのrevision 2、

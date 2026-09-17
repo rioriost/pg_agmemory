@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/本番/意味品質/性能/DR/完全消去の適格性確認ではない
 
+**過去版の注記:** このADRは検証済みv0.0.16/schema 10を記録します。
+[ADR 0017](0017-recall-filters-jp.md)は同じschemaと25-resource surfaceで
+v0.0.17の構造化recall完全一致filterを記録し、localと両native architectureで検証済みです。
+required参照もfilterを満たす必要があります。別の最終v0.0.16 docs
+CI 35226313891は[過去の証拠](../STATUS-jp.md#v0016--schema-10)に記録します。
+
 ## 決定とrequest境界
 
 任意の`Recall.required_memory_refs`を追加し、既定は`[]`、最大16件の

@@ -8,6 +8,12 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/production/semantic-quality/performance/DR/full-erasure qualification
 
+**Historical version notice:** this ADR records verified v0.0.16/schema 10.
+[ADR 0017](0017-recall-filters.md) records exact structured recall filters for
+v0.0.17 on the same schema and 25-resource surface, verified locally and on both native architectures.
+Required refs must also satisfy those filters. Separate final v0.0.16 docs
+CI 35226313891 is recorded in [historical evidence](../STATUS.md#v0016--schema-10).
+
 ## Decision and request boundary
 
 Add optional `Recall.required_memory_refs`, default `[]`, with at most 16

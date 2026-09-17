@@ -52,6 +52,10 @@ required-context smokeでは必須の参照を通常のkeyword検索結果より
 件数制限、必須内容がbyte予算に収まらない場合の明示エラー、source purgeを確認します。
 必須指定でもscope・現在の認可・時間条件を迂回してはいけません。
 [ADR 0016](docs/adr/0016-required-context-jp.md)を参照してください。schema 10は変更しません。
+structured-recall smokeではkind/subject/predicateの完全一致と必須参照の不一致を検査します。
+filterはすべてのrankingとprojection coverage計算より前に適用し、
+現在のACL・時間条件を迂回してはいけません。
+[ADR 0017](docs/adr/0017-recall-filters-jp.md)を参照してください。hook入力は変更しません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。
