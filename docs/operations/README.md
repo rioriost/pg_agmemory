@@ -101,6 +101,26 @@ The host must still discard already-delivered context after revocation.
 
 ### Reproduction and remaining acceptance
 
+`bash scripts/test-recovery-containers.sh container` runs a **synthetic, disposable,
+single-purge/single-revocation** logical-backup drill. The full container pipeline
+also invokes it, using its existing test image; CI uses `docker`.
+It creates its own source and restored clusters, takes actual old/latest
+`pg_dump` backups, exports authoritative tombstone/receipt/ACL metadata, removes
+the source cluster, restores the old backup into the new cluster, and replays
+through existing service/admin interfaces before checking visibility.
+No API or worker is started, and no model is called. The helper does not accept
+an existing deployment DSN as an argument and is **not a production restore CLI**.
+
+The supported history has an empty deletion baseline, exactly one completed
+purge and one later revocation, unchanged principals and a still-authorized
+deletion operator. Other histories, any synthesis-policy/call-accounting state,
+working snapshots or extraction candidates fail closed. Schema 13 tombstones
+contain expanded object IDs but lack per-target receipt/mode linkage; replaying
+mixed suppression/purge or multiple receipts by guessing is prohibited.
+General DR, model-call/quota reconciliation, HA/PITR, retention deadlines and
+unexercised derivative kinds remain unqualified. Temporary dumps and metadata are
+removed after the run; retain its content-free JSON report separately if needed.
+
 `bash scripts/test-containers.sh container` runs local checks in Apple Container;
 CI uses native Docker amd64/arm64. Production M2 smoke uses exactly three
 synthetic loopback model responses; it is not live model quality.

@@ -28,8 +28,9 @@ includes 600 held-out synthetic questions across 50 groups (hybrid Recall@20
 zero unexpected outcomes, real worker SIGKILL recovery, and a three-call local
 extract/embed/compact/restore lifecycle. These do not satisfy the required human
 precision/fidelity review, at least 20 actual task replays, or disaster recovery.
-The public oracle QA diagnostic recorded 72 invalid outputs in 144 answer
-attempts and does not establish answer quality.
+The corrected public oracle QA diagnostic recorded zero invalid outputs in 144
+attempts, but 136 abstentions and only 22 mechanical exact matches; it does not
+establish answer quality. Earlier invalid outputs remain in the evidence record.
 Exact tested SHAs, failures and public-baseline status are in
 [EVALUATION](docs/EVALUATION.md); current interfaces and operator commands are in
 [ADR 0028](docs/adr/0028-background-processing.md) and

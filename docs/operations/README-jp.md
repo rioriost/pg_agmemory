@@ -91,6 +91,23 @@ pagination/不完全tail/予算不足は黙って捨てずに失敗します。
 
 ### 再現と残る受入れ
 
+`bash scripts/test-recovery-containers.sh container`は、**synthetic・使い捨て・
+purge 1件/失効1件限定**の論理backup復旧実験です。全体container pipelineからも
+既存test imageを使って実行し、CIでは`docker`を使用します。
+独自のsource/復元先clusterを作り、実際の新旧`pg_dump`、
+正式なtombstone/receipt/ACL metadata exportを取得してsource clusterを削除し、
+別clusterへ古いbackupを復元します。可視性確認前のreplayには既存service/admin
+interfaceを使い、API/workerを起動せず、modelも呼びません。
+既存環境のDSNを引数として受け取らず、**本番restore CLIではありません**。
+
+削除baselineが空、完了purgeが1件、その後の失効が1件、principal変更なし、
+削除operatorの権限が現在も有効、という履歴だけを扱います。他の履歴や
+synthesis policy/call accounting、working snapshot、抽出candidateはfail closedです。
+schema 13 tombstoneには展開済みobject IDがありますが、targetごとのreceipt/mode対応は
+ないため、suppress/purge混在や複数receiptのreplayを推測してはいけません。
+一般DR、model call/quota照合、HA/PITR、保持期限、未実行の派生kindは未認定です。
+一時dump/metadataは終了時に削除するので、必要なら内容を含まないJSON reportを別に保存します。
+
 localは`bash scripts/test-containers.sh container`でApple Container内で実行し、
 CIはnative Docker amd64/arm64です。production M2 smokeは正確に3回のsynthetic
 loopback応答を使い、実model品質の証明ではありません。明示local model/生成ACL opt-in、

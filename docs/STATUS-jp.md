@@ -16,22 +16,26 @@ adapterは同じ版に揃え、Native/SDKは38 resource、MCPは4 toolです。
 `observe.auto_extract`/`auto_embed`は既定falseで、通常observeはmodel jobを作りません。
 snapshot hookも別のoperator byte予算を設定するまで無効です。
 
-実装`9458034a47b6f7c9901e569a32f198f56369fbf7`は
-[native amd64/arm64 CI 35322238611](https://github.com/rioriost/pg_agmemory/actions/runs/35322238611)
-に合格し、各architectureで1,487 passed / optional live 8 skips、
-追加のsynthetic M2 lifecycleを含む全packaged production smokeが成功しました。
+実装`9c20909bc67dacf8e0fd77a52d1caa46c2340e45`は
+[native amd64/arm64 CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452)
+に合格し、各architectureで1,531 passed / optional live 8 skips、
+全packaged production smoke、synthetic M2 lifecycle、限定backup復旧drillが成功しました。
 別途の実local model 3 call lifecycleは
 `e4f5d76ad2a4919349054165ce531b92fa650818`で実行しました。
 後のpublication commitへ検証SHAを付け替えないでください。
 [EVALUATION](EVALUATION-jp.md)に別途固定した600問held-out検索、
 実認可10,000 case、失敗履歴、残るgateを記録します。人手意味評価やM2完了の証明ではありません。
-予算修正後の`0552151`公開oracle診断は412 callを完了しましたが、
-回答試行144件中72件の不正出力を保持しており、QA合格ではありません。
+`0552151`公開oracle診断の不正出力72/144件は過去の証跡として保持します。
+送信schema修正後の`9c95816`は新たな412 callで契約違反0件になりましたが、
+abstention 136/144件、機械的完全一致22/144件にとどまり、回答品質は未認定です。
 
 残る受入れは、人手assertion support 95%、重要claim fidelity 98%、
 20件以上の実task replayと継続成功率の非劣化、回答品質、
 最新の削除/ACL ledgerを適用する隔離backup復旧などです。
 backup保持・復旧はoperator管理で、自動DR・完全消去の認定は主張しません。
+新しい隔離drillはpurge 1件/失効1件で実backup復元とcanonical照合を行い、
+API/model workerを起動しません。混在/複数履歴やmodel accounting状態は拒否し、
+未実装の一般復旧toolの代用にはしません。[限定手順](operations/README-jp.md)を参照してください。
 
 ## 保存されたv26契約と過去の証跡
 

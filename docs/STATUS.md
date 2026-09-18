@@ -17,24 +17,30 @@ and explicit read-only after-compaction restoration. `observe.auto_extract` and
 `auto_embed` default false; an ordinary observation still creates no model job.
 The snapshot hook remains disabled unless its separate operator byte budget is set.
 
-Implementation `9458034a47b6f7c9901e569a32f198f56369fbf7` passed
-[native amd64/arm64 CI 35322238611](https://github.com/rioriost/pg_agmemory/actions/runs/35322238611):
-1,487 tests / 8 optional live skips on each architecture, including all packaged
-production smokes and the new synthetic M2 lifecycle.
+Implementation `9c20909bc67dacf8e0fd77a52d1caa46c2340e45` passed
+[native amd64/arm64 CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452):
+1,531 tests / 8 optional live skips on each architecture, including all packaged
+production smokes, synthetic M2 lifecycle and the bounded backup-recovery drill.
 The separate real three-call local-model lifecycle used
 `e4f5d76ad2a4919349054165ce531b92fa650818`.
 Do not attribute those results to a later publication commit.
 [EVALUATION](EVALUATION.md) records the separately pinned 600-question held-out
 retrieval and 10,000-case actual authorization experiments, failed attempts, and
 remaining gates. None establishes human semantic precision or M2 completion.
-The budget-corrected public oracle diagnostic at `0552151` completed 412 calls
-but retained 72 invalid outputs among 144 answer attempts; it is not a QA pass.
+The public oracle diagnostic at `0552151` retained 72 invalid outputs among 144
+answer attempts. Corrected wire schema `9c95816` eliminated those contract errors
+in a fresh 412-call run, but 136/144 abstentions and 22/144 mechanical matches
+still do not establish answer quality. Prior evidence remains unchanged.
 
 Outstanding acceptance includes human assertion support (95%), human important
 claim fidelity (98%), at least 20 executed real-task replays/continuation
 non-regression, answer-quality gates, and isolated restore with latest deletion/
 ACL replay. Backup retention and recovery remain operator-managed; no automatic
 DR or full-erasure qualification is claimed.
+The new isolated single-purge/single-revocation drill exercises actual backup
+restoration and canonical reconciliation without starting API/model workers.
+It rejects mixed/multiple histories and model-accounting state; it is not the
+missing general recovery tool. See the [bounded procedure](operations/README.md).
 
 ## Retained v26 contract and historical evidence
 

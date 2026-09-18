@@ -39,7 +39,9 @@ The qualified v0.0.26/schema-11 history remains separate.
 | Real-model lifecycle at `e4f5d76ad2a4919349054165ce531b92fa650818` | **PASS**, exactly three model calls: extract, embed, compact; explicit snapshot restore/hook/purge checked |
 | Actual SIGKILL at reservation, response and committed-publication boundaries, plus purge before recovery | Four crash/recovery cases passed in the 154-case targeted check at `e4f5d76`; no duplicate publication or source resurrection in these cases |
 | Public oracle at `055215168c83501f676e643853d9d7b58e9f0c5d` | Corrected budget recipe completed 412 calls, with 72 invalid answers / 144 attempts and 24 additional budget skips; **not a QA pass** |
-| Human, real-task and disaster-recovery acceptance | **NOT MEASURED**; process recovery is not backup/ACL/deletion-ledger recovery |
+| Public QA wire-schema correction at `9c958162f9f61bfb8f75b8747d3133c5afcb80a3` | Fresh 412-call run: 0 invalid contracts, 136 abstentions, 22 mechanical matches / 144 attempts; **not semantic quality qualification** |
+| Exact `9c20909bc67dacf8e0fd77a52d1caa46c2340e45`, [native CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452) | Both architectures: **1,531 passed / 8 optional skips**, all production smokes and actual bounded backup recovery; amd64 tests 1015.18s, arm64 939.33s |
+| Human, real-task and general disaster-recovery acceptance | Human/task acceptance remains **NOT MEASURED**; bounded process and single-purge backup drills do not qualify general DR |
 
 The inherited memory-gate artifact used `ru_maxrss`. The reported worktree fix
 uses `/proc/self/status` `VmHWM` while retaining the **256 MiB** cutoff;
@@ -193,6 +195,63 @@ and purge. Worker profile digest:
 This is one synthetic lifecycle, **not** a measured human precision rate or one
 of the required 20 real task replays.
 
+### Bounded logical-backup recovery drill
+
+[`test-recovery-containers.sh`](../scripts/test-recovery-containers.sh) and
+[`smoke-recovery.py`](../scripts/smoke-recovery.py) exercise real
+`pg_dump`/`pg_restore` on separate disposable PostgreSQL 18.6/pgvector 0.8.6
+clusters. The original cluster is removed before restoration. Recovery uses
+independently exported, committed tombstones, receipts and ACL metadata,
+not target IDs remembered by the test driver.
+
+An old snapshot contains a synthetic source, assertion, checkpoint and queued
+structured job. After backup, the source is purged and a reader revoked. The
+restore remains isolated, replays through existing service/admin interfaces,
+then checks deleted payloads/checkpoint/job invisibility, denial for the revoked
+reader, an unrelated positive control, and equality of **35 canonical table
+counts/digests** with the latest state. Metadata-only object anchors remain:
+four tombstones are not a claim that every object row or backup copy vanished.
+
+This is deliberately limited to one completed purge after an empty deletion
+baseline and one later revocation. Mixed/multiple deletion histories,
+principal changes, an unauthorized replay actor and any model-processing state
+are rejected rather than guessed. Schema 13 does not link each tombstone to its
+receipt/mode, so the helper is not a general replay tool. No API/worker is started;
+zero model calls do **not** qualify model reservation/quota recovery. Working
+compaction, extraction, vectors, graphs, tool effects, HA/PITR and retention
+deadlines are not covered by this case.
+
+Initial local development runs passed 31, then 39 contract cases and the actual
+restore, observing four blocked targets, one denied reader and one intact control.
+Those were **dirty working-tree runs**, not exact-commit qualification.
+Implementation is published as `58bad2991ddf3ee3e118ec47ad1e58839396cddb`;
+the report records the source SHA, three helper/test hashes and dirty-input flags.
+Temporary dumps/metadata are removed; aggregate reports are retained separately.
+
+The first full packaged run at `58bad29` exposed a missing shell-helper fixture:
+**1,527 passed / 4 failed / 8 optional skips**. Its native run was deliberately
+canceled, not passed. Correction `9c20909bc67dacf8e0fd77a52d1caa46c2340e45`
+includes both helpers in the test image; all 39 recovery contract cases then
+passed from that image **without host source mounts**. Do not transfer the
+earlier dirty-run success to the failed packaging checkpoint.
+
+The corrected local distribution run at `9c20909` passed **1,531 tests / 8
+optional live skips**, all production smokes and the isolated recovery drill
+(test phase 557.67s). Its recovery report has `exact_commit_inputs=true`, unchanged
+helper hashes, equal latest/restored fingerprints for all 35 tables, four
+tombstones, one denied reader and one intact control. Access/deletion epochs
+advanced from 3/1 to 4/2. This qualifies the declared single-case drill only;
+`m2_qualified=false` and the model-accounting limitation remain explicit.
+
+[Native CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452)
+also passed at that exact corrected SHA on amd64 and arm64: **1,531 passed /
+8 optional skips each**, plus all production smokes and the actual recovery
+drill. Both recovery reports have `exact_commit_inputs=true`, all 35
+latest/restored fingerprints equal, four blocked targets, one denied reader
+and one intact control. The separately invoked 39 contract cases are already
+included in the full suite; do not add overlapping counts. Local evidence is
+`m2-recovery-9c20909.json`; the native run retains its own independent reports.
+
 ### Public evaluation attempts and budget correction
 
 The first `101993a` public attempt stopped on invalid model abstention/citations.
@@ -267,6 +326,31 @@ UTF-8, whitespace, citation-membership and abstention validation remain in force
 a provider ignoring the schema still fails without retry or output repair.
 This fixes a schema/validator mismatch, not semantic answer quality. Earlier v2
 results remain unchanged; v3 requires its own explicitly versioned measurement.
+
+The fresh `9c958162f9f61bfb8f75b8747d3133c5afcb80a3` measurement completed the
+same 14-question matrix with **412 calls**, **zero invalid contracts / 144
+answer attempts**, and 24 separately recorded full-context skips. Its profile
+digest is `10d7bb829ce181c379a86474baa8db7c9caa68d4747e9dace35d59b966af9688`.
+Every evidence budget held, and retrieval scores/skip counts were unchanged.
+
+| Arm | Exact matches / attempts | Abstentions | Invalid answers | QA skips |
+| --- | ---: | ---: | ---: | ---: |
+| no_memory | 4/28 | 28 | 0 | 0 |
+| recent_window | 6/28 | 26 | 0 | 0 |
+| full_context | 0/4 | 4 | 0 | 24 |
+| vector | 4/28 | 26 | 0 | 0 |
+| hybrid | 4/28 | 26 | 0 | 0 |
+| temporal_provenance | 4/28 | 26 | 0 | 0 |
+
+The total remains only **22/144 mechanical matches**, with **136/144 abstentions**.
+Eliminating malformed abstentions is **not** answer-quality qualification.
+This public rerun follows a structural correction discovered on the earlier
+public responses; it is not a newly blinded quality experiment. All human-review
+labels remain `not_reviewed`. Artifacts are `m2-eval-public-9c95816/`.
+Before that run, a separate four-call synthetic schema smoke exercised both
+answer and abstention branches without failure; those four calls are not public
+benchmark observations. The isolated evaluator regression selection passed 132
+tests, independently of live measurement.
 
 ## What the scorer actually does
 
@@ -796,10 +880,11 @@ automatic publication or treat adoption as supersession of another assertion.
 | Public baselines and answer quality | Versioned oracle diagnostics retain invalid answers/failures and budget corrections; mechanical QA does not replace human review |
 | Cost, latency and footprint | Dev 440 and held-out 2,200 embedding calls; four failed extraction/diagnostic calls and successful three-call processing run; public attempts accounted separately, no overall monetary/latency/footprint qualification |
 
-Human precision/fidelity, real-task and backup-recovery obligations remain
-**NOT MEASURED**. Held-out synthetic retrieval and the bounded process-crash
-experiment are measured separately. The generated ACL pass must not be
-propagated to unrelated gates.
+Human precision/fidelity and real-task obligations remain **NOT MEASURED**.
+General backup recovery and model-accounting reconciliation remain unqualified;
+the single-purge drill is only bounded regression evidence. Held-out synthetic
+retrieval and process-crash measurements are separate. The generated ACL pass
+must not be propagated to unrelated gates.
 
 People must authorize the datasets and local processing, choose representative
 real tasks, approve the evaluation/rating protocol, and supply independent human

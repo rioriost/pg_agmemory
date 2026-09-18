@@ -26,7 +26,8 @@ hybrid Recall@20は99.818%（vector-onlyと同値）、実Native APIの不正認
 予期しない結果0件、実workerのSIGKILL復旧、local modelを3回呼び出す
 抽出・embedding・圧縮・復元を確認しました。人手precision/fidelity評価、
 20件以上の実task replay、災害復旧の代わりにはなりません。
-公開oracle QA診断は回答試行144件中72件が不正出力で、回答品質は認定していません。
+修正後の公開oracle QAは144試行で不正出力0件ですが、abstention 136件、
+機械的完全一致22件にとどまり、回答品質は未認定です。過去の不正出力も証跡に保持します。
 完全一致の検証SHA、失敗履歴、公開baselineの状態は
 [EVALUATION](docs/EVALUATION-jp.md)、現行APIと管理commandは
 [ADR 0028](docs/adr/0028-background-processing-jp.md)と

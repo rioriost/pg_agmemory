@@ -38,7 +38,9 @@ MVP 完了、production readiness、人手 assertion precision、compaction fide
 | `e4f5d76ad2a4919349054165ce531b92fa650818`の実model lifecycle | **合格**。extract/embed/compactの正確に3 callとsnapshot復元/hook/purgeを検査 |
 | 予約後/応答後/公開commit後の実SIGKILLと復旧前purge | `e4f5d76`の対象154検査中の4 crash/recovery caseが合格。この範囲で二重公開・source復活なし |
 | `055215168c83501f676e643853d9d7b58e9f0c5d`のPublic oracle | 修正予算で412 call完了。不正回答72 / 試行144、別途予算skip 24。**QA合格ではない** |
-| 人手、実 task、災害復旧の受入れ | **未測定**。process復旧はbackup/ACL/削除ledger復旧ではない |
+| `9c958162f9f61bfb8f75b8747d3133c5afcb80a3`のQA送信schema修正 | 新規412 callで契約違反0、abstention 136、機械的完全一致22 / 回答試行144。**意味的品質の認定ではない** |
+| 完全一致`9c20909bc67dacf8e0fd77a52d1caa46c2340e45`の[native CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452) | 両architectureで**1,531 passed / optional 8 skips**、全production smokeと実bounded backup復旧成功。amd64 test 1015.18秒、arm64 939.33秒 |
+| 人手、実task、一般災害復旧の受入れ | 人手/実taskは**未測定**。限定的process復旧や単一purge backup実験は一般DRの認定ではない |
 
 既存 memory gate の測定上の問題は `ru_maxrss` に由来する。報告された worktree 修正は
 `/proc/self/status` の `VmHWM` を使い、**256 MiB** の上限を維持する。報告された
@@ -180,6 +182,57 @@ worker profile digestは
 `739b306984c93b892df0b4ac2c00556d865d4864a48ce20ee7f74ee0cb010ed5`。
 synthetic lifecycle一つの検査であり、人手precision率や必須の実task 20件の一件とはしない。
 
+### 限定した論理backup復旧実験
+
+[`test-recovery-containers.sh`](../scripts/test-recovery-containers.sh)と
+[`smoke-recovery.py`](../scripts/smoke-recovery.py)は、別々の使い捨て
+PostgreSQL 18.6/pgvector 0.8.6 clusterで実`pg_dump`/`pg_restore`を実行する。
+復元前に元clusterを削除し、独立exportした正式なtombstone/receipt/ACL metadataを
+使う。test driverが覚えている削除IDをledgerとして代用しない。
+
+古いsnapshotにはsynthetic source、assertion、checkpoint、待機structured jobを含める。
+backup後にsourceをpurgeし、readerを失効させる。復元先を隔離したまま既存
+service/admin interfaceでreplayし、削除payload/checkpoint/jobの不可視性、
+失効readerの拒否、無関係なpositive control、最新状態との**35 tableの件数/digest一致**
+を確認する。metadata-only object anchorは残るため、tombstone 4件を全object行や
+backup copyの消去と呼ばない。
+
+空の削除baseline後の完了purge 1件と、その後の失効1件に意図的に限定する。
+混在/複数削除履歴、principal変更、権限を失ったreplay actor、model処理状態は
+推測せず拒否する。schema 13にtargetごとのreceipt/mode対応がないため、
+汎用replay toolではない。API/workerを起動せず、model call 0件は予約/quota復旧の
+認定ではない。working compaction、抽出、vector、graph、tool effect、
+HA/PITR、保持期限はこのcaseの対象外である。
+
+初期local開発runは31件、その後39件のcontractと実restoreに合格し、
+対象4件の遮断、reader 1件の拒否、control 1件の保持を観測した。
+これは**dirty worktree実行**であり、完全一致commitの認定ではない。
+実装は`58bad2991ddf3ee3e118ec47ad1e58839396cddb`として公開した。
+reportにはsource SHA、helper/test三fileのhash、dirty-input flagを記録する。
+一時dump/metadataは削除し、集計reportは別途保存する。
+
+最初の`58bad29`全体packaged実行ではshell helper fixtureの同梱漏れが見つかり、
+**1,527 passed / 4 failed / optional 8 skips**だった。native runは意図して
+cancelし、合格とは扱っていない。`9c20909bc67dacf8e0fd77a52d1caa46c2340e45`で
+両helperをtest imageへ同梱し、**host source mountなし**のimageから39 contract caseが
+成功した。過去のdirty-run成功を、失敗したpackaging checkpointへ流用しない。
+
+修正後`9c20909`のlocal distributionは**1,531 passed / optional live 8 skips**、
+全production smoke、隔離復旧drillに成功した（test部分557.67秒）。
+復旧reportは`exact_commit_inputs=true`で、helper hashに変更がなく、
+全35 tableの最新/復元fingerprintが一致し、tombstone 4件、reader拒否1件、
+control保持1件を確認した。access/deletion epochは3/1から4/2になった。
+宣言した単一caseだけの認定であり、`m2_qualified=false`とmodel accountingの
+未認定は維持する。
+
+同じ修正SHAの[native CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452)
+もamd64/arm64の各**1,531 passed / optional 8 skips**、全production smoke、
+実復旧drillに成功した。両reportが`exact_commit_inputs=true`で、
+全35 tableの最新/復元fingerprint一致、対象4件の遮断、reader拒否1件、
+control保持1件を確認した。別途実行する39 contract caseは全体suiteにも含むため、
+重複加算しない。local証跡は`m2-recovery-9c20909.json`、
+native runは独立したreportを保持する。
+
 ### Public評価の試行と予算修正
 
 最初の`101993a`公開実行はmodelの不正abstention/citationで停止した。
@@ -244,6 +297,28 @@ prompt、seed、根拠予算、意味的採点は変更しない。受信側のU
 citation所属、abstention検証を維持し、schemaを無視したproviderもretryや
 出力修復なしで拒否する。schema/validatorの不一致修正であって、意味的品質の
 認定ではない。過去v2結果を書き換えず、v3は版を分けた新規測定を必要とする。
+
+新しい`9c958162f9f61bfb8f75b8747d3133c5afcb80a3`実測は同じ14問matrixを
+**412 call**で完了し、**回答試行144件の契約違反は0件**、full-context skipは別途24件だった。
+profile digestは`10d7bb829ce181c379a86474baa8db7c9caa68d4747e9dace35d59b966af9688`。
+全根拠予算を満たし、検索score/skip件数は変わらなかった。
+
+| Arm | 完全一致 / 試行 | Abstention | 不正回答 | QA skip |
+| --- | ---: | ---: | ---: | ---: |
+| no_memory | 4/28 | 28 | 0 | 0 |
+| recent_window | 6/28 | 26 | 0 | 0 |
+| full_context | 0/4 | 4 | 0 | 24 |
+| vector | 4/28 | 26 | 0 | 0 |
+| hybrid | 4/28 | 26 | 0 | 0 |
+| temporal_provenance | 4/28 | 26 | 0 | 0 |
+
+機械的完全一致は合計**22/144**にとどまり、**136/144がabstention**である。
+不正abstentionの解消は**回答品質の認定ではない**。以前の公開応答から見つけた
+構造上の不整合を直した再測定であり、新しいblind品質実験とは扱わない。
+全人手reviewは`not_reviewed`のまま。証跡は`m2-eval-public-9c95816/`。
+その前に独立したsynthetic schema smokeを4 callで実行し、回答/abstentionの
+両branchに成功した。この4 callは公開benchmarkには数えない。
+隔離した評価回帰対象は132 testに合格し、live測定とは別証跡である。
 
 ## Scorer が実際に行うこと
 
@@ -736,9 +811,10 @@ supersession とみなしたりしてはいけない。
 | 公開 baseline と回答品質 | 版を固定したoracle診断は不正回答/失敗/予算修正も保持。機械的QAは人手レビューの代わりにならない |
 | Cost、latency、footprint | dev 440/held-out 2,200 embedding call、抽出/診断の失敗4 callと成功processing 3 call。public試行は別会計で、全体の金銭/latency/footprint認定ではない |
 
-人手precision/fidelity、real-task、backup復旧は引き続き**未測定**。
-held-out synthetic検索と限定したprocess-crash実験は独立して測定した。
-生成ACLの成功をこれらの独立gateへ流用してはいけない。
+人手precision/fidelity、real-taskは引き続き**未測定**。
+一般backup復旧とmodel accounting照合は未認定で、単一purge実験は限定した回帰証跡に
+とどまる。held-out synthetic検索とprocess-crash実験も別測定であり、
+生成ACLの成功を独立gateへ流用してはいけない。
 
 人間が dataset と local processing を許可し、代表的な real task を選び、
 評価・評定手順を承認し、独立した人手 review を供給する必要がある。LoCoMo を
