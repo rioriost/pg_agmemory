@@ -13,3 +13,4 @@ dist/
 !.env.example
 *.pem
 .DS_Store
+/.review-artifacts/

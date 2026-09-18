@@ -8,6 +8,10 @@ and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 ## Current development contract: v0.0.27 / schema 13
 
+[Human review preparation](docs/HUMAN_REVIEW.md) provides revision-pinned
+Wikipedia collection, an opt-in local-model pilot and unfilled independent review
+forms. It does not certify human review or M2 acceptance.
+
 Stage **`m2-background-processing`** adds default-deny, administrator-authorized
 local extraction/embedding jobs, caller adoption of quarantined candidates, and
 same-scope working compaction. Native API/SDK now expose **38 memory resources**;

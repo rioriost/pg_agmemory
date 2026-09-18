@@ -9,6 +9,10 @@
 
 ## 現在の開発契約: v0.0.27 / schema 13
 
+[人手評価の準備](docs/HUMAN_REVIEW-jp.md)では、revision固定のWikipedia収集、
+明示実行するlocal-model pilot、独立評価用の未記入票を用意します。
+人による評価の実施やM2合格を認定するものではありません。
+
 Stage **`m2-background-processing`** は、管理者が明示許可する既定拒否の
 local extraction/embedding job、隔離candidateのcallerによる採用、
 同一scopeのworking compactionを追加します。Native API/SDKは**38 memory resource**、
