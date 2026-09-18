@@ -145,6 +145,7 @@ key_bundle="$("$engine" run --name "$key_name" --network "$network" "$runtime_im
 import importlib.util
 import json
 import os
+import ssl
 import sys
 import time
 import jwt
@@ -153,6 +154,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from pg_agmemory.lexical import segment
 
 assert os.geteuid() != 0, "Production image must not run as root"
+assert os.environ.get("SSL_CERT_FILE") == "/etc/ssl/certs/ca-certificates.crt"
+assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
+print("Production system CA smoke passed", file=sys.stderr)
 for package in ("pytest", "ruff", "mypy"):
     assert importlib.util.find_spec(package) is None, f"Development dependency in runtime: {package}"
 assert segment("\u6771\u4eac\u90fd").split() == ["\u6771\u4eac", "\u90fd"]

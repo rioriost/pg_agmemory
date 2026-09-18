@@ -1,32 +1,50 @@
-# Local Ollama and OpenAI inference profiles
+# Local Ollama, OpenAI, and Azure SQL inference profiles
 
 [日本語](INFERENCE_PROFILES-jp.md) | [README](../README.md)
 
 These profiles select an explicit provider call; they do not enable automatic
 synthesis, extraction, ingestion, publication, or compaction. This is a practical
-guide for the v0.0.24/schema 10 provider foundation, **not M2 completion**.
-Service 0.0.24, API v1, and schema 10 remain unchanged in this qualification follow-up.
+guide for the current v0.0.25/schema 10 follow-up, **not M2 completion**.
+The recorded live runs used service 0.0.24, API v1, and schema 10.
+The separate TLS packaging follow-up is not qualified by those runs.
+**V25 full local qualification passed; native CI pending:** the Docker base sets `SSL_CERT_FILE`
+and the runtime production smoke checks it plus a loaded root-CA store.
+Targeted local real-libpq TLS and runtime CA checks passed.
+The full Apple Container `./scripts/test-containers.sh` reported
+**999 passed, 5 live skipped, 1 known warning, 494.49 s**; Ruff, mypy
+**22 source files + 1 strict SDK consumer**, all four core/hook/sdk/providers
+installation smokes, and **all production smokes including the new system-CA
+smoke** passed. Exact-SHA v25 native CI has not run yet. No Azure inference was rerun.
+Stage `m2-selectable-inference`, 31 Native/SDK resources, four MCP tools,
+`auto_synthesis: false`, and global `live_provider_qualified: false` remain.
+See [ADR 0025](adr/0025-live-provider-qualification.md) and
+[v25 qualification status](STATUS.md#v0025--schema-10).
 The [provider contract](STATUS.md#selectable-inference-providers) and
 [operator reference](operations/README.md#selectable-inference-providers) remain authoritative.
 
 ## Evidence boundary
 
-**Local workflow and full ordinary suite qualified; owned temporary resources
-cleaned up. This follow-up has no native CI result yet.** Existing
+**Exact Ollama and Azure Flexible Server profiles have bounded live contract
+evidence; Azure cleanup is verified. This is not a quality-gate pass or blanket
+provider certification.** The published Ollama/OpenAI profile baseline passed both
+native CI architectures. Existing
 [v24 qualification](STATUS.md#v0024--schema-10) covers synthetic HTTP and SQL
-fixtures, separately from the local-model results below. No new CI, human quality
-certification, or general provider compatibility is claimed.
+fixtures, separately from the live runs below. Neither that CI nor the template
+alone establishes live compatibility or human quality certification.
 
 | Route | Current scope and evidence |
 | --- | --- |
-| Local Ollama | Five live cases passed across the separate contract and Native lifecycle runs below; actual operator CLI checks also succeeded. There were **eight real model calls**, all with synthetic text. The full ordinary suite and owned-resource cleanup are complete; native CI for this patch has not run. Configured digest labels are not automatic verification of installed weights. |
+| Local Ollama | Five live cases passed across the separate contract and Native lifecycle runs below; actual operator CLI checks also succeeded. There were **eight real model calls**, all with synthetic text. The ordinary suite, published baseline's native CI, and owned local-resource cleanup are complete. Configured digest labels are not automatic verification of installed weights. |
 | OpenAI | Ready configuration template only. The user has not supplied `OPENAI_API_KEY`; no live OpenAI verification is claimed. |
-| Azure Foundry + Flexible Server | Read-only server/model/quota preflight is available. Temporary tests followed by deletion remain a proposal pending region/target confirmation; no Azure resources have been created in this scope. There is no live-inference or deletion result yet. |
+| Azure Foundry + Flexible Server | The exact `azure_ai` 2.0.1 profile passed **5 live cases, 54 deselected, 1 known warning / 20.12 s**, plus CLI checks. Eight application inference calls, no application retries. **One English input produced a Spanish summary**; quality is not qualified. Cleanup was verified at **12:07:30 JST**. |
 | HorizonDB | A separate live test is explicitly waived for this scope, not passed or qualified by that waiver. Existing synthetic SQL coverage is not live HorizonDB evidence. |
 
 Each live result must identify its runtime, model artifacts, profile, topology,
 and observed outcomes. A passing shape/digest check is not a retrieval-quality,
 summary-faithfulness, privacy, cost, or production-readiness qualification.
+`model_inference.live_provider_qualified` remains **false**: the recorded checks
+apply only to their exact profiles/runtimes/model artifacts, not all versions,
+models, or providers. OpenAI and HorizonDB remain live-untested.
 
 ### Recorded local contract evidence
 
@@ -67,13 +85,25 @@ These bounded results do not qualify other inputs, providers, or model spaces.
 
 ### Ordinary-suite qualification
 
-The full Apple Container `./scripts/test-containers.sh` run reported
+The historical v24 full Apple Container `./scripts/test-containers.sh` run reported
 **989 passed, 5 live skipped, 1 warning, 500.46 s**.
 Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
 core/hook/sdk/providers installation checks/smokes, and all production smokes passed.
 The five live skips are intentional in this ordinary run; the separate live
 evidence above is not silently included in its 989 passes.
-This is local qualification, **not a native CI result for this patch**.
+The 500.46 s measurement belongs to this local run, not to native CI.
+
+### Published baseline native CI
+
+Published v24 commit
+[`aa364c3969fda48b52c8fef19c8794ec99cd354b`](https://github.com/rioriost/pg_agmemory/commit/aa364c3969fda48b52c8fef19c8794ec99cd354b)
+passed exact-SHA [CI 35298758297](https://github.com/rioriost/pg_agmemory/actions/runs/35298758297):
+**amd64 989 passed, 5 skipped / 685.52 s; arm64 989 passed, 5 skipped / 796.17 s**.
+Both passed Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
+core/hook/sdk/providers installation checks, and all production smokes.
+The five live cases were skipped in CI; the eight real model calls above belong
+to the separate local Ollama runs. This CI predates the Azure template/trial and
+does **not** qualify it or any subsequent changes.
 
 ## Configuration files
 
@@ -91,13 +121,15 @@ distribution, including its existing web/database dependencies.
 | --- | --- |
 | [ollama.json](../examples/inference/ollama.json) | `local_http` at `http://127.0.0.1:11434/v1`, selected local text/embedding models, 120-second timeout, 512 maximum summary-output tokens. No API key setting. |
 | [openai.json](../examples/inference/openai.json) | `openai_compatible` at `https://api.openai.com/v1`, bearer credential from `OPENAI_API_KEY`, 60-second timeout, 512 maximum summary-output tokens. |
+| [azure-flexible-server.json](../examples/inference/azure-flexible-server.json) | `azure_ai` SQL profile with scoped live contract evidence; DSN environment reference only, extension 2.0.1 pin, 60-second timeout. Tested resources are deleted; language-quality and TLS-packaging limits are recorded below. |
 | [.env.example](../examples/inference/.env.example) | Placeholder only; documents the environment variable, not a usable credential. |
 
 The CLI reads process environment variables; it **does not automatically load
 `.env` files**. Supply the real OpenAI key through an approved secret manager or
 your local environment, never through JSON, a committed file, command-line
 arguments, or captured logs. Do not send requests using the placeholder.
-Keep any real `.env` and generated outputs outside version control.
+Keep any real `.env` and generated outputs outside version control. The Azure DSN
+reference follows the same rule: no credentials or private server endpoints in JSON.
 
 One profile is selected per command. You may summarize with the local profile
 and embed with the OpenAI profile, or create trusted single-operation profiles.
@@ -219,11 +251,197 @@ universal vendor/model adapter. The application does not retry, redirect, use
 proxy environment settings, or switch providers automatically. A lost response
 can leave billing unknown; cancellation is not proof that inference or charges stopped.
 
+## Azure Flexible Server template
+
+### Recorded Azure live evidence
+
+The approved trial used **West US 3**, AI Services **S0**, and PostgreSQL **18.6,
+B1ms, 32 GiB** with installed `azure_ai` **2.0.1**. Summary inference used
+`gpt-4.1-mini`, version `2025-04-14`, GlobalStandard capacity **10**; embeddings used
+`text-embedding-3-small`, version **1**, GlobalStandard capacity **1**, requesting
+768 dimensions. Authentication used the server's managed identity with
+account-scoped **Cognitive Services OpenAI User**, **API-key authentication
+disabled**, and a separate restricted SQL login.
+
+An Apple Container client with **mounted `aa364c3` code** ran the five selected
+live cases: **5 passed, 54 deselected, 1 known warning / 20.12 s**.
+Actual CLI `inspect`/`summarize`/`embed` also succeeded. There were **eight
+application inference calls** (six from pytest, two from CLI) and **no application
+retries**; this is not a count or guarantee of billable upstream calls.
+SQL `inspect` returned `contract_verified: true`, `inference_tested: false`:
+inspection itself does not invoke a model.
+Summaries remained `untrusted`; embeddings contained 768 finite values with
+finite nonzero norm. The Native canonical-input/upload/replay/recall/purge and
+post-purge rejection lifecycle passed against a **separate local PostgreSQL 18.6 /
+pgvector 0.8.6** database. No MemoryDB schemas were created in the cloud server.
+
+**Observed quality deviation:** one English-input summary was returned in
+**Spanish**, despite the original-language instruction. The passing tests check
+contracts, not language fidelity, grounding, or semantic quality. Do not suppress
+this deviation or treat the run as a language/grounding/quality-gate pass.
+Generated summaries require review and remain untrusted; `model_inference.live_provider_qualified`
+stays **false**. No HorizonDB or Azure Language calls were tested, and direct
+OpenAI API calls remain untested.
+
+The Azure run used **TLS 1.3 with `verify-full` and an explicit OS CA-bundle path**.
+It is separate from CI 35298758297, which skipped live cases, and does not test the
+new Docker `SSL_CERT_FILE` default. The earlier **2.0.0 template** was packaged
+without a host mount and passed Ruff, mypy **22 + 1**, and **157 unit contracts,
+13 integration cases deselected / 2.26 s**; that was existing coverage plus one
+template-parse case, not a live Azure run. Historical 2.0.0 documentation/fixture
+evidence is preserved separately from the observed and tested **2.0.1**.
+No new full-suite/CI result for the TLS packaging follow-up is claimed.
+
+The [Azure profile](../examples/inference/azure-flexible-server.json) selects:
+
+| Setting | Declared value |
+| --- | --- |
+| Backend/product | `azure_ai` / `flexible_server` |
+| SQL connection reference | `database_url_env: "PGAG_AZURE_INFERENCE_DATABASE_URL"` |
+| Required extension pin | `azure_extension_version: "2.0.1"` |
+| Summary | `azure_summary_mode: "generate"`; deployment `pgag-summary`, revision `gpt-4.1-mini-2025-04-14` |
+| Embedding identity | `text-embedding-3-small`, revision `azure-openai-text-embedding-3-small-1-768-v1`, 768 dimensions, cosine, `l2-f32-v1` |
+| Embedding deployment | `embedding_target: "pgag-embed"` |
+| Per-call timeout | `timeout_seconds: 60` |
+
+Deployment names in this template are reusable operator-selected labels, not
+account identifiers or a promise that resources still exist: the tested resources
+were deleted. Revision labels
+record operator intent; the adapter does not cryptographically verify cloud model
+versions or alias upgrades. On Flexible Server, `embedding_target` is a deployment
+name; HorizonDB's registry-alias contract is different and is not tested here.
+SQL forbids `max_output_tokens`; do not copy the HTTP profile's 512-token setting.
+
+### Privilege separation and setup
+
+The operations owner provisions a **new, temporary, dedicated PostgreSQL 18
+inference server and cloud model resources**, separate from canonical MemoryDB.
+Use synthetic text only. Provisioning, administrator setup, model calls, and
+cleanup belong to that one owner; the profile/CLI does not create Azure resources.
+Keep subscription IDs, resource names, actual service endpoints, DSNs, and
+credentials out of public documentation and captured example output.
+
+1. **Administrator setup:** allowlist/install `azure_ai`, verify the installed
+   version against the 2.0.1 pin, deploy the approved models, and configure their
+   routing outside the application. Restrict network access to the approved test
+   client/path; do not open the server broadly to make a test pass.
+   See [extension setup](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-azure-overview).
+2. **Upstream identity:** enable the Flexible Server's system-assigned managed
+   identity and grant **Cognitive Services OpenAI User** at the dedicated model
+   resource scope, not across the subscription. The administrator configures
+   `azure_openai.auth_type` as `managed-identity` and the approved endpoint.
+   See [managed identity setup](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-enable-managed-identity-azure-ai).
+   This is server-to-model authentication; it does not authenticate the CLI's
+   PostgreSQL connection or grant SQL privileges.
+3. **Separate runtime login:** create a new least-privilege SQL login, distinct
+   from the setup administrator. Grant only required database `CONNECT`, schema
+   `USAGE`, and `EXECUTE` on the deployed compatible inference functions; review
+   effective inherited/PUBLIC grants. Do not give it superuser, `BYPASSRLS`,
+   canonical memory ownership, or membership in `azure_pg_admin`,
+   `azure_ai_settings_manager`, or `model_registry_manager`.
+   Do not solve a failed runtime check by substituting the admin DSN.
+4. **Client connection:** supply that runtime login's DSN through
+   `PGAG_AZURE_INFERENCE_DATABASE_URL` using an approved secret channel.
+   The adapter enforces TLS `verify-full` with system CA or an explicitly approved
+   CA file. Its dedicated autocommit connection is not a canonical memory
+   transaction/session lock; each function statement still has a SQL transaction.
+   Do not disable TLS or weaken the extension pin/catalog guards.
+
+### TLS trust-store known issue
+
+The tested psycopg-binary client failed
+with `sslrootcert=system`. An explicit DSN setting
+`sslrootcert=/etc/ssl/certs/ca-certificates.crt` worked in the Linux client with
+`sslmode=verify-full` and TLS 1.3 retained throughout the Azure live run.
+This was an operator-selected CA file, not an
+automatic fallback or TLS downgrade. Keep the complete DSN in the process
+environment, never in the common JSON profile or repository.
+Offline inspection found missing compiled-in CA-file defaults in two bundled
+OpenSSL builds; both honor `SSL_CERT_FILE`. On Linux with this readable OS bundle,
+the explicit trust-store setting is:
+
+```sh
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+```
+
+The v25 Docker base sets this environment variable; its non-root runtime smoke
+checks the environment value and a populated root-CA store. **Nine local real-libpq
+TLS cases and targeted Ruff passed; a separate non-root v25 runtime check confirmed
+the environment value and 150 trusted CAs.** The full local suite and all production
+smokes also passed; native CI remains pending.
+The Azure live run used the explicit DSN CA file, **not this environment
+fix**; do not claim that the latter was live-Azure tested. Certificate/hostname
+verification must stay enabled. No cloud reprovisioning or extra cloud calls are
+planned for the local TLS regression.
+
+The adapter does not install/configure the extension or read key settings/model
+registries. Before each operation it checks the exact extension version,
+extension-owned compatible non-set-returning overloads, and SQL permissions.
+For Native lifecycle tests, `PGAG_TEST_DATABASE_URL` is a **separate local disposable
+canonical test database**, not this Azure inference DSN and never production data.
+This does not certify full MemoryDB hosting on Azure: the canonical PostgreSQL
+18.6 / pgvector 0.8.6 requirements remain unchanged.
+
+### Inspect before explicit inference
+
+After administrator setup, use the least-privilege login for a live, read-only
+catalog inspection. It does not invoke a model:
+
+```sh
+pg-agmemory infer inspect --config examples/inference/azure-flexible-server.json
+```
+
+A successful SQL `inspect` does not prove upstream identity propagation, model
+access, quota, service availability, or inference success. Only after approval
+for the potentially billed calls, invoke synthetic inputs explicitly:
+
+```sh
+printf '%s\n' '{"text":"Synthetic note: Project Cedar is paused. Deployment is not approved."}' |
+  pg-agmemory infer summarize --config examples/inference/azure-flexible-server.json
+printf '%s\n' '{"text":"Synthetic note: Project Cedar is paused."}' |
+  pg-agmemory infer embed --config examples/inference/azure-flexible-server.json
+```
+
+These are retained examples for a future separately approved setup, not a reason
+to recreate the deleted trial resources or make extra calls now. Summaries remain
+untrusted; embeddings must be exactly 768 finite values with nonzero norm.
+SQL embeddings request `dimensions => 768` and `max_attempts => 1`.
+The application never retries, but `azure_ai.generate` has no verified retry or
+output-token knob. One `MATERIALIZED` invocation does not guarantee one billable
+upstream call, and cancellation does not prove charges stopped. Preserve exact
+generated payloads for any subsequent idempotent Native write.
+See [Flexible embeddings](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-azure-openai)
+and [AI functions (preview)](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-azure-ai-functions);
+documented capabilities do not replace the installed catalog or live evidence.
+
+### Two-hour cleanup plan
+
+The approved window is **2026-09-18, 11:52–13:52 JST**, including creation, testing,
+and cleanup **before 13:52 JST**. Cleanup was verified at **12:07:30 JST**:
+both model deployments, the AI Services account, SQL server, newly created
+resource group, and account-scoped RBAC assignment were deleted; the owned
+soft-deleted Foundry account record was purged. The local test database and
+**six secret files** were removed. No owned Azure trial resources remain and
+no additional cloud calls are planned. The window was an operator deadline,
+not an automatic resource TTL.
+
+The operations owner must stop calls, delete owned model deployments first,
+remove the dedicated SQL server and other owned trial resources, and purge the
+soft-deleted Foundry/AI Services account. Verify both resource deletion and the
+absence of its soft-deleted account; deleting the resource group alone is not
+proof of purge. Purge is irreversible and requires separate management-plane
+permission, never a privilege for the SQL runtime login or inference identity.
+[Microsoft's recovery/purge guidance](https://learn.microsoft.com/en-us/azure/ai-services/recover-purge-resources)
+also warns that provisioned deployment charges can continue until purge.
+Record sanitized test and cleanup evidence without private identifiers.
+Account purge is not a blanket guarantee about provider/platform log retention.
+
 ## Model space, exact input, and explicit publication
 
-Both embedding profiles declare `dimensions: 768`, `distance_metric: "cosine"`,
-and `normalization: "l2-f32-v1"`. Equal dimensions do **not** make Qwen and OpenAI
-vectors interchangeable. Keep the full model identity/revision and input format
+All three embedding profiles declare `dimensions: 768`, `distance_metric: "cosine"`,
+and `normalization: "l2-f32-v1"`. Equal dimensions or similar model names do **not**
+make Qwen, OpenAI, and Azure vectors interchangeable. Keep the full model
+identity/revision and input format
 consistent across generation, stored embeddings, and vector queries. Assign a
 new identity/revision for a changed model space; do not relabel old vectors.
 Revision strings, even digest-shaped strings, are not cryptographic enforcement.
@@ -248,7 +466,7 @@ idempotency key; do not rerun the model to reconstruct the retry.
 
 [Live tests](../tests/live/test_inference.py) select a profile with
 `PGAG_LIVE_PROVIDER_CONFIG`; **an unset variable skips live inference**.
-A selected profile with invalid content or a missing required API key fails;
+A selected profile with invalid content or a missing required API key/SQL DSN fails;
 it does not silently skip. Provider failures remain sanitized.
 A profile without a text or embedding model skips the corresponding cases.
 Set this variable only for a deliberately authorized live run.
@@ -266,11 +484,13 @@ PostgreSQL database** with the test harness's setup privileges. Never use a
 production memory database. Without that database, its fixture skips: four
 model-only cases are not a complete five-case qualification.
 
-All qualification runs in this scope use **Apple Container**, including the four
-model-only cases. Inside the prepared test container, from the repository root,
+The recorded Ollama and Azure profile checks used **Apple Container**, including
+the four model-only cases; Azure inference used the explicit DSN CA file and a
+separate local canonical test database. Inside a separately approved, prepared
+test container, from the repository root,
 set `PGAG_LIVE_PROVIDER_CONFIG` to a profile path available in that container and
-prepare the disposable database and reviewed relay topology. A host environment
-variable or the checked-in host-loopback endpoint does not set up that topology.
+prepare the disposable database and, for host Ollama, the reviewed relay topology.
+A host environment variable or the checked-in host-loopback endpoint does not set up that topology.
 With test dependencies already installed, the selector is:
 
 ```sh
@@ -279,10 +499,10 @@ python3 -m pytest -q -m live tests/live/test_inference.py tests/test_providers.p
 
 These are contract/lifecycle checks using synthetic text, not semantic-quality
 evaluations. Only the Native lifecycle case explicitly publishes test memory.
-The two added profile unit cases are included in the verified **989 ordinary
-passes (987 retained + two profile cases)**, with five live cases skipped in that
-run. See [ordinary-suite qualification](#ordinary-suite-qualification) for the
-measured result, separate from the opt-in live runs.
+The published Ollama/OpenAI baseline's two profile unit cases are included in its
+verified **989 ordinary passes (987 retained + two profile cases)**, with five
+live cases skipped in that run. See [ordinary-suite qualification](#ordinary-suite-qualification) for the
+measured result, separate from the opt-in live runs and the new Azure work.
 Selecting OpenAI can incur charges and requires the user's key; no live OpenAI
 run is claimed. Do not enable live inference globally in CI or infer a passing
 run from the presence of this command.

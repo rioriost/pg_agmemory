@@ -106,6 +106,12 @@ M2 quality gates. Default local and CI runs never inject live profiles or keys.
 See [inference profiles](docs/INFERENCE_PROFILES.md) for model selection, safe
 OpenAI configuration, and the host/container loopback distinction. Never loosen
 the loopback restriction or expose Ollama on all interfaces merely to run a test.
+The image explicitly selects Debian's trusted CA bundle with `SSL_CERT_FILE`;
+keep `verify-full` for Azure SQL and preserve explicit operator CA overrides.
+Local TLS transport regressions use an ephemeral test CA, not cloud credentials
+or changes to the host trust store. The production smoke also verifies that the
+configured system bundle loads trusted CA certificates. Neither check proves
+every managed service/version is qualified; record live results by exact profile.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

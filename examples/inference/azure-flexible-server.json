@@ -1,0 +1,20 @@
+{
+  "backend": "azure_ai",
+  "database_url_env": "PGAG_AZURE_INFERENCE_DATABASE_URL",
+  "azure_product": "flexible_server",
+  "azure_extension_version": "2.0.1",
+  "azure_summary_mode": "generate",
+  "text_model": {
+    "name": "pgag-summary",
+    "revision": "gpt-4.1-mini-2025-04-14"
+  },
+  "embedding_model": {
+    "name": "text-embedding-3-small",
+    "revision": "azure-openai-text-embedding-3-small-1-768-v1",
+    "dimensions": 768,
+    "distance_metric": "cosine",
+    "normalization": "l2-f32-v1"
+  },
+  "embedding_target": "pgag-embed",
+  "timeout_seconds": 60
+}

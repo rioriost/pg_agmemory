@@ -395,6 +395,25 @@ def test_example_profiles_are_valid_and_inspection_makes_no_network_call(monkeyp
     assert result["inference_tested"] is False
 
 
+def test_azure_example_uses_separate_sql_credentials_and_pinned_contract(monkeypatch):
+    path = Path(__file__).parents[1] / "examples" / "inference" / "azure-flexible-server.json"
+    settings = parse_settings(path.read_bytes())
+    assert settings.backend == "azure_ai"
+    assert settings.database_url_env == "PGAG_AZURE_INFERENCE_DATABASE_URL"
+    assert settings.endpoint is None and settings.api_key_env is None
+    assert settings.azure_product == "flexible_server"
+    assert settings.azure_extension_version == "2.0.1"
+    assert settings.azure_summary_mode == "generate"
+    assert settings.text_model.name == "pgag-summary"
+    assert settings.embedding_model.dimensions == 768
+    assert settings.embedding_model.name == "text-embedding-3-small"
+    assert settings.embedding_target == "pgag-embed"
+    assert settings.max_output_tokens is None
+    monkeypatch.delenv("PGAG_AZURE_INFERENCE_DATABASE_URL", raising=False)
+    with pytest.raises(ProviderFailure, match="invalid_provider_configuration"):
+        asyncio.run(run(settings, "inspect", b""))
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "provider_mode", ["synthetic", pytest.param("live", marks=pytest.mark.live)]

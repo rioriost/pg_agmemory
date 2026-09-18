@@ -106,6 +106,12 @@ TLS、catalog・権限検査、parameter binding、入出力上限、
 モデル選定、OpenAIの安全な設定、host/containerのloopbackの違いは
 [推論profile](docs/INFERENCE_PROFILES-jp.md)を参照してください。
 検証のためにloopback制約を緩めたり、Ollamaを全interfaceへ公開したりしてはいけません。
+imageは`SSL_CERT_FILE`でDebianの信頼済みCA bundleを明示します。
+Azure SQLの`verify-full`とoperatorによるCAの明示指定を維持してください。
+ローカルTLS transportの退行検査は一時的なtest CAを使い、cloud資格情報や
+hostのtrust store変更を必要としません。production smokeでも設定したsystem bundleから
+信頼済みCAを読み込めることを確認します。managed serviceの全versionを認定する検査ではなく、
+実環境の結果は検証した正確なprofileごとに記録してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

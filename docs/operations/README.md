@@ -14,9 +14,9 @@ Use the pinned prebuilt upstream pgvector DB profile below and the application
 image built from the repository's existing `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The current bounded implementation is **v0.0.24/schema 10 selectable inference foundation**.
-**Implementation and synthetic-provider contracts qualified, not M2 completion**.
-Verified v0.0.23 and earlier results are historical, not v0.0.24 evidence.
+The current bounded milestone is **v0.0.25/schema 10 CA-image fix and exact-profile evidence**.
+**Full local qualification passed; native CI pending, not M2 completion**.
+Verified v0.0.24 and earlier results are historical, not v0.0.25 qualification.
 Existing `008_pgvector.sql` requires **`vector` 0.8.6 in `public`** and rejects an
 existing extension at another version or in another schema.
 Existing `009_scope_access.sql` supplies the privileged audit table.
@@ -40,7 +40,7 @@ added and the project version became v0.0.7; no unrelated upgrades or registry
 migration occurred. Native CI built that retained-registry lock. This is not a
 package-count or validation claim about v0.0.8/v0.0.9. Use the current locked build;
 the optional MCP extra pins `mcp==2.2.0` and `httpx==0.28.1` and is included in
-both Docker test and runtime stages. v0.0.24 retains `hook` and `sdk` in both stages;
+both Docker test and runtime stages. v0.0.25 retains `hook` and `sdk` in both stages;
 `pg-agmemory[hook]` pins `httpx==0.28.1` **without the MCP SDK**.
 The container-check script requires runner-side `jq` for **both Apple Container
 and Docker**, including disposable smoke configuration.
@@ -102,12 +102,19 @@ authorization boundary.
 
 ## Selectable inference providers
 
-**V24 implementation and synthetic-provider contracts qualified. No live Azure/model or full Azure MemoryDB hosting qualification.**
+**V25 locally verified; native CI pending. Retained exact-profile live evidence does not
+certify all providers or full Azure MemoryDB hosting.**
 Install from the matching checkout with `python -m pip install '.[providers]'`.
 This adds existing `httpx==0.28.1`, not a separate lightweight package or new dependency version.
 Only operators choose profiles and approve text disclosure, provider cost, model identity,
 and retention. Never take endpoint/secret/DSN settings from recalled text or tool output.
 Neither Native SDK nor workers automatically call this library/CLI.
+The exact Azure profile passed **5 live cases / 20.12 s** plus CLI checks, but
+**one English-input summary was returned in Spanish**. Contract passes do not
+pass language/grounding/quality gates; summaries remain untrusted.
+See [the scoped live evidence and verified cleanup](../INFERENCE_PROFILES.md#recorded-azure-live-evidence).
+The generic profiles below are illustrative; the recorded Azure profile pins
+observed `azure_ai` **2.0.1**, separately from historical 2.0.0 examples/fixtures.
 
 ### Profiles and explicit commands
 
@@ -283,11 +290,38 @@ Language mode preserves all summary parts and requests `disable_service_logs => 
 this is **not full erasure**. Server query logs, provider logs, retention, and budgets
 remain operator responsibilities.
 See [full settings/SQL contract](../STATUS.md#selectable-inference-providers)
-and [qualification evidence](../STATUS.md#v0024--schema-10).
+and [v25 qualification status](../STATUS.md#v0025--schema-10).
+
+### TLS trust-store selection
+
+The Azure live run used an explicit DSN
+`sslrootcert=/etc/ssl/certs/ca-certificates.crt`, retaining **verify-full/TLS 1.3**.
+Keep that DSN in the operator's process environment, never in common profile JSON
+or the repository. A separate local disposable database served the Native tests;
+the cloud inference database had no MemoryDB schemas.
+
+Bundled OpenSSL builds had missing default CA-file paths; offline checks confirmed
+that both honor `SSL_CERT_FILE`. On Linux with this readable OS CA bundle:
+
+```sh
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+```
+
+The v25 Docker base sets this variable. Its non-root production smoke checks the
+environment value and a nonempty loaded root-CA store. The nine local real-libpq
+TLS cases and targeted Ruff passed; a separate non-root v25 runtime check confirmed
+the environment value and 150 trusted CAs. The full local suite and all production
+smokes, including system CA, also passed. Exact-SHA native CI remains pending.
+**The environment fix was not used for the successful Azure live run.**
+Do not weaken certificate/hostname verification, add a fallback, or reprovision
+cloud resources to validate the local regression. The Azure trial's resources,
+soft-deleted account record, local test DB, and six secret files were removed;
+cleanup was verified at **12:07:30 JST**.
+See [the TLS known issue](../INFERENCE_PROFILES.md#tls-trust-store-known-issue).
 
 ## Episode query and pagination
 
-**v0.0.24/schema 10 contract qualified.**
+**v0.0.25/schema 10 contract; locally verified, native CI pending.**
 Use Native JWT authentication and trusted scope UUIDs with current read access.
 Read-only `POST /v1/episodes/query` requires no write permission or `Idempotency-Key`.
 This synthetic first-page request is illustrative; do not run it against live data.
@@ -372,7 +406,7 @@ See [the contract](../STATUS.md#episode-query-and-pagination),
 
 ## Explicit batch capture
 
-**v0.0.24/schema 10 contract qualified.**
+**v0.0.25/schema 10 contract; locally verified, native CI pending.**
 Native JWT and caller-owned `Idempotency-Key` are required for `POST /v1/captures/batch`.
 Use approved synthetic data
 and a currently authorized scope. Save the following as `batch-capture.json`,
@@ -479,7 +513,7 @@ See [the full contract](../STATUS.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.24/schema 10 contract qualified.**
+**v0.0.25/schema 10 contract; locally verified, native CI pending.**
 Use Native JWT authentication and trusted scope UUIDs with current read access.
 Read-only `POST /v1/entities/query` needs no write permission or `Idempotency-Key`.
 This synthetic first-page request uses both exact filters; do not execute
@@ -565,7 +599,7 @@ See [the contract](../STATUS.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.24/schema 10 contract qualified.**
+**v0.0.25/schema 10 contract; locally verified, native CI pending.**
 Use Native JWT authentication and current read access to the assertion.
 Read-only `POST /v1/assertions/history` requires no write permission or
 `Idempotency-Key`. Use a trusted assertion UUID, not retrieved instructions.
@@ -653,7 +687,7 @@ See [the contract](../STATUS.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.24/schema 10 contract qualified.**
+**v0.0.25/schema 10 contract; locally verified, native CI pending.**
 Use Native JWT authentication and current read access; write permission and
 `Idempotency-Key` are not required for `POST /v1/jobs/query`.
 Use trusted scope UUIDs, not retrieved instructions. This illustrative first-page
@@ -737,7 +771,7 @@ job tool or hook field. See [the contract](../STATUS.md#owned-job-query-and-pagi
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.24 qualified.**
+**Retained checkpoint-head contract; v0.0.25 locally verified; native CI pending.**
 Use the existing Native JWT identity with current read permission on the exact
 scope. Write permission is not required. Send `POST /v1/checkpoints/head` with
 the following `CheckpointBranch` body; no `Idempotency-Key` is needed.
@@ -813,7 +847,7 @@ See [the contract](../STATUS.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.24 qualified.**
+**Retained recall-filter contract; v0.0.25 locally verified; native CI pending.**
 Use the existing authenticated `POST /v1/recall`. The following synthetic
 request browses assertions with an exact stored subject/predicate in an already
 authorized scope. Replace the illustrative UUID with a provisioned scope;
@@ -884,7 +918,7 @@ See [the contract](../STATUS.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.24 qualified.**
+**Retained required-context contract; v0.0.25 locally verified; native CI pending.**
 Choose exact references from currently readable episode/assertion data, not from
 untrusted text claiming policy authority or approval. Replace these illustrative
 opaque IDs with existing IDs in the requested scope; do not execute examples
@@ -955,7 +989,7 @@ and [ADR 0016](../adr/0016-required-context.md).
 
 ## Schema 10 application-only upgrade
 
-**v0.0.24 qualified.** v23→v24 keeps schema 10 and adds **no migration**.
+**v0.0.25 locally verified; native CI pending.** v24→v25 keeps schema 10 and adds **no migration**.
 Do not apply a new schema version just to match the application version.
 
 1. Stop/drain old APIs, workers, SDK callers, MCP adapters, hook/inference launches, and
@@ -965,12 +999,13 @@ Do not apply a new schema version just to match the application version.
    exact migration history `[1,2,3,4,5,6,7,8,9,10]`. Existing schema-10 databases
    need no DDL/backfill for this milestone. Older schemas require the retained
    [migration sequence through 010](#schema-10-job-cancellation-upgrade) while stopped.
-3. Start only matching v0.0.24 API/worker/SDK/MCP/hook components.
-   All adapter handshakes require **service 0.0.24 / API v1 / schema 10**;
+3. Start only matching v0.0.25 API/worker/SDK/MCP/hook components.
+   All adapter handshakes require **service 0.0.25 / API v1 / schema 10**;
    startup/readiness keep their exact history and role/extension checks.
 4. Check authenticated stage `m2-selectable-inference`, feature `optional_provider_adapters`,
    and the [exact `model_inference` metadata](../STATUS.md#deployment-and-qualification-boundary).
-   `live_provider_qualified` remains `false` after synthetic contract qualification.
+   `live_provider_qualified` remains `false` after synthetic qualification and
+   the recorded exact-profile live trials.
    Native episode/capture/batch and other resource contracts remain.
    Install the optional provider extra only where needed and approve each profile
    separately. Rehearse synthetic HTTP/SQL guards and explicit non-publishing inference;
@@ -981,7 +1016,17 @@ Do not apply a new schema version just to match the application version.
 There are now 31 Native/SDK resource methods and four MCP tools; the hook accepts
 neither filters nor required references. No dependency-version or MemoryDB image upgrade is introduced;
 provider execution is confined to the separate operator library/CLI.
-**V24 implementation and synthetic-provider contracts qualified.**
+**V25 full local qualification passed; native CI pending.**
+Apple Container `./scripts/test-containers.sh` reported
+**999 passed, 5 live skipped, 1 known warning, 494.49 s**.
+Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
+core/hook/sdk/providers installation smokes, and **all production smokes,
+including the new system-CA smoke**, passed. No Azure inference was rerun.
+Stage `m2-selectable-inference`, `auto_synthesis: false`,
+and global `live_provider_qualified: false` remain unchanged.
+See [ADR 0025](../adr/0025-live-provider-qualification.md).
+
+**Historical V24 implementation and synthetic-provider contracts qualified.**
 Implementation
 [`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)
 passed the full Apple Container `./scripts/test-containers.sh`:
@@ -1210,7 +1255,7 @@ Neither run qualifies v0.0.19; see [historical evidence](../STATUS.md#v0016--sch
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.24 qualified.**
+**Retained job-cancellation contract; v0.0.25 locally verified; native CI pending.**
 Use Native JWT authentication and the job owner's identity with current scope
 **read/write** permission. A same-scope reader cannot cancel another owner's job,
 even with `admin` permission. Source visibility/integrity and runtime RLS remain
@@ -1284,7 +1329,7 @@ and [ADR 0015](../adr/0015-job-cancellation.md).
 
 ## Schema 10 job-cancellation upgrade
 
-**Retained migration for schemas below 10; v0.0.24 qualified.**
+**Retained migration for schemas below 10; v0.0.25 locally verified; native CI pending.**
 Existing schema-10 databases use the [application-only upgrade](#schema-10-application-only-upgrade).
 Schema 9→10 requires **`010_job_cancellation.sql`**, introduced in v0.0.15.
 It modifies existing job state/payload constraints and the guard trigger; no
@@ -1294,13 +1339,13 @@ images are unchanged.
 1. Stop/drain old/new APIs, workers, SDK callers, MCP adapters, hook launches,
    and admin commands, including replicas/restarts. Preserve current ACL/deletion
    records and backups; rehearse only with disposable data.
-2. Use matching v0.0.24 migration tooling and `PGAG_ADMIN_DATABASE_URL` to run
+2. Use matching v0.0.25 migration tooling and `PGAG_ADMIN_DATABASE_URL` to run
    `pg-agmemory migrate`, applying 010 after exact history 001–009.
    Older schemas must apply all retained migrations too. Runtime credentials
    must not migrate or bypass the schema guard.
 3. Verify exact history `[1,2,3,4,5,6,7,8,9,10]` and `vector` 0.8.6 in `public`.
-   Start only matching v0.0.24 API/worker/SDK/MCP/hook components, requiring
-   **service 0.0.24 / API v1 / schema 10**. No mixed-version rollout or downgrade.
+   Start only matching v0.0.25 API/worker/SDK/MCP/hook components, requiring
+   **service 0.0.25 / API v1 / schema 10**. No mixed-version rollout or downgrade.
 4. Check authenticated stage `m2-selectable-inference`, retained `job_cancellation` metadata
    (`endpoint: "/v1/jobs/{job_id}/cancel"`, `compare_and_swap: ["state", "attempt"]`,
    `terminal_state: "cancelled"`, `provider_interruption: false`), bounded readiness,
@@ -1331,7 +1376,7 @@ hook are unchanged. No MVP/production/quality/DR qualification is claimed.
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.24/schema 10 qualified.**
+**Retained readiness contract; v0.0.25/schema 10 locally verified; native CI pending.**
 Keep liveness and dependency readiness separate:
 `GET /healthz` returns exactly `{"status":"ok"}` after successful startup and
 does not contact the DB. Public, unauthenticated `GET /readyz` returns exactly
@@ -1404,7 +1449,7 @@ No Kubernetes, Compose, or Docker `HEALTHCHECK` wiring is supplied.
 
 ### Schema 9 application-only upgrade
 
-**Historical v0.0.13→v0.0.14 procedure only, not the v0.0.24 upgrade.**
+**Historical v0.0.13→v0.0.14 procedure only, not the v0.0.25 upgrade.**
 Use [schema-10 maintenance](#schema-10-job-cancellation-upgrade) for current tooling.
 
 v0.0.13→v0.0.14 adds **no migration** or dependency/image upgrade.
@@ -1449,7 +1494,7 @@ See [ADR 0014](../adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.24 qualified.**
+**Retained scope-access contract; v0.0.25 locally verified; native CI pending.**
 Prefer `pg-agmemory scope-access` over handwritten membership SQL.
 Use only approved existing tenant/scope/principal UUIDs, all in the same tenant.
 The command never provisions records and is not exposed through HTTP, MCP, or
@@ -1558,24 +1603,24 @@ ACL/deletion records is still manual; grants never resurrect purged data.
 
 ## Schema 9 scope-access upgrade
 
-**Retained schema-9 migration step; not a complete v0.0.24 upgrade.**
+**Retained schema-9 migration step; not a complete v0.0.25 upgrade.**
 Current tooling must continue through the [schema-10 upgrade](#schema-10-job-cancellation-upgrade),
-including for an existing schema-9 database. v0.0.24 qualified.
+including for an existing schema-9 database. v0.0.25 locally verified; native CI pending.
 Retain the pinned PostgreSQL **18.6** / `vector` **0.8.6 in `public`** image below.
-Migration 009 introduced durable privileged audit in v0.0.13; it is not new in v0.0.24.
+Migration 009 introduced durable privileged audit in v0.0.13; it is not new in v0.0.25.
 
 1. Stop/drain all old/new APIs, workers, adapters, hook launches, SDK callers,
    and administrative commands, including replicas/restarts. Preserve backups
    and current ACL/deletion records; rehearse only on disposable databases.
-2. Run `pg-agmemory migrate` from matching v0.0.24 tooling with the migration
+2. Run `pg-agmemory migrate` from matching v0.0.25 tooling with the migration
    administrator. Apply `009_scope_access.sql` after 001–008 in the recorded
    migration sequence, then apply 010. Historical schema-8→9 rollback/retry after
    a ledger-write failure passed in v0.0.14; the v0.0.15 full local/native suites also passed.
    Existing ACL rows are preserved, with no audit backfill for prior manual changes.
    No embedding backfill or implicit ownership/purge change is added.
 3. Verify exact history `[1,2,3,4,5,6,7,8,9,10]`, the extension version/schema,
-   and privileged-only audit table. Start only matching v0.0.24 API/workers;
-   SDK/MCP/hook require service **0.0.24**, API **v1**, schema **10**.
+   and privileged-only audit table. Start only matching v0.0.25 API/workers;
+   SDK/MCP/hook require service **0.0.25**, API **v1**, schema **10**.
 4. Check authenticated capabilities stage `m2-selectable-inference` and
    `scope_access_administration` metadata (`transport: "admin-cli"`,
    `command: "scope-access"`, `compare_and_swap: "tenant_access_epoch"`,
@@ -1603,7 +1648,7 @@ See [validation evidence](../STATUS.md#v0013--schema-9) and
 
 ## Python SDK operations
 
-**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualified.**
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.25 locally verified; native CI pending.**
 Install from the matching checkout with `python -m pip install '.[sdk]'`.
 The `pg-agmemory[sdk]` extra pins only `httpx==0.28.1`, not the MCP SDK;
 the same core package still includes FastAPI, psycopg, and Janome.
@@ -1624,7 +1669,7 @@ Missing HTTPX raises a static SDK import `ImportError`; HTTPX installed through
    Request scopes only narrow that authority.
 3. Enter `async with AsyncMemoryClient(api_url, api_token) as memory:`.
    Entry creates its HTTP client and requires authenticated capabilities
-   **service 0.0.24 / API v1 / schema 10**. Never use before/after the context or
+   **service 0.0.25 / API v1 / schema 10**. Never use before/after the context or
    re-enter the same instance (`client_not_open` / `client_already_used`).
    Exit closes connections, **not stored memory**.
    Await outstanding tasks, or cancel and await them, before exiting.
@@ -1667,7 +1712,7 @@ See [all 31 typed methods](../STATUS.md#python-sdk) and
 
 ## v0.0.12 application update (schema unchanged)
 
-**Historical schema-8-only procedure, not the v0.0.24 upgrade.**
+**Historical schema-8-only procedure, not the v0.0.25 upgrade.**
 Use the [current schema-10 update](#schema-10-application-only-upgrade),
 which includes the retained earlier migrations.
 **Maintenance procedure, not production-upgrade or disaster-recovery qualification.**
@@ -1707,8 +1752,8 @@ docs CI 35190495385, remain [historical evidence](../STATUS.md#v0011--schema-8).
 ## Schema 8 pgvector upgrade
 
 **v0.0.11 application/migration checks passed; production qualification remains incomplete.**
-Migration 008 was introduced and verified in v0.0.11. Current v0.0.24 tooling
-also applies retained migrations 009 and 010 to older schemas; v0.0.24 qualified.
+Migration 008 was introduced and verified in v0.0.11. Current v0.0.25 tooling
+also applies retained migrations 009 and 010 to older schemas; v0.0.25 locally verified; native CI pending.
 Follow the [schema-10 boundary](#schema-10-job-cancellation-upgrade), not the
 historical v0.0.12 application-only procedure.
 
@@ -1742,7 +1787,7 @@ host-APT installation, or source-build workflow is part of the implemented profi
 3. Preserve a backup, application/schema/extension versions, and current deletion
    and ACL records. Rehearse only on disposable databases; restore quarantine and
    DR/full-erasure gaps remain.
-4. With the migration administrator and matching v0.0.24 application, run
+4. With the migration administrator and matching v0.0.25 application, run
    `pg-agmemory migrate`. Apply `008_pgvector.sql` after unchanged 001–007,
    followed by `009_scope_access.sql` and `010_job_cancellation.sql`;
    older databases still need migration 007's lexical backfill.
@@ -1754,7 +1799,7 @@ host-APT installation, or source-build workflow is part of the implemented profi
    canonical `ON DELETE CASCADE`, and runtime **SELECT/INSERT only**.
    **No existing data receives embedding backfill**.
 5. Confirm exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` and extension `vector` 0.8.6 in `public`
-   before starting only matching v0.0.24 APIs/workers. Check authenticated
+   before starting only matching v0.0.25 APIs/workers. Check authenticated
    capabilities, lexical compatibility, synthetic vector/hybrid ranking,
    coverage, RLS/time filters, replay/purge, and retained adapters before traffic.
    API/worker startup rejects schema/extension mismatches.
@@ -1961,7 +2006,7 @@ For 1–16 proposals, use the separate [batch route](#explicit-batch-capture);
 the single-job contract below remains unchanged.
 
 **Retained capture contract, verified in v0.0.11.** Bootstrap Native roles
-as above and use matching service `0.0.24`, API `v1`, schema `10`.
+as above and use matching service `0.0.25`, API `v1`, schema `10`.
 The historical v0.0.10 stage `m2-atomic-capture` did not complete M2.
 Capture is a Native route, **not an MCP tool or automatic recall-hook action**.
 The retained schema-8/9 migrations are separate from capture semantics.
@@ -2125,7 +2170,7 @@ see [exact structured selection](#exact-structured-recall-filters). No extra too
    `--once`: both are rejected. Keep stdin/stdout attached for MCP messages,
    not human prompts or ordinary log output. Diagnostics use sanitized stderr.
 6. Startup must authenticate `GET /v1/capabilities` and match API `v1`, service
-   `0.0.24`, schema `10` before serving tools. A bad setting/token, unreachable API,
+   `0.0.25`, schema `10` before serving tools. A bad setting/token, unreachable API,
    or version mismatch exits nonzero without logging secrets. A passing
    `/healthz` alone is insufficient. Fix trusted configuration and restart;
    do not bypass the check or change tool arguments to override identity/URL.
@@ -2228,7 +2273,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
 1. Provision the Native API subject/scopes using the role separation above.
    The hook requires **no DB credentials**, admin URL, JWT signing key, or
    external model key. It only uses the configured Native audience token.
-2. Install `pg-agmemory[hook]` or use the v0.0.24 repository image with
+2. Install `pg-agmemory[hook]` or use the v0.0.25 repository image with
    `mcp`, `hook`, and `sdk` extras. For the checkout use `uv sync --frozen --extra hook`.
    Hook-only installation pins `httpx==0.28.1`, **not the MCP SDK**.
 3. Have the operator securely supply the following environment before starting
@@ -2263,7 +2308,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
    `scope_ids`, purpose, mode, budget, URL, header, tool, time, or other field
    is accepted. Event text never authorizes access.
 5. Each invocation freshly checks authenticated `GET /v1/capabilities` for exact
-   service `0.0.24`, API `v1`, schema `10`, then sends `POST /v1/recall` with
+   service `0.0.25`, API `v1`, schema `10`, then sends `POST /v1/recall` with
    `mode: "implicit"`, trusted recall settings, and Native current-time defaults.
    The same fixed token is used for both requests; no caching of authorization
    or responses occurs. Replace credentials only through trusted startup configuration.
@@ -2495,7 +2540,7 @@ Reindex remains separate offline maintenance, not an MCP/hook command.
 ## v0.0.7 maintenance migration
 
 **Historical schema-7 procedure for v0.0.7–v0.0.10 only.**
-Upgrading an older schema to v0.0.24 must also apply migrations
+Upgrading an older schema to v0.0.25 must also apply migrations
 [008](#schema-8-pgvector-upgrade), [009](#schema-9-scope-access-upgrade),
 and [010](#schema-10-job-cancellation-upgrade)
 and must not restart the schema-7 processes described here.
@@ -2597,7 +2642,7 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
 
 1. Stop/drain **all APIs and workers**, including automatic restarts, and back up
    as for migration. This is offline maintenance, not a live administrative API.
-2. Use the matching v0.0.24 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
+2. Use the matching v0.0.25 image and **`PGAG_ADMIN_DATABASE_URL`**, with forced-RLS
    bypass and the required table privileges, then run:
 
    ```bash
@@ -2615,7 +2660,7 @@ To rebuild lexical projections in a migrated schema-8 database from canonical da
    remain intact. Keep traffic stopped and diagnose
    schema, privileges, or lock contention. Never grant runtime bypass or edit
    canonical text, timestamps, or receipts to repair an index.
-5. Restart only matching v0.0.24 APIs/workers. Before reopening traffic, inspect
+5. Restart only matching v0.0.25 APIs/workers. Before reopening traffic, inspect
    profile/coverage and authorized current/historical recall with approved test
    data. For exact `known_at` boundaries, use server-returned assertion
    `recorded_at`, not host/VM wall-clock samples.

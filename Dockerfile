@@ -2,6 +2,7 @@ FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 

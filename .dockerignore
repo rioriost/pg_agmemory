@@ -12,6 +12,7 @@
 !examples/inference/
 !examples/inference/ollama.json
 !examples/inference/openai.json
+!examples/inference/azure-flexible-server.json
 !scripts/
 !scripts/check-adapter-extras.py
 **/__pycache__/
