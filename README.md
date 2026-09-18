@@ -6,7 +6,50 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**Current bounded milestone: v0.0.26/schema 11 scope capture policy.
+## Current development contract: v0.0.27 / schema 13
+
+Stage **`m2-background-processing`** adds default-deny, administrator-authorized
+local extraction/embedding jobs, caller adoption of quarantined candidates, and
+same-scope working compaction. Native API/SDK now expose **38 memory resources**;
+MCP remains four tools. The read-only hook optionally restores an explicitly
+identified working snapshot with a separately configured byte budget.
+Ordinary observe and hook requests retain their previous behavior.
+
+Extraction models propose subject, predicate, value and an exact quote; trusted
+code resolves a unique Unicode span. Inferred publication is limited to
+policy-allowlisted literal preferences, not verified intent or semantic truth.
+All other candidates remain untrusted. Model calls run outside memory
+transactions; durable reservations, lease/epoch checks and purge dependencies
+prevent blind retries and stale publication.
+
+**M2 is not complete and this is not a production release.** Measured evidence
+includes 600 held-out synthetic questions across 50 groups (hybrid Recall@20
+99.818%, equal to vector-only), 10,000 actual unauthorized Native requests with
+zero unexpected outcomes, real worker SIGKILL recovery, and a three-call local
+extract/embed/compact/restore lifecycle. These do not satisfy the required human
+precision/fidelity review, at least 20 actual task replays, or disaster recovery.
+The public oracle QA diagnostic recorded 72 invalid outputs in 144 answer
+attempts and does not establish answer quality.
+Exact tested SHAs, failures and public-baseline status are in
+[EVALUATION](docs/EVALUATION.md); current interfaces and operator commands are in
+[ADR 0028](docs/adr/0028-background-processing.md) and
+[schema-13 operations](docs/operations/README.md#schema-13-background-processing).
+
+Use matching **service 0.0.27 / API v1 / schema 13** API, worker, SDK, MCP and hook
+components. Upgrading requires migrations 012–013; source rollback alone cannot
+downgrade the database. Model processing is disabled until an administrator pins
+a local worker profile using `scope-synthesis`; capture permission alone does
+not authorize model calls.
+
+## Retained v26 guide and historical evidence
+
+The remaining version-specific walkthroughs below describe **v0.0.26/schema 11**,
+not the current binary's capability requirements or new processing surfaces.
+Use the current contract and schema-13 operations above for v27. The historical
+API examples remain useful for unchanged, default-off paths; their version checks
+and migration targets must not be used as current v27 instructions.
+
+**Historical bounded milestone: v0.0.26/schema 11 scope capture policy.
 Implementation `c07630009ff4dcc34542e3ea80064d4f10c4d8b5` passed local qualification
 and exact-SHA native Docker amd64/arm64 CI.
 Verified v0.0.25 and earlier results below are historical, not v0.0.26 qualification.

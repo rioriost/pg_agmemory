@@ -7,6 +7,101 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 13 background processing
+
+**現在はservice 0.0.27 / API v1 / schema 13**、
+stage `m2-background-processing`です。PostgreSQL 18.6 / pgvector 0.8.6は維持します。
+本節と[ADR 0028](../adr/0028-background-processing-jp.md)が、
+下に保存したv26固有手順より優先します。lifecycle検査を品質・復旧保証と誤解しないよう、
+[EVALUATION](../EVALUATION-jp.md)も確認してください。
+
+既存環境ではDB backupとrole/secret設定を安全に保全し、**すべての**
+API/worker/adapter writerと自動再起動を停止・drainしてから、
+対応v27 imageで`PGAG_ADMIN_DATABASE_URL`を使って`pg-agmemory migrate`を実行します。
+migration 012はsynthesis policy・永続call予約・candidate provenance、
+013はworking stream/snapshot・明示candidate採用を導入します。
+厳密なledger **1–13**、`public`内の`vector` 0.8.6、readiness、認証付きcapabilitiesを
+確認してから、対応v27 componentだけを起動します。runtimeは非ownerの
+`NOSUPERUSER NOBYPASSRLS IN ROLE pgag_runtime`を維持し、policy UPDATEやbypassを与えません。
+
+新規の使い捨て環境は既存Dockerfileのruntime targetをbuildし、同じmigration、
+検証済みsubjectのprovision、下記のJWT公開鍵と制限付きruntime DSN設定を行います。
+admin DSNをAPI/workerへ渡してはいけません。同一clusterの別databaseはroleを共有するため、
+migration test用の独立した使い捨てclusterの代用にはなりません。
+
+**rollbackにはmigration前の対応DB backupと対応codeの両方が必要です。**
+schema 11 binaryはschema 13を拒否します。ledger行や新tableを消して版を偽装しないでください。
+古いbackupの復元は、最新の削除・ACL失効記録の整合を確認するまで隔離状態を維持します。
+自動ledger replay/DRは未実装・未認定です。
+
+復元したsynthesis policy、待機job、call予約、quotaも古い可能性があります。
+最新の独立した予約/accounting記録と照合できるまで、**復元先のmodel workerは停止**
+してください。削除/ACL replayだけでは外部callの重複やquota巻き戻りを防げず、
+古いbackupでpendingに見えるjobも、providerを未呼出しとは限りません。
+
+### Local model workerの明示許可
+
+providerのinstallやcapture許可はsynthesisを有効にしません。operator JSON profileは
+`local_http`、固定model revision、明示text output上限（例`max_output_tokens: 512`）を
+要求します。operator管理のloopback model serverを使い、container接続のために
+providerのendpoint制約を緩めないでください。worker digestは実promptも束縛するため、
+prompt/profile変更後は再計算と管理者確認が必要です。
+
+```bash
+# 設定の検査だけで、推論・DB接続は行いません。
+pg-agmemory worker --provider-config local-worker.json --print-profile-digest
+
+# 管理者shellのみ。DSNは承認済みsecret環境から供給します。
+pg-agmemory scope-synthesis get --tenant-id "$TENANT_ID" --scope-id "$SCOPE_ID"
+pg-agmemory scope-synthesis set --tenant-id "$TENANT_ID" --scope-id "$SCOPE_ID" \
+  --expected-access-epoch "$EXPECTED_ACCESS_EPOCH" \
+  --policy-file approved-synthesis-policy.json
+
+# 別の制限付きruntime shell。ここにadmin DSNを渡してはいけません。
+pg-agmemory worker --subject "$WORKER_SUBJECT" --provider-config local-worker.json --once
+```
+
+承認policyには`enabled`、算出した`profile_digest`、完全一致`consent_references`、
+許可する`kinds`、`max_calls`と入力/出力上限を指定します。
+抽出を隔離だけにする場合は`publish_predicates: []`にします。自動公開にはさらに
+組込みliteral-preference規則への適合が必要です。省略fieldはdefaultへ戻り、mergeではありません。
+停止は`{}`を保存したfileと最新tenant epoch CASで行います。
+管理変更の結果不明時はreadbackし、blind retryしないでください。
+
+Native/SDKの`ProcessMemory`または任意の`Observe.auto_extract`/`auto_embed`を使います。
+`--provider-config`なしのworkerは構造化jobのみを継続し、model jobをclaimしません。
+episode受付とjob完了は別に確認します。結果不明の予約/callは復旧時に
+`billing_unknown`で停止し、policy変更や`retry_of`でblind re-callできません。
+purge後も本文を含まないcall metadataを保持し、削除によるquota resetを防ぎます。
+
+### Working compactionとhook復元
+
+受付済みepisode参照をserver採番のworking streamへ追加し、typed checkpointと
+そのhead/対象prefixを指定して`CompactWorking`を要求します。
+typed stateを正確にコピーし、model summaryを**未信頼**として分離し、新しいtailを保持します。
+実行や承認はしません。追加7種のNative/SDK APIはADR 0028を参照してください。
+MCPへは追加しません。
+
+snapshot参照がなければhookの既存4 field出力を維持します。`after_compaction`だけで
+`working_snapshot_id`を指定し、信頼するoperator環境の
+`PGAG_HOOK_WORKING_SNAPSHOT_BUDGET_BYTES`を1–65536に設定します（既定0は無効）。
+recall-packとは**別の追加予算**です。scope/epochと全tail根拠を検査し、
+pagination/不完全tail/予算不足は黙って捨てずに失敗します。
+失効後に配信済みcontextを破棄するhost側責任は残ります。
+
+### 再現と残る受入れ
+
+localは`bash scripts/test-containers.sh container`でApple Container内で実行し、
+CIはnative Docker amd64/arm64です。production M2 smokeは正確に3回のsynthetic
+loopback応答を使い、実model品質の証明ではありません。明示local model/生成ACL opt-in、
+固定manifest、失敗callの記録、人手・実task gateはEVALUATIONを参照してください。
+local実験のための新Azure resourceや有料model callは不要です。
+
+## 保存されたv26運用
+
+以下はupgrade/検証証跡を含む**v0.0.26/schema 11の過去のguide**です。
+現行schema 13の版・role条件を変更せず、背景modelへの送信を許可するものでもありません。
+
 ## 初期設定とrole分離
 
 下記の固定prebuilt上流pgvector DB profileと、

@@ -2,6 +2,29 @@
 
 [日本語](INFERENCE_PROFILES-jp.md) | [README](../README.md)
 
+## Current v27 additions
+
+The current service is **0.0.27 / API v1 / schema 13**. Explicit operator inference
+now includes `pg-agmemory infer extract --config FILE` as well as inspect,
+summarize and embed. HTTP and Azure generate support extraction; Azure Language
+does not. Model proposals contain four fields and trusted code resolves exact
+unique quote spans; returned candidates remain six-field, untrusted proposals.
+See [ADR 0027](adr/0027-typed-extraction.md).
+
+These profile files alone still do not authorize background processing. The
+separate default-deny, local-only worker requires an administrator-pinned digest,
+consent labels, allowed recipes and call/input/output limits:
+[current worker operations](operations/README.md#schema-13-background-processing).
+Remote OpenAI-compatible/Azure profiles remain explicit operator paths, not
+automatic worker egress. Prompt changes require a new worker digest authorization.
+Current live-model evidence and failed attempts are in [EVALUATION](EVALUATION.md).
+
+## Retained v24/v25 profile evidence
+
+The version/resource counts and eight-call measurements below are historical.
+They do not describe v27's 38-resource surface or qualify its new extraction,
+embedding jobs, compaction or evaluation results.
+
 These profiles select an explicit provider call; they do not enable automatic
 synthesis, extraction, ingestion, publication, or compaction. This is a practical
 guide for the current v0.0.25/schema 10 follow-up, **not M2 completion**.

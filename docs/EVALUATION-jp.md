@@ -1,0 +1,736 @@
+# 評価契約と証跡の境界
+
+[English](EVALUATION.md)
+
+## 現在の状態: v0.0.27 / schema 13、M2受入れは未完了
+
+証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
+M2受入れの完了ではない。
+
+本書は [ADR 0028](adr/0028-background-processing-jp.md) と対応する。実装、
+決定的 fixture、採点コマンドがあることは M2 評価の完了ではない。
+MVP 完了、production readiness、人手 assertion precision、compaction fidelity、
+性能認定を主張しない。認定済み v0.0.26/schema 11 の履歴とは分離する。
+
+| 証跡 | 現時点で意味すること |
+| --- | --- |
+| Push 済み基盤 commit `e60d6e3`: 独立した Apple Container 検証、Ruff、26 ソースファイルの mypy、対象 389 passed / live 1 skip | 依存機能の証跡のみ。統合 background-processing/schema 13 ツリーではない |
+| 基盤 `e60d6e3` の native arm64 CI | 既存 memory gate で失敗。基盤 CI 全体が green という認定ではない |
+| Push 済み基盤 checkpoint `7343272` | 全体 720 / held-out 600 question の fixture 生成、公開データ整列、dev split、`VmHWM` 修正を含む。統合 backend の認定ではない |
+| [Native CI 35313803636](https://github.com/rioriost/pg_agmemory/actions/runs/35313803636) | 基盤 `7343272` で**両 native architecture 成功**。後の統合 M2 ツリーではない |
+| 過去の migration 統合前 real-PostgreSQL 対象実行: 258 passed / 2 failed | 認定ではない。Block する heartbeat-test 同期と古い schema assertion が失敗 |
+| 対象作業内の評価 subset: unit 238 passed、Native SDK integration 3 passed | Offline/fake provider による契約証跡。実 model 指標ではなく、重複する件数を加算しない |
+| Push 済み統合実装 `6ac31c31b6a8e248a21de551a41469510d9354b1` | Schema 13 実装 checkpoint。M2 全体の認定ではない |
+| Push 済み後続 `101993a6d40679c73899ee2454f6b2ad0dadafff` | Live harness の正確な `ollama-sha256:` revision prefix を修正 |
+| 統合全体の試行: 1437 passed / live 7 skips / 1 failed | 古い SDK route inventory の期待値で失敗。全体認定成功ではない |
+| 修正対象検証: 27 passed / live 3 skips、Ruff、32 ソースファイルの mypy、strict SDK 検査成功 | 期待 route 数 38、新 SDK 七 method と provider extraction の型付き結果を修正。修正後の全体再実行ではない |
+| Fresh `101993a6d40679c73899ee2454f6b2ad0dadafff` の生成 HTTP ACL 実験 | **正確に 10,000 case 成功**。対象は下記 matrix に限定 |
+| 実装 `2288fdc4757518e1f3bbd79f115ae46c85532266` の [core native CI 35317028037](https://github.com/rioriost/pg_agmemory/actions/runs/35317028037) | 両native architecture成功。後続prompt/crash test/QA予算/production M2 smoke変更を含まない |
+| `e4f5d76`の[CI 35321226191](https://github.com/rioriost/pg_agmemory/actions/runs/35321226191)、`0552151`の[CI 35321615670](https://github.com/rioriost/pg_agmemory/actions/runs/35321615670) | 両architecture成功。それぞれ1,485 / 1,487 passed、各8 optional skips。packaged M2 smokeの追加前 |
+| Fresh local Apple Container distribution検査 | **1,485 passed / opt-in live 8 skips**、Ruff、mypy 32+1、adapter-extra install検査、全production smoke成功。unit imageは`e4f5d76`、runtime imageは`0552151`後に再build |
+| `9458034a47b6f7c9901e569a32f198f56369fbf7`として公開したproduction M2 smoke | non-root runtimeでsynthetic HTTP 3 call、inferred 1 / quarantined 1、768次元embedding、typed state、2,448 byte hook context、10 object purge、管理policy復元が成功 |
+| `0552151` QA予算回帰対象 | **127 passed**。distribution件数に合算しない独立した対象証跡 |
+| 完全一致`9458034a47b6f7c9901e569a32f198f56369fbf7`の[native CI 35322238611](https://github.com/rioriost/pg_agmemory/actions/runs/35322238611) | **両architectureで1,487 passed / optional 8 skips**、Ruff、mypy 32+1、install profile、M2を含む全production smoke成功。amd64 test 924.26秒、arm64 914.22秒 |
+| ローカル Ollama 0.34.1、固定 qwen2.5:7b / qwen3 embedding profile | 実検索と3 callのprocessing lifecycleを測定。過去の失敗も保持 |
+| Synthetic corpus 生成と scorer 契約 | 再現可能な構造診断。人手・実 task の受入れではない |
+| Dev: 120 question / 10 group / 実 embedding 440 call | 開発専用の実測 retrieval。Held-out の受入れではない |
+| 固定held-out: `101993a`、600問/50 group/embedding 2,200 call | hybrid Recall@20 **99.818%**、vector-onlyと同値。このsynthetic集合ではtemporal順位非劣化も合格 |
+| `e4f5d76ad2a4919349054165ce531b92fa650818`の実model lifecycle | **合格**。extract/embed/compactの正確に3 callとsnapshot復元/hook/purgeを検査 |
+| 予約後/応答後/公開commit後の実SIGKILLと復旧前purge | `e4f5d76`の対象154検査中の4 crash/recovery caseが合格。この範囲で二重公開・source復活なし |
+| `055215168c83501f676e643853d9d7b58e9f0c5d`のPublic oracle | 修正予算で412 call完了。不正回答72 / 試行144、別途予算skip 24。**QA合格ではない** |
+| 人手、実 task、災害復旧の受入れ | **未測定**。process復旧はbackup/ACL/削除ledger復旧ではない |
+
+既存 memory gate の測定上の問題は `ru_maxrss` に由来する。報告された worktree 修正は
+`/proc/self/status` の `VmHWM` を使い、**256 MiB** の上限を維持する。報告された
+検査には **139360 KiB** の cold peak と **320 MiB** の親 process regression case
+がある。修正を含む `7343272` は両 native architecture の CI に成功した。
+この基盤の結果を後の統合実装に流用してはいけない。Candidate adoption は未公開 migration 014 から
+migration 013 に統合した。現在の対象は schema 14 でなく **schema 13** である。
+
+省略した model digest は再現性の pin にならない。今後の run には完全な model
+revision、承認済み profile digest、**実際に検証した実装 SHA** を記録する。
+後の文書専用公開 commit を実験実行時の SHA と記載してはいけない。
+
+### 実測に使用したlocal model profile
+
+Ollama **0.34.1**と、独立して確認した配置済みmodel artifactを使用した。
+以下の非secret profileは記録済みlocal実験で共通であり、別掲のworker/評価digestは
+recipe/prompt変更によって異なる。loopback endpointはoperator所有の認証付きrelayで、
+公開serviceではない。credential値は含めない。実験後、relay/model processは停止し、
+一時relay/DB credentialも削除した。
+
+```json
+{
+  "backend": "local_http",
+  "endpoint": "http://127.0.0.1:11435/v1",
+  "text_model": {
+    "name": "qwen2.5:7b",
+    "revision": "ollama-sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+  },
+  "embedding_model": {
+    "name": "qwen3-embedding:0.6b",
+    "revision": "ollama-sha256:ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    "dimensions": 768,
+    "distance_metric": "cosine",
+    "normalization": "l2-f32-v1"
+  },
+  "timeout_seconds": 120,
+  "max_output_tokens": 512,
+  "api_key_env": "PGAG_M2_RELAY_TOKEN"
+}
+```
+
+revision labelはoperatorのpinであり、weightの自動証明ではない。
+再現には許可されたlocal環境を用意し、container接続のためにmodel serverを
+全interfaceへ公開したりendpoint検証を弱めたりしない。
+
+## 記録された実測と制限
+
+### 生成 ACL 実験: 測定済み PASS、範囲は限定
+
+Fresh 実装 `101993a6d40679c73899ee2454f6b2ad0dadafff` で正確に
+**20 actor × 実 source 100 個 × 5 operation = HTTP 10,000 case** を実行した。
+
+- Cross-tenant が 5,000 case。
+- 同一 tenant 内の cross-scope が 5,000 case。
+- 記録された結果は `not_found` 10,000 件、予期しない status はゼロ、
+  書込み後の変更もなし。
+
+親が保管する集計は session files 内の `m2-acl-101993a/summary.json` であり、
+corpus の bundle や repository artifact ではない。Synthetic group label や retrieval
+の外部 ID ゼロから推定した結果でなく、実際に実行した生成 ACL である。
+この限定した生成 ACL 実験の成功に限り、網羅的な認可証明、人手品質、M2 認定ではない。
+
+### Local embedding dev run: 実測だが held-out ではない
+
+報告された run は **dev 120 question / 10 group**、**実 local embedding 440 call**。
+Unauthorized ID はゼロで、full-context skip もなかった。
+
+| Run の束縛 | 記録値 |
+| --- | --- |
+| 正規化 synthetic dataset digest | `7f34f11c375fc4121ea1ed526345e34ccd416a3c83a8a973d2998b52fd21ee33` |
+| 独立した評価 profile digest | `de5685812c514e7dcd424ccd6850e90f0c3753d85011212daa11e220aec60b90` |
+| Split | `dev` |
+
+| Baseline | Recall@20 | nDCG@10 | MRR | Truncated observation |
+| --- | --- | --- | --- | --- |
+| `no_memory` | 0 | — | — | 0 |
+| `recent_window` | 0.2727272727272727 | — | — | 120 |
+| `full_context` | 0.6818181818181818 | — | — | 0 |
+| `vector` | 1 | 0.900985737166785 | 0.8943722943722944 | 120 |
+| `hybrid` | 1 | 0.900985737166785 | 0.8943722943722944 | 120 |
+| `temporal_provenance` | 1 | 0.9211168415174328 | 0.9216450216450216 | 120 |
+
+「—」はこの報告要約にない値であり、ゼロや架空の測定ではない。Truncation は
+20-item 上限を含む window/Native context の制約を示し、Recall@20 が完全でも隠さない。
+Full-context Recall@20 は context 全体が収まっても提出順序の最初の 20 ID を採点する
+ため、その値は full-context の予算 skip を意味しない。
+これらは synthetic **dev** の測定であり、内部 held-out gate、人手 precision、
+回答品質、real-task replay ではない。
+
+Dev 後、親は profile、dataset、settings と
+`101993a6d40679c73899ee2454f6b2ad0dadafff` の Git archive を固定してから、
+600-question testを開始した。held-out結果を見て設定を調整していない。
+public datasetは独自digestを持ち、synthetic digestを流用しない。
+
+### Held-out synthetic検索: 測定済みPASS
+
+固定実装で**600問/50 group**、**local embedding 2,200 call**、
+6 armそれぞれ600 queryを測定した。unauthorized IDは0、full-context予算skipも0。
+各groupは32 episodeであり、template生成sourceであって50件の独立した人間のtask履歴ではない。
+
+| Baseline | Recall@20 | nDCG@10 | MRR |
+| --- | --- | --- | --- |
+| `no_memory` | 0 | 0 | 0 |
+| `recent_window` | 0.2727272727 | 0.1403306615 | 0.0839393939 |
+| `full_context` | 0.6636363636 | 0.1668115936 | 0.1722305288 |
+| `vector` | 0.9981818182 | 0.8892563047 | 0.8795083980 |
+| `hybrid` | 0.9981818182 | 0.8892563047 | 0.8795083980 |
+| `temporal_provenance` | 0.9981818182 | 0.9130237727 | 0.9116296101 |
+
+Native 3 armのRecall@20の95% session-group bootstrap区間は
+**[0.9945454545, 1]**。recent-windowと各Native armは600 observationすべてを
+truncatedと記録する。Nativeの20 item上限は網羅的検索を意味しない。
+hybrid/vectorの同値をそのまま報告し、hybrid改善とは主張しない。
+scorerの標本数・検索・順位gateだけの合格であり、内部held-out集合では回答生成、
+意味的支持、実task継続を測定していない。
+
+### Live processing: 失敗を保持し、修正後のlifecycleを測定
+
+永続 pipeline の最初の real extraction call は `invalid_provider_response` で失敗。
+別の Bob source に対する追加の明示許可済み診断では、引用は完全一致したが
+`end=16` と返り、正しくは `end=28` だった。**失敗した model/診断 call の両方を
+accounting に残す**。Dev embedding 440 call とは別であり、自動 retry や
+extract/embed/compact smoke の成功ではない。
+
+`2288fdc`の修正はモデルの wire proposal を四 field
+（`subject`、`predicate`、`value`、`evidence_quote`）へ変更し、host が一意な完全一致
+引用からだけ `start` / `end` を導出する。重複・重なりによる曖昧さも拒否する。
+公開結果は六 field のままで、厳密な `parse_extraction` も変えない。
+先頭一致の選択、曖昧 grounding、意味的権限は導入しない。
+この版の最初のpipelineと別Cora-source診断もsubjectを含まないquoteで失敗した。
+成功前に**抽出/診断4 callの失敗**を記録しており、隠したり実task成功に数えたりしない。
+
+`e4f5d76ad2a4919349054165ce531b92fa650818`は検証を緩めず完全なquoteの指示を
+明確にした。新規lifecycleは正確に**3 call**で、抽出（inferred preference 1公開、
+隔離/重複0）、canonical 768次元embedding、未信頼summary/compactionを行った。
+commit済み予約、typed checkpointの完全保持、tail保持、明示復元、
+snapshot予算2,405 byte、必須tail 1 item、replay、purgeを検査した。
+worker profile digestは
+`739b306984c93b892df0b4ac2c00556d865d4864a48ce20ee7f74ee0cb010ed5`。
+synthetic lifecycle一つの検査であり、人手precision率や必須の実task 20件の一件とはしない。
+
+### Public評価の試行と予算修正
+
+最初の`101993a`公開実行はmodelの不正abstention/citationで停止した。
+`2288fdc`は不正回答を明示的失敗として残すが、そのrunは304 call予約後に中断し、
+最後の結果は不明だった。resume/認定していない。続く`e4f5d76`は412 call、
+全168回答record（予算skip 24、不正回答72、機械的完全一致16）を完了したが、
+v1 QA recipeによる診断に限定する。Native recallのIDからsource全文を復元すると
+snippet用予算を超え得た。
+
+`055215168c83501f676e643853d9d7b58e9f0c5d`のrecipe v2は、検索順の完全なsource
+envelopeを**UTF-8 8,000 byteの根拠予算**に収め、回答ごとのsource ID/byte数/truncationを
+元のNative順位と別に記録する。先頭sourceが大きい場合に後のsourceを選んで埋めず、
+QA prompt/schema、abstention検証を変更・緩和せず、不正出力を再試行しない。
+予算に固定system promptとquestionは含めず、recent-windowは2,000 byteのまま。
+過去runも台帳に残し、同一予算によるQA比較とは扱わない。
+
+### 修正済み公開oracle実測
+
+`055215168c83501f676e643853d9d7b58e9f0c5d`の新規v2 runは
+**14問/14 group/254 source**、六arm、seed 17/29を完了した。
+dataset digest:
+`f81f3442d8a9bfb9020d4923f2c9535771d8f4f2369b1f3fa3efaddcd305cf3c`、
+評価profile digest:
+`59ab9826be24fec46f6a6ac96f6299a21c76118ac56086ea9874d1ece06d1b5f`。
+**412 call**（embedding 268、回答試行144）を実行し、全168予定回答recordを保持した。
+full-context予算skip 24と**`invalid_answer_contract`失敗72**を含む。
+失敗は非skip分母に残し、retryや成功abstentionとして扱っていない。
+
+| Arm | Recall@20 | nDCG@10 | MRR | 機械的完全一致 / 非skip回答 | 不正回答 | QA skip | 最大根拠byte |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| no_memory | 0 | 0 | 0 | 4/28 | 0 | 0 | 2 |
+| recent_window | .104166667 | .085109150 | .125 | 6/28 | 8 | 0 | 1963 |
+| full_context | 1 | .530803156 | .375 | 0/4 | 4 | 24 | 4446 |
+| vector | .958333333 | .724359805 | .697222222 | 2/28 | 20 | 0 | 7712 |
+| hybrid | .958333333 | .724359805 | .697222222 | 2/28 | 20 | 0 | 7712 |
+| temporal_provenance | .958333333 | .724359805 | .697222222 | 2/28 | 20 | 0 | 7712 |
+
+full contextは**12/14問**をskipしたため、その検索平均は非skipの回答可能2問のみで、
+公開sample全体の平均ではない。他のarmの検索平均は回答可能12問を用いる。
+全84 rankingの外部IDは0。Nativeは12/14、recentは14/14 rankingにtruncatedを記録した。
+追加のQA envelope制限は選択済みprefixをさらに切り詰めず、全非skip根拠が
+宣言予算以内だった。QA完全一致は**16/144**、予定168件中24件のskipは別掲する。
+機械的回答結果は低く、**品質合格ではない**。Unsupported claim率や公式
+LongMemEval scoreではなく、回答不能caseへの非abstentionが0でも不正回答72件は消えない。
+
+証跡はoperator-localの`m2-eval-public-0552151/{journal.jsonl,answers.json,
+retrieval-run.json,retrieval-report.json}`。journalは144件のraw回答と失敗を保持し、
+source payloadやraw回答をrepositoryに同梱しない。
+全人手review fieldは`not_reviewed`のままである。
+
+## Scorer が実際に行うこと
+
+[`evaluation.py`](../src/pg_agmemory/evaluation.py) は正規化 dataset と実測した
+source ID 順位を入力とし、その順位から指標を計算する。事前計算した成功率を受け取る
+機能でも、retrieval/model の結果を生成する機能でもない。Service の実行、順位の取得
+方法の証明、model identity の認証、請求照合、回答の意味的採点は自身では行わない。
+
+### Dataset と run の整合性
+
+- Origin は `synthetic`、`public`、`authorized_private` のいずれかを明示し、
+  license、retrieval unit、source revision/file digest、variant を記録する。
+- Source は一意な ID、group ID、timestamp、text を持つ。Question は source ID と
+  重複しない一意な ID、category、language（`en`/`ja`）、dev/test split、query、
+  gold relevance、answer、任意の `as_of` を持つ。
+- Gold 参照は実在し、question の許可対象 group に属さなければならない。一つの
+  group は dev/test に跨がれない。この構造検証は service の tenant ACL 強制を
+  実証するものではない。
+- `EvaluationDataset.digest()` は question/gold/provenance metadata を含む
+  canonical な正規化 dataset の SHA-256。Run は完全一致が必須である。
+  公開 raw file の SHA-256 と正規化 dataset digest は別物で、代用できない。
+- Run は 40 桁 hex の実装 SHA、model name/revision、profile digest、
+  context byte budget、乱数 seed を記録する。これは宣言した run metadata への
+  束縛であり、独立して保存した実行証跡も必要である。
+- Run は `split="dev"` または `split="test"`（既定 test）を宣言する。選択した
+  split の全 question に**六つすべての baseline observation** が必要。
+  Pair の重複、欠落、未知 question、別 split の observation を拒否する。
+  各 ranking は最大 100 個の重複しない source ID。Report は `measured_questions` /
+  `measured_groups` と `held_out_questions` / `held_out_groups` を区別し、
+  dev run の held-out 件数は両方ゼロとする。
+
+Baseline identifier は次のとおり。
+
+| Identifier | 実験側の責務 |
+| --- | --- |
+| `no_memory` | 取得 evidence なし。`ranked_ids` は空 |
+| `recent_window` | 実際に選んだ上限付き recent context とその順序を記録 |
+| `full_context` | 宣言予算内の実 full context 選択、または明示した予算 skip |
+| `vector` | 固定 embedding/profile を用いた実 vector-only retrieval を記録 |
+| `hybrid` | 実 lexical/vector hybrid retrieval を記録 |
+| `temporal_provenance` | 実 temporal/provenance-aware 設定と順位を記録 |
+
+名称だけではその方式を実行した証明にならない。Runner は gold を順位選択に使わず、
+設定、response と source ID の対応、時間、cost/footprint metadata、失敗を保持する。
+`relevant` から順位を作ったり、未実装の baseline を名前だけで代用したりしない。
+
+`skipped_reason="full_context_over_budget"` を使えるのは `full_context` のみで、
+ranking は空とする。架空の score を付けず、明示的に未測定とする。
+Scorer は宣言 byte budget を記録するだけで、model tokenization や context が実際に
+収まったことを検証しない。Full-context skip を含む完全な measurement matrix は、
+六方式の全件実行と同じではない。
+Observation には `context_truncated` も記録し、baseline/category の測定ごとに
+`truncated` 件数を報告する。切り詰められた context を完全なものに見せかけず、
+明示的に skip した full-context row とも混同しない。
+
+### 指標と不確実性
+
+- **Recall@20:** 上位 20 件の一意な relevant source 数を、その question の全 gold
+  source 数で割る。
+- **nDCG@10:** gain は `2^relevance - 1`、順位に対する対数 discount を使う。
+  Gold relevance は厳密な整数 1–3。
+- **MRR:** 最初の relevant source の順位の逆数。見つからなければゼロ。
+  提出 ranking は最大 100 件。
+- 未知 ID と question の group 外の ID は unauthorized として数え、score を
+  改善するために黙って除外しない。
+- Gold evidence がない question の retrieval 指標は未定義で、満点ではない。
+  `unanswerable_with_results` はそのような question に evidence が返った件数であり、
+  hallucination や根拠のない回答を**測定した値ではない**。
+
+Report は全体と category 別の baseline 指標を持つ。95% interval は **session group
+全体を復元抽出**し、各 group 内の question 測定を保ったまま、各再標本で question
+数に応じた平均を計算する。Seed を記録し、bootstrap sample は既定 1,000、
+許容範囲 100–10,000。独立 question bootstrap、人手品質の信頼区間、システム間の
+統計的非劣性の証明ではない。現在の gate は信頼区間の下限でなく平均値を比較する。
+Language field は保持するが、英日 corpus であるだけで言語別実験を実施済みに
+してはいけない。
+
+### 機械的ゲートであって M2 認定ではない
+
+非 public dataset の test split について、scorer は次を報告する。
+
+| Gate | 実装されている検査 |
+| --- | --- |
+| `internal_sample` | Held-out 500 question 以上、50 group 以上 |
+| `observed_scope_leakage` | 提出 retrieval run 内の unauthorized ID がゼロ |
+| `recall_at_20` | 十分な sample、hybrid 平均 ≥ 90%、かつ実測 vector 平均以上 |
+| `ranking_non_regression` | 十分な sample、temporal/provenance の平均 nDCG@10・MRR がそれぞれ hybrid 以上 |
+
+Synthetic data もこれらの**機械的**検査を満たせるが、独立した実世界の受入れ集合には
+ならない。`origin="public"` または `split="dev"` では sample、内部 Recall、
+ranking gate を明示的に `not_measured` とする。公開結果も開発用結果も、
+内部 held-out の受入れに代用できない。
+
+`human_assertion_precision`、`human_compaction_fidelity`、`answer_quality`、
+`real_task_replay`、`public_baseline`、`generated_acl_cases`、`worker_chaos`、
+`deletion_recovery`、`cost_and_footprint` は本 report では `not_measured` のまま。
+Public retrieval report でも `public_baseline` の受入れを自動判定しない。
+完全な実験とその解釈を別途記録する必要がある。
+**`m2_qualified` は常に `false`。**
+別途記録した ACL 10,000-case 実験によって、retrieval-only report の
+`generated_acl_cases` を書き換えるわけではない。Scorer の結果を捏造せず、
+独立した証跡を添付する。
+
+CLI は不正・不完全な入力を exit 2 で拒否する。各入力 file の上限は 32 MiB。
+Report を出力し、gate に失敗があれば exit 1。Exit 0 は機械的 gate の失敗がない
+という意味であり、未測定 gate の合格や M2 認定ではない。
+
+## 実 Native を使う独立 runner prototype
+
+[`evaluation_runner.py`](../src/pg_agmemory/evaluation_runner.py) は scorer や
+background worker とは別の、明示 opt-in の実行 prototype。認定は継続中で、
+実測dev/held-outと独立したpublic試行を上記で区別する。明示的な Native
+ingestion/embedding/retrieval を扱い、自動抽出 job や compaction は実行しない。
+Run が成功しても、それだけで background backend の経路を認定しない。
+
+### 隔離 scope、実経路、baseline 構築
+
+- 運用者が選択 dataset group ごとに**異なる空の隔離 scope** を事前 provision する。
+  Scope-map JSON は対象 group ID だけを一意な scope UUID に対応させる。
+  通常の workload や別 writer と共有してはいけない。Runner は scope を作成せず、
+  管理者権限も取得しない。
+- Native 接続設定は `PGAG_EVAL_API_URL` / `PGAG_EVAL_API_TOKEN` から供給する。
+  取込み前に Native recall で既存 item や truncated coverage を確認する。
+  空でない scope の拒否では取込みも削除もしない。この事前検査は運用者の
+  隔離責任の代わりにはならない。
+- 実 `AsyncMemoryClient` で **source text のみ**を observe し、canonical embedding
+  input を取得、承認済み local embedding provider を呼び、canonical digest/model
+  に束縛した `PutEmbedding` で保存する。Source ID を返却 Native memory ID に
+  対応付ける。Question/gold/category annotation は取り込まず、gold を ranking や
+  model prompt の構築に使わない。
+- Provider backend は embedding model を持つ `local_http` に限定し、外部への
+  自動 fallback は禁止する。明示的に許可した local 評価操作であり、capture 受付から
+  許可を推定するものではない。
+- `no_memory` は evidence なし。`recent_window` は完全な source envelope を
+  **2,000 UTF-8 byte** 以内で選び、`full_context` は全 envelope が **8,000 UTF-8
+  byte** 以内の場合だけ実行し、超えれば question/baseline を明示 skip する。
+  Envelope は source ID、全文、source timestamp を含み、UTF-8 source の一部を
+  切り出して予算に収まったように見せない。Recent 選択は最初の予算超過 envelope
+  で停止する。
+- `vector` / `hybrid` は既存の英日 lexical profile を使う実 Native vector/hybrid recall。
+  最大 20 item、Native context budget は 8,000 byte。`temporal_provenance` は
+  hybrid recall に、存在すれば question の `as_of` を加える。この名称は新しい
+  provenance-ranking algorithm の実装を意味しない。`as_of` がなければ hybrid と
+  同じ request 経路になる。Native coverage と window 選択の truncation を記録する。
+- 未知・他 group の返却 ID は retrieval journal に残し、モデルへ渡さず回答生成を停止する。
+
+既知の source 時刻には timezone-aware ISO 値を要求し、一つの group 内で既知と
+未知の時刻が混在する場合は拒否する。公開 corpus の `timezone-unknown` については、
+記録した**benchmark 受付時刻**を Native `occurred_at` に使い、元の日付は text に
+残す。架空の UTC source date を与える操作ではない。公開 adapter は session の
+対応を保って raw benchmark date 文字列で整列し、opaque ID で同値順序を決める。
+Turn の元の text/date 対応を維持した、決定的な benchmark 順序であって、
+timezone を確定した event timeline ではない。これらの公開 case は Native
+valid-time/as-of 動作を認定しない。
+
+### 独立 profile、呼出し上限、crash accounting
+
+評価profile digestは`native-retrieval-grounded-qa-v2`、全文source-prefix選択、
+正規化provider settings、QA system prompt/schema、context budgetを束縛する。
+過去の検索runはv1 digestを維持する。Background
+`WorkerProfile` の digest **ではなく**、その policy 許可として提示してはいけない。
+Model identity、dataset digest、実装 SHA、split、受付時刻、QA seed は journal に
+記録する。宣言した revision の検証は引き続き運用者の責務である。
+
+`--max-calls` は既定 3000、範囲 1–10000。全 source embedding、question ごとに
+一回の query embedding、要求された各 baseline/answer-seed の組に十分な予算を
+事前に要求する。不足時は matrix を黙って減らさず run を拒否する。
+そのため任意の QA は retrieval-only より大きい明示予算を必要とする場合がある。
+
+各 provider call は **network I/O 前**に非公開 `journal.jsonl` へ
+`billing_unknown=true` として予約し、flush と `fsync` を行う。
+検証済み完了時に completion record を追加し、失敗・crash では結果不明が残り得る。
+自動 retry、fallback、使用済み runner instance/journal の resume はない。
+意図的に別 run を始める前に不明な実行を照合する。新しい出力 directory は、
+前回の call が実行されなかった証明ではない。この run 単位の journal/上限は、
+background DB policy の永続 epoch 単位予算でも exactly-once 課金保証でもない。
+
+Run ごとにランダムな source namespace と idempotency key を使い、以前の run の
+dedup 済み episode を再利用しない。`finally` では**今回の run が受付結果として
+追跡した Native ID のみ**を上限付き batch で purge し、scope 全体は削除しない。
+Scope を空にするために既存 object を削除することもない。Hard crash、
+結果不明の Native 書込み、cleanup 失敗は運用者の照合が必要であり、prototype は
+disaster recovery や provider log/cache の削除を証明しない。
+
+### 任意の回答診断であり品質 judge ではない
+
+`--answers` には text model と明示 output-token limit の設定が必要。
+Skip されていない question/baseline ごとに、seed **17 と 29**、temperature 0、
+一つの固定 system prompt で二つの回答を要求する。Provider が制御を受理しても、
+model 実行の決定性を証明したことにはならない。
+
+未知 field を拒否する answer schema は `answer`、厳密 boolean の `abstained`、
+最大 20 個の重複しない `citations` を持つ。Abstention では answer/citation が空、
+回答では空でない text と、供給した source ID 内の citation が必要である。
+Prompt は evidence を未信頼として扱い、否定・不確実性を維持し、根拠がなければ
+回答を控えるよう要求する。Schema/citation の集合検査は意味的支持や人間の承認を
+確立しない。
+
+不正な応答・contract・citationは`failure_code`と`exact_match=false`で明示的に
+記録し、skipや成功abstentionに数えない。失敗caseをretryせず他の宣言済みcaseを
+続行する。transport障害は引き続きrunを停止し、partial journalを保持する。
+
+`exact_match` は回答可能 question では strip/case-fold 後の文字列の機械的一致、
+回答不能 question では abstention の検査である。後者で回答を控えなかったことを
+`unanswerable_nonabstention` に記録する。全 record は
+`human_review="not_reviewed"` のまま。上流 LongMemEval の LLM judge、
+意味的回答品質、人手 assertion precision、人手 compaction review **ではない**。
+Context budget は evidence 選択/Native pack の上限であり、provider request 全体や
+model tokenization の上限ではない。
+
+出力先 directory は新規でなければならない。成功時には `journal.jsonl`、
+`retrieval-run.json`、`retrieval-report.json`、`answers.json` を保存する
+（QA無効時のanswer listは空）。Runner完了（`measured`または`measured_with_answer_failures`）は
+gate 判定ではない。Report を確認するか、独立 scorer の gate に応じた exit status を
+使う。Dev 診断を含め、出力は `m2_qualified=false` を維持する。
+
+### 明示 opt-in の live 評価 harness
+
+[`tests/test_evaluation_live.py`](../tests/test_evaluation_live.py) は実 Native
+SDK/HTTP 経路と承認済み local model で prototype を実行する。明示 opt-in がなければ
+skip する。Standalone CLI と異なり、disposable PostgreSQL/runtime fixture を用い、
+異なる空の test scope を harness 自身が作る。通常の workload DB に向けてはいけない。
+
+| 環境変数 | 必要な用途 |
+| --- | --- |
+| `PGAG_M2_EVALUATION_MODE` | 明示的な `dev`、`test`、`public`。未設定なら skip |
+| `PGAG_LIVE_PROVIDER_CONFIG` | Harness の固定 model に一致する承認済み local profile file |
+| `PGAG_M2_EVALUATION_OUTPUT` | アクセス制御された新規operator artifact directory。既存は不可 |
+| `PGAG_M2_IMPLEMENTATION_SHA` | Run で使用する実装の完全な 40 桁 hex SHA |
+| `PGAG_M2_LONGMEMEVAL_ORACLE` | Public mode で追加必須。完全一致の固定 oracle artifact |
+
+Harness は運用者が宣言する `qwen2.5:7b` / `qwen3-embedding:0.6b` の完全な
+`ollama-sha256:` revision、
+local-only backend、`max_output_tokens=512` を検査する。これは配置済み model weight
+の独立した証明ではない。呼出し上限は 3000、context byte budget は 8000。
+
+全 mode で六つの retrieval arm を実行する。Dev/test は synthetic corpus を使い、
+この harness では QA を要求しない。**Public mode は QA seed 17 と 29 を追加する**。
+Standalone runner の独立した `--answers` は適切な承認・予算がある場合だけ利用する。
+Public の full-context 超過も明示 skip とし、架空の回答結果にしない。
+
+まず dev を実行して artifact を記録し、held-out test/public の**前**に dataset/split、
+実装、model/profile/prompt、予算、選択・採点方法を freeze する。Test 結果で調整した
+同じ run を独立した held-out 受入れと呼び替えてはいけない。Test mode は機械的な
+600 question / 50 group と retrieval gate を assert するが、M2 完了を assert する
+mode はない。Dataset、scope-map、journal、ranking、report、任意の answer は管理
+された local artifact とし、repository payload にしない。
+
+```bash
+# 必須の profile/output/implementation 環境変数を設定した、
+# 承認済み disposable DB/runtime test 環境だけで実行する:
+PGAG_M2_EVALUATION_MODE=dev pytest tests/test_evaluation_live.py -q
+# Dev freeze 後、次の run ごとに新しい出力 directory を選ぶ:
+PGAG_M2_EVALUATION_MODE=test pytest tests/test_evaluation_live.py -q
+# Public mode では PGAG_M2_LONGMEMEVAL_ORACLE も必要。
+PGAG_M2_EVALUATION_MODE=public pytest tests/test_evaluation_live.py -q
+```
+
+これらは実行インターフェースであって、**追加の実行記録ではない**。
+実際の実行を示すのは、上記で別途報告した測定のみである。
+Offline 契約 test や fake-provider Native integration の結果は、live ranking、
+answer、実コストの代わりにならない。
+
+### 独立した三回呼出し real-model processing smoke
+
+[`tests/test_processing_live.py`](../tests/test_processing_live.py) は
+`PGAG_M2_LIVE_PROCESSING=1`、`PGAG_LIVE_PROVIDER_CONFIG`、harness の固定 local
+model、承認済み disposable `PGAG_TEST_DATABASE_URL` で明示 opt-in する。
+Retrieval 評価とは別であり、成功した一つの smoke は永続 `extract` / `embed` /
+`compact` job を通じ、抽出・embedding・要約の**三回だけ実 provider を呼ぶ**。
+自動 retry は行わない。
+
+Smoke は network 前の予約、result/model/input lineage、inferred または quarantined
+の抽出、canonical embedding 永続化、正確な checkpoint state、未信頼 summary、
+保持された tail、明示 snapshot restore/hook context と予算、call accounting を残す
+purge を検査する。Smoke が通っても quarantined candidate が人間の承認済みには
+ならない。この一件・三回の call は precision、compaction fidelity、実 task の完了、
+retrieval 品質、性能受入れを測定しない。
+
+```bash
+# 実 local-model call を行う opt-in。通常の test では有効にしない。
+PGAG_M2_LIVE_PROCESSING=1 pytest tests/test_processing_live.py -q
+```
+
+初期の抽出失敗と診断は上記に保持する。`e4f5d76`の新しい3 call pipelineは成功した。
+dev/held-out検索とpublic診断は別の実験であり、相互に品質認定を代用しない。
+
+## 内部 synthetic fixture: 構造カバレッジのみ
+
+[`evaluation_fixtures.py`](../src/pg_agmemory/evaluation_fixtures.py) は本プロジェクトの
+MIT synthetic source を生成する。私的会話でも公開 benchmark のコピーでもない。
+現在の generator の宣言は次のとおり。
+
+- 既定 seed は 42。明示する整数 seed の範囲は 0–2147483647。
+- Dataset ID は `pg-agmemory-internal-synthetic-v1-seed-{seed}`、template revision は
+  `internal-synthetic-templates-v1`。Template label は Git SHA ではない。
+- `source_file_digest=null`。Synthetic generator が hash を主張する、ダウンロード済み
+  source-corpus file は存在しない。
+- 60 group、**1,920 source**（group ごとに 32）、**720 question**。Dev は 10 group / 120 question、
+  held-out は 50 group / **600 question**。以前の計画見積りの全体 600 / held-out
+  500 を置き換えた fixture 件数であり、評価結果ではない。
+- 12 category: `same_name`、`exact_reference`、`temporal_history`、
+  `temporal_current`、`negation`、`uncertainty`、`preference`、`source_update`、
+  `unanswerable`、`quoted_injection`、`failed_approach`、`next_steps`。
+- 英日は全体で各 360 question、dev 各 60、test 各 300。各 category は 60 question、
+  各言語 30、test は各言語 25。言語/category ごとに source/query template が 3 系統ある。
+- 認可 group 間の同名人物、正確な識別子、timezone-aware ISO source timestamp、
+  日付付き更新、否定・不確実な主張、引用された敵対的指示を含む。Scope と時刻による
+  可視性を適用した候補集合にも、近い話題の distractor を含む 20 超の source があり、
+  top 20 が単に適格 group 全体になる構成ではない。
+- Seed による opaque な 128-bit ID を `g_`、`s_`、`q_` の別 namespace で生成する。
+  Source は question/answer/gold の描画より前に独立して生成し、question や gold の
+  template/mapping を変更しても source corpus は変わらない。Question ID、
+  gold answer、category、relevance annotation は memory への取込み対象ではない。
+  Gold は template 由来で、人間による意味的判定ではない。
+- 過去の `as_of` は旧・新 source の間に置き、現在の gold は新 source のみを選ぶ。
+  Source 訂正の旧・新 evidence は 1/3、next steps の失敗した方法・後の計画は 2/3
+  の grade を持つ。Unanswerable 60 question は gold/answer が空で、injection の
+  answer は引用に権限がないことを明示する。
+
+Run を固定する前に、**実際に生成した dataset** の digest と generator 実装を記録する。
+上記の dev digest と retrieval 測定は一つの記録済み実体を示すもので、generator
+だけでは model score を予測しない。Held-out question に
+合わせた調整、seed 変更後の同一 dataset 扱い、group 数の real task replay への
+読み替え、模擬 group 境界を 10,000 件の実 ACL test と数えることは禁止する。
+自然対話の多様性、モデル抽出精度、人手の圧縮レビュー、実 task の成功は未実証である。
+Fixture 生成は基盤 checkpoint `7343272` に含まれる。上記の unit/integration 契約
+検査の報告は retrieval/model 品質の結果ではない。正確な正規化 dataset/profile digest
+と実 dev 結果は上記に記録した。基盤 native CI は両 architecture で成功したが、
+いずれも統合 M2 ツリーの認定や、synthetic dev 結果の held-out 受入れへの変更ではない。
+
+## 公開診断: pin した LongMemEval oracle
+
+[`evaluation_public.py`](../src/pg_agmemory/evaluation_public.py) は運用者が提供する
+artifact の独立 normalizer。Dataset のダウンロードや、正規化 document 全体の
+memory への取込みは行わない。
+
+| Provenance 項目 | 固定値 |
+| --- | --- |
+| Dataset | `xiaowu0162/longmemeval-cleaned` |
+| Artifact | `longmemeval_oracle.json` |
+| Dataset revision | `98d7416c24c778c2fee6e6f3006e7a073259d48f` |
+| Raw SHA-256 | `821a2034d219ab45846873dd14c14f12cfe7776e73527a483f9dac095d38620c` |
+| 正確な byte 数 | `15388478` |
+| 宣言 license | MIT |
+| Upstream code | `xiaowu0162/LongMemEval` |
+| Upstream code revision | `9e0b455f4ef0e2ab8f2e582289761153549043fc` |
+| Selector seed | `pg-agmemory-public-v1` |
+| 正規化 ID | `longmemeval-cleaned/oracle/pg-agmemory-public-v1` |
+| Variant / unit | `oracle-reader-diagnostic` / `turn` |
+
+出典: [固定 dataset card の MIT 宣言](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/blob/98d7416c24c778c2fee6e6f3006e7a073259d48f/README.md)、
+独立した [code の MIT notice](https://github.com/xiaowu0162/LongMemEval/blob/9e0b455f4ef0e2ab8f2e582289761153549043fc/LICENSE#L1-L13)、
+[公式 artifact link](https://github.com/xiaowu0162/LongMemEval/blob/9e0b455f4ef0e2ab8f2e582289761153549043fc/README.md#L34-L42)。
+Code revision と dataset revision は別物で、code license だけでは dataset の条件を
+証明しない。実際の[固定 artifact](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/98d7416c24c778c2fee6e6f3006e7a073259d48f/longmemeval_oracle.json)
+は `resolve` URL にある。対応する `raw` は LFS pointer であって dataset ではない。
+
+Loader は正確な raw byte 数、SHA-256、上流 file の 500-record 形式を強制する。
+Abstention、knowledge-update、multi-session、single-session-assistant、
+single-session-preference、single-session-user、temporal-reasoning の 7 strata
+から各 2 question を決定的に選ぶ。固定 seed と question ID を用いて採点前に選択し、
+**14 question** の reader diagnostic を作る。内部の 500-question 受入れ集合ではない。
+
+各 question に opaque group、history の各 turn に opaque source ID を与える。
+Source text は raw source-date 文字列、role、turn content のみ。
+`has_answer` は **scorer 専用の turn-level gold** であり、gold answer、
+answer-session annotation、category、question を memory や retrieval 選択の
+ヒントとして取り込んではいけない。Abstention question の gold evidence は空。
+正規化 dataset は source と gold の両方を持つため、取込みは **source record のみ**
+とし、JSON 全体を model context に渡さない。
+
+日付は source/question text に保持し、source `occurred_at` は
+`timezone-unknown`。Adapter は UTC offset や benchmark の valid-time 意味を
+捏造しない。これらの日付だけでは Native の temporal/as-of retrieval を検証できない。
+上流の session array は時系列順とは限らない。Adapter は date/session ID/turn array
+を対応付けて zip した**後**、raw date 文字列で整列し、opaque session ID で同値順序を
+決める。Timezone を推測することはない。
+Opaque ID は元の session ID や abstention suffix からの annotation 漏洩を防ぐが、
+oracle corpus を現実的な大量 distractor 付き retrieval benchmark には変えない。
+
+**Oracle は LongMemEval-S retrieval ではない。**
+[公式 variant 定義](https://github.com/xiaowu0162/LongMemEval/blob/9e0b455f4ef0e2ab8f2e582289761153549043fc/README.md#L74-L88)
+では oracle は evidence session のみを含み、現実的な S retrieval workload と
+異なる。S artifact は `longmemeval_s_cleaned.json` で、本評価用には取得していない。
+宣言した oracle artifact を S、M、V2、pin のない dataset-viewer subset に黙って
+差し替えてはいけない。
+
+本 scorer の gold 件数に対する Recall@20 は、上流の
+[recall_any / recall_all](https://github.com/xiaowu0162/LongMemEval/blob/9e0b455f4ef0e2ab8f2e582289761153549043fc/src/retrieval/eval_utils.py#L24-L29)
+とは異なる。[公式 QA evaluator](https://github.com/xiaowu0162/LongMemEval/blob/9e0b455f4ef0e2ab8f2e582289761153549043fc/src/evaluation/evaluate_qa.py#L24-L43)
+は LLM judge を使うため、これらの retrieval score は公式の回答品質 protocol を
+再現したものではない。結果はその reader diagnostic として報告し、公開 benchmark
+全体と同等、内部 Recall 90% gate、人手 assertion precision、20 real task replay
+として報告しない。公開runの版と根拠予算修正は上記の記録を参照し、
+完走した診断を人手回答品質の認定とは扱わない。
+
+### LoCoMo は今回の対象外
+
+[LoCoMo](https://snap-research.github.io/locomo/) data には
+[CC BY-NC 4.0](https://github.com/snap-research/locomo/blob/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/LICENSE.txt#L116-L155) が適用される。
+利用には**実際の非営利目的**の審査が必要であり、企業の実験を「研究」と呼ぶだけでは
+十分でない。Data を commit しなくても使用目的の制限はなくならない。
+Evaluation runner は LoCoMo を取得・評価していない。別途の provenance 調査では
+小さい JSON をメモリ上で読み、形式・metadata を確認したが、file 保存も評価・model
+呼出しも行っていない。このため一律に「一度もダウンロードしていない」とする主張は
+不正確である。LoCoMo は本評価用に未承認、未評価、bundle されていない状態である。
+
+Data や evaluator code を本プロジェクトの MIT license で bundle してはいけない。
+Repository の code license は dataset の再許諾ではない。今後利用するなら目的の
+承認、適用される帰属・license 表示、固定 artifact、独立した実験宣言が必要である。
+[固定 dataset 説明](https://github.com/snap-research/locomo/blob/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/README.MD#L8-L26)
+も公開 conversation data と未公開 image を区別している。Text-only のアクセスで
+multimodal coverage を主張してはいけない。
+
+## 結果を捏造せずに再現する
+
+次は既存インターフェースの例であり、評価を実行したという主張ではない。
+
+```bash
+# Scorer 専用 question/gold を含む synthetic dataset を出力する。
+python -m pg_agmemory.evaluation_fixtures --seed 42
+
+# ORACLE_FILE は運用者が提供した完全一致の pinned artifact。
+python -m pg_agmemory.evaluation_public \
+  --longmemeval-oracle "$ORACLE_FILE"
+
+# DATASET_FILE は正規化 JSON、RETRIEVAL_RUN_FILE は実測 ranking。
+python -m pg_agmemory.evaluation \
+  --dataset "$DATASET_FILE" --run "$RETRIEVAL_RUN_FILE" \
+  --bootstrap-samples 1000
+```
+
+次の runner は**実際に local model を呼ぶ**。データ利用の承認、空の隔離 scope の
+provision、profile review 後にのみ使用する。この例は dev を選ぶが、実行済みの
+記録ではない。既定 split は test。接続認証情報は literal でなく環境から供給する。
+
+```bash
+# PGAG_EVAL_API_URL / PGAG_EVAL_API_TOKEN は運用者の環境から供給する。
+# Scope map は選択した dev group だけを含める。
+python -m pg_agmemory.evaluation_runner \
+  --dataset "$DATASET_FILE" \
+  --scope-map "$SCOPE_MAP_FILE" \
+  --profile "$LOCAL_PROFILE_FILE" \
+  --implementation-sha "$IMPLEMENTATION_SHA" \
+  --output "$NEW_RUN_OUTPUT_DIRECTORY" \
+  --split dev --max-calls 3000
+# 二つの seed による QA call が承認され、予算確保済みの場合だけ --answers を加える。
+```
+
+生成 dataset、question 単位の run、provider 出力は、承認済み・アクセス制御済みで
+version controlから除外したoperator artifact領域に保管する。大きな生成
+corpus/result、認証情報、私的会話、benchmark payload のコピーを commit しない。
+Repository に置く証跡はレビュー済み metadata、provenance、集計結果、管理された
+artifact への参照だけとする。
+
+実 run 前に dataset digest/group split、全六 baseline の定義と予算、実装 SHA、
+完全な model pin、承認済み local profile、recipe version、selection/bootstrap seed、
+許可されたデータ用途を固定する。Gold は service 取込み、model prompt、ranking
+構築に渡さない。実 request/result、失敗、明示 skip を記録し、モデル配置、
+mock response、収集件数、scorer 成功から品質を推測しない。
+Capture policy だけでは provider egress を許可しない。
+
+## 残る受入れ証跡と人間の入力
+
+自動生成された inferred assertion、隔離 proposal、caller が採用した reported
+assertion は別々の評価 cohort とする。実装済みの
+`POST /v1/jobs/{job_id}/candidates/{ordinal}/adopt` は caller の
+`explicit_intent=true`、`expected_input_digest`、`reason` を受け付けるが、lineage には
+`human_review_verified=false` を記録する。これは caller の明示宣言であり、
+人間のレビュー確認や意味的な真実の証明**ではない**。採用成功や reported という
+ラベルは、独立した precision label や人手品質ゲートの合格を供給しない。
+別途の人手レビュー用 sample を選ぶ際も、サーバーが記録した
+source/span/model/prompt/job lineage を保持する。採用しても元の disposition は
+`quarantined` のままで、別の `adopted_assertion_id` と `adopted_by` が一度の採用を
+識別する。この proposal を自動公開として数えたり、採用を他の assertion の
+supersession とみなしたりしてはいけない。
+
+| 義務 | 現在の証跡 / 残る要件 |
+| --- | --- |
+| 人手 assertion precision ≥ 95% | 承認済み代表 source、支持・否定・不確実性の判定基準、独立した人手 label、sampling と分母の記録 |
+| 人手 compaction fidelity ≥ 98% | 意味、重要事項、欠落の人手レビュー。Typed state の完全複写だけでは不足 |
+| 20件以上のreal task replay | 許可済みの実履歴と固定開始条件。非圧縮baselineに対する継続成功率の低下2 percentage point以内。Synthetic groupはtaskではない |
+| 更新の正確さ | 自然言語更新95%以上、決定的更新100%。構造fixtureだけでは意味的正しさを測定しない |
+| 根拠なし回答2%以下、重大case 0 | 失敗を保持した独立support reviewが必要。機械的完全一致やabstention検査はこの測定ではない |
+| 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
+| Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
+| 削除とbackup復旧 | 隔離restoreと最新削除/ACL replayで復活0。worker再開前に最新model予約/quotaも照合し、provider側artifactを含める |
+| 公開 baseline と回答品質 | 版を固定したoracle診断は不正回答/失敗/予算修正も保持。機械的QAは人手レビューの代わりにならない |
+| Cost、latency、footprint | dev 440/held-out 2,200 embedding call、抽出/診断の失敗4 callと成功processing 3 call。public試行は別会計で、全体の金銭/latency/footprint認定ではない |
+
+人手precision/fidelity、real-task、backup復旧は引き続き**未測定**。
+held-out synthetic検索と限定したprocess-crash実験は独立して測定した。
+生成ACLの成功をこれらの独立gateへ流用してはいけない。
+
+人間が dataset と local processing を許可し、代表的な real task を選び、
+評価・評定手順を承認し、独立した人手 review を供給する必要がある。LoCoMo を
+検討するなら実用途に即した license 判断も追加で必要となる。デフォルト拒否を
+維持して非モデルの構造検証を行うだけなら、それ自体に人手判断を追加する必要はない。
+ただしその検証では上記の不足を解消できない。Model judge は診断補助になり得るが、
+要求される人手 precision/fidelity の代替にはならない。
+
+次の限定された再開点は、統合された自動 synthesis/embedding/compaction 実装の認定と、
+別々に記録する retrieval、人手品質、task replay、ACL、chaos、復旧実験である。
+一つの合格が他の合格を意味するわけではない。

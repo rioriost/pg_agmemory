@@ -2,6 +2,26 @@
 
 [English](INFERENCE_PROFILES.md) | [README](../README-jp.md)
 
+## 現在のv27追加契約
+
+現在は**service 0.0.27 / API v1 / schema 13**です。明示operator推論には
+inspect/summarize/embedに加えて`pg-agmemory infer extract --config FILE`を提供します。
+HTTPとAzure generateは抽出に対応し、Azure Languageは対応しません。
+model proposalの4 fieldから信頼するcodeが一意な完全一致quote spanを導出し、
+返すcandidateは未信頼の6 fieldです。[ADR 0027](adr/0027-typed-extraction-jp.md)を参照してください。
+
+profile fileだけでは背景処理を許可しません。別途、既定拒否・local専用workerに対し、
+管理者がdigest・consent label・recipe・call/入力/出力上限を承認します。
+[現行worker運用](operations/README-jp.md#schema-13-background-processing)を使ってください。
+remote OpenAI互換/Azure profileは明示operator経路のままで、自動worker送信には使えません。
+prompt変更後は新しいworker digestの許可が必要です。実modelの現行証跡と失敗履歴は
+[EVALUATION](EVALUATION-jp.md)に分離します。
+
+## 保存されたv24/v25 profile証跡
+
+以下の版・resource数・8 callの測定は過去時点の記録です。v27の38 resourceや
+新しい抽出・embedding job・compaction・評価結果の適格性を示しません。
+
 このprofileはprovider呼出しを明示的に選択するもので、自動synthesis、extraction、
 ingestion、公開、compactionを有効化しません。現在のv0.0.25/schema 10 follow-up向けの実用guideであり、
 **M2完了ではありません**。

@@ -2,7 +2,48 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Current bounded milestone: v0.0.26/schema 11 scope capture policy.
+## v0.0.27 / schema 13: implemented core paths, M2 acceptance incomplete
+
+The current runtime is **service 0.0.27 / API v1 / schema 13**,
+stage **`m2-background-processing`**, with exact migration history 1–13,
+PostgreSQL 18.6 and `vector` 0.8.6 in `public`.
+All adapters must match; Native/SDK has 38 resources and MCP retains four tools.
+
+New current contracts are specified in [ADR 0028](adr/0028-background-processing.md):
+default-deny synthesis policy, local profile/prompt pinning, durable
+extract/embed/compact jobs, unknown-call fencing, quarantine and explicit
+caller adoption (`human_review_verified=false`), exact typed working snapshots,
+and explicit read-only after-compaction restoration. `observe.auto_extract` and
+`auto_embed` default false; an ordinary observation still creates no model job.
+The snapshot hook remains disabled unless its separate operator byte budget is set.
+
+Implementation `9458034a47b6f7c9901e569a32f198f56369fbf7` passed
+[native amd64/arm64 CI 35322238611](https://github.com/rioriost/pg_agmemory/actions/runs/35322238611):
+1,487 tests / 8 optional live skips on each architecture, including all packaged
+production smokes and the new synthetic M2 lifecycle.
+The separate real three-call local-model lifecycle used
+`e4f5d76ad2a4919349054165ce531b92fa650818`.
+Do not attribute those results to a later publication commit.
+[EVALUATION](EVALUATION.md) records the separately pinned 600-question held-out
+retrieval and 10,000-case actual authorization experiments, failed attempts, and
+remaining gates. None establishes human semantic precision or M2 completion.
+The budget-corrected public oracle diagnostic at `0552151` completed 412 calls
+but retained 72 invalid outputs among 144 answer attempts; it is not a QA pass.
+
+Outstanding acceptance includes human assertion support (95%), human important
+claim fidelity (98%), at least 20 executed real-task replays/continuation
+non-regression, answer-quality gates, and isolated restore with latest deletion/
+ACL replay. Backup retention and recovery remain operator-managed; no automatic
+DR or full-erasure qualification is claimed.
+
+## Retained v26 contract and historical evidence
+
+The version-specific text below records the schema-11 contract and its earlier
+history. Its “current” version labels, 31-resource counts, no-model-job statements
+and next-work notes are **historical**, not overrides of the schema-13 contract
+above. Unchanged capture-policy and default-off behavior remain available.
+
+**Historical bounded milestone: v0.0.26/schema 11 scope capture policy.
 Implementation `c07630009ff4dcc34542e3ea80064d4f10c4d8b5` passed local qualification
 and exact-SHA native Docker amd64/arm64 CI.
 Verified v0.0.25 and earlier results remain historical evidence, not v0.0.26 qualification.

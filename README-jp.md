@@ -7,7 +7,44 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**現在の上限付きmilestoneはv0.0.26/schema 11のscope capture policyです。
+## 現在の開発契約: v0.0.27 / schema 13
+
+Stage **`m2-background-processing`** は、管理者が明示許可する既定拒否の
+local extraction/embedding job、隔離candidateのcallerによる採用、
+同一scopeのworking compactionを追加します。Native API/SDKは**38 memory resource**、
+MCPは4 toolです。read-only hookは明示snapshot IDと別途設定したbyte予算により
+working snapshotを復元できます。通常のobserve/hookの既定動作は維持します。
+
+抽出modelはsubject/predicate/value/完全一致quoteを提案し、信頼するcodeが一意な
+Unicode spanを導出します。自動公開はpolicyで許可したliteral preferenceに限定し、
+検証済みの意図・意味的真実とは扱いません。他candidateは未信頼のままです。
+model待機中はmemory transactionを保持せず、永続予約、lease/epoch検査、
+purge依存関係でblind retryと古い結果の公開を防ぎます。
+
+**M2は未完了で、本番releaseではありません。** 50 group・600 held-out synthetic問で
+hybrid Recall@20は99.818%（vector-onlyと同値）、実Native APIの不正認可10,000件で
+予期しない結果0件、実workerのSIGKILL復旧、local modelを3回呼び出す
+抽出・embedding・圧縮・復元を確認しました。人手precision/fidelity評価、
+20件以上の実task replay、災害復旧の代わりにはなりません。
+公開oracle QA診断は回答試行144件中72件が不正出力で、回答品質は認定していません。
+完全一致の検証SHA、失敗履歴、公開baselineの状態は
+[EVALUATION](docs/EVALUATION-jp.md)、現行APIと管理commandは
+[ADR 0028](docs/adr/0028-background-processing-jp.md)と
+[schema 13運用](docs/operations/README-jp.md#schema-13-background-processing)を参照してください。
+
+API/worker/SDK/MCP/hookは**service 0.0.27 / API v1 / schema 13**で揃えます。
+更新にはmigration 012–013が必要で、sourceのrollbackだけではDBを戻せません。
+管理者が`scope-synthesis`でlocal worker profileを固定するまでmodel処理は無効です。
+capture権限だけではmodel呼出しを許可しません。
+
+## 保存されたv26 guideと過去の証跡
+
+以下のversion固有手順は**v0.0.26/schema 11**の記録であり、現在のbinaryの
+capability条件や追加processing APIではありません。v27には上記の現行契約と
+schema 13運用を使ってください。変更しない既定off経路のAPI例は参考にできますが、
+過去のversion検査・migration対象をv27の現行手順として実行しないでください。
+
+**過去の上限付きmilestoneはv0.0.26/schema 11のscope capture policyです。
 実装`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`のlocal適格性確認と
 完全一致SHAのnative Docker amd64/arm64 CIは合格しました。
 以下の検証済みv0.0.25以前の結果は過去の証拠であり、v0.0.26の適格性確認ではありません。

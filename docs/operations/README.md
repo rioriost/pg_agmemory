@@ -8,6 +8,112 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 13 background processing
+
+**Current: service 0.0.27 / API v1 / schema 13**, stage
+`m2-background-processing`; PostgreSQL 18.6 / pgvector 0.8.6 are unchanged.
+This section and [ADR 0028](../adr/0028-background-processing.md) supersede the
+version-specific v26 operations preserved below. Read [EVALUATION](../EVALUATION.md)
+before interpreting a passing lifecycle check as a quality or recovery guarantee.
+
+For an existing installation, back up the database and securely preserve its
+role/secret configuration, stop and drain **all** API/worker/adapter writers and
+automatic restarts, and run `pg-agmemory migrate` from the matching v27 image with
+`PGAG_ADMIN_DATABASE_URL`. Migration 012 installs synthesis policy, durable call
+reservations and candidate provenance; 013 installs working streams/snapshots and
+explicit candidate adoption. Start only matching v27 components after verifying
+the exact ledger **1–13**, `vector` 0.8.6 in `public`, readiness and authenticated
+capabilities. Runtime connections must remain non-owner `NOSUPERUSER NOBYPASSRLS`
+members of `pgag_runtime`; no policy UPDATE or privileged bypass is granted.
+
+For a fresh, disposable deployment, build the existing Dockerfile runtime target,
+run the same migration, provision a verified subject, and configure the existing
+JWT/public-key and restricted runtime DSNs described below. Do not share the admin
+DSN with the API or worker. A database role created in another database of the
+same cluster is not an independent disposable cluster for migration tests.
+
+**Rollback requires a matching pre-migration database backup and matching code.**
+Schema-11 binaries reject schema 13. Never delete ledger rows or drop new tables
+to pretend the migration was reversed. Restoring older backup contents must remain
+isolated until the latest deletion and access-revocation records are reconciled;
+automatic ledger replay/DR is not implemented or qualified.
+
+Restored synthesis policies, queued jobs, call reservations and quotas can also
+be stale. **Keep restored model workers stopped** until the latest independent
+reservation/accounting records are reconciled. Deletion/ACL replay alone cannot
+prevent duplicate external calls or quota rollback; an old backup is not proof
+that an apparently pending job never called its provider.
+
+### Authorizing a local model worker
+
+Installing a provider or enabling capture never enables synthesis. Operator JSON
+profiles must use `local_http`, pin model revisions and explicitly cap text output
+(for example `max_output_tokens: 512`). Use an operator-controlled loopback model
+server; do not weaken the provider endpoint restrictions for container networking.
+The worker profile digest includes actual prompts, so regenerate/review it after
+prompt or profile changes.
+
+```bash
+# Pure configuration inspection: no inference or DB access.
+pg-agmemory worker --provider-config local-worker.json --print-profile-digest
+
+# Administrator shell only; DSN is supplied by the approved secret environment.
+pg-agmemory scope-synthesis get --tenant-id "$TENANT_ID" --scope-id "$SCOPE_ID"
+pg-agmemory scope-synthesis set --tenant-id "$TENANT_ID" --scope-id "$SCOPE_ID" \
+  --expected-access-epoch "$EXPECTED_ACCESS_EPOCH" \
+  --policy-file approved-synthesis-policy.json
+
+# Separate restricted-runtime shell; never use the administrator DSN here.
+pg-agmemory worker --subject "$WORKER_SUBJECT" --provider-config local-worker.json --once
+```
+
+An approved policy must set `enabled`, the computed `profile_digest`, exact
+`consent_references`, allowed `kinds`, and bounded `max_calls`/input/output limits.
+Use `publish_predicates: []` for quarantine-only extraction; automatic publication
+additionally requires the built-in literal-preference admission rule. Omitted
+policy fields reset to defaults; `set` is not a merge. Disable using a file
+containing `{}` and a fresh tenant epoch CAS. Inspect state after an unknown
+administrative outcome rather than blindly repeating the write.
+
+Use Native/SDK `ProcessMemory` for explicit extract/embed jobs, or the optional
+`Observe.auto_extract`/`auto_embed` flags. The worker without `--provider-config`
+continues structured jobs but does not claim model jobs. Poll job state separately
+from original episode admission. Unknown reservations/calls are terminal
+`billing_unknown` on recovery: neither policy changes nor `retry_of` authorize a
+blind re-call. Call metadata survives purge without source text so deletion cannot
+reset quotas.
+
+### Working compaction and hook restoration
+
+Append admitted episode references to a server-sequenced working stream, create a
+typed checkpoint, then request `CompactWorking` with that head and the covered
+prefix. Compaction preserves typed state exactly and stores model summary as
+**untrusted**, preserving newer tail events. It never executes or approves actions.
+Use the seven new Native/SDK interfaces in ADR 0028; MCP does not expose them.
+
+The legacy four-field hook output is unchanged without a snapshot reference.
+For `after_compaction` only, provide `working_snapshot_id` and set trusted
+`PGAG_HOOK_WORKING_SNAPSHOT_BUDGET_BYTES` (1–65536; default 0 disables it).
+This is **additional** to the recall-pack budget. The hook validates current
+scope/epochs and requires all tail evidence to fit; paginated/incomplete tails or
+insufficient budgets fail instead of silently losing state.
+The host must still discard already-delivered context after revocation.
+
+### Reproduction and remaining acceptance
+
+`bash scripts/test-containers.sh container` runs local checks in Apple Container;
+CI uses native Docker amd64/arm64. Production M2 smoke uses exactly three
+synthetic loopback model responses; it is not live model quality.
+The explicit local-model and generated-ACL opt-ins, immutable run manifests,
+failed-call accounting and human/task-review requirements are in EVALUATION.
+No new Azure resources or paid model calls are needed for these local experiments.
+
+## Retained v26 operations
+
+The remaining version-specific procedures are the **v0.0.26/schema-11 historical
+guide**, including its upgrade and validation evidence. They do not change the
+current schema-13 version/role requirements or authorize background model egress.
+
 ## Bootstrap and role separation
 
 Use the pinned prebuilt upstream pgvector DB profile below and the application

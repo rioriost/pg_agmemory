@@ -2,7 +2,44 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.26/schema 11のscope capture policyです。
+## v0.0.27 / schema 13: core経路は実装済み、M2受入れは未完了
+
+現在のruntimeは**service 0.0.27 / API v1 / schema 13**、
+stage **`m2-background-processing`**です。厳密なmigration履歴1–13、
+PostgreSQL 18.6、`public`内の`vector` 0.8.6を要求します。
+adapterは同じ版に揃え、Native/SDKは38 resource、MCPは4 toolです。
+
+[ADR 0028](adr/0028-background-processing-jp.md)が現行の追加契約です。
+既定拒否synthesis policy、local profile/prompt固定、永続extract/embed/compact job、
+結果不明callのfencing、隔離とcaller明示採用（`human_review_verified=false`）、
+正確なtyped working snapshot、明示read-only復元を提供します。
+`observe.auto_extract`/`auto_embed`は既定falseで、通常observeはmodel jobを作りません。
+snapshot hookも別のoperator byte予算を設定するまで無効です。
+
+実装`9458034a47b6f7c9901e569a32f198f56369fbf7`は
+[native amd64/arm64 CI 35322238611](https://github.com/rioriost/pg_agmemory/actions/runs/35322238611)
+に合格し、各architectureで1,487 passed / optional live 8 skips、
+追加のsynthetic M2 lifecycleを含む全packaged production smokeが成功しました。
+別途の実local model 3 call lifecycleは
+`e4f5d76ad2a4919349054165ce531b92fa650818`で実行しました。
+後のpublication commitへ検証SHAを付け替えないでください。
+[EVALUATION](EVALUATION-jp.md)に別途固定した600問held-out検索、
+実認可10,000 case、失敗履歴、残るgateを記録します。人手意味評価やM2完了の証明ではありません。
+予算修正後の`0552151`公開oracle診断は412 callを完了しましたが、
+回答試行144件中72件の不正出力を保持しており、QA合格ではありません。
+
+残る受入れは、人手assertion support 95%、重要claim fidelity 98%、
+20件以上の実task replayと継続成功率の非劣化、回答品質、
+最新の削除/ACL ledgerを適用する隔離backup復旧などです。
+backup保持・復旧はoperator管理で、自動DR・完全消去の認定は主張しません。
+
+## 保存されたv26契約と過去の証跡
+
+以下はschema 11契約とそれ以前の記録です。「現在」の版、31 resource、
+model jobなし、次の作業という記述は**過去時点**のもので、上記schema 13契約を
+上書きしません。変更しないcapture policyと既定offの動作は引き続き使えます。
+
+**過去の上限付きmilestoneはv0.0.26/schema 11のscope capture policyです。
 実装`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`のlocal適格性確認と
 完全一致SHAのnative Docker amd64/arm64 CIは合格しました。
 検証済みv0.0.25以前の結果は過去の証拠であり、v0.0.26の適格性確認ではありません。
