@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
     echo "Usage: $0 [container|docker]"
-    echo "Build and run lint, types, PostgreSQL tests, and admin/SDK/vector/capture/API/worker/MCP/hook smokes."
+    echo "Build and run lint, types, PostgreSQL tests, and production API/worker/MCP/hook/M2 smokes."
     echo "Defaults to Apple Container; all Python checks run inside Linux containers."
 }
 
@@ -982,6 +982,12 @@ finally:
     server.server_close()
 print("Production selectable inference smoke passed: synthetic HTTP, CLI, explicit vector publication, purge")
 ' "$scope_id"
+
+"$engine" exec -i \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    -e "PGAG_SDK_API_TOKEN=$mcp_token" \
+    "$api_name" python - "$provisioned" "${run_id}-worker" \
+    < scripts/smoke-background-processing.py
 
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
