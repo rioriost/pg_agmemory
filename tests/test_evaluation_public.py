@@ -71,6 +71,20 @@ def test_public_selection_is_repeatable_order_independent_and_frozen_before_scor
     assert first.digest() == second.digest()
 
 
+def test_public_adapter_sorts_whole_sessions_without_detaching_dates_or_gold():
+    value = record()
+    value["haystack_dates"] = ["2026/09/02", "2026/09/01"]
+    value["haystack_session_ids"] = ["new", "old"]
+    value["haystack_sessions"] = [
+        [{"role": "user", "content": "New source.", "has_answer": True}],
+        [{"role": "user", "content": "Old source.", "has_answer": False}],
+    ]
+    data = normalize_longmemeval([value])
+    assert "2026/09/01" in data.sources[0].text and "Old source." in data.sources[0].text
+    assert "2026/09/02" in data.sources[1].text and "New source." in data.sources[1].text
+    assert data.questions[0].relevant == {data.sources[1].source_id: 1}
+
+
 @pytest.mark.parametrize(
     "damage",
     [

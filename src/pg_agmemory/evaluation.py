@@ -97,6 +97,7 @@ class RetrievalObservation(EvaluationContract):
     baseline: Baseline
     ranked_ids: Annotated[list[Identifier], Field(max_length=100)]
     skipped_reason: Literal["full_context_over_budget"] | None = None
+    context_truncated: bool = False
 
     @model_validator(mode="after")
     def valid_ranking(self) -> "RetrievalObservation":
@@ -110,6 +111,7 @@ class RetrievalObservation(EvaluationContract):
 
 
 class RetrievalRun(EvaluationContract):
+    split: Literal["dev", "test"] = "test"
     dataset_digest: Digest
     implementation_sha: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
     model_name: Identifier
@@ -140,6 +142,7 @@ class BaselineMeasurement(EvaluationContract):
     questions: int
     answerable: int
     skipped: int
+    truncated: int
     unauthorized_ids: int
     unanswerable_with_results: int
     recall_at_20: MeanInterval | None
@@ -164,7 +167,9 @@ class RetrievalReport(EvaluationContract):
     source_revision: str | None
     source_file_digest: str | None
     variant: str | None
-    split: Literal["test"] = "test"
+    split: Literal["dev", "test"] = "test"
+    measured_questions: int
+    measured_groups: int
     held_out_questions: int
     held_out_groups: int
     seed: int
@@ -246,6 +251,7 @@ def measurement(
         questions=len(rows),
         answerable=sum(bool(question.relevant) for question, _, _ in rows),
         skipped=sum(observation.skipped_reason is not None for _, observation, _ in rows),
+        truncated=sum(observation.context_truncated for _, observation, _ in rows),
         unauthorized_ids=sum(score.unauthorized_ids for _, _, score in rows),
         unanswerable_with_results=sum(
             not question.relevant and score.has_results for question, _, score in rows
@@ -264,20 +270,20 @@ def retrieval_report(
     if not 100 <= bootstrap_samples <= 10000:
         raise ValueError("Bootstrap samples must be between 100 and 10000")
     questions = {question.question_id: question for question in dataset.questions}
-    test = {key: question for key, question in questions.items() if question.split == "test"}
+    test = {key: question for key, question in questions.items() if question.split == run.split}
     if not test:
-        raise ValueError("No held-out test questions")
+        raise ValueError("No questions in the selected split")
     observations: dict[tuple[str, Baseline], RetrievalObservation] = {}
     for observation in run.observations:
         key = (observation.question_id, observation.baseline)
         if key in observations:
             raise ValueError("Duplicate question/baseline measurement")
         if observation.question_id not in test:
-            raise ValueError("Only held-out questions belong in the test report")
+            raise ValueError("Only questions from the selected split belong in this report")
         observations[key] = observation
     if set(observations) != {(key, baseline) for key in test for baseline in BASELINES}:
         raise ValueError(
-            "Every held-out question requires every baseline or an explicit budget skip"
+            "Every selected question requires every baseline or an explicit budget skip"
         )
     sources = {source.source_id: source for source in dataset.sources}
     rows = [
@@ -312,7 +318,7 @@ def retrieval_report(
         for category in sorted({question.category for question in test.values()})
     }
     groups = len({question.group_id for question in test.values()})
-    enough = len(test) >= 500 and groups >= 50
+    enough = run.split == "test" and len(test) >= 500 and groups >= 50
     hybrid, vector, temporal = (
         baselines["hybrid"],
         baselines["vector"],
@@ -352,11 +358,11 @@ def retrieval_report(
             "Temporal/provenance nDCG@10 and MRR must not regress from hybrid",
         ),
     }
-    if dataset.origin == "public":
+    if dataset.origin == "public" or run.split == "dev":
         for gate in ("internal_sample", "recall_at_20", "ranking_non_regression"):
             gates[gate] = EvaluationGate(
                 status="not_measured",
-                reason="A public baseline is not the independent internal held-out acceptance set",
+                reason="Public or development results are not internal held-out acceptance",
             )
     for gate in (
         "human_assertion_precision",
@@ -385,8 +391,11 @@ def retrieval_report(
         source_revision=dataset.source_revision,
         source_file_digest=dataset.source_file_digest,
         variant=dataset.variant,
-        held_out_questions=len(test),
-        held_out_groups=groups,
+        split=run.split,
+        measured_questions=len(test),
+        measured_groups=groups,
+        held_out_questions=len(test) if run.split == "test" else 0,
+        held_out_groups=groups if run.split == "test" else 0,
         seed=run.seed,
         bootstrap_samples=bootstrap_samples,
         baselines=baselines,

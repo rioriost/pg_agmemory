@@ -93,6 +93,32 @@ def test_exact_recall_at_twenty_boundary():
     assert at_twenty.reciprocal_rank == 1 / 20 and after_twenty.reciprocal_rank == 1 / 21
 
 
+def test_development_results_never_count_as_held_out_acceptance():
+    data = dataset()
+    measured = run(data)
+    data.questions[0] = data.questions[0].model_copy(update={"split": "dev"})
+    measured = measured.model_copy(update={"split": "dev", "dataset_digest": data.digest()})
+    report = retrieval_report(data, measured, bootstrap_samples=100)
+    assert report.split == "dev"
+    assert report.measured_questions == report.measured_groups == 1
+    assert report.held_out_questions == report.held_out_groups == 0
+    assert report.gates["internal_sample"].status == "not_measured"
+    assert report.gates["recall_at_20"].status == "not_measured"
+    assert report.m2_qualified is False
+
+
+def test_report_counts_truncated_context_without_removing_questions():
+    data = dataset()
+    measured = run(data)
+    measured.observations[1] = measured.observations[1].model_copy(
+        update={"context_truncated": True}
+    )
+    report = retrieval_report(data, measured, bootstrap_samples=100)
+    assert report.baselines["recent_window"].truncated == 1
+    assert report.baselines["recent_window"].questions == 1
+    assert report.baselines["recent_window"].skipped == 0
+
+
 def test_unanswerable_is_not_falsely_counted_as_perfect_recall_or_answering():
     data = dataset()
     question = data.questions[0].model_copy(update={"relevant": {}, "answer": ""})

@@ -67,7 +67,11 @@ def normalize_longmemeval(records: list[dict[str, Any]]) -> EvaluationDataset:
             ):
                 raise ValueError("Mismatched or duplicate history sessions")
             relevant = {}
-            for date, session_id, turns in zip(dates, session_ids, sessions, strict=True):
+            ordered = sorted(
+                zip(dates, session_ids, sessions, strict=True),
+                key=lambda session: (session[0], opaque_id(question_id, session[1])),
+            )
+            for date, session_id, turns in ordered:
                 if not isinstance(date, str) or not isinstance(session_id, str):
                     raise ValueError("Source timestamps and session IDs must be strings")
                 if not isinstance(turns, list):

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -66,6 +67,24 @@ def purge(env, memory):
     assert response.status_code == 202, response.text
 
 
+def _process_peak_rss_kib():
+    """Keep this probe self-contained for execution in a cold interpreter."""
+    import resource
+    import sys
+    from pathlib import Path
+
+    if sys.platform.startswith("linux"):
+        # Unlike ru_maxrss, VmHWM excludes the previous process image after exec.
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                _, value, unit = line.split()
+                assert unit == "kB", line
+                return int(value)
+        raise RuntimeError("Missing VmHWM in /proc/self/status")
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak // 1024 if sys.platform == "darwin" else peak
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [
@@ -96,8 +115,8 @@ def test_lazy_dictionary_loading_and_precompiled_container_memory():
         [
             sys.executable,
             "-c",
-            """
-import resource
+            inspect.getsource(_process_peak_rss_kib)
+            + """
 import sys
 import pg_agmemory.api
 from pg_agmemory.lexical import segment
@@ -105,8 +124,8 @@ assert "janome.tokenizer" not in sys.modules
 assert segment("Gold INC-1842") == "Gold INC-1842"
 assert "janome.tokenizer" not in sys.modules
 assert segment("\\u6771\\u4eac\\u90fd").split() == ["\\u6771\\u4eac", "\\u90fd"]
-peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-assert peak < 256 * 1024, f"Cold tokenizer peak {peak} KiB; precompile the packaged dictionary"
+peak = _process_peak_rss_kib()
+assert peak <= 256 * 1024, f"Cold tokenizer peak {peak} KiB; precompile the packaged dictionary"
 """,
         ],
         capture_output=True,
@@ -114,6 +133,48 @@ assert peak < 256 * 1024, f"Cold tokenizer peak {peak} KiB; precompile the packa
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux fork/exec RSS accounting")
+@pytest.mark.parametrize("allocation_mib", [0, 272])
+def test_cold_process_peak_rss_excludes_pre_exec_memory(allocation_mib):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import os
+import sys
+large_parent = bytearray(320 * 1024 * 1024)
+# Force fork/exec rather than depending on subprocess's platform-specific spawn path.
+pid = os.fork()
+if pid == 0:
+    os.execv(sys.executable, [sys.executable, "-c", sys.argv[1]])
+_, status = os.waitpid(pid, 0)
+sys.exit(os.waitstatus_to_exitcode(status))
+""",
+            inspect.getsource(_process_peak_rss_kib)
+            + f"""
+import json
+import resource
+allocation = bytearray({allocation_mib} * 1024 * 1024)
+del allocation
+print(json.dumps({{
+    "peak_kib": _process_peak_rss_kib(),
+    "ru_maxrss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+}}))
+""",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    measured = json.loads(result.stdout)
+    assert measured["ru_maxrss_kib"] >= 320 * 1024, measured
+    assert measured["peak_kib"] >= allocation_mib * 1024, measured
+    # A real over-budget peak must still fail the gate even after its memory is freed.
+    assert (measured["peak_kib"] > 256 * 1024) == bool(allocation_mib), measured
 
 
 def test_japanese_retrieval_is_opt_in_and_preserves_evidence(env):
