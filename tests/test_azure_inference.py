@@ -16,10 +16,12 @@ from pydantic import ValidationError
 
 from pg_agmemory.azure_inference import CATALOG_QUERY, AzureAIProvider
 from pg_agmemory.providers import (
+    EXTRACTION_SYSTEM_PROMPT,
     MAX_PROVIDER_RESPONSE_BYTES,
     InferenceInput,
     ProviderFailure,
     ProviderSettings,
+    extraction_schema,
 )
 
 VERSION = "synthetic-test-1"
@@ -232,7 +234,7 @@ def test_language_requires_flexible_server_and_exact_function_identity(changes):
 def test_supported_catalog_contracts_and_default_argument_matching(product, generate_type):
     provider = AzureAIProvider(settings(azure_product=product))
     rows = catalog_rows(product, generate_type)
-    for operation, index in [("embed", 0), ("summarize", 1)]:
+    for operation, index in [("embed", 0), ("summarize", 1), ("extract", 1)]:
         provider.compatible(rows, operation)
         extended = deepcopy(rows)
         extended[index]["names"].append("future_optional")
@@ -266,7 +268,7 @@ def test_catalog_rejects_wrong_embedding_shapes(change):
     assert_failure(failure, "provider_capability_unavailable")
 
 
-@pytest.mark.parametrize("index,operation", [(0, "embed"), (1, "summarize")])
+@pytest.mark.parametrize("index,operation", [(0, "embed"), (1, "summarize"), (1, "extract")])
 def test_catalog_rejects_missing_ambiguous_and_unprivileged_functions(index, operation):
     rows = catalog_rows()
     for candidates in ([], rows + [deepcopy(rows[index])]):
@@ -288,7 +290,7 @@ def test_inspect_is_read_only_and_never_submits_inference(monkeypatch, product):
         "backend": "azure_ai",
         "azure_product": product,
         "extension_version": VERSION,
-        "operations": ["summarize", "embed"],
+        "operations": ["summarize", "embed", "extract"],
         "sql_contract_verified": True,
         "inference_tested": False,
     }
@@ -306,10 +308,11 @@ def test_inspect_is_read_only_and_never_submits_inference(monkeypatch, product):
         ({"rows": []}, "provider_capability_unavailable"),
     ],
 )
-def test_preflight_failure_never_submits_inference(monkeypatch, kwargs, code):
+@pytest.mark.parametrize("operation", ["embed", "extract"])
+def test_preflight_failure_never_submits_inference(monkeypatch, kwargs, code, operation):
     provider, conn, connect = mock_provider(monkeypatch, **kwargs)
     with pytest.raises(ProviderFailure) as failure:
-        asyncio.run(provider.embed(SOURCE))
+        asyncio.run(getattr(provider, operation)(SOURCE))
     assert_failure(failure, code)
     assert not conn.inference_calls and conn.closed
     connect.assert_awaited_once()
@@ -417,23 +420,25 @@ def test_invalid_embeddings_fail_closed_without_dimension_fallback(monkeypatch, 
         (psycopg.errors.InsufficientPrivilege("private credentials"), "provider_sql_error", False),
     ],
 )
+@pytest.mark.parametrize("operation", ["embed", "extract"])
 def test_submitted_errors_are_sanitized_unknown_and_not_retried(
-    monkeypatch, error, code, retryable
+    monkeypatch, error, code, retryable, operation
 ):
     provider, conn, connect = mock_provider(monkeypatch, failure=error)
     with pytest.raises(ProviderFailure) as failure:
-        asyncio.run(provider.embed(SOURCE))
+        asyncio.run(getattr(provider, operation)(SOURCE))
     assert_failure(failure, code, unknown=True, retryable=retryable)
     assert failure.value.__suppress_context__
     assert len(conn.inference_calls) == 1 and conn.closed
     connect.assert_awaited_once()
 
 
-def test_connection_failure_has_no_inference_billing_uncertainty(monkeypatch):
+@pytest.mark.parametrize("operation", ["embed", "extract"])
+def test_connection_failure_has_no_inference_billing_uncertainty(monkeypatch, operation):
     connect = AsyncMock(side_effect=psycopg.OperationalError("private credentials"))
     monkeypatch.setattr(AzureAIProvider, "connect", connect)
     with pytest.raises(ProviderFailure) as failure:
-        asyncio.run(AzureAIProvider(settings()).embed(SOURCE))
+        asyncio.run(getattr(AzureAIProvider(settings()), operation)(SOURCE))
     assert_failure(failure, "provider_unavailable", retryable=True)
     connect.assert_awaited_once()
 
@@ -518,7 +523,7 @@ def test_generate_rejects_malformed_extra_refused_and_oversized_results(monkeypa
     assert len(conn.inference_calls) == 1
 
 
-@pytest.mark.parametrize("operation", ["embed", "summarize"])
+@pytest.mark.parametrize("operation", ["embed", "summarize", "extract"])
 def test_unconfigured_operation_never_opens_connection(monkeypatch, operation):
     config = (
         settings(embedding_model=None)
@@ -531,6 +536,156 @@ def test_unconfigured_operation_never_opens_connection(monkeypatch, operation):
     assert_failure(failure, "provider_capability_unavailable")
     connect.assert_not_awaited()
     assert not conn.calls
+
+
+def test_language_never_advertises_extract_or_opens_connection_for_it(monkeypatch):
+    provider, conn, connect = mock_provider(monkeypatch, language_settings())
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(provider.extract(SOURCE))
+    assert_failure(failure, "provider_capability_unavailable")
+    connect.assert_not_awaited()
+    assert conn.calls == []
+    with pytest.raises(ProviderFailure) as failure:
+        provider.compatible(catalog_rows(), "extract")
+    assert_failure(failure, "provider_capability_unavailable")
+    assert asyncio.run(provider.inspect())["operations"] == ["summarize", "embed"]
+    assert conn.inference_calls == []
+
+
+@pytest.mark.parametrize("product", PRODUCTS)
+@pytest.mark.parametrize("as_text", [False, True])
+def test_extract_generate_uses_closed_schema_binding_and_bounded_single_call(
+    monkeypatch, product, as_text
+):
+    data = InferenceInput(text=" \n🔒東京は承認していない。\n " + INJECTION)
+    quote = "東京は承認していない。"
+    start = data.text.index(quote)
+    candidate = {
+        "subject": "東京",
+        "predicate": "approval",
+        "value": "承認していない",
+        "evidence_quote": quote,
+        "start": start,
+        "end": start + len(quote),
+    }
+    payload = {"candidates": [candidate]}
+    config = settings(azure_product=product, text_model={"name": INJECTION, "revision": "1"})
+    provider, conn, connect = mock_provider(
+        monkeypatch,
+        config,
+        rows=catalog_rows(product, "text" if as_text else "jsonb"),
+        result=json.dumps(payload) if as_text else payload,
+    )
+    result = asyncio.run(provider.extract(data))
+    assert result.candidates[0].model_dump() == candidate
+    assert result.model == config.text_model and result.input_digest == data.digest()
+    assert result.status == "untrusted"
+    statement, params = conn.inference_calls[0]
+    assert INJECTION not in statement and data.text not in statement
+    assert params[:2] == (data.text, INJECTION)
+    assert isinstance(params[2], Jsonb) and params[2].obj == extraction_schema()
+    assert params[3] == EXTRACTION_SYSTEM_PROMPT
+    assert "azure_cognitive" not in statement
+    assert statement.count("azure_ai.generate(") == 1
+    assert "AS MATERIALIZED" in statement
+    assert f"octet_length(to_jsonb(result)::text)<={MAX_PROVIDER_RESPONSE_BYTES}" in statement
+    assert len(conn.inference_calls) == 1 and conn.closed
+    connect.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        "",
+        "not JSON PRIVATE",
+        "[]",
+        "null",
+        '"text"',
+        {},
+        {"summary": "Not extraction"},
+        {"candidates": [], "approved": True},
+        {"candidates": [], "refusal": "PRIVATE"},
+        {"candidates": None},
+        {"candidates": [{}]},
+        {"candidates": [], "model": {"name": "forged", "revision": "1"}},
+        {"candidates": [], "input_digest": "0" * 64},
+        {"candidates": [], "status": "trusted"},
+        '{"candidates":[],"candidates":[]}',
+        '{"candidates":NaN}',
+        '{"candidates":Infinity}',
+        '{"candidates":"\\ud800"}',
+        "x" * (MAX_PROVIDER_RESPONSE_BYTES + 1),
+        {"candidates": [], "PRIVATE": "x" * (MAX_PROVIDER_RESPONSE_BYTES + 1)},
+    ],
+)
+def test_extract_generate_rejects_untrusted_provider_outputs(monkeypatch, payload):
+    provider, conn, _ = mock_provider(monkeypatch, result=payload)
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(provider.extract(SOURCE))
+    assert_failure(failure, "invalid_provider_response", unknown=True)
+    assert "PRIVATE" not in str(failure.value)
+    assert len(conn.inference_calls) == 1
+
+
+def test_extract_generate_can_abstain_without_fallback(monkeypatch):
+    provider, conn, _ = mock_provider(monkeypatch, result={"candidates": []})
+    result = asyncio.run(provider.extract(SOURCE))
+    assert result.candidates == [] and result.status == "untrusted"
+    assert result.input_digest == SOURCE.digest() and result.model == provider.settings.text_model
+    assert len(conn.inference_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"subject": "fabricated"},
+        {"value": "approved PRIVATE"},
+        {"value": "\ud800"},
+        {"evidence_quote": SOURCE.text.strip()},
+        {"start": True},
+        {"end": 1.0},
+        {"start": 1, "end": len(SOURCE.text) + 1},
+        {"start": 100, "end": 100 + len(SOURCE.text)},
+        {"scope_id": "PRIVATE"},
+        {"confidence": 1.0},
+    ],
+)
+def test_extract_generate_rejects_candidate_grounding_and_authority(monkeypatch, changes):
+    item = {
+        "subject": "deployment",
+        "predicate": "approval",
+        "value": "approval remains uncertain",
+        "evidence_quote": SOURCE.text,
+        "start": 0,
+        "end": len(SOURCE.text),
+        **changes,
+    }
+    provider, conn, _ = mock_provider(monkeypatch, result={"candidates": [item]})
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(provider.extract(SOURCE))
+    assert_failure(failure, "invalid_provider_response", unknown=True)
+    assert len(conn.inference_calls) == 1
+
+
+@pytest.mark.parametrize("count,distinct", [(2, False), (17, True)])
+def test_extract_generate_rejects_duplicates_and_candidate_limit(monkeypatch, count, distinct):
+    candidates = [
+        {
+            "subject": "deployment",
+            "predicate": f"p{index}" if distinct else "approval",
+            "value": "approval remains uncertain",
+            "evidence_quote": SOURCE.text,
+            "start": 0,
+            "end": len(SOURCE.text),
+        }
+        for index in range(count)
+    ]
+    provider, conn, _ = mock_provider(monkeypatch, result={"candidates": candidates})
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(provider.extract(SOURCE))
+    assert_failure(failure, "invalid_provider_response", unknown=True)
+    assert len(conn.inference_calls) == 1
 
 
 @dataclass
@@ -619,10 +774,17 @@ def synthetic_azure(env, monkeypatch, request):
                          IF prompt='oversized-response' THEN
                            RETURN jsonb_build_object('summary',repeat('x',2097153)){};
                          END IF;
+                         IF json_schema->>'name'='memory_extraction_candidates' THEN
+                           RETURN jsonb_build_object('candidates',jsonb_build_array(
+                             jsonb_build_object('subject',prompt,'predicate','reports',
+                               'value',prompt,'evidence_quote',prompt,
+                               'start',0,'end',char_length(prompt)))){};
+                         END IF;
                          RETURN jsonb_build_object('summary','Synthetic summary.'){};
                        END $synthetic$"""
                 ).format(
                     sql.SQL(generate_type),
+                    sql.SQL("::" + generate_type),
                     sql.SQL("::" + generate_type),
                     sql.SQL("::" + generate_type),
                 )
@@ -732,6 +894,34 @@ def test_synthetic_postgres_catalog_and_bound_sql_round_trip(synthetic_azure):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "synthetic_azure",
+    [(product, kind) for product in PRODUCTS for kind in ("text", "jsonb")],
+    indirect=True,
+)
+def test_synthetic_extraction_round_trip_preserves_codepoints_and_closed_schema(synthetic_azure):
+    fixture = synthetic_azure
+    data = InferenceInput(text=" \n🔒東京は承認していない。\n ")
+    result = asyncio.run(fixture.provider.extract(data))
+    assert result.input_digest == data.digest()
+    assert result.model == fixture.provider.settings.text_model
+    assert result.status == "untrusted"
+    assert result.candidates[0].model_dump() == {
+        "subject": data.text,
+        "predicate": "reports",
+        "value": data.text,
+        "evidence_quote": data.text,
+        "start": 0,
+        "end": len(data.text),
+    }
+    assert fixture.calls() == (1, True)
+    operation, payload = fixture.events()[0]
+    assert operation == "generate" and payload["prompt"] == data.text
+    assert payload["json_schema"] == extraction_schema()
+    assert payload["system_prompt"] == EXTRACTION_SYSTEM_PROMPT
+
+
+@pytest.mark.integration
 def test_synthetic_language_array_contract_preserves_all_parts(synthetic_azure):
     fixture = synthetic_azure
     provider = AzureAIProvider(language_settings(sentence_count=4))
@@ -763,10 +953,11 @@ def test_synthetic_language_array_contract_preserves_all_parts(synthetic_azure):
 @pytest.mark.parametrize(
     "synthetic_azure", [("flexible_server", "text"), ("horizondb", "jsonb")], indirect=True
 )
-def test_synthetic_response_size_guard_evaluates_function_once(synthetic_azure):
+@pytest.mark.parametrize("operation", ["summarize", "extract"])
+def test_synthetic_response_size_guard_evaluates_function_once(synthetic_azure, operation):
     fixture = synthetic_azure
     with pytest.raises(ProviderFailure) as failure:
-        asyncio.run(fixture.provider.summarize(InferenceInput(text="oversized-response")))
+        asyncio.run(getattr(fixture.provider, operation)(InferenceInput(text="oversized-response")))
     assert_failure(failure, "invalid_provider_response", unknown=True)
     assert fixture.calls() == (1, True) and len(fixture.events()) == 1
 

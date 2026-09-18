@@ -12,13 +12,17 @@ from psycopg.types.json import Jsonb
 from pg_agmemory.database import Connection
 from pg_agmemory.models import Contract
 from pg_agmemory.providers import (
+    EXTRACTION_SYSTEM_PROMPT,
     MAX_PROVIDER_RESPONSE_BYTES,
+    ExtractionResult,
     GeneratedEmbedding,
     InferenceInput,
     ProviderFailure,
     ProviderSettings,
     SummaryResult,
     configured_operations,
+    extraction_schema,
+    parse_extraction,
 )
 
 CATALOG_QUERY = """SELECT n.nspname AS schema,p.proname AS name,p.proargnames AS names,
@@ -109,6 +113,10 @@ class AzureAIProvider:
         return await (await conn.execute(CATALOG_QUERY)).fetchall()
 
     def compatible(self, rows: list[dict[str, Any]], operation: str) -> None:
+        if operation == "extract" and (
+            self.settings.text_model is None or self.settings.azure_summary_mode != "generate"
+        ):
+            raise ProviderFailure("provider_capability_unavailable")
         if operation == "embed":
             schema, name, positional, results = "azure_openai", "create_embeddings", 2, {"real[]"}
             arguments = {
@@ -222,6 +230,19 @@ class AzureAIProvider:
             return GeneratedEmbedding(model=model, values=result, input_digest=data.digest())
         except ValueError:
             raise ProviderFailure("invalid_provider_response", unknown=True) from None
+
+    async def extract(self, data: InferenceInput) -> ExtractionResult:
+        model = self.settings.text_model
+        if model is None or self.settings.azure_summary_mode != "generate":
+            raise ProviderFailure("provider_capability_unavailable")
+        data, model = data.model_copy(deep=True), model.model_copy(deep=True)
+        result = await self.execute(
+            "extract",
+            """SELECT azure_ai.generate(prompt=>%s::text,model=>%s::text,
+               json_schema=>%s::jsonb,system_prompt=>%s::text) AS result""",
+            (data.text, model.name, Jsonb(extraction_schema()), EXTRACTION_SYSTEM_PROMPT),
+        )
+        return parse_extraction(result, data, model)
 
     async def summarize(self, data: InferenceInput) -> SummaryResult:
         model = self.settings.text_model

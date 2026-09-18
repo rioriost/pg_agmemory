@@ -302,11 +302,11 @@ def test_http_provider_never_retries_redirects_falls_back_or_leaks_errors(monkey
     assert len(calls) == 1 and clients[0].is_closed
 
 
-@pytest.mark.parametrize("operation", ["summarize", "embed"])
+@pytest.mark.parametrize("operation", ["summarize", "embed", "extract"])
 def test_unconfigured_capability_does_not_call_provider(monkeypatch, operation):
     calls, _ = mock_http(monkeypatch, lambda request: pytest.fail("Unexpected inference"))
     provider = HTTPProvider(
-        configuration(**{"text_model" if operation == "summarize" else "embedding_model": None})
+        configuration(**{"embedding_model" if operation == "embed" else "text_model": None})
     )
     with pytest.raises(ProviderFailure, match="provider_capability_unavailable"):
         asyncio.run(getattr(provider, operation)(InferenceInput(text="Synthetic")))
@@ -318,7 +318,7 @@ def test_http_inspection_never_invokes_model_or_claims_connectivity(monkeypatch)
     result = asyncio.run(run(configuration(), "inspect", b""))
     assert result == {
         "backend": "local_http",
-        "operations": ["summarize", "embed"],
+        "operations": ["summarize", "embed", "extract"],
         "configuration_valid": True,
         "inference_tested": False,
     }
@@ -391,7 +391,7 @@ def test_example_profiles_are_valid_and_inspection_makes_no_network_call(monkeyp
 
     monkeypatch.setattr(httpx.AsyncClient, "send", fail_request)
     result = asyncio.run(HTTPProvider(settings).inspect())
-    assert result["operations"] == ["summarize", "embed"]
+    assert result["operations"] == ["summarize", "embed", "extract"]
     assert result["inference_tested"] is False
 
 

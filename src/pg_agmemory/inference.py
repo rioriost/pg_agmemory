@@ -27,12 +27,14 @@ async def run(settings: ProviderSettings, operation: str, raw: bytes) -> dict[st
         return (await provider.summarize(data)).model_dump(mode="json")
     if operation == "embed":
         return (await provider.embed(data)).model_dump(mode="json")
+    if operation == "extract":
+        return (await provider.extract(data)).model_dump(mode="json")
     raise ProviderFailure("invalid_inference_operation")
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="pg-agmemory infer")
-    parser.add_argument("operation", choices=["inspect", "summarize", "embed"])
+    parser.add_argument("operation", choices=["inspect", "summarize", "embed", "extract"])
     parser.add_argument("--config", required=True, type=Path)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s", force=True)
