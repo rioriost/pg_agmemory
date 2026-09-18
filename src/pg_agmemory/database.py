@@ -20,6 +20,7 @@ MIGRATIONS = (
     "008_pgvector.sql",
     "009_scope_access.sql",
     "010_job_cancellation.sql",
+    "011_capture_policy.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

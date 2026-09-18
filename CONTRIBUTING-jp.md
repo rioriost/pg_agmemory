@@ -112,6 +112,15 @@ Azure SQLの`verify-full`とoperatorによるCAの明示指定を維持してく
 hostのtrust store変更を必要としません。production smokeでも設定したsystem bundleから
 信頼済みCAを読み込めることを確認します。managed serviceの全versionを認定する検査ではなく、
 実環境の結果は検証した正確なprofileごとに記録してください。
+schema 11はscope単位のcapture受付policyを追加します。
+`scope-capture` smokeでは完全なpolicyをtenant epoch CASで設定し、SDK経由の
+observe/capture/batch、無効化後の新key・同一key再送の拒否、policy復元、
+合成sourceのpurgeを検査します。管理者の共通response-drain barrier、
+audit/epochの原子的更新、idempotency/source-event重複検査より前のpolicy検査を
+維持してください。scope権限の検査はpolicy拒否より先に行います。
+override未設定時は意図的に従来の受付を維持し、secret/PII検出・同意の真正性確認・
+providerへの外部送信許可を提供する機能ではありません。
+[ADR 0026](docs/adr/0026-scope-capture-policy-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

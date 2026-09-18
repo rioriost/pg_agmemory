@@ -578,7 +578,7 @@ wheels = [
 
 [[package]]
 name = "pg-agmemory"
-version = "0.0.25"
+version = "0.0.26"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

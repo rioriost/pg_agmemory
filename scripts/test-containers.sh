@@ -991,6 +991,83 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID
+from pg_agmemory.models import Capture, CaptureBatch, CapturedMemory, Forget, Observe, Recall
+from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+identity = json.loads(sys.argv[1])
+flags = ["--tenant-id", identity["tenant_id"], "--scope-id", identity["scope_id"]]
+with tempfile.TemporaryDirectory() as directory:
+    policy_file = Path(directory) / "capture-policy.json"
+    def admin(operation, *, epoch=None, policy=None):
+        command = ["pg-agmemory", "scope-capture", operation, *flags]
+        if policy is not None:
+            policy_file.write_text(json.dumps(policy))
+            command += ["--expected-access-epoch", str(epoch), "--policy-file", str(policy_file)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=15, check=True)
+        assert not result.stderr
+        return json.loads(result.stdout)
+    async def smoke():
+        scope = UUID(identity["scope_id"])
+        before = admin("get")
+        assert not before["configured"] and before["policy"]["enabled"]
+        policy = {"enabled": True, "source_namespaces": ["policy-smoke"],
+                  "consent_references": ["synthetic-smoke"], "max_content_bytes": 32}
+        allowed = admin("set", epoch=before["access_epoch"], policy=policy)
+        assert allowed["changed"] and allowed["configured"]
+        async with AsyncMemoryClient(
+            "http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"],
+        ) as sdk:
+            episode = Observe(scope_id=scope, source_namespace="policy-smoke",
+                source_event_id="observe", occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                content="Synthetic Gold", consent_reference="synthetic-smoke")
+            memory = CapturedMemory(subject="Policy", predicate="tier", value="Gold",
+                                    evidence_quote="Gold", explicit_intent=True)
+            requests = [
+                (sdk.observe, episode),
+                (sdk.capture, Capture(episode=episode.model_copy(
+                    update={"source_event_id": "capture"}), memory=memory)),
+                (sdk.capture_batch, CaptureBatch(episode=episode.model_copy(
+                    update={"source_event_id": "batch"}), memories=[memory])),
+            ]
+            saved = []
+            for index, (method, body) in enumerate(requests):
+                saved.append(await method(body, idempotency_key="capture-policy-" + str(index)))
+            disabled = admin("set", epoch=allowed["access_epoch"],
+                             policy=policy | {"enabled": False})
+            for index, (method, body) in enumerate(requests):
+                for suffix in ("", "-new-key"):
+                    try:
+                        await method(body, idempotency_key="capture-policy-" + str(index) + suffix)
+                    except MemoryClientError as exc:
+                        assert exc.error.code == "capture_policy_denied"
+                        assert not exc.error.outcome_unknown
+                    else:
+                        raise AssertionError("Disabled policy admitted capture or replay")
+            assert len((await sdk.recall(Recall(scope_ids=[scope], purpose="smoke"))).items) == 3
+            restored = admin("set", epoch=disabled["access_epoch"], policy=before["policy"])
+            assert restored["changed"]
+            for index, (method, body) in enumerate(requests):
+                assert await method(body, idempotency_key="capture-policy-" + str(index)) == saved[index]
+            purged = await sdk.forget(Forget(memory_ids=[row.memory_id for row in saved],
+                                            reason="synthetic-smoke"),
+                                      idempotency_key="capture-policy-purge")
+            assert purged.object_count == 5
+    asyncio.run(smoke())
+print("Production capture policy smoke passed: admin CAS, all capture paths, replay denial, restore, purge")
+' "$provisioned"
+
+"$engine" exec \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from uuid import UUID
 from pg_agmemory.models import Observe, Recall

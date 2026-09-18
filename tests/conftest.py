@@ -294,6 +294,33 @@ def database():
             ).fetchone()[0]
             == 0
         )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:10])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+
+        def fail_capture_policy_ledger(self, query, params=None, **kwargs):
+            if (
+                query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)"
+                and params == (11,)
+            ):
+                raise RuntimeError("simulated schema 11 ledger failure")
+            return execute(self, query, params, **kwargs)
+
+        patch.setattr(psycopg.Connection, "execute", fail_capture_policy_ledger)
+        with pytest.raises(RuntimeError, match="schema 11 ledger failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT to_regclass('memory.scope_capture_policy'),"
+            "to_regclass('memory_ops.capture_policy_event')"
+        ).fetchone() == (None, None)
+        assert (
+            admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
+            == 10
+        )
     migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))

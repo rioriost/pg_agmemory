@@ -30,6 +30,11 @@ def main() -> None:
 
         access_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["scope-capture"]:
+        from pg_agmemory.capture_policy import main as capture_main
+
+        capture_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -42,6 +47,7 @@ def main() -> None:
             "mcp",
             "recall-hook",
             "scope-access",
+            "scope-capture",
             "infer",
         ],
     )
@@ -58,6 +64,8 @@ def main() -> None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
     if args.command == "scope-access":
         parser.error("scope-access must precede its arguments; use scope-access --help")
+    elif args.command == "scope-capture":
+        parser.error("scope-capture must precede its arguments; use scope-capture --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

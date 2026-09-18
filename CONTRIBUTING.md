@@ -112,6 +112,15 @@ Local TLS transport regressions use an ephemeral test CA, not cloud credentials
 or changes to the host trust store. The production smoke also verifies that the
 configured system bundle loads trusted CA certificates. Neither check proves
 every managed service/version is qualified; record live results by exact profile.
+Schema 11 adds scoped capture admission policies. The `scope-capture` smoke sets
+a complete policy with tenant-epoch CAS, exercises observe/capture/batch through
+the SDK, denies both new-key and exact replays after disabling capture, restores
+the policy, and purges its synthetic sources. Preserve the shared administrator
+response-drain barrier, atomic audit/epoch updates, and policy checks before
+idempotency/source-event deduplication. Scope permission checks must precede
+policy denial. Missing overrides intentionally preserve legacy admission; these
+controls are not a secret/PII detector, proof of consent, or provider-egress
+authorization. See [ADR 0026](docs/adr/0026-scope-capture-policy.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

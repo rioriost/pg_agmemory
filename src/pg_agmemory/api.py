@@ -274,7 +274,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-selectable-inference",
+            "stage": "m2-scope-capture-policy",
             "features": [
                 "observe",
                 "episode_query",
@@ -317,6 +317,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "max_items": 100,
             },
             "auto_synthesis": False,
+            "capture_policy": {
+                "transport": "admin-cli",
+                "command": "scope-capture",
+                "compare_and_swap": "tenant_access_epoch",
+                "fields": [
+                    "enabled", "source_namespaces", "consent_references", "max_content_bytes",
+                ],
+                "enforced_on": ["observe", "capture", "capture_batch"],
+                "replay_revalidated": True,
+                "unconfigured": "legacy_admission",
+                "secret_pii_detection": False,
+                "provider_egress_control": False,
+            },
             "model_inference": {
                 "interface": "operator_cli_and_python",
                 "extra": "providers",

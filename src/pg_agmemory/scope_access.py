@@ -4,19 +4,22 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Annotated, Literal, Never
+from typing import Literal, Never
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import dict_row
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError, model_validator
 
-from pg_agmemory.database import SCHEMA_VERSION, VECTOR_QUERY, VECTOR_VERSION
+from pg_agmemory.admin import (
+    MAX_EPOCH,
+    Epoch,
+    admin_connection,
+    admin_failure,
+)
+from pg_agmemory.admin import AdminError as ScopeAccessError
 
 Permission = Literal["read", "write", "delete", "admin"]
 PERMISSIONS: tuple[Permission, ...] = ("read", "write", "delete", "admin")
-MAX_EPOCH = 9223372036854775807
-Epoch = Annotated[int, Field(ge=1, le=MAX_EPOCH, strict=True)]
 
 
 class ScopeAccessRequest(BaseModel):
@@ -66,44 +69,11 @@ class ScopeAccessResult(BaseModel):
     evaluated_at: datetime
 
 
-class ScopeAccessError(Exception):
-    def __init__(self, code: str, *, outcome_unknown: bool = False) -> None:
-        self.code = code
-        self.outcome_unknown = outcome_unknown
-        super().__init__(code)
-
-
 @contextmanager
 def scope_access(url: str, request: ScopeAccessRequest) -> Iterator[ScopeAccessResult]:
     commit_attempted = False
     try:
-        with psycopg.connect(
-            url,
-            autocommit=True,
-            row_factory=dict_row,
-            connect_timeout=5,
-            options="-c statement_timeout=5000 -c lock_timeout=5000",
-        ) as conn:
-            role = conn.execute(
-                "SELECT rolsuper OR rolbypassrls AS allowed FROM pg_roles "
-                "WHERE rolname=current_user"
-            ).fetchone()
-            if not role or not role["allowed"]:
-                raise ScopeAccessError("admin_role_required")
-            versions = conn.execute(
-                "SELECT version FROM public.pgag_schema_migration ORDER BY version"
-            ).fetchall()
-            if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
-                raise ScopeAccessError("schema_version_mismatch")
-            if conn.execute(VECTOR_QUERY).fetchone() != {
-                "extversion": VECTOR_VERSION,
-                "nspname": "public",
-            }:
-                raise ScopeAccessError("extension_version_mismatch")
-            # Keep the same API/worker barrier through commit and CLI output delivery.
-            conn.execute(
-                "SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(request.tenant_id),)
-            )
+        with admin_connection(url, request.tenant_id) as conn:
             with conn.transaction():
                 row_lock = " FOR UPDATE" if request.operation != "get" else ""
                 target = conn.execute(
@@ -201,15 +171,7 @@ def scope_access(url: str, request: ScopeAccessRequest) -> Iterator[ScopeAccessR
                 commit_attempted = changed
             yield result
     except psycopg.Error as exc:
-        if isinstance(exc, (psycopg.errors.UndefinedTable, psycopg.errors.InvalidSchemaName)):
-            code = "schema_unavailable"
-        elif isinstance(exc, psycopg.errors.InsufficientPrivilege):
-            code = "admin_privilege_required"
-        elif isinstance(exc, (psycopg.OperationalError, psycopg.errors.QueryCanceled)):
-            code = "admin_database_unavailable"
-        else:
-            code = "admin_database_error"
-        raise ScopeAccessError(code, outcome_unknown=commit_attempted) from None
+        raise admin_failure(exc, commit_attempted) from None
 
 
 class AccessParser(argparse.ArgumentParser):

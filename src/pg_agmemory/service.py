@@ -7,7 +7,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
+from pg_agmemory.capture_policy import POLICY_COLUMNS, stored_policy
 from pg_agmemory.database import Connection, connect
 from pg_agmemory.lexical import JAPANESE_PROFILE, segment
 from pg_agmemory.models import (
@@ -221,8 +223,28 @@ class MemoryService:
             )
         return result
 
-    async def observe(self, data: Observe, key: str) -> dict[str, Any]:
+    async def validate_capture(self, data: Observe) -> None:
         await self.scope(data.scope_id, "write")
+        row = await (
+            await self.conn.execute(
+                f"SELECT {POLICY_COLUMNS} FROM memory.scope_capture_policy "
+                "WHERE tenant_id=%s AND scope_id=%s",
+                (self.tenant, data.scope_id),
+            )
+        ).fetchone()
+        try:
+            policy = stored_policy(row)
+        except ValidationError:
+            raise MemoryError("capture_policy_invalid", 503) from None
+        try:
+            permitted = policy.permits(data)
+        except UnicodeError:
+            raise MemoryError("invalid_capture_content", 422) from None
+        if not permitted:
+            raise MemoryError("capture_policy_denied", 403)
+
+    async def observe(self, data: Observe, key: str) -> dict[str, Any]:
+        await self.validate_capture(data)
         key_hash, payload_hash, previous = await self.replay("observe", key, data.model_dump_json())
         if previous is not None:
             return previous

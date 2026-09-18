@@ -11,7 +11,7 @@ class Captures:
         self.memory = memory
 
     async def create(self, data: Capture, key: str) -> dict[str, Any]:
-        await self.memory.scope(data.episode.scope_id, "write")
+        await self.memory.validate_capture(data.episode)
         key_hash, payload_hash, previous = await self.memory.replay(
             "capture", key, data.model_dump_json()
         )
@@ -33,7 +33,7 @@ class Captures:
         return result
 
     async def create_batch(self, data: CaptureBatch, key: str) -> dict[str, Any]:
-        await self.memory.scope(data.episode.scope_id, "write")
+        await self.memory.validate_capture(data.episode)
         key_hash, payload_hash, previous = await self.memory.replay(
             "capture_batch", key, data.model_dump_json()
         )
