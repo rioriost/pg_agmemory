@@ -16,10 +16,11 @@ adapterは同じ版に揃え、Native/SDKは38 resource、MCPは4 toolです。
 `observe.auto_extract`/`auto_embed`は既定falseで、通常observeはmodel jobを作りません。
 snapshot hookも別のoperator byte予算を設定するまで無効です。
 
-実装`9c20909bc67dacf8e0fd77a52d1caa46c2340e45`は
-[native amd64/arm64 CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452)
-に合格し、各architectureで1,531 passed / optional live 8 skips、
+実装`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`は
+[native amd64/arm64 CI 35331248426](https://github.com/rioriost/pg_agmemory/actions/runs/35331248426)
+に合格し、各architectureで1,754 passed / optional live 8 skips、
 全packaged production smoke、synthetic M2 lifecycle、限定backup復旧drillが成功しました。
+新規offline collector/review/pilot 223 caseは内数であり、別途加算しません。
 別途の実local model 3 call lifecycleは
 `e4f5d76ad2a4919349054165ce531b92fa650818`で実行しました。
 後のpublication commitへ検証SHAを付け替えないでください。
@@ -28,6 +29,14 @@ snapshot hookも別のoperator byte予算を設定するまで無効です。
 `0552151`公開oracle診断の不正出力72/144件は過去の証跡として保持します。
 送信schema修正後の`9c95816`は新たな412 callで契約違反0件になりましたが、
 abstention 136/144件、機械的完全一致22/144件にとどまり、回答品質は未認定です。
+
+[人手評価の準備](HUMAN_REVIEW-jp.md)がlocalで整いました。実行codeは
+`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`で、revision固定のWikipedia 6抜粋、
+local呼出し24回、要約5件、QA 11件、保持した生成失敗8件です。
+契約を通過した抽出claimや人手labelはありません。
+次の人手作業は原文だけを使った独立した事前注釈、その後の2票による出力採点です。
+providerだけの開発用pilotであり、working compaction、実task継続、M2受入れの
+測定ではありません。
 
 残る受入れは、人手assertion support 95%、重要claim fidelity 98%、
 20件以上の実task replayと継続成功率の非劣化、回答品質、

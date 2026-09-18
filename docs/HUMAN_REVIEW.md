@@ -47,6 +47,59 @@ and [API etiquette](https://www.mediawiki.org/wiki/API:Etiquette).
 Identify the project, use serial bounded requests, and stop on denial or rate
 limiting rather than spoofing a browser or bypassing a restriction.
 
+## Ready local pilot: 2026-09-18
+
+**Human work can start with the existing files; do not regenerate outputs before
+review.** Assign two independent English/Japanese-capable reviewers to
+`reviewer-a` and `reviewer-b`. In this checkout, first open
+`.review-artifacts/wikipedia-pilot/review/sources.html` and fill the corresponding
+`source-reviewer-1.json` / `source-reviewer-2.json`. Only afterward open
+`outputs.html` and fill `reviewer-1.json` / `reviewer-2.json` in the same directory.
+The initial `pending-report/report.html` is one directory above `review/`.
+All four forms are pending, with no model-generated important-claim inventories
+or human verdicts. These private local artifacts are deliberately not in git.
+
+Collection and generation used immutable code
+`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`, Ollama 0.34.1 and
+`qwen2.5:7b` revision
+`845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e`.
+The six fixed sources produced six excerpts totaling 3,301 UTF-8 bytes:
+
+| Article | Language | Revision | Excerpt bytes |
+|---|---|---|---:|
+| PostgreSQL | en | 1373697757 | 632 |
+| PostgreSQL | ja | 109498755 | 639 |
+| Solar System | en | 1372787813 | 460 |
+| 太陽系 | ja | 110861363 | 863 |
+| Atomic clock | en | 1374241509 | 336 |
+| 原子時計 | ja | 111035897 | 371 |
+
+Exactly **24 local text calls**, zero embedding calls, and no retries produced
+24 review records: **5 summaries, 11 QA records (5 answers, 6 abstentions), and
+8 generation failures**. No extraction claim passed the existing contract, so
+assertion support cannot be measured from this pilot. All failures are retained:
+one extraction and one summary reached the 512-token limit; five extraction
+responses had exact source quotes but nonliteral subjects and/or values; one
+definition answer supplied an invalid citation ID. This is mechanical diagnosis,
+not semantic grading. Do not repair rejected outputs or silently omit failures.
+The valid outputs still require human judgments of support, omissions and
+abstention appropriateness. No acceptance rate or M2 qualification is claimed.
+
+Provenance digests:
+
+- Corpus: `012ef8d1dd7d562662ddaf5d39825d9f3d627c09b2dd310413adb3cd0087ba01`
+- Profile: `842964cb10f6c28f858544355989f4b481eedb3a6fde8134229eaad2d744381c`
+- Review packet: `865f61431652560295201c4aae5c66b8fab0ea2fbfaeb055a063bbac5a20979e`
+
+The first collector at `340bb1b` stopped after one HTTP 200 metadata response
+because it incorrectly rejected a normal revision-history continuation token.
+Its failed manifest/response remain in
+`.review-artifacts/wikipedia-corpus-340bb1b-failed/`; no model calls occurred in
+that attempt. The corrected collector accepts only that bounded, well-formed
+metadata cursor, never follows it, and still rejects warnings, unknown cursors
+and parse continuations. The subsequent complete corpus is in
+`.review-artifacts/wikipedia-corpus/`; raw API responses remain JSON-only.
+
 ## Preparing a packet
 
 Run repository Python commands in the supported Linux container environment.

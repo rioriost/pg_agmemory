@@ -42,6 +42,57 @@ Wikipedia contributorsへの帰属、正確なrevisionと履歴へのlink、
 projectを名乗り、件数を限定した逐次requestを使用します。拒否・rate limit時は停止し、
 browser偽装や制限回避を行いません。
 
+## 用意済みのlocal pilot: 2026-09-18
+
+**既存fileで人手作業を開始できます。採点前に出力を再生成しないでください。**
+日英を読める独立した2名を`reviewer-a`と`reviewer-b`へ割り当てます。
+このcheckoutでは、最初に
+`.review-artifacts/wikipedia-pilot/review/sources.html`だけを開き、
+同じdirectoryの`source-reviewer-1.json` / `source-reviewer-2.json`へ記入します。
+その後に`outputs.html`を開き、`reviewer-1.json` / `reviewer-2.json`を採点します。
+初期の`pending-report/report.html`は`review/`の一つ上のdirectoryにあります。
+4票とも未記入で、model作成の重要claim一覧や人手判定はありません。
+これらの非公開local artifactは意図的にgitへ含めていません。
+
+収集と生成には、不変code
+`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`、Ollama 0.34.1、
+`qwen2.5:7b` revision
+`845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e`を使いました。
+固定した6原文から、合計3,301 UTF-8 bytesの6抜粋を用意しました。
+
+| 記事 | 言語 | Revision | 抜粋bytes |
+|---|---|---|---:|
+| PostgreSQL | en | 1373697757 | 632 |
+| PostgreSQL | ja | 109498755 | 639 |
+| Solar System | en | 1372787813 | 460 |
+| 太陽系 | ja | 110861363 | 863 |
+| Atomic clock | en | 1374241509 | 336 |
+| 原子時計 | ja | 111035897 | 371 |
+
+local text modelを**24回**呼び、embedding呼出し0回、retryなしで24件を記録しました。
+内訳は**要約5件、QA 11件（回答5件・見送り6件）、生成失敗8件**です。
+抽出claimは既存契約を通過したものが0件なので、このpilotからassertion supportは
+測れません。失敗もすべて保持しています。抽出1件と要約1件は512-token上限へ達し、
+抽出5件は引用自体が原文に一致してもsubject/valueが引用内のliteralではなく、
+定義QA 1件はcitation IDが不正でした。これは機械的な診断であり、意味的な採点では
+ありません。不正出力の修復や失敗の除外は行いません。
+有効な出力の根拠、抜け、回答見送りの妥当性は人が判定する必要があります。
+合格率やM2完了は主張しません。
+
+追跡用digest:
+
+- Corpus: `012ef8d1dd7d562662ddaf5d39825d9f3d627c09b2dd310413adb3cd0087ba01`
+- Profile: `842964cb10f6c28f858544355989f4b481eedb3a6fde8134229eaad2d744381c`
+- Review packet: `865f61431652560295201c4aae5c66b8fab0ea2fbfaeb055a063bbac5a20979e`
+
+最初のcollector `340bb1b`はHTTP 200のmetadata応答1件の後、正常なrevision履歴の
+continuation tokenを誤って拒否して停止しました。そのmanifestと応答は
+`.review-artifacts/wikipedia-corpus-340bb1b-failed/`に残し、modelは呼んでいません。
+修正版は想定する形式・上限内のmetadata cursorだけを認め、追跡はしません。
+warning、不明なcursor、parse側のcontinuationは引き続き拒否します。
+続く完全なcorpusは`.review-artifacts/wikipedia-corpus/`にあり、
+APIの生応答はJSONだけで保持しています。
+
 ## 評価packetの準備
 
 repositoryのPython commandは対応するLinux container内で実行します。

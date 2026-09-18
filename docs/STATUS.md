@@ -17,10 +17,11 @@ and explicit read-only after-compaction restoration. `observe.auto_extract` and
 `auto_embed` default false; an ordinary observation still creates no model job.
 The snapshot hook remains disabled unless its separate operator byte budget is set.
 
-Implementation `9c20909bc67dacf8e0fd77a52d1caa46c2340e45` passed
-[native amd64/arm64 CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452):
-1,531 tests / 8 optional live skips on each architecture, including all packaged
+Implementation `1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6` passed
+[native amd64/arm64 CI 35331248426](https://github.com/rioriost/pg_agmemory/actions/runs/35331248426):
+1,754 tests / 8 optional live skips on each architecture, including all packaged
 production smokes, synthetic M2 lifecycle and the bounded backup-recovery drill.
+The 223 new offline collector/review/pilot cases are included, not additional.
 The separate real three-call local-model lifecycle used
 `e4f5d76ad2a4919349054165ce531b92fa650818`.
 Do not attribute those results to a later publication commit.
@@ -31,6 +32,14 @@ The public oracle diagnostic at `0552151` retained 72 invalid outputs among 144
 answer attempts. Corrected wire schema `9c95816` eliminated those contract errors
 in a fresh 412-call run, but 136/144 abstentions and 22/144 mechanical matches
 still do not establish answer quality. Prior evidence remains unchanged.
+
+[Human review preparation](HUMAN_REVIEW.md) is now ready locally at exact code
+`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`: six revision-pinned Wikipedia excerpts,
+24 local calls, five summaries, eleven QA records and eight retained generation
+failures. There are no accepted extraction claims and no human labels.
+The next human step is independent source-only preannotation, then output
+ratings in the two prepared forms. This provider-only development pilot does
+not measure working compaction, real-task continuation or M2 acceptance.
 
 Outstanding acceptance includes human assertion support (95%), human important
 claim fidelity (98%), at least 20 executed real-task replays/continuation

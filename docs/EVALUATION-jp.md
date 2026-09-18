@@ -40,6 +40,9 @@ MVP 完了、production readiness、人手 assertion precision、compaction fide
 | `055215168c83501f676e643853d9d7b58e9f0c5d`のPublic oracle | 修正予算で412 call完了。不正回答72 / 試行144、別途予算skip 24。**QA合格ではない** |
 | `9c958162f9f61bfb8f75b8747d3133c5afcb80a3`のQA送信schema修正 | 新規412 callで契約違反0、abstention 136、機械的完全一致22 / 回答試行144。**意味的品質の認定ではない** |
 | 完全一致`9c20909bc67dacf8e0fd77a52d1caa46c2340e45`の[native CI 35326089452](https://github.com/rioriost/pg_agmemory/actions/runs/35326089452) | 両architectureで**1,531 passed / optional 8 skips**、全production smokeと実bounded backup復旧成功。amd64 test 1015.18秒、arm64 939.33秒 |
+| 人手評価tooling `1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6` | Linux対象検査は**340 passed / DB依存6 skips**、Ruffと35 source fileのmypy成功。新規offline review/collector/pilot 223 caseを含み、重複件数は合算しない |
+| 同じ`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`の実Wikipedia pilot | revision固定の日英6抜粋、local text呼出し24回。要約5件、QA 11件（見送り6件含む）、保持した生成失敗8件。契約通過の抽出claim・人手評定は0件。[引き継ぎ・digest・失敗履歴](HUMAN_REVIEW-jp.md)を参照 |
+| 完全一致`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`の[native CI 35331248426](https://github.com/rioriost/pg_agmemory/actions/runs/35331248426) | 両architectureで**1,754 passed / optional 8 skips**、全packaged production smokeと限定backup復旧成功。amd64 test 1021.93秒、arm64 925.23秒。上記subset/新規caseは内数 |
 | 人手、実task、一般災害復旧の受入れ | 人手/実taskは**未測定**。限定的process復旧や単一purge backup実験は一般DRの認定ではない |
 
 既存 memory gate の測定上の問題は `ru_maxrss` に由来する。報告された worktree 修正は
