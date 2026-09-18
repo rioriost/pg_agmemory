@@ -472,7 +472,24 @@ def _positive_int(value: Any, label: str) -> int:
     return value
 
 
+def _validate_revision_continuation(payload: dict[str, Any]) -> None:
+    # rvlimit=1 can advertise older history. Validate the cursor, but never follow it.
+    if "continue" not in payload:
+        return
+    continuation = _object(payload["continue"], "revision-history continuation")
+    if set(continuation) != {"rvcontinue", "continue"} or continuation["continue"] != "||info":
+        raise CollectionError("API returned unexpected revision-history continuation")
+    cursor = continuation["rvcontinue"]
+    if not isinstance(cursor, str) or not re.fullmatch(r"[0-9]{14}\|[1-9][0-9]{0,19}", cursor):
+        raise CollectionError("API returned malformed revision-history continuation")
+    try:
+        datetime.strptime(cursor[:14], "%Y%m%d%H%M%S")
+    except ValueError as error:
+        raise CollectionError("API returned invalid revision-history continuation date") from error
+
+
 def _revision_metadata(payload: dict[str, Any]) -> tuple[int, str, int, str]:
+    _validate_revision_continuation(payload)
     query = _object(payload.get("query"), "query")
     if any(key in query for key in ("redirects", "interwiki")):
         raise CollectionError("Redirect/interwiki resolution is not allowed")
@@ -495,6 +512,8 @@ def _revision_metadata(payload: dict[str, Any]) -> tuple[int, str, int, str]:
         raise CollectionError("API must return exactly one revision")
     revision = _object(revisions[0], "revision")
     revision_id = _positive_int(revision.get("revid"), "revision ID")
+    if _positive_int(page.get("lastrevid"), "latest revision ID") != revision_id:
+        raise CollectionError("Selected revision does not match the page's latest revision")
     timestamp = revision.get("timestamp")
     if not isinstance(timestamp, str):
         raise CollectionError("API response has invalid revision timestamp")
@@ -591,7 +610,9 @@ def collect(
             payload = _object(json.loads(body.decode("utf-8")), "root")
         except (UnicodeError, json.JSONDecodeError) as error:
             raise CollectionError("API response is not valid UTF-8 JSON") from error
-        if any(key in payload for key in ("error", "errors", "warnings", "continue")):
+        if any(key in payload for key in ("error", "errors", "warnings")):
+            raise CollectionError("API returned an error or warning")
+        if "continue" in payload and stage != "metadata":
             raise CollectionError("API returned an error, warning, or unexpected continuation")
         return payload
 

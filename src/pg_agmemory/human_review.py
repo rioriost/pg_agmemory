@@ -916,15 +916,19 @@ def _invalid_constant(value: str) -> object:
     raise ValueError("Non-finite JSON constant")
 
 
-def load_json[Model: BaseModel](path: Path, model: type[Model]) -> Model:
+def load_json[Model: BaseModel](
+    path: Path, model: type[Model], *, max_bytes: int = MAX_JSON_BYTES
+) -> Model:
     """Bounded, regular-file-only strict JSON loading, including duplicate-key rejection."""
+    if type(max_bytes) is not int or not 1 <= max_bytes <= MAX_JSON_BYTES:
+        raise ValueError("Invalid JSON input byte limit")
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_JSON_BYTES:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
             raise ValueError("Input must be a bounded regular JSON file")
-        payload = stream.read(MAX_JSON_BYTES + 1)
-    if len(payload) > MAX_JSON_BYTES:
+        payload = stream.read(max_bytes + 1)
+    if len(payload) > max_bytes:
         raise ValueError("JSON input exceeds byte limit")
     json.loads(payload, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
     return model.model_validate_json(payload)

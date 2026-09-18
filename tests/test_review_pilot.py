@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import sys
 
 import pytest
@@ -14,7 +15,7 @@ from pg_agmemory.evaluation_wikipedia import (
     source_id,
     source_urls,
 )
-from pg_agmemory.human_review import pending_form, prepare, score
+from pg_agmemory.human_review import load_json, pending_form, prepare, score
 from pg_agmemory.providers import HTTPProvider, ProviderFailure, ProviderSettings
 from pg_agmemory.review_pilot import (
     PilotMeasurements,
@@ -223,3 +224,17 @@ def test_cli_requires_explicit_call_permission_and_prepares_pending_forms(tmp_pa
     assert report["review_complete"] is False and report["m2_qualified"] is False
     assert len(report["incomplete_cases"]) == 4
     assert (tmp_path / "pilot/review/source-reviewer-2.json").is_file()
+
+
+def test_profile_loading_rejects_nonregular_oversized_and_duplicate_key_inputs(tmp_path):
+    path = tmp_path / "profile.json"
+    os.mkfifo(path)
+    with pytest.raises(ValueError, match="regular"):
+        load_json(path, ProviderSettings, max_bytes=32768)
+    path.unlink()
+    path.write_text(settings().model_dump_json())
+    with pytest.raises(ValueError, match="bounded"):
+        load_json(path, ProviderSettings, max_bytes=8)
+    path.write_text('{"backend":"local_http","backend":"openai_compatible"}')
+    with pytest.raises(ValueError, match="Duplicate"):
+        load_json(path, ProviderSettings, max_bytes=32768)

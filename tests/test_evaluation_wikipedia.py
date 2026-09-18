@@ -37,6 +37,7 @@ def metadata(title="Synthetic article", page_id=17, revision_id=401):
                     "pageid": page_id,
                     "ns": 0,
                     "title": title,
+                    "lastrevid": revision_id,
                     "revisions": [{"revid": revision_id, "timestamp": "2026-09-18T00:00:00Z"}],
                 }
             ],
@@ -117,6 +118,99 @@ def test_revision_is_selected_first_and_parse_is_explicitly_bound(tmp_path):
             hashlib.sha256((output / entry["body_file"]).read_bytes()).hexdigest()
             == (entry["body_sha256"])
         )
+
+
+def test_metadata_history_continuation_is_validated_retained_and_never_followed(tmp_path):
+    value = metadata()
+    del value["batchcomplete"]
+    value["continue"] = {"rvcontinue": "20260824161056|400", "continue": "||info"}
+    corpus, transport = collect_fixture(tmp_path, [value, parsed()])
+    assert corpus.sources[0].revision_id == 401
+    assert len(transport.urls) == 2
+    queries = [parse_qs(urlsplit(url).query) for url in transport.urls]
+    assert queries[0]["rvlimit"] == ["1"]
+    assert queries[1]["action"] == ["parse"] and queries[1]["oldid"] == ["401"]
+    assert all("continue" not in query and "rvcontinue" not in query for query in queries)
+    output = tmp_path / "corpus"
+    assert json.loads((output / "01-metadata.json").read_bytes()) == value
+    assert json.loads((output / "manifest.json").read_bytes())["status"] == "complete"
+
+
+@pytest.mark.parametrize(
+    "continuation",
+    [
+        None,
+        [],
+        {},
+        {"continue": "||info"},
+        {"rvcontinue": "20260824161056|400"},
+        {"rvcontinue": "20260824161056|400", "continue": "||"},
+        {"rvcontinue": "20260824161056|400", "continue": "||info", "other": "cursor"},
+        {"rvcontinue": 400, "continue": "||info"},
+        {"rvcontinue": True, "continue": "||info"},
+        {"rvcontinue": "20260824|400", "continue": "||info"},
+        {"rvcontinue": "20260231161056|400", "continue": "||info"},
+        {"rvcontinue": "20260824161056|0", "continue": "||info"},
+        {"rvcontinue": "20260824161056|-1", "continue": "||info"},
+        {"rvcontinue": "20260824161056|400\n", "continue": "||info"},
+        {"rvcontinue": "20260824161056|" + "1" * 21, "continue": "||info"},
+    ],
+)
+def test_unknown_or_malformed_metadata_continuation_fails_without_following(tmp_path, continuation):
+    value = metadata()
+    value["continue"] = continuation
+    transport = FixtureTransport([value])
+    output = tmp_path / "invalid"
+    with pytest.raises(wiki.CollectionError, match="continuation"):
+        wiki.collect(
+            [wiki.ArticleRequest(language="en", title="Synthetic article")],
+            output,
+            transport=transport,
+        )
+    assert len(transport.urls) == 1
+    assert not (output / "corpus.json").exists()
+    assert json.loads((output / "manifest.json").read_bytes())["status"] == "failed"
+
+
+def test_even_well_formed_revision_continuation_is_rejected_for_parse(tmp_path):
+    value = parsed()
+    value["continue"] = {"rvcontinue": "20260824161056|400", "continue": "||info"}
+    transport = FixtureTransport([metadata(), value])
+    output = tmp_path / "invalid"
+    with pytest.raises(wiki.CollectionError, match="continuation"):
+        wiki.collect(
+            [wiki.ArticleRequest(language="en", title="Synthetic article")],
+            output,
+            transport=transport,
+            sleep=lambda _: None,
+        )
+    assert len(transport.urls) == 2
+    assert not (output / "corpus.json").exists()
+    assert json.loads((output / "01-parse.json").read_bytes()) == value
+
+
+@pytest.mark.parametrize("field", ["error", "errors", "warnings"])
+def test_valid_metadata_continuation_does_not_override_api_errors(tmp_path, field):
+    value = metadata()
+    value["continue"] = {"rvcontinue": "20260824161056|400", "continue": "||info"}
+    value[field] = {"synthetic": "failure"}
+    with pytest.raises(wiki.CollectionError, match="error or warning"):
+        collect_fixture(tmp_path, [value])
+
+
+@pytest.mark.parametrize("latest", [None, True, "401", 0, 400, 402])
+@pytest.mark.parametrize("with_continuation", [False, True])
+def test_metadata_must_report_exactly_the_latest_revision(tmp_path, latest, with_continuation):
+    value = metadata()
+    if latest is None:
+        del value["query"]["pages"][0]["lastrevid"]
+    else:
+        value["query"]["pages"][0]["lastrevid"] = latest
+    if with_continuation:
+        value["continue"] = {"rvcontinue": "20260824161056|400", "continue": "||info"}
+    with pytest.raises(wiki.CollectionError, match="latest revision"):
+        collect_fixture(tmp_path, [value])
+    assert not (tmp_path / "corpus" / "corpus.json").exists()
 
 
 def test_unicode_hashes_attribution_and_standard_license_are_preserved(tmp_path):

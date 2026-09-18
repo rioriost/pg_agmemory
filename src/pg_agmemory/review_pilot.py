@@ -41,7 +41,6 @@ from pg_agmemory.providers import (
     ProviderSettings,
     SummaryResult,
     extraction_schema,
-    parse_settings,
 )
 from pg_agmemory.worker_profile import WorkerProfile
 
@@ -352,6 +351,8 @@ def review_sources(
             modifications="; ".join(originals[item.parent_source_id].modifications) + (
                 f"; Pilot excerpt policy {EXCERPT_POLICY}; original text SHA256 "
                 f"{item.parent_text_sha256}; Unicode slice [{item.start},{item.end}); "
+                f"QA context revision publication time: {item.revision_timestamp} "
+                "(not fact occurrence time); "
                 "model outputs are untrusted adaptations, not Wikipedia contributor statements."
             ),
         )
@@ -437,8 +438,7 @@ def main() -> None:
         ):
             raise ValueError("Two distinct reviewer identifiers are required")
         corpus = load_json(args.corpus, WikipediaCorpus)
-        with args.profile.open("rb") as stream:
-            settings = parse_settings(stream.read(32769))
+        settings = load_json(args.profile, ProviderSettings, max_bytes=32768)
         excerpts = corpus_excerpts(corpus)
         review_sources(corpus, excerpts)
         measured = asyncio.run(measure(
@@ -457,7 +457,7 @@ def main() -> None:
         )
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(report.model_dump_json(indent=2) + "\n")
-    except (OSError, ValueError, ProviderFailure) as exc:
+    except (OSError, ValueError, RecursionError, ProviderFailure) as exc:
         code = exc.error.code if isinstance(exc, ProviderFailure) else type(exc).__name__
         print(
             f"review_pilot: stopped ({code}); preserve any partial journal. "
