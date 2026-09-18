@@ -195,6 +195,8 @@ def test_generated_schema_is_closed_bounded_and_contains_no_authority_fields():
     assert "never publish memory" in EXTRACTION_SYSTEM_PROMPT
     assert "exactly once" in EXTRACTION_SYSTEM_PROMPT
     assert "surrounding context" in EXTRACTION_SYSTEM_PROMPT
+    assert "A quote that omits the subject is invalid" in EXTRACTION_SYSTEM_PROMPT
+    assert "copy the entire line as evidence_quote" in EXTRACTION_SYSTEM_PROMPT
     assert "offset" not in EXTRACTION_SYSTEM_PROMPT and "codepoint" not in EXTRACTION_SYSTEM_PROMPT
 
 
