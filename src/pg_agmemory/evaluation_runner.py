@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import Field, TypeAdapter, model_validator
+from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from pg_agmemory.evaluation import (
     BASELINES,
@@ -42,6 +42,18 @@ ANSWER_SYSTEM_PROMPT = (
     "matching the supplied schema. Cite only supplied source IDs. Do not use "
     "outside knowledge or invent evidence."
 )
+AnswerFailureCode = Literal[
+    "invalid_answer_response",
+    "incomplete_answer_response",
+    "invalid_answer_contract",
+    "invalid_answer_citation",
+]
+
+
+class AnswerFailure(ValueError):
+    def __init__(self, code: AnswerFailureCode) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 class EvaluationAnswer(EvaluationContract):
@@ -51,6 +63,9 @@ class EvaluationAnswer(EvaluationContract):
 
     @model_validator(mode="after")
     def valid_abstention(self) -> "EvaluationAnswer":
+        self.answer.encode("utf-8")
+        for citation in self.citations:
+            citation.encode("utf-8")
         if self.abstained and (self.answer or self.citations):
             raise ValueError("Abstention requires an empty answer and no citations")
         if not self.abstained and (not self.answer.strip() or not self.citations):
@@ -68,6 +83,7 @@ class AnswerObservation(EvaluationContract):
     skipped_reason: str | None
     exact_match: bool | None
     unanswerable_nonabstention: bool | None
+    failure_code: AnswerFailureCode | None = None
     human_review: Literal["not_reviewed"] = "not_reviewed"
 
 
@@ -150,7 +166,7 @@ class LocalEvaluation:
             stream.write(
                 json.dumps(
                     {"event": event, "run_id": self.run_id, **fields},
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     separators=(",", ":"),
                 )
                 + "\n"
@@ -223,7 +239,7 @@ class LocalEvaluation:
         )
         choices = wire.get("choices")
         if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
-            raise ValueError("Invalid answer response")
+            raise AnswerFailure("invalid_answer_response")
         choice = choices[0]
         message = choice.get("message", {})
         if (
@@ -235,11 +251,14 @@ class LocalEvaluation:
             or message.get("refusal")
             or not isinstance(message.get("content"), str)
         ):
-            raise ValueError("Incomplete or unsupported answer response")
-        result = EvaluationAnswer.model_validate_json(message.get("content", ""))
+            raise AnswerFailure("incomplete_answer_response")
+        try:
+            result = EvaluationAnswer.model_validate_json(message.get("content", ""))
+        except ValidationError:
+            raise AnswerFailure("invalid_answer_contract") from None
         allowed = {source.source_id for source in sources}
         if not set(result.citations) <= allowed:
-            raise ValueError("Invalid answer citation")
+            raise AnswerFailure("invalid_answer_citation")
         self.record("call_completed", call=self.calls, billing_unknown=False)
         return result
 
@@ -430,7 +449,23 @@ class LocalEvaluation:
                             )
                             continue
                         selected_sources = [source_map[source_id] for source_id in selected]
-                        generated = await self.answer(question, selected_sources, seed=seed)
+                        try:
+                            generated = await self.answer(question, selected_sources, seed=seed)
+                        except AnswerFailure as error:
+                            answers.append(
+                                AnswerObservation(
+                                    question_id=question.question_id,
+                                    baseline=baseline,
+                                    seed=seed,
+                                    answer=None,
+                                    skipped_reason=None,
+                                    exact_match=False,
+                                    unanswerable_nonabstention=None,
+                                    failure_code=error.code,
+                                )
+                            )
+                            self.record("answer_failed", **answers[-1].model_dump(mode="json"))
+                            continue
                         answers.append(
                             AnswerObservation(
                                 question_id=question.question_id,
@@ -541,6 +576,7 @@ def main() -> None:
                     "profile_digest": run.profile_digest,
                     "answer_prompt_revision": "grounded-qa-v1",
                     "calls": evaluator.calls,
+                    "answer_failures": sum(answer.failure_code is not None for answer in answers),
                     "m2_qualified": False,
                     "answer_measurement": "mechanical_exact_match_not_upstream_or_human_grading",
                     "records": [answer.model_dump(mode="json") for answer in answers],
@@ -553,7 +589,9 @@ def main() -> None:
         print(
             json.dumps(
                 {
-                    "status": "measured",
+                    "status": "measured_with_answer_failures"
+                    if any(answer.failure_code is not None for answer in answers)
+                    else "measured",
                     "dataset_digest": dataset.digest(),
                     "profile_digest": run.profile_digest,
                     "calls": evaluator.calls,

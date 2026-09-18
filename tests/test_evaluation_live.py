@@ -110,6 +110,7 @@ def test_live_native_retrieval_baselines(evaluation_request, env, api_process):
                 "answer_prompt_revision": "grounded-qa-v1",
                 "measurement": "mechanical_exact_match_not_upstream_or_human_grading",
                 "calls": evaluator.calls,
+                "answer_failures": sum(answer.failure_code is not None for answer in answers),
                 "m2_qualified": False,
                 "records": [answer.model_dump(mode="json") for answer in answers],
             },

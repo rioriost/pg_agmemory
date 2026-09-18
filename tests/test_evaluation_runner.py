@@ -362,6 +362,66 @@ def test_input_limit_rejects_a_valid_prefix_followed_by_unread_data(tmp_path):
     assert read_bounded(path, 22) == path.read_bytes()
 
 
+def test_journal_can_preserve_invalid_untrusted_unicode_for_diagnosis(tmp_path):
+    evaluator = LocalEvaluation(configuration(), journal=tmp_path / "calls.jsonl")
+    evaluator.record("invalid_wire", content="\ud800")
+    assert journal(evaluator)[0]["content"] == "\ud800"
+
+
+@pytest.mark.integration
+def test_invalid_answers_stay_in_every_baseline_denominator_without_retries(
+    env, api_process, tmp_path, monkeypatch
+):
+    scopes = provision_scope(env)
+    evaluator = LocalEvaluation(configuration(), journal=tmp_path / "calls.jsonl")
+
+    async def embed(self, source):
+        return GeneratedEmbedding(
+            model=self.settings.embedding_model,
+            values=[1.0] + [0.0] * 767,
+            input_digest=source.digest(),
+        )
+
+    async def invalid_answer(self, path, payload):
+        assert path == "chat/completions" and payload["seed"] == 17
+        return {"choices": [None]}
+
+    monkeypatch.setattr(HTTPProvider, "embed", embed)
+    monkeypatch.setattr(HTTPProvider, "exchange", invalid_answer)
+
+    async def execute(url):
+        async with AsyncMemoryClient(url, env.token()) as client:
+            run, answers = await evaluator.run(
+                client,
+                corpus(),
+                scopes,
+                implementation_sha="a" * 40,
+                answer_seeds=(17,),
+            )
+            assert len(run.observations) == len(answers) == 6
+            assert {answer.baseline for answer in answers} == set(BASELINES)
+            assert all(
+                answer.failure_code == "invalid_answer_response"
+                and answer.answer is None
+                and answer.exact_match is False
+                and answer.skipped_reason is None
+                for answer in answers
+            )
+            assert evaluator.calls == 9
+            assert not (
+                await client.recall(
+                    Recall(
+                        scope_ids=list(scopes.values()),
+                        purpose="confirm_failed_answer_cleanup",
+                    )
+                )
+            ).items
+
+    with api_process("evaluation-invalid-answers.log") as (http, _):
+        asyncio.run(execute(str(http.base_url)))
+    assert sum(row["event"] == "answer_failed" for row in journal(evaluator)) == 6
+
+
 @pytest.mark.integration
 def test_nonempty_scope_is_rejected_without_calls_or_deletion(env, api_process, tmp_path):
     saved = env.observe().json()

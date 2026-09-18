@@ -560,15 +560,13 @@ def test_extract_generate_uses_closed_schema_binding_and_bounded_single_call(
     data = InferenceInput(text=" \n🔒東京は承認していない。\n " + INJECTION)
     quote = "東京は承認していない。"
     start = data.text.index(quote)
-    candidate = {
+    proposal = {
         "subject": "東京",
         "predicate": "approval",
         "value": "承認していない",
         "evidence_quote": quote,
-        "start": start,
-        "end": start + len(quote),
     }
-    payload = {"candidates": [candidate]}
+    payload = {"candidates": [proposal]}
     config = settings(azure_product=product, text_model={"name": INJECTION, "revision": "1"})
     provider, conn, connect = mock_provider(
         monkeypatch,
@@ -577,13 +575,17 @@ def test_extract_generate_uses_closed_schema_binding_and_bounded_single_call(
         result=json.dumps(payload) if as_text else payload,
     )
     result = asyncio.run(provider.extract(data))
-    assert result.candidates[0].model_dump() == candidate
+    assert result.candidates[0].model_dump() == {
+        **proposal, "start": start, "end": start + len(quote)
+    }
     assert result.model == config.text_model and result.input_digest == data.digest()
     assert result.status == "untrusted"
     statement, params = conn.inference_calls[0]
     assert INJECTION not in statement and data.text not in statement
     assert params[:2] == (data.text, INJECTION)
     assert isinstance(params[2], Jsonb) and params[2].obj == extraction_schema()
+    fields = params[2].obj["schema"]["$defs"]["ExtractionProposal"]["properties"]
+    assert set(fields) == {"subject", "predicate", "value", "evidence_quote"}
     assert params[3] == EXTRACTION_SYSTEM_PROMPT
     assert "azure_cognitive" not in statement
     assert statement.count("azure_ai.generate(") == 1
@@ -642,11 +644,12 @@ def test_extract_generate_can_abstain_without_fallback(monkeypatch):
         {"subject": "fabricated"},
         {"value": "approved PRIVATE"},
         {"value": "\ud800"},
-        {"evidence_quote": SOURCE.text.strip()},
+        {"evidence_quote": SOURCE.text.replace("\n", " ")},
         {"start": True},
         {"end": 1.0},
         {"start": 1, "end": len(SOURCE.text) + 1},
         {"start": 100, "end": 100 + len(SOURCE.text)},
+        {"start": 0, "end": len(SOURCE.text)},
         {"scope_id": "PRIVATE"},
         {"confidence": 1.0},
     ],
@@ -657,8 +660,6 @@ def test_extract_generate_rejects_candidate_grounding_and_authority(monkeypatch,
         "predicate": "approval",
         "value": "approval remains uncertain",
         "evidence_quote": SOURCE.text,
-        "start": 0,
-        "end": len(SOURCE.text),
         **changes,
     }
     provider, conn, _ = mock_provider(monkeypatch, result={"candidates": [item]})
@@ -676,14 +677,34 @@ def test_extract_generate_rejects_duplicates_and_candidate_limit(monkeypatch, co
             "predicate": f"p{index}" if distinct else "approval",
             "value": "approval remains uncertain",
             "evidence_quote": SOURCE.text,
-            "start": 0,
-            "end": len(SOURCE.text),
         }
         for index in range(count)
     ]
     provider, conn, _ = mock_provider(monkeypatch, result={"candidates": candidates})
     with pytest.raises(ProviderFailure) as failure:
         asyncio.run(provider.extract(SOURCE))
+    assert_failure(failure, "invalid_provider_response", unknown=True)
+    assert len(conn.inference_calls) == 1
+
+
+@pytest.mark.parametrize("as_text", [False, True])
+@pytest.mark.parametrize(
+    "source,quote",
+    [("ababa", "aba"), ("東京 東京", "東京"), ("A  B", "A B"), ("e\u0301", "é")],
+)
+def test_extract_generate_requires_unique_exact_quote_including_overlaps(
+    monkeypatch, as_text, source, quote
+):
+    payload = {
+        "candidates": [
+            {"subject": quote, "predicate": "reports", "value": quote, "evidence_quote": quote}
+        ]
+    }
+    provider, conn, _ = mock_provider(
+        monkeypatch, result=json.dumps(payload) if as_text else payload
+    )
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(provider.extract(InferenceInput(text=source)))
     assert_failure(failure, "invalid_provider_response", unknown=True)
     assert len(conn.inference_calls) == 1
 
@@ -777,8 +798,7 @@ def synthetic_azure(env, monkeypatch, request):
                          IF json_schema->>'name'='memory_extraction_candidates' THEN
                            RETURN jsonb_build_object('candidates',jsonb_build_array(
                              jsonb_build_object('subject',prompt,'predicate','reports',
-                               'value',prompt,'evidence_quote',prompt,
-                               'start',0,'end',char_length(prompt)))){};
+                               'value',prompt,'evidence_quote',prompt))){};
                          END IF;
                          RETURN jsonb_build_object('summary','Synthetic summary.'){};
                        END $synthetic$"""

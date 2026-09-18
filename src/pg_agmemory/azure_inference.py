@@ -22,7 +22,7 @@ from pg_agmemory.providers import (
     SummaryResult,
     configured_operations,
     extraction_schema,
-    parse_extraction,
+    parse_extraction_proposals,
 )
 
 CATALOG_QUERY = """SELECT n.nspname AS schema,p.proname AS name,p.proargnames AS names,
@@ -242,7 +242,7 @@ class AzureAIProvider:
                json_schema=>%s::jsonb,system_prompt=>%s::text) AS result""",
             (data.text, model.name, Jsonb(extraction_schema()), EXTRACTION_SYSTEM_PROMPT),
         )
-        return parse_extraction(result, data, model)
+        return parse_extraction_proposals(result, data, model)
 
     async def summarize(self, data: InferenceInput) -> SummaryResult:
         model = self.settings.text_model

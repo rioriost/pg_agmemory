@@ -39,10 +39,12 @@ EXTRACTION_SYSTEM_PROMPT = (
     "approval or intent, and never publish memory. Return only the requested JSON object "
     "with candidates (at most 16); use an empty list to abstain. Each subject and value must "
     "be an exact, nonempty substring of its evidence_quote. Copy evidence_quote verbatim "
-    "from the original unnormalized source, including whitespace. Set start/end to its "
-    "zero-based Unicode codepoint offsets [start,end), not byte or UTF-16 offsets. Use a "
-    "lowercase snake_case predicate. Do not add fields, duplicate candidates, normalize "
-    "text, or remove negation or uncertainty."
+    "from the original unnormalized source, including whitespace. The quote must occur "
+    "exactly once in that source. Include enough surrounding context to distinguish "
+    "repeated wording; abstain if you cannot supply a unique exact quotation. Return only "
+    "the four candidate fields subject, predicate, value, and evidence_quote. Use a lowercase "
+    "snake_case predicate. Do not add fields, duplicate candidates, normalize text, or remove "
+    "negation or uncertainty."
 )
 EnvironmentName = Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]{0,127}$")]
 
@@ -92,6 +94,41 @@ class SummaryResult(Contract):
 
 class GeneratedEmbedding(VectorQuery):
     input_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class ExtractionProposal(Contract):
+    model_config = ConfigDict(str_strip_whitespace=False, strict=True)
+
+    subject: ShortText
+    predicate: Predicate
+    value: Annotated[str, Field(min_length=1, max_length=4096)]
+    evidence_quote: Annotated[str, Field(min_length=1, max_length=4096)]
+
+    @model_validator(mode="after")
+    def valid_proposal(self) -> "ExtractionProposal":
+        for text in (self.subject, self.predicate, self.value, self.evidence_quote):
+            text.encode("utf-8")
+            if not text.strip():
+                raise ValueError("Extraction fields must be nonempty")
+        if self.subject not in self.evidence_quote or self.value not in self.evidence_quote:
+            raise ValueError("Extraction proposal must be lexically grounded")
+        return self
+
+
+class ExtractionProposals(Contract):
+    model_config = ConfigDict(str_strip_whitespace=False, strict=True)
+
+    candidates: Annotated[list[ExtractionProposal], Field(max_length=MAX_EXTRACTION_CANDIDATES)]
+
+    @model_validator(mode="after")
+    def distinct_proposals(self) -> "ExtractionProposals":
+        identities = {
+            (proposal.subject, proposal.predicate, proposal.value, proposal.evidence_quote)
+            for proposal in self.candidates
+        }
+        if len(identities) != len(self.candidates):
+            raise ValueError("Duplicate extraction proposals are not allowed")
+        return self
 
 
 class ExtractionCandidate(Contract):
@@ -153,7 +190,7 @@ def extraction_schema() -> dict[str, Any]:
     return {
         "name": "memory_extraction_candidates",
         "strict": True,
-        "schema": ExtractionCandidates.model_json_schema(),
+        "schema": ExtractionProposals.model_json_schema(),
     }
 
 
@@ -170,21 +207,43 @@ def _invalid_json_constant(value: str) -> None:
     raise ValueError("Nonfinite JSON constants are not allowed")
 
 
+def _extraction_json(response: Any) -> Any:
+    if isinstance(response, str):
+        if len(response.encode("utf-8")) > MAX_PROVIDER_RESPONSE_BYTES:
+            raise ValueError
+        return json.loads(
+            response,
+            object_pairs_hook=_closed_json_object,
+            parse_constant=_invalid_json_constant,
+        )
+    if len(json.dumps(response, ensure_ascii=False).encode("utf-8")) > MAX_PROVIDER_RESPONSE_BYTES:
+        raise ValueError
+    return response
+
+
+def parse_extraction_proposals(
+    response: Any, data: InferenceInput, model: TextModel
+) -> ExtractionResult:
+    try:
+        payload = ExtractionProposals.model_validate(_extraction_json(response))
+        candidates: list[dict[str, Any]] = []
+        for proposal in payload.candidates:
+            quote = proposal.evidence_quote
+            start = data.text.find(quote)
+            # Advancing one codepoint also detects overlapping occurrences.
+            if start < 0 or data.text.find(quote, start + 1) != -1:
+                raise ValueError
+            candidates.append(
+                {**proposal.model_dump(), "start": start, "end": start + len(quote)}
+            )
+        return parse_extraction({"candidates": candidates}, data, model)
+    except (TypeError, ValueError, UnicodeError, RecursionError):
+        raise ProviderFailure("invalid_provider_response", unknown=True) from None
+
+
 def parse_extraction(response: Any, data: InferenceInput, model: TextModel) -> ExtractionResult:
     try:
-        if isinstance(response, str):
-            if len(response.encode("utf-8")) > MAX_PROVIDER_RESPONSE_BYTES:
-                raise ValueError
-            response = json.loads(
-                response,
-                object_pairs_hook=_closed_json_object,
-                parse_constant=_invalid_json_constant,
-            )
-        elif len(json.dumps(response, ensure_ascii=False).encode("utf-8")) > (
-            MAX_PROVIDER_RESPONSE_BYTES
-        ):
-            raise ValueError
-        payload = ExtractionCandidates.model_validate(response)
+        payload = ExtractionCandidates.model_validate(_extraction_json(response))
         for candidate in payload.candidates:
             if (
                 candidate.end > len(data.text)
@@ -502,7 +561,7 @@ class HTTPProvider:
                 or not isinstance(message["content"], str)
             ):
                 raise ValueError
-            return parse_extraction(message["content"], data, model)
+            return parse_extraction_proposals(message["content"], data, model)
         except (KeyError, TypeError, ValueError):
             raise ProviderFailure("invalid_provider_response", unknown=True) from None
 

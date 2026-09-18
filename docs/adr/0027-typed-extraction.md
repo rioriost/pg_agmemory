@@ -14,6 +14,12 @@ Extraction needs a bounded, closed output that cannot supply memory authority.
 Even exact source quotation is not proof that a proposed predicate/value follows
 semantically from that quotation.
 
+An observed local-model response supplied a correct quotation but an incorrect
+end offset and was rejected as designed. Asking a model to count characters
+unnecessarily couples quotation selection to unreliable arithmetic. The wire
+proposal therefore omits positions; trusted adapter code resolves them without
+repairing an incorrect model-supplied span. This is not a quality qualification.
+
 ## Decision
 
 Add `async extract(data: InferenceInput) -> ExtractionResult` to
@@ -40,8 +46,13 @@ without duplicating them. This does not change Azure summary prompt wording.
 
 Define the following in `pg_agmemory.providers`, not shared memory models:
 
+The public position-bearing candidate/result contract remains unchanged.
+The provider wire contract is a separate four-field proposal:
+
 | Type / field | Contract |
 | --- | --- |
+| `ExtractionProposal` | Exactly `subject`, `predicate`, `value`, `evidence_quote`, with the same string constraints below |
+| `ExtractionProposals.candidates` | Required array of 0–16 four-field proposals; model responses only |
 | `ExtractionCandidate.subject` | Existing `ShortText`, 1–256 characters |
 | `ExtractionCandidate.predicate` | Existing `Predicate`, `^[a-z][a-z0-9_]{0,63}$` |
 | `ExtractionCandidate.value` | 1–4096 characters |
@@ -58,29 +69,58 @@ Offsets count **Unicode codepoints**, not UTF-8 bytes, UTF-16 code units, or
 grapheme clusters. `0 <= start < end <= len(original_text)` and
 `original_text[start:end] == evidence_quote` must hold. Subject and value must
 each be an exact, case-sensitive substring of that same quotation; unique
-occurrence is not required. Combining sequences and full-width characters are
-not normalized.
+occurrence of **subject or value** within the quote is not required. Combining
+sequences and full-width characters are not normalized.
 
 Identical candidates, comparing all six fields, reject the **entire response**;
 there is no silent deduplication or partial salvage. Different offsets into
-repeated text are distinct proposals. Candidate order is preserved. An empty
-array is valid abstention and never causes retry or fallback.
+repeated text remain distinct position-bearing candidates for existing callers
+of the strict six-field parser. Identical four-field wire proposals also reject
+the entire response. Candidate order is preserved. An empty array is valid
+abstention and never causes retry or fallback.
+
+For a **wire proposal**, `evidence_quote` must occur **exactly once** in the
+original unnormalized source. The adapter finds that exact occurrence, checks
+for another occurrence starting one codepoint later, and rejects if absent or
+ambiguous. This detects overlapping matches: `aba` occurs twice in `ababa`.
+Only then does trusted code calculate `start` and `end` in Unicode codepoints.
+The prompt requests a verbatim unique quote with sufficient surrounding context,
+or abstention; it does not ask the model to calculate positions. The adapter
+does not select the first ambiguous match, extend or normalize a quote, use
+query/gold context, or repair offsets. **Any wire `start` or `end` field is an
+error, even if numerically correct.**
 
 The provider-generated schema contains **only** `candidates`; it cannot supply
 model identity, digest, trust status, IDs, source IDs, scopes, ACLs, permissions,
-approval, explicit intent, time, or confidence fields. The adapter computes the
+approval, explicit intent, time, confidence, or positional fields. Each array item
+has exactly the four proposal fields. The adapter computes the
 digest and attaches the configured text-model identity; upstream model aliases
 are not authoritative model/revision attestations. Extraction snapshots input
 and model before awaiting inference so caller mutation cannot change the
 identity of the request already sent.
 
-`extraction_schema() -> dict[str, Any]` generates the shared strict schema.
+`extraction_schema() -> dict[str, Any]` generates the shared strict **wire**
+schema from `ExtractionProposals`.
+`parse_extraction_proposals(response: Any, data: InferenceInput, model: TextModel)
+-> ExtractionResult` validates four-field proposals, resolves unique quotations,
+and feeds the resulting six-field dictionaries through the existing strict parser.
 `parse_extraction(response: Any, data: InferenceInput, model: TextModel)
 -> ExtractionResult` validates the bounded text/JSON object, closed candidates,
 duplicates, and exact source slices before attaching the binding fields.
+It still requires all six fields, rejects incorrect spans without repair, and
+remains the publication/current-caller validation contract.
 Constructing a result model alone cannot check a source it does not contain;
-provider methods use this parser. JSON text with repeated keys, trailing content,
+provider methods use the proposal parser followed by this strict parser.
+JSON text with repeated keys, trailing content,
 NaN/Infinity, malformed Unicode, or excessive nesting fails closed.
+
+Changing `EXTRACTION_SYSTEM_PROMPT` changes `WorkerProfile`'s existing extraction
+prompt digest and therefore its profile digest automatically. Operators must
+obtain the new digest with `worker --provider-config FILE --print-profile-digest`
+and explicitly re-pin the scope synthesis policy with current administrator CAS
+before using a newly loaded worker. Do not bypass policy/profile matching or
+silently retry prior failed/ambiguous calls. Summary and embedding behavior and
+raw-source hashing are unchanged.
 
 ### Trust boundary
 
@@ -101,7 +141,7 @@ and independently validate its own source access and authority.
 
 Both local loopback HTTP and HTTPS OpenAI-compatible adapters use one
 `chat/completions` request with `response_format.type: "json_schema"` and
-`{name, strict: true, schema}` generated from the candidate model.
+`{name, strict: true, schema}` generated from the four-field proposal model.
 The default extraction `max_tokens` is **4096**; the existing explicit
 `max_output_tokens` setting overrides it within 1–4096. Summaries retain their
 existing default of 1024. The maximum candidate count is a validation limit,
@@ -139,7 +179,8 @@ has no verified knobs for those controls.
 
 ### Failure and billing
 
-Malformed, ungrounded, over-limit, duplicate, refused, truncated, or tool-bearing
+Malformed, ungrounded, missing/ambiguous-quote, over-limit, duplicate, refused,
+truncated, model-position-bearing, or tool-bearing
 responses fail atomically with sanitized `ProviderFailure` code
 `invalid_provider_response`, `retryable: false`, `billing_unknown: true`.
 No raw source, SQL, credentials, provider diagnostics, or malformed response is
@@ -158,7 +199,8 @@ uncertainty.
 Synthetic tests cover both HTTP backends, Azure text/JSONB and both product
 contracts, real disposable PostgreSQL synthetic functions, schema/catalog guards,
 CLI dispatch, abstention, source/model/digest binding, Japanese/emoji/combining
-codepoints, strict offsets, forbidden fields, duplicates, limits, malformed
+codepoints, host-computed offsets, overlapping/repeated quotations, strict
+six-field caller validation, forbidden wire positions/authority fields, duplicates, limits, malformed
 outputs, billing uncertainty, and unavailable-mode no-network behavior.
 They do not invoke paid services, download models, or certify a live Azure
 extension or semantic extraction quality.

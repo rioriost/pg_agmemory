@@ -19,6 +19,8 @@ from pg_agmemory.providers import (
     MAX_PROVIDER_RESPONSE_BYTES,
     ExtractionCandidate,
     ExtractionCandidates,
+    ExtractionProposal,
+    ExtractionProposals,
     ExtractionResult,
     HTTPProvider,
     InferenceInput,
@@ -28,6 +30,7 @@ from pg_agmemory.providers import (
     configured_operations,
     extraction_schema,
     parse_extraction,
+    parse_extraction_proposals,
 )
 
 SOURCE = " \n🔒東京は承認していない。確実ではない。\ne\u0301 is not é.\n "
@@ -46,12 +49,19 @@ def configuration(**changes):
     )
 
 
-def candidate(**changes):
+def proposal(**changes):
     return {
         "subject": "東京",
         "predicate": "approval",
         "value": "承認していない",
         "evidence_quote": QUOTE,
+        **changes,
+    }
+
+
+def candidate(**changes):
+    return {
+        **proposal(),
         "start": SOURCE.index(QUOTE),
         "end": SOURCE.index(QUOTE) + len(QUOTE),
         **changes,
@@ -144,7 +154,7 @@ def test_http_extract_uses_schema_raw_source_and_operator_model_identity(
         }
         assert payload["max_tokens"] == (max_tokens or 4096) and payload["stream"] is False
         assert "tools" not in payload and "Idempotency-Key" not in request.headers
-        return reply({"candidates": [candidate()]})
+        return reply({"candidates": [proposal()]})
 
     config = configuration(backend=backend, endpoint=endpoint, max_output_tokens=max_tokens)
     calls, clients = mock_http(monkeypatch, handler)
@@ -168,19 +178,24 @@ def test_generated_schema_is_closed_bounded_and_contains_no_authority_fields():
     root = schema["schema"]
     assert root["additionalProperties"] is False and root["required"] == ["candidates"]
     assert root["properties"]["candidates"]["maxItems"] == 16
-    item = root["$defs"]["ExtractionCandidate"]
-    fields = {"subject", "predicate", "value", "evidence_quote", "start", "end"}
+    item = root["$defs"]["ExtractionProposal"]
+    fields = {"subject", "predicate", "value", "evidence_quote"}
     assert item["additionalProperties"] is False
     assert set(item["properties"]) == fields and set(item["required"]) == fields
     assert item["properties"]["subject"]["maxLength"] == 256
     assert item["properties"]["predicate"]["pattern"] == r"^[a-z][a-z0-9_]{0,63}$"
     assert item["properties"]["value"]["maxLength"] == 4096
     assert item["properties"]["evidence_quote"]["maxLength"] == 4096
-    assert item["properties"]["start"]["type"] == "integer"
-    assert item["properties"]["end"]["type"] == "integer"
+    final = ExtractionCandidate.model_json_schema()
+    assert set(final["properties"]) == fields | {"start", "end"}
+    assert final["properties"]["start"]["type"] == "integer"
+    assert final["properties"]["end"]["type"] == "integer"
     assert "negation" in EXTRACTION_SYSTEM_PROMPT and "uncertainty" in EXTRACTION_SYSTEM_PROMPT
     assert "not authoritative facts" in EXTRACTION_SYSTEM_PROMPT
     assert "never publish memory" in EXTRACTION_SYSTEM_PROMPT
+    assert "exactly once" in EXTRACTION_SYSTEM_PROMPT
+    assert "surrounding context" in EXTRACTION_SYSTEM_PROMPT
+    assert "offset" not in EXTRACTION_SYSTEM_PROMPT and "codepoint" not in EXTRACTION_SYSTEM_PROMPT
 
 
 def test_whitespace_codepoints_and_negation_are_preserved_not_normalized():
@@ -204,6 +219,173 @@ def test_whitespace_codepoints_and_negation_are_preserved_not_normalized():
     assert result.candidates[1].subject == "e\u0301"
     assert result.candidates[1].value == "not é"
     assert result.input_digest != InferenceInput(text=SOURCE.strip()).digest()
+
+
+@pytest.mark.parametrize("as_text", [False, True])
+def test_wire_proposals_compute_codepoints_and_reuse_strict_candidate_validation(
+    monkeypatch, as_text
+):
+    data = InferenceInput(text=SOURCE)
+    proposals = {
+        "candidates": [
+            proposal(evidence_quote=SOURCE),
+            {
+                "subject": "e\u0301",
+                "predicate": "identity",
+                "value": "not é",
+                "evidence_quote": "e\u0301 is not é.",
+            },
+        ]
+    }
+    validated = []
+
+    def strict_parser(response, original, model):
+        validated.append(response)
+        assert original.text == SOURCE and model == MODEL
+        return parse_extraction(response, original, model)
+
+    monkeypatch.setattr("pg_agmemory.providers.parse_extraction", strict_parser)
+    result = parse_extraction_proposals(
+        json.dumps(proposals) if as_text else proposals, data, MODEL
+    )
+    expected = [
+        candidate(evidence_quote=SOURCE, start=0, end=len(SOURCE)),
+        {
+            **proposals["candidates"][1],
+            "start": SOURCE.index("e\u0301"),
+            "end": SOURCE.index("e\u0301") + len("e\u0301 is not é."),
+        },
+    ]
+    assert validated == [{"candidates": expected}]
+    assert [item.model_dump() for item in result.candidates] == expected
+    assert result.input_digest == data.digest() and result.status == "untrusted"
+
+
+@pytest.mark.parametrize(
+    "text,quote",
+    [
+        ("foo foo", "foo"),
+        ("aaa", "aa"),
+        ("ababa", "aba"),
+        ("🔒🔒🔒", "🔒🔒"),
+        ("えええ", "ええ"),
+        ("missing", "absent"),
+        ("x y", "x  y"),
+        ("e\u0301", "é"),
+        ("Ａ", "A"),
+    ],
+)
+def test_http_wire_quotes_require_one_exact_occurrence_including_overlaps(
+    monkeypatch, text, quote
+):
+    payload = {
+        "candidates": [
+            {"subject": quote, "predicate": "reports", "value": quote, "evidence_quote": quote}
+        ]
+    }
+    calls, _ = mock_http(monkeypatch, lambda request: reply(payload))
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=text)))
+    assert_invalid(failure)
+    assert len(calls) == 1
+
+
+def test_unique_surrounding_context_can_disambiguate_repeated_words():
+    data = InferenceInput(text="prefix aba / aba suffix")
+    proposal = {
+        "subject": "aba",
+        "predicate": "reports",
+        "value": "aba",
+        "evidence_quote": "aba / aba",
+    }
+    result = parse_extraction_proposals({"candidates": [proposal]}, data, MODEL)
+    assert result.candidates[0].model_dump() == {
+        **proposal, "start": len("prefix "), "end": len("prefix aba / aba")
+    }
+    assert result.input_digest == data.digest()
+
+
+def test_one_ambiguous_wire_quote_rejects_the_entire_response_without_salvage(monkeypatch):
+    text = SOURCE + "word word"
+    payload = {
+        "candidates": [
+            proposal(),
+            {
+                "subject": "word",
+                "predicate": "reports",
+                "value": "word",
+                "evidence_quote": "word",
+            },
+        ]
+    }
+    calls, _ = mock_http(monkeypatch, lambda request: reply(payload))
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=text)))
+    assert_invalid(failure)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("end", [16, len("Bob / preferred_editor: Emacs")])
+def test_model_offsets_are_rejected_not_repaired_even_when_the_quote_is_correct(monkeypatch, end):
+    text = "Bob / preferred_editor: Emacs"
+    proposal = {
+        "subject": "Bob",
+        "predicate": "preferred_editor",
+        "value": "Emacs",
+        "evidence_quote": text,
+    }
+    wire = {"candidates": [{**proposal, "start": 0, "end": end}]}
+    calls, _ = mock_http(monkeypatch, lambda request: reply(wire))
+    with pytest.raises(ProviderFailure) as failure:
+        asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=text)))
+    assert_invalid(failure)
+    assert len(calls) == 1
+    result = parse_extraction_proposals(
+        {"candidates": [proposal]}, InferenceInput(text=text), MODEL
+    )
+    assert result.candidates[0].start == 0 and result.candidates[0].end == len(text)
+    if end == len(text):
+        assert parse_extraction(wire, InferenceInput(text=text), MODEL) == result
+    else:
+        with pytest.raises(ProviderFailure) as failure:
+            parse_extraction(wire, InferenceInput(text=text), MODEL)
+        assert_invalid(failure)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"start": -1},
+        {"start": True},
+        {"start": 3.0},
+        {"start": "3"},
+        {"end": True},
+        {"end": "21"},
+        {"end": 65537},
+        {"start": 3, "end": 3},
+        {"start": 4, "end": 4 + len(QUOTE)},
+        {"start": 200, "end": 200 + len(QUOTE)},
+    ],
+)
+def test_authoritative_six_field_parser_remains_strict_without_span_repair(changes):
+    with pytest.raises(ProviderFailure) as failure:
+        parse_extraction({"candidates": [candidate(**changes)]}, InferenceInput(text=SOURCE), MODEL)
+    assert_invalid(failure)
+
+
+def test_four_field_wire_and_six_field_public_models_are_not_interchangeable():
+    wire = ExtractionProposal.model_validate(proposal())
+    assert set(wire.model_dump()) == {"subject", "predicate", "value", "evidence_quote"}
+    assert ExtractionProposals(candidates=[wire]).model_dump() == {"candidates": [proposal()]}
+    with pytest.raises(ValidationError):
+        ExtractionProposals(candidates=[wire, wire])
+    with pytest.raises(ValidationError):
+        ExtractionProposal.model_validate(candidate())
+    with pytest.raises(ValidationError):
+        ExtractionCandidate.model_validate(proposal())
+    with pytest.raises(ProviderFailure) as failure:
+        parse_extraction({"candidates": [proposal()]}, InferenceInput(text=SOURCE), MODEL)
+    assert_invalid(failure)
 
 
 @pytest.mark.parametrize(
@@ -247,9 +429,9 @@ def test_whitespace_codepoints_and_negation_are_preserved_not_normalized():
         {"evidence_quote": ["東京"]},
     ],
 )
-def test_http_extract_rejects_invalid_types_unicode_limits_and_grounding(monkeypatch, changes):
+def test_http_extract_rejects_invalid_wire_types_unicode_limits_and_grounding(monkeypatch, changes):
     calls, _ = mock_http(
-        monkeypatch, lambda request: reply({"candidates": [candidate(**changes)]})
+        monkeypatch, lambda request: reply({"candidates": [proposal(**changes)]})
     )
     with pytest.raises(ProviderFailure) as failure:
         asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=SOURCE)))
@@ -273,11 +455,14 @@ def test_http_extract_rejects_invalid_types_unicode_limits_and_grounding(monkeyp
         "model",
         "input_digest",
         "status",
+        "query",
+        "answer",
+        "gold",
     ],
 )
 def test_candidate_cannot_supply_authority_fields(monkeypatch, field):
     calls, _ = mock_http(
-        monkeypatch, lambda request: reply({"candidates": [candidate(**{field: "PRIVATE"})]})
+        monkeypatch, lambda request: reply({"candidates": [proposal(**{field: "PRIVATE"})]})
     )
     with pytest.raises(ProviderFailure) as failure:
         asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=SOURCE)))
@@ -298,8 +483,9 @@ def test_candidate_cannot_supply_authority_fields(monkeypatch, field):
         {"candidates": [], "model": MODEL.model_dump()},
         {"candidates": [], "input_digest": "0" * 64},
         {"candidates": [], "status": "trusted"},
-        {"candidates": [candidate(), candidate()]},
-        {"candidates": [candidate(predicate=f"p{index}") for index in range(17)]},
+        {"candidates": [], "status": "untrusted"},
+        {"candidates": [proposal(), proposal()]},
+        {"candidates": [proposal(predicate=f"p{index}") for index in range(17)]},
     ],
 )
 def test_http_extract_rejects_nonclosed_duplicate_and_overlimit_outputs(monkeypatch, payload):
@@ -384,7 +570,8 @@ def test_http_extract_requires_exactly_one_well_formed_choice(monkeypatch, choic
 @pytest.mark.parametrize("count", [0, 16])
 def test_abstention_and_maximum_candidates_preserve_order(monkeypatch, count):
     candidates = [candidate(predicate=f"p{index}") for index in range(count)]
-    calls, _ = mock_http(monkeypatch, lambda request: reply({"candidates": candidates}))
+    proposals = [proposal(predicate=f"p{index}") for index in range(count)]
+    calls, _ = mock_http(monkeypatch, lambda request: reply({"candidates": proposals}))
     result = asyncio.run(HTTPProvider(configuration()).extract(InferenceInput(text=SOURCE)))
     assert [item.model_dump() for item in result.candidates] == candidates
     assert result.status == "untrusted" and len(calls) == 1
@@ -403,8 +590,16 @@ def test_candidate_character_limits_and_original_source_last_offset():
     }
     result = parse_extraction({"candidates": [item]}, data, MODEL)
     assert result.candidates[0].model_dump() == item
+    wire = {key: value for key, value in item.items() if key not in ("start", "end")}
+    assert parse_extraction_proposals({"candidates": [wire]}, data, MODEL) == result
     last = {**item, "subject": "界", "value": "界", "evidence_quote": "界", "start": 65535}
     assert parse_extraction({"candidates": [last]}, data, MODEL).candidates[0].end == 65536
+    unique_last = InferenceInput(text=" " * 65535 + "界")
+    last_wire = {
+        key: value for key, value in last.items() if key not in ("start", "end")
+    }
+    resolved = parse_extraction_proposals({"candidates": [last_wire]}, unique_last, MODEL)
+    assert resolved.candidates[0].start == 65535 and resolved.candidates[0].end == 65536
 
 
 def test_offset_and_unicode_normalization_cannot_be_substituted():
@@ -434,6 +629,9 @@ def test_lexical_grounding_does_not_claim_semantic_support():
     item = candidate(value="承認")
     result = parse_extraction({"candidates": [item]}, InferenceInput(text=SOURCE), MODEL)
     assert result.candidates[0].value == "承認" and result.status == "untrusted"
+    assert parse_extraction_proposals(
+        {"candidates": [proposal(value="承認")]}, InferenceInput(text=SOURCE), MODEL
+    ) == result
 
 
 def test_public_models_are_closed_and_duplicate_contract_is_rejection():
@@ -461,7 +659,7 @@ def test_result_binds_the_source_and_model_sent_even_if_caller_mutates_them(monk
         data.text = "Changed after sending"
         config.text_model.name = "changed-model"
         config.text_model.revision = "changed-revision"
-        return reply({"candidates": [candidate()]})
+        return reply({"candidates": [proposal()]})
 
     mock_http(monkeypatch, handler)
     result = asyncio.run(HTTPProvider(config).extract(data))
@@ -534,6 +732,7 @@ def test_http_extraction_request_size_guard_precedes_client_creation(monkeypatch
         b'{"text":" "}',
         b'{"text":"\\ud800"}',
         b'{"text":"ok","scope_id":"PRIVATE"}',
+        b'{"text":"ok","query":"PRIVATE","answer":"PRIVATE","gold":["PRIVATE"]}',
         json.dumps({"text": "x" * 65537}).encode(),
         b"x" * (MAX_INFERENCE_BYTES + 1),
     ],
@@ -547,7 +746,7 @@ def test_extract_cli_run_rejects_invalid_input_before_network(monkeypatch, raw):
 
 
 def test_operator_extract_cli_outputs_typed_untrusted_envelope(monkeypatch, capsys):
-    calls, _ = mock_http(monkeypatch, lambda request: reply({"candidates": [candidate()]}))
+    calls, _ = mock_http(monkeypatch, lambda request: reply({"candidates": [proposal()]}))
     config = configuration().model_dump_json().encode()
     monkeypatch.setattr(Path, "open", lambda *args, **kwargs: io.BytesIO(config))
     monkeypatch.setattr(
