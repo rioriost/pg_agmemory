@@ -8,7 +8,7 @@
 以下のコマンドはこのローカルcheckoutから実行してください。
 
 **現在の上限付きmilestoneはv0.0.25/schema 10のCA image修正と正確なprofileでのlive証拠です。
-local適格性確認全体は合格し、完全一致SHAのnative CIは結果待ちです。
+local適格性確認全体と完全一致SHAのnative CIは合格しました。
 以下の検証済みv0.0.24以前の結果は過去の証拠であり、v0.0.25の適格性確認ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
@@ -33,10 +33,10 @@ postgresem連携は今後の実装対象です。
 
 ## Selectable inference providers
 
-**v25はlocal検証済みで、native CI待ちです。この基盤はM2完了ではありません。**
+**v25はlocal・native CI検証済みです。この基盤はM2完了ではありません。**
 Docker baseは`SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`でOS CA bundleを選択します。
 non-root production smokeはこの設定とroot CA storeにCAがあることを検査します。
-対象のlocal実libpq TLS、runtime CA検査、local full suiteは合格し、native CIは結果待ちです。
+対象のlocal実libpq TLS、runtime CA検査、local full suiteは合格し、native CIは合格しました。
 成功したv24 Azure実行は明示DSN CA fileを使い、このimage既定値の検証ではありません。
 任意の`pg-agmemory[providers]`は**httpx==0.28.1**を追加し、新しい依存versionや
 schema migrationはありません。同じcore distributionであり、独立SDKやPyPI公開の主張ではありません。
@@ -96,7 +96,7 @@ preview/version/lifecycle制約、operatorのprivacy/budget責任を明示し、
 
 ## Episode query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 認証付きread-only `POST /v1/episodes/query`は`Idempotency-Key`不要です。
 closedな`QueryEpisodes`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableなtimezone付き`occurred_from`/`occurred_to`、strictな`max_items`
@@ -140,7 +140,7 @@ stage `m2-selectable-inference`は`episode_query`を維持し、schema 10にmigr
 
 ## Explicit batch capture
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 認証付き`POST /v1/captures/batch`にcaller所有の`Idempotency-Key`を要求します。
 closedな`CaptureBatch`は既存`episode: Observe`と
 **1〜16件**の`memories: list[CapturedMemory]`を持ちます。
@@ -179,7 +179,7 @@ schema 10にmigrationや依存version変更はなく、provider実行は別のop
 
 ## Exact entity query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
 closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
@@ -230,7 +230,7 @@ schema 10にはmigration、依存version、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -278,7 +278,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -324,7 +324,7 @@ Native/SDKは**31 resource method**となり、MCPの4 toolとhookは不変でjo
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存checkpoint head契約を維持します。v0.0.25はlocal・native CI検証済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -366,7 +366,7 @@ v20からのSQL migration、依存version/artifact固定値の変更はありま
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存recall filter契約を維持します。v0.0.25はlocal・native CI検証済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -402,7 +402,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存required-context契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -437,7 +437,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存job取消契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -467,7 +467,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**既存readiness契約を維持し、v0.0.25/schema 10はlocal・native CI検証済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -496,7 +496,7 @@ readinessはSDK/MCP/hook probe methodを追加せず、episode照会を含むNat
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存scope-access契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -524,7 +524,7 @@ PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
 
 ## Python SDK
 
-**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.25はlocal検証済みで、native CI待ちです。** 対応checkoutから導入します。
+**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.25はlocal・native CI検証済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -636,12 +636,20 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 synthetic container検査に商用model API keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v25 local適格性確認全体は合格し、native CI待ちです。**
+**v25 local適格性確認全体とnative CIは合格です。**
 Apple Container `./scripts/test-containers.sh`は
 **999合格、live skip 5件、既知warning 1件、494.49秒**でした。
 Ruff、mypy **source 22 + strict SDK consumer 1ファイル**、
 core/hook/sdk/providersの全4導入smoke、
 **新system CA smokeを含む全production smoke**も合格しました。
+実装
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+の完全一致SHAで[CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871)が合格しました。
+**amd64 999合格、live skip 5件、warning 1件 / 600.77秒、
+arm64 999合格、live skip 5件、warning 1件 / 797.75秒**です。
+両native jobでRuff、mypy **22+1**、全4導入profile、
+system CAを含む全production smokeも合格しました。
+実装CIの証拠であり、後続の最終文書commitの適格性確認を主張するものではありません。
 Azure推論の再実行や、AzureでのCA ENV variantの適格性確認ではありません。
 [ADR 0025](docs/adr/0025-live-provider-qualification-jp.md)を参照してください。
 

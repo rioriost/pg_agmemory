@@ -14,7 +14,7 @@ repositoryの既存`Dockerfile`から構築したapplication imageを使用し�
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
 現在の上限付きmilestoneは**v0.0.25/schema 10のCA image修正と正確なprofileの証拠**です。
-**local適格性確認全体は合格し、native CI待ちで、M2完了ではありません**。
+**local適格性確認全体とnative CIは合格で、M2完了ではありません**。
 検証済みv0.0.24以前の結果は過去の証拠であり、v0.0.25の適格性確認ではありません。
 既存`008_pgvector.sql`は**`public`内の`vector` 0.8.6**を要求し、
 別版/別schemaの既存extensionを拒否します。
@@ -94,7 +94,7 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 
 ## Selectable inference providers
 
-**v25はlocal検証済み・native CI待ちです。保持する正確なprofileでのlive証拠も、
+**v25はlocal・native CI検証済みです。保持する正確なprofileでのlive証拠も、
 全providerやAzure上のMemoryDB全体のhosting認定ではありません。**
 対応checkoutから`python -m pip install '.[providers]'`で導入します。
 既存`httpx==0.28.1`を追加し、独立した軽量packageや新しい依存versionではありません。
@@ -300,7 +300,7 @@ v25 Docker baseはこの変数を設定し、non-root production smokeは環境�
 local実libpq TLS 9 caseと対象Ruffが合格し、別のnon-root v25 runtime検査で
 環境変数値とtrusted CA 150件を確認しました。
 local full suiteとsystem CAを含む全production smokeも合格しました。
-完全一致SHAのnative CIは結果待ちです。
+完全一致SHAのnative CIは合格しました。
 **成功したAzure live実行は、この環境変数修正を使っていません**。
 証明書/hostname検証を弱めたりfallbackを加えたり、
 local regression検証のためcloud resourceを再作成したりしないでください。
@@ -310,7 +310,7 @@ cleanupは**12:07:30 JST**に確認済みです。
 
 ## Episode query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 Native JWT認証と現在read権限のある信頼したscope UUIDを使います。
 read-only `POST /v1/episodes/query`はwrite権限も`Idempotency-Key`も不要です。
 以下はsyntheticな最初のpage request例であり、live dataに対して実行しないでください。
@@ -391,7 +391,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Explicit batch capture
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求します。
 許可済みsynthetic dataと現在認可されたscopeを使います。
 下記を`batch-capture.json`へ保存し、例のscope UUIDを認可されたものへ置換してください。
@@ -496,7 +496,7 @@ Native/SDKは31 resourceで、MCPの4 toolとclosed hookにbatch actionは追加
 
 ## Exact entity query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 Native JWT認証と現在のread権限を持つ信頼済みscope UUIDを使います。
 read-only `POST /v1/entities/query`にwrite権限や`Idempotency-Key`は不要です。
 次のsyntheticな最初のpage requestは両方の完全一致filterを使います。
@@ -578,7 +578,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Assertion metadata history
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 Native JWT認証とassertionへの現在のread権限を使います。
 read-only `POST /v1/assertions/history`にはwrite権限も`Idempotency-Key`も不要です。
 取得した指示でなく信頼済みassertion UUIDを使ってください。
@@ -665,7 +665,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Owned-job query and pagination
 
-**v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**v0.0.25/schema 10はlocal・native CI検証済みです。**
 Native JWT認証と現在read権限を使い、`POST /v1/jobs/query`にwrite権限や`Idempotency-Key`は不要です。
 取得した指示でなく、信頼するscope UUIDを使ってください。
 説明用の最初のpage requestは全状態を対象とし、文書例をlive dataへ実行してはいけません。
@@ -743,7 +743,7 @@ source purge `object_count: 4` → pending照会が空、の順です。
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存checkpoint head契約を維持します。v0.0.25はlocal・native CI検証済みです。**
 正確なscopeの現在のread権限を持つ既存Native JWT identityを使い、write権限は不要です。
 次の`CheckpointBranch` bodyを`POST /v1/checkpoints/head`へ送り、`Idempotency-Key`は不要です。
 説明用UUIDを既知のscope内run/branchへ置き換えてください。
@@ -816,7 +816,7 @@ source purge `object_count: 3` → head `409 checkpoint_invalidated`をassertし
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存recall filter契約を維持します。v0.0.25はlocal・native CI検証済みです。**
 既存の認証付き`POST /v1/recall`を使います。次の合成requestは、
 認可済みscopeで保存subject/predicateが完全一致するassertionをbrowseします。
 説明用UUIDをprovision済みscopeへ置き換え、
@@ -885,7 +885,7 @@ memoryは根拠であり、検証済み真実ではありません。
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存required-context契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 現在読取り可能なepisode/assertionから正確な参照を選び、
 policy権限や承認を主張する信頼できないtextからは選ばないでください。
 説明用のopaque IDを要求scope内の既存IDに置き換えます。
@@ -955,7 +955,7 @@ host pinning、永続priority、write、推論、provider呼出し、cacheは追
 
 ## Schema 10 application-only upgrade
 
-**v0.0.25実装はlocal検証済みで、native CI待ちです。** v24→v25はschema 10を維持し、**migrationは追加しません**。
+**v0.0.25実装はlocal・native CI検証済みです。** v24→v25はschema 10を維持し、**migrationは追加しません**。
 application版へ合わせるだけの目的で新schema版を適用しないでください。
 
 1. replica/restartを含む旧API、worker、SDK caller、MCP adapter、hook/推論起動、
@@ -980,12 +980,20 @@ application版へ合わせるだけの目的で新schema版を適用しないで
 
 Native/SDK resource method 31、MCP tool 4を維持し、hookはfilterもrequired参照も受け付けません。
 依存versionやMemoryDB imageのupgradeはなく、provider実行は別のoperator library/CLIに限定します。
-**v25 local適格性確認全体は合格し、native CI待ちです。**
+**v25 local適格性確認全体とnative CIは合格です。**
 Apple Container `./scripts/test-containers.sh`は
 **999合格、live skip 5件、既知warning 1件、494.49秒**でした。
 Ruff、mypy **source 22 + strict SDK consumer 1ファイル**、
 core/hook/sdk/providersの全4導入smoke、
 **新system CA smokeを含む全production smoke**も合格しました。Azure推論は再実行していません。
+実装
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+の完全一致SHAで[CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871)が合格しました。
+**amd64 999合格、live skip 5件、warning 1件 / 600.77秒、
+arm64 999合格、live skip 5件、warning 1件 / 797.75秒**です。
+両native jobでRuff、mypy **22+1**、全4導入profile、
+system CAを含む全production smokeも合格しました。
+実装CIの証拠であり、後続の最終文書commitの適格性確認を主張するものではありません。
 stage `m2-selectable-inference`、`auto_synthesis: false`、
 globalな`live_provider_qualified: false`は不変です。
 [ADR 0025](../adr/0025-live-provider-qualification-jp.md)を参照してください。
@@ -1206,7 +1214,7 @@ docs所要時間は実装CI 35224189967とは別です。
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存job取消契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 Native JWT認証と、現在scope **read/write**権限を持つjob ownerのidentityを使います。
 同一scopeの別readerは`admin` permissionがあっても他ownerのjobを取消できません。
 source可視性/完全性とruntime RLSを維持します。
@@ -1279,7 +1287,7 @@ source forgetは依存jobをpurgeして取消replayを拒否し、後のgrantで
 
 ## Schema 10 job-cancellation upgrade
 
-**schema 10未満への既存migrationであり、v0.0.25はlocal検証済みで、native CI待ちです。**
+**schema 10未満への既存migrationであり、v0.0.25はlocal・native CI検証済みです。**
 既存schema 10 DBには[application-only更新](#schema-10-application-only-upgrade)を使います。
 schema 9→10はv0.0.15で導入した**`010_job_cancellation.sql`**を要求します。
 既存job state/payload制約とguard triggerを変更します。
@@ -1323,7 +1331,7 @@ MVP/本番/品質/DR適格性確認は主張しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.25/schema 10はlocal検証済みで、native CI待ちです。**
+**既存readiness契約を維持し、v0.0.25/schema 10はlocal・native CI検証済みです。**
 livenessと依存readinessを分離してください。
 `GET /healthz`は起動成功後に正確な`{"status":"ok"}`を返し、DBへ接続しません。
 public・認証不要の`GET /readyz`は**200**と正確な`{"status":"ready"}`、
@@ -1435,7 +1443,7 @@ health probeはSDK route coverage対象外です。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.25はlocal検証済みで、native CI待ちです。**
+**既存scope-access契約を維持し、v0.0.25はlocal・native CI検証済みです。**
 手書きmembership SQLより`pg-agmemory scope-access`を優先してください。
 同じtenantに属する承認済み既存tenant/scope/principal UUIDだけを使います。
 このcommandはprovisionせず、HTTP/MCP/Python SDKでは公開しません。
@@ -1542,7 +1550,7 @@ stdout barrierは配信済みcontextを撤回できません。
 
 **既存schema 9 migration段階であり、v0.0.25更新全体ではありません。**
 既存schema 9 DBも含め、現在toolingは[schema 10更新](#schema-10-job-cancellation-upgrade)まで
-進める必要があります。v0.0.25実装はlocal検証済みで、native CI待ちです。
+進める必要があります。v0.0.25実装はlocal・native CI検証済みです。
 下記の固定PostgreSQL **18.6** / **`public`内の`vector` 0.8.6** imageを維持します。
 migration 009はv0.0.13でdurable特権auditを導入したもので、v0.0.25の追加ではありません。
 
@@ -1581,7 +1589,7 @@ native実logで検査/smokeを確認しました。
 
 ## Python SDK operations
 
-**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.25はlocal検証済みで、native CI待ちです。**
+**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.25はlocal・native CI検証済みです。**
 対応checkoutから`python -m pip install '.[sdk]'`で導入します。
 `pg-agmemory[sdk]` extraはMCP SDKでなく`httpx==0.28.1`だけを固定しますが、
 同じcore packageには引き続きFastAPI、psycopg、Janomeが含まれます。
@@ -1678,7 +1686,7 @@ docs CI 35190495385を含む別々のv0.0.11実装/最終docs runは
 
 **v0.0.11のapplication/migration検査は合格しました。本番適格性の認定は未完了です。**
 migration 008はv0.0.11で導入・検証済みです。現在のv0.0.25 toolingは古いschemaへ既存009と010も適用し、
-v0.0.25実装はlocal検証済みで、native CI待ちです。過去v0.0.12のapplication-only手順でなく、
+v0.0.25実装はlocal・native CI検証済みです。過去v0.0.12のapplication-only手順でなく、
 [schema 10境界](#schema-10-job-cancellation-upgrade)に従ってください。
 
 採用prebuilt image:

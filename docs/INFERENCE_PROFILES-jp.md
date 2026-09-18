@@ -7,7 +7,7 @@ ingestion、公開、compactionを有効化しません。現在のv0.0.25/schem
 **M2完了ではありません**。
 記録したlive実行はservice 0.0.24、API v1、schema 10です。
 別途のTLS packaging follow-upは、その実行結果で適格性確認したものではありません。
-**v25 local適格性確認全体は合格し、native CI待ちです。** Docker baseは`SSL_CERT_FILE`を設定し、
+**v25 local適格性確認全体とnative CIは合格です。** Docker baseは`SSL_CERT_FILE`を設定し、
 runtime production smokeはその値とroot CA store読込みを検査します。
 対象のlocal実libpq TLSとruntime CA検査は合格しました。
 Apple Containerのfull `./scripts/test-containers.sh`は
@@ -15,7 +15,15 @@ Apple Containerのfull `./scripts/test-containers.sh`は
 Ruff、mypy **source 22 + strict SDK consumer 1ファイル**、
 core/hook/sdk/providersの全4導入smoke、
 **新system CA smokeを含む全production smoke**も合格しました。
-完全一致SHAのv25 native CIはまだ実行していません。Azure推論は再実行していません。
+実装
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+の完全一致SHAで[CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871)が合格しました。
+**amd64 999合格、live skip 5件、warning 1件 / 600.77秒、
+arm64 999合格、live skip 5件、warning 1件 / 797.75秒**です。
+両native jobでRuff、mypy **22+1**、全4導入profile、
+system CAを含む全production smokeも合格しました。
+実装CIの証拠であり、後続の最終文書commitの適格性確認を主張するものではありません。
+Azure推論は再実行していません。
 stage `m2-selectable-inference`、Native/SDK resource 31、MCP tool 4、
 `auto_synthesis: false`、globalな`live_provider_qualified: false`は不変です。
 [ADR 0025](adr/0025-live-provider-qualification-jp.md)、
@@ -359,7 +367,7 @@ v25 Docker baseはこの環境変数を設定し、non-root runtime smokeはそ�
 root CA storeにCAがあることを検査します。
 **local実libpq TLS 9 caseと対象Ruffが合格し、別のnon-root v25 runtime検査で
 環境変数値とtrusted CA 150件を確認しました**。
-local full suiteと全production smokeも合格し、native CIは結果待ちです。
+local full suiteと全production smokeも合格し、native CIは合格しました。
 Azure live実行で使ったのは明示DSN CA fileであり、**この環境変数修正ではありません**。
 後者がlive Azureで試験済みとは主張しないでください。
 証明書/hostname検証は維持します。local TLS regressionのためのcloud再provisioningや追加呼出しは予定していません。

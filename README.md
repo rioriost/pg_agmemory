@@ -7,7 +7,7 @@ is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local 
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 **Current bounded milestone: v0.0.25/schema 10 CA-image fix and exact-profile live evidence.
-Full local qualification passed; exact-SHA native CI remains pending.
+Full local qualification passed; exact-SHA native CI passed.
 Verified v0.0.24 and earlier results below are historical, not v0.0.25 qualification.
 Not a completed M0/M1/M2/M3, MVP, or production release.**
 Implemented: authenticated observation, explicitly reported structured memory
@@ -37,11 +37,11 @@ before using the service.
 
 ## Selectable inference providers
 
-**V25 locally verified; native CI pending. This foundation does not complete M2.**
+**V25 locally verified; native CI passed. This foundation does not complete M2.**
 The Docker base now selects the OS CA bundle through
 `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`. The non-root production smoke
 checks that setting and a populated root-CA store. Targeted local real-libpq TLS
-and runtime CA checks passed, as did the full local suite; native CI remains pending. The successful
+and runtime CA checks passed, as did the full local suite; native CI passed. The successful
 v24 Azure run used an explicit DSN CA file, not this image default.
 Optional `pg-agmemory[providers]` adds **httpx==0.28.1**, with no new dependency
 versions or schema migration. It remains the same core distribution, not a
@@ -102,7 +102,7 @@ checks, see the [inference profile guide](docs/INFERENCE_PROFILES.md).
 
 ## Episode query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Authenticated read-only `POST /v1/episodes/query` requires no `Idempotency-Key`.
 Closed `QueryEpisodes` accepts distinct `scope_ids` (1–32 UUIDs), nullable aware
 `occurred_from`/`occurred_to`, strict `max_items` (1–100, default 20), and nullable
@@ -146,7 +146,7 @@ See [the contract](docs/STATUS.md#episode-query-and-pagination),
 
 ## Explicit batch capture
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Authenticated `POST /v1/captures/batch` requires a caller-owned `Idempotency-Key`.
 Closed `CaptureBatch` contains unchanged `episode: Observe` and **1–16**
 `memories: list[CapturedMemory]`. Every proposal is explicit, same-scope, and
@@ -187,7 +187,7 @@ See [the contract](docs/STATUS.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Authenticated read-only `POST /v1/entities/query` requires no `Idempotency-Key`.
 Closed `QueryEntities` accepts distinct `scope_ids` (1–32 UUIDs), nullable
 `entity_type` (one of the existing eight `EntityType` values), nullable
@@ -240,7 +240,7 @@ and [ADR 0021](docs/adr/0021-entity-query.md).
 
 ## Assertion metadata history
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Authenticated read-only `POST /v1/assertions/history` requires no `Idempotency-Key`.
 Closed `AssertionHistory` accepts only required UUID `memory_id`, strict integer
 `max_items` (1–100, default 20), and nullable strict integer `before_revision`
@@ -288,7 +288,7 @@ and [ADR 0020](docs/adr/0020-assertion-history.md).
 
 ## Owned-job query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Authenticated read-only `POST /v1/jobs/query` requires no `Idempotency-Key`.
 Closed `QueryJobs` accepts distinct `scope_ids` (1–32 UUIDs), distinct `states`
 (at most five; `[]`/omitted means all), strict integer `max_items` (1–100,
@@ -339,7 +339,7 @@ and [ADR 0019](docs/adr/0019-job-query.md).
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.25 locally verified; native CI pending.**
+**Retained checkpoint-head contract; v0.0.25 locally verified; native CI passed.**
 Authenticated `POST /v1/checkpoints/head` is read-only and requires no
 `Idempotency-Key`. Its closed `CheckpointBranch` body contains exactly three
 required UUIDs: `scope_id`, `run_id`, and `branch_id`. It selects only that exact,
@@ -388,7 +388,7 @@ and [ADR 0018](docs/adr/0018-checkpoint-head.md).
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.25 locally verified; native CI pending.**
+**Retained recall-filter contract; v0.0.25 locally verified; native CI passed.**
 Existing Native `POST /v1/recall`, typed SDK `recall`, and MCP `memory_recall`
 accept `Recall.filters: RecallFilters | None = None`. The closed nested model has
 only nullable `kind` (`"episode"` or `"assertion"`), `subject` (`ShortText`,
@@ -427,7 +427,7 @@ and [ADR 0017](docs/adr/0017-recall-filters.md).
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.25 locally verified; native CI pending.**
+**Retained required-context contract; v0.0.25 locally verified; native CI passed.**
 Existing Native `POST /v1/recall`, SDK `recall`, and MCP `memory_recall` accept
 `Recall.required_memory_refs`: omitted or `[]` by default, at most **16**
 `MemoryReference` entries. Each selects a UUID and exact revision **1–1000**;
@@ -466,7 +466,7 @@ and [ADR 0016](docs/adr/0016-required-context.md).
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.25 locally verified; native CI pending.**
+**Retained job-cancellation contract; v0.0.25 locally verified; native CI passed.**
 `POST /v1/jobs/{job_id}/cancel` requires Native authentication, a caller-retained
 `Idempotency-Key`, and exactly `expected_state` (`pending` or `running`) plus
 strict integer `expected_attempt` (0–5; running requires at least 1).
@@ -499,7 +499,7 @@ and [ADR 0015](docs/adr/0015-job-cancellation.md).
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.25/schema 10 locally verified; native CI pending.**
+**Retained readiness contract; v0.0.25/schema 10 locally verified; native CI passed.**
 `GET /healthz` remains process liveness after successful startup:
 `{"status":"ok"}`, without DB calls. Public, unauthenticated `GET /readyz`
 returns HTTP **200** with exactly `{"status":"ready"}` or an expected-failure
@@ -531,7 +531,7 @@ and [ADR 0014](docs/adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.25 locally verified; native CI pending.**
+**Retained scope-access contract; v0.0.25 locally verified; native CI passed.**
 The privileged `pg-agmemory scope-access get|set|revoke` CLI manages membership
 for existing same-tenant scope/principal UUIDs. It requires
 `PGAG_ADMIN_DATABASE_URL`, an RLS-bypassing administrator with the appropriate
@@ -561,7 +561,7 @@ and [ADR 0013](docs/adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.25 locally verified; native CI pending.** From the matching checkout:
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.25 locally verified; native CI passed.** From the matching checkout:
 
 ```bash
 python -m pip install '.[sdk]'
@@ -673,12 +673,20 @@ and **linux/arm64** runners. The historical v0.0.8 step is
 
 The synthetic container checks need no hosted model key or external memory database. Container images
 and Python dependencies must be downloadable on the first run.
-**V25 full local qualification passed; native CI pending.**
+**V25 full local qualification passed; native CI passed.**
 Apple Container `./scripts/test-containers.sh` reported
 **999 passed, 5 live skipped, 1 known warning, 494.49 s**.
 Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
 core/hook/sdk/providers installation smokes, and **all production smokes,
 including the new system-CA smoke**, passed.
+Implementation
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+passed exact-SHA [CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871):
+**amd64 999 passed, 5 live skipped, 1 warning / 600.77 s;
+arm64 999 passed, 5 live skipped, 1 warning / 797.75 s**.
+Both native jobs passed Ruff, mypy **22+1**, all four installation profiles, and
+all production smokes including system CA. This is implementation CI, not a
+qualification claim for a later final-documentation commit.
 This did not rerun Azure inference or qualify the CA ENV variant on Azure.
 See [ADR 0025](docs/adr/0025-live-provider-qualification.md).
 

@@ -3,7 +3,7 @@
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
 **Current bounded milestone: v0.0.25/schema 10 CA-image fix and exact-profile live evidence.
-Full local qualification passed; exact-SHA native CI remains pending.
+Full local qualification passed; exact-SHA native CI passed.
 Verified v0.0.24 and earlier results remain historical evidence, not v0.0.25 qualification.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -22,7 +22,7 @@ Janome's packaged dictionary is a software dependency, not stored application me
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
-| `POST /v1/episodes/query` | Retained read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v25 locally verified; native CI pending |
+| `POST /v1/episodes/query` | Retained read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v25 locally verified; native CI passed |
 | `POST /v1/captures` | Atomically commits/reuses one episode and one explicit structured-publication job; `201` returns the episode/job pair, not a published assertion |
 | `POST /v1/captures/batch` | Atomically admits one episode and 1–16 explicit same-scope proposals; ordered job references, independent publication |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
@@ -61,14 +61,14 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Selectable inference providers
 
-**V0.0.25/schema 10 locally verified; native CI pending, not M2 completion.**
+**V0.0.25/schema 10 locally verified; native CI passed, not M2 completion.**
 The bounded change is the Docker base's
 `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt` selection, with a non-root
 production smoke for that environment value and a loaded root-CA store.
 Nine local real-libpq TLS cases and targeted Ruff passed; a separate non-root
 runtime check confirmed the environment value and 150 loaded trusted CAs.
 These are separate from the v24 Azure live run's explicit DSN CA file.
-The full local suite and all checks/smokes passed; exact-SHA native CI remains pending.
+The full local suite and all checks/smokes passed; exact-SHA native CI passed.
 Stage `m2-selectable-inference`, `auto_synthesis: false`, and
 `model_inference.live_provider_qualified: false` are unchanged.
 The optional `providers` extra pins existing **httpx==0.28.1** without new dependency
@@ -202,7 +202,7 @@ and [v25 qualification status](#v0025--schema-10).
 
 ## Episode query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Native JWT authenticated `POST /v1/episodes/query` is read-only, requiring current
 read access but no write permission or `Idempotency-Key`.
 Closed `QueryEpisodes` accepts only:
@@ -299,7 +299,7 @@ See [operations](operations/README.md#episode-query-and-pagination),
 
 ## Explicit batch capture
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.** Native JWT and caller-owned
+**v0.0.25/schema 10 contract; locally verified, native CI passed.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -391,7 +391,7 @@ See [operations](operations/README.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -486,7 +486,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -580,7 +580,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.25/schema 10 contract; locally verified, native CI pending.**
+**v0.0.25/schema 10 contract; locally verified, native CI passed.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -668,7 +668,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.25 locally verified; native CI pending.**
+**Retained checkpoint-head contract; v0.0.25 locally verified; native CI passed.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -746,7 +746,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.25 locally verified; native CI pending.**
+**Retained recall-filter contract; v0.0.25 locally verified; native CI passed.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -817,7 +817,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.25 locally verified; native CI pending.**
+**Retained required-context contract; v0.0.25 locally verified; native CI passed.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -899,7 +899,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.25 locally verified; native CI pending.**
+**Retained job-cancellation contract; v0.0.25 locally verified; native CI passed.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -992,7 +992,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.25/schema 10 locally verified; native CI pending.**
+**Retained readiness contract; v0.0.25/schema 10 locally verified; native CI passed.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -1075,7 +1075,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.25 locally verified; native CI pending.**
+**Retained scope-access contract; v0.0.25 locally verified; native CI passed.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -1206,7 +1206,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.25 locally verified; native CI pending.**
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.25 locally verified; native CI passed.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -2777,14 +2777,22 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0025--schema-10"></a>
 
-### v0.0.25 / schema 10 — local qualification passed; native CI pending
+### v0.0.25 / schema 10 — local qualification passed; native CI passed
 
 The full Apple Container `./scripts/test-containers.sh` passed with
 **999 passed, 5 live skipped, 1 known warning, 494.49 s**.
 Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
 core/hook/sdk/providers installation smokes, and **all production smokes,
 including the new system-CA smoke**, passed.
-**Exact-SHA v25 native CI has not run yet**; historical v24 CI is not a substitute.
+Implementation
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+passed exact-SHA [CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871):
+**amd64 999 passed, 5 live skipped, 1 warning / 600.77 s;
+arm64 999 passed, 5 live skipped, 1 warning / 797.75 s**.
+Both native jobs passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four core/hook/sdk/providers installation profiles, and all production smokes
+including the new system-CA smoke. This is implementation CI, not a
+qualification claim for a later final-documentation commit.
 The five skipped live cases were not additional provider calls.
 
 The implementation sets the Docker base's `SSL_CERT_FILE` to the installed OS
@@ -2798,7 +2806,7 @@ missing/untrusted CA and hostname rejection, no `require` downgrade from
 `verify-full`, and sanitized errors.
 A separate **non-root v25 runtime check confirmed the environment value and
 150 loaded trusted CAs**. These targeted checks and the full-suite result above
-remain distinct from the historical Azure run and from pending native CI.
+remain distinct from the historical Azure run and from the exact-SHA implementation CI.
 No new Azure calls or resources are needed; the completed Azure trial's cleanup
 was verified at **12:07:30 JST**.
 

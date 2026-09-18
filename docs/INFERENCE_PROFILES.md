@@ -7,14 +7,21 @@ synthesis, extraction, ingestion, publication, or compaction. This is a practica
 guide for the current v0.0.25/schema 10 follow-up, **not M2 completion**.
 The recorded live runs used service 0.0.24, API v1, and schema 10.
 The separate TLS packaging follow-up is not qualified by those runs.
-**V25 full local qualification passed; native CI pending:** the Docker base sets `SSL_CERT_FILE`
+**V25 full local qualification passed; native CI passed:** the Docker base sets `SSL_CERT_FILE`
 and the runtime production smoke checks it plus a loaded root-CA store.
 Targeted local real-libpq TLS and runtime CA checks passed.
 The full Apple Container `./scripts/test-containers.sh` reported
 **999 passed, 5 live skipped, 1 known warning, 494.49 s**; Ruff, mypy
 **22 source files + 1 strict SDK consumer**, all four core/hook/sdk/providers
 installation smokes, and **all production smokes including the new system-CA
-smoke** passed. Exact-SHA v25 native CI has not run yet. No Azure inference was rerun.
+smoke** passed. Implementation
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+passed exact-SHA [CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871):
+**amd64 999 passed, 5 live skipped, 1 warning / 600.77 s;
+arm64 999 passed, 5 live skipped, 1 warning / 797.75 s**.
+Both native jobs passed Ruff, mypy **22+1**, all four installation profiles, and
+all production smokes including system CA. This is implementation CI, not a
+qualification claim for a later final-documentation commit. No Azure inference was rerun.
 Stage `m2-selectable-inference`, 31 Native/SDK resources, four MCP tools,
 `auto_synthesis: false`, and global `live_provider_qualified: false` remain.
 See [ADR 0025](adr/0025-live-provider-qualification.md) and
@@ -368,7 +375,7 @@ The v25 Docker base sets this environment variable; its non-root runtime smoke
 checks the environment value and a populated root-CA store. **Nine local real-libpq
 TLS cases and targeted Ruff passed; a separate non-root v25 runtime check confirmed
 the environment value and 150 trusted CAs.** The full local suite and all production
-smokes also passed; native CI remains pending.
+smokes also passed; native CI passed.
 The Azure live run used the explicit DSN CA file, **not this environment
 fix**; do not claim that the latter was live-Azure tested. Certificate/hostname
 verification must stay enabled. No cloud reprovisioning or extra cloud calls are

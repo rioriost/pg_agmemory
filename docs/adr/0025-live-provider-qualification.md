@@ -3,7 +3,7 @@
 [日本語](0025-live-provider-qualification-jp.md) | [Current status](../STATUS.md#v0025--schema-10) | [Profiles](../INFERENCE_PROFILES.md)
 
 - Date: 2026-09-18
-- Status: v0.0.25/schema 10 locally qualified; exact-SHA native CI pending
+- Status: v0.0.25/schema 10 locally qualified; exact-SHA native CI passed
 - Extends: [ADR 0024: Selectable inference foundation](0024-selectable-inference.md)
 - Boundary: exact-profile contract evidence, not blanket provider certification or M2 completion
 
@@ -18,7 +18,8 @@ The non-root production smoke checks that environment value and that
 The separate local real-libpq TLS regression and non-root runtime CA check have
 passed, as recorded below. Full local qualification also passed:
 **999 passed, 5 live skipped, 1 known warning / 494.49 s**.
-Exact-SHA native CI remains **pending**; the verified historical v24 run is separate.
+Exact-SHA implementation CI also passed, as recorded below; the verified
+historical v24 run remains separate.
 
 This is a minimal packaging/transport correction, not a new inference API:
 the provider library and operator CLI retain their contracts, SQL TLS `verify-full`,
@@ -69,7 +70,7 @@ value and **150 loaded trusted CAs**; 150 is the observed count, not a new minim
 contract. These targeted checks are distinct from the full local result below
 and do not substitute for native CI.
 
-## Full local v25 qualification
+## V25 local and native qualification
 
 Apple Container `./scripts/test-containers.sh` passed with
 **999 passed, 5 live skipped, 1 known warning, 494.49 s**.
@@ -77,8 +78,16 @@ Ruff, mypy **22 source files + 1 strict SDK consumer**, all four
 core/hook/sdk/providers installation smokes, and **all production smokes,
 including the new system-CA smoke**, passed.
 The five opt-in live cases were skipped; no Azure inference was rerun after cleanup.
-The CA ENV correction is locally verified, not tested as an Azure environment
-variant. Exact-SHA v25 native CI has not run yet; no new CI result is claimed.
+The CA ENV correction is verified locally and in native CI, not tested as an Azure
+environment variant. Implementation
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+passed exact-SHA [CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871):
+**amd64 999 passed, 5 live skipped, 1 warning / 600.77 s;
+arm64 999 passed, 5 live skipped, 1 warning / 797.75 s**.
+Both native jobs passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four core/hook/sdk/providers installation profiles, and all production smokes
+including the new system-CA smoke. This is implementation CI, not a
+qualification claim for a later final-documentation commit.
 
 ## What was actually observed
 
@@ -145,7 +154,7 @@ and endpoints. Purge does not imply universal provider/platform-log erasure.
 
 The nine local TLS cases, targeted Ruff, and separate runtime CA check are verified.
 The full v25 suite and all runtime/installation/type/lint checks also passed;
-exact-SHA native CI remains pending. The earlier 157-case template-unit run,
+exact-SHA native CI passed. The earlier 157-case template-unit run,
 v24 ordinary 989-case suite, live trials, and published CI are distinct evidence,
-not substitutes for the recorded v25 local result or pending native CI.
+not substitutes for the recorded v25 local result or the exact-SHA implementation CI.
 Track new results in [current qualification status](../STATUS.md#v0025--schema-10).

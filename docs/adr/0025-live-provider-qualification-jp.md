@@ -3,7 +3,7 @@
 [English](0025-live-provider-qualification.md) | [現在の状態](../STATUS-jp.md#v0025--schema-10) | [Profiles](../INFERENCE_PROFILES-jp.md)
 
 - 日付: 2026-09-18
-- 状態: v0.0.25/schema 10 local適格性確認済み・完全一致SHAのnative CI待ち
+- 状態: v0.0.25/schema 10 local・完全一致SHAのnative CI適格性確認済み
 - 拡張元: [ADR 0024: 選択式推論基盤](0024-selectable-inference-jp.md)
 - 境界: 正確なprofileの契約証拠であり、provider全体の認定やM2完了ではない
 
@@ -16,7 +16,7 @@ non-root production smokeはその環境変数値と
 `ssl.create_default_context().cert_store_stats()["x509_ca"] > 0`を検査します。
 別のlocal実libpq TLS regressionとnon-root runtime CA検査は下記のとおり合格しました。
 local適格性確認全体も**999合格、live skip 5件、既知warning 1件 / 494.49秒**で合格しました。
-完全一致SHAのnative CIは**結果待ち**で、検証済みの過去v24 runとは別です。
+完全一致SHAの実装CIも下記のとおり合格し、検証済みの過去v24 runとは区別します。
 
 最小限のpackaging/transport修正であり、新しい推論APIではありません。
 provider library/operator CLI契約、SQLのTLS `verify-full`、明示CA file対応、
@@ -66,7 +66,7 @@ CA不在/未信頼CA/hostname不一致のfail-closed、
 **trusted CA 150件の読込み**を確認しました。150件は観測値で、新たな最低件数契約ではありません。
 これらの対象検査は下記local full suite結果とは別であり、native CIの代わりにはなりません。
 
-## Full local v25 qualification
+## V25 local and native qualification
 
 Apple Container `./scripts/test-containers.sh`は
 **999合格、live skip 5件、既知warning 1件、494.49秒**でした。
@@ -74,8 +74,15 @@ Ruff、mypy **source 22 + strict SDK consumer 1ファイル**、
 core/hook/sdk/providersの全4導入smoke、
 **新system CA smokeを含む全production smoke**も合格しました。
 opt-inのlive 5 caseはskipし、cleanup後のAzure推論再実行はありません。
-CA ENV修正はlocal検証済みであり、Azureで環境変数のvariantを試した結果ではありません。
-完全一致SHAのv25 native CIはまだ実行しておらず、新CI結果は主張しません。
+CA ENV修正はlocalとnative CIで検証済みであり、Azureで環境変数のvariantを試した結果ではありません。
+実装
+[`adbead0ab42dfa4a5465f9464d3855c5f64d85c1`](https://github.com/rioriost/pg_agmemory/commit/adbead0ab42dfa4a5465f9464d3855c5f64d85c1)
+の完全一致SHAで[CI 35303758871](https://github.com/rioriost/pg_agmemory/actions/runs/35303758871)が合格しました。
+**amd64 999合格、live skip 5件、warning 1件 / 600.77秒、
+arm64 999合格、live skip 5件、warning 1件 / 797.75秒**です。
+両native jobでRuff、mypy **source 22 + strict SDK consumer 1ファイル**、
+core/hook/sdk/providersの全4導入profile、新system CAを含む全production smokeも合格しました。
+実装CIの証拠であり、後続の最終文書commitの適格性確認を主張するものではありません。
 
 ## What was actually observed
 
@@ -137,7 +144,7 @@ Azure cleanupは13:52期限より前の**2026-09-18 12:07:30 JST**に確認し�
 purgeはprovider/platform log全体の消去を意味しません。
 
 local TLS 9 case、対象Ruff、別のruntime CA検査は確認済みです。
-v25 full suiteとruntime/導入/型/lint検査全体も合格し、完全一致SHAのnative CIは結果待ちです。
+v25 full suiteとruntime/導入/型/lint検査全体も合格し、完全一致SHAのnative CIは合格しました。
 先行template unit 157件、v24通常suite 989件、live試行、公開CIは別の証拠であり、
-記録したv25 local結果や結果待ちのnative CIの代わりには使いません。
+記録したv25 local結果や完全一致SHAの実装CIの代わりには使いません。
 新結果は[現在の適格性確認状態](../STATUS-jp.md#v0025--schema-10)で管理します。
