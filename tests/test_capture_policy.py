@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from uuid import uuid4
@@ -60,7 +61,7 @@ def episode(env, **changes):
     }
 
 
-def admission(env, route, source, headers):
+def admission_body(route, source):
     memory = {
         "subject": "Test",
         "predicate": "tier",
@@ -73,7 +74,11 @@ def admission(env, route, source, headers):
         body = {"episode": source, "memory": memory}
     elif route == "captures/batch":
         body = {"episode": source, "memories": [memory, {**memory, "subject": "Other"}]}
-    return env.client.post("/v1/" + route, json=body, headers=headers)
+    return body
+
+
+def admission(env, route, source, headers):
+    return env.client.post("/v1/" + route, json=admission_body(route, source), headers=headers)
 
 
 def audit(env):
@@ -380,7 +385,7 @@ def test_policy_fences_running_job_but_does_not_purge_or_cancel_explicit_work(en
 
     async def claim():
         async with job_transaction(env.settings.database_url, env.subjects[0]) as jobs:
-            return await jobs.claim()
+            return await jobs.claim(lease_seconds=5)
 
     lease = asyncio.run(claim())
     set_policy(env, policy(enabled=False))
@@ -393,15 +398,11 @@ def test_policy_fences_running_job_but_does_not_purge_or_cancel_explicit_work(en
         asyncio.run(publish())
     assert env.client.post("/v1/remember", json=body, headers=env.headers()).status_code == 201
     assert len(env.recall().json()["items"]) == 2
-    with psycopg.connect(env.admin_url) as conn:
-        conn.execute(
-            "UPDATE memory_ops.job SET lease_until=clock_timestamp()-interval '1 second' "
-            "WHERE tenant_id=%s AND id=%s",
-            (env.tenants[0], receipt["job_id"]),
-        )
-    assert (
-        asyncio.run(run_once(env.settings.database_url, env.subjects[0]))["outcome"] == "succeeded"
-    )
+    time.sleep(5.1)
+    recovered = asyncio.run(run_once(env.settings.database_url, env.subjects[0]))
+    assert recovered["outcome"] == "succeeded" and recovered["job_id"] == receipt["job_id"]
+    detail = env.client.get("/v1/jobs/" + receipt["job_id"], headers=env.headers()).json()
+    assert detail["state"] == "succeeded" and detail["attempt"] == 2
 
 
 @pytest.mark.integration
@@ -421,14 +422,19 @@ def test_invalid_persisted_policy_is_fail_closed_without_exposing_labels(env):
 
 
 @pytest.mark.integration
-def test_invalid_capture_utf8_is_explicit_and_atomic(env):
+@pytest.mark.parametrize("route", ["observe", "captures", "captures/batch"])
+@pytest.mark.parametrize(
+    "field", ["content", "source_namespace", "source_event_id", "consent_reference"]
+)
+def test_invalid_capture_utf8_is_explicit_and_atomic(env, route, field):
     before = counts(env)
+    source = episode(env, **{field: "\ud800"})
     response = env.client.post(
-        "/v1/observe",
-        content=json.dumps(episode(env, content="\ud800")),
+        "/v1/" + route,
+        content=json.dumps(admission_body(route, source)),
         headers={**env.headers(), "Content-Type": "application/json"},
     )
-    assert response.status_code == 422 and response.json()["code"] == "invalid_capture_content"
+    assert response.status_code == 422 and response.json()["code"] == "invalid_request"
     assert counts(env) == before
 
 
@@ -622,3 +628,8 @@ def test_migration_preserves_legacy_capture_and_caps_are_explicit(env, database)
     assert not caps["capture_policy"]["secret_pii_detection"]
     assert not caps["capture_policy"]["provider_egress_control"]
     assert not caps["auto_synthesis"]
+    schema = env.client.get("/openapi.json").json()
+    for path in ("/v1/observe", "/v1/captures", "/v1/captures/batch"):
+        assert schema["paths"][path]["post"]["responses"]["403"]["content"][
+            "application/json"
+        ]["schema"] == {"$ref": "#/components/schemas/ErrorBody"}

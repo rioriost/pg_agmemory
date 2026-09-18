@@ -76,6 +76,8 @@ from pg_agmemory.native_client import AdapterFailure as MemoryClientError
 __all__ = ["AsyncMemoryClient", "MemoryClientError"]
 
 SDK_NATIVE_CODES = frozenset(SAFE_NATIVE_CODES) | {
+    "capture_policy_denied",
+    "capture_policy_invalid",
     "assertion_invalidated",
     "source_event_conflict",
     "relation_revision_required",

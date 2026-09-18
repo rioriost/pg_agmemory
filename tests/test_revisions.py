@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pg_agmemory.api import create_app
-from pg_agmemory.database import connect, migrate
+from pg_agmemory.database import SCHEMA_VERSION, connect, migrate
 from pg_agmemory.models import AssertionHistory, AssertionHistoryPage, Identity
 from pg_agmemory.service import MemoryError, MemoryService
 
@@ -484,7 +484,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
     with psycopg.connect(admin_url) as conn:
         assert conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,)]
+        ).fetchall() == [(version,) for version in range(1, SCHEMA_VERSION + 1)]
         for record in records:
             row = conn.execute(
                 """SELECT value, lower(valid_time), lower(system_time), revision

@@ -222,7 +222,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
         description="Initial M1 slice. Not a production-qualified memory service.",
         license_info={"name": "MIT", "identifier": "MIT"},
-        responses={status: {"model": ErrorBody} for status in (400, 401, 404, 409, 413, 422, 503)},
+        responses={
+            status: {"model": ErrorBody} for status in (400, 401, 403, 404, 409, 413, 422, 503)
+        },
     )
     app.add_middleware(TransactionBoundary, settings=configured)
 

@@ -239,7 +239,7 @@ class MemoryService:
         try:
             permitted = policy.permits(data)
         except UnicodeError:
-            raise MemoryError("invalid_capture_content", 422) from None
+            raise MemoryError("invalid_request", 422) from None
         if not permitted:
             raise MemoryError("capture_policy_denied", 403)
 

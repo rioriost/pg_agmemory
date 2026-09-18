@@ -211,7 +211,7 @@ def test_permission_order_admin_and_expiry_are_explicit(env):
 @pytest.mark.integration
 def test_expired_membership_is_not_a_purge_or_an_epoch_transition(env):
     source = env.observe().json()["memory_id"]
-    expiry = datetime.now(UTC) + timedelta(seconds=0.5)
+    expiry = execute(env).evaluated_at + timedelta(seconds=0.5)
     changed = execute(env, "set", expected_access_epoch=1, permissions=("read",), expires_at=expiry)
     assert changed.effective_permissions == ["read"]
     time.sleep(0.6)

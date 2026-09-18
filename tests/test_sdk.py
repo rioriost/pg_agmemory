@@ -458,6 +458,36 @@ def test_native_error_catalog_preserves_only_safe_codes(monkeypatch, code):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    ("code", "status", "retryable", "unknown"),
+    [
+        ("capture_policy_denied", 403, False, False),
+        ("capture_policy_invalid", 503, True, True),
+    ],
+)
+def test_capture_policy_errors_preserve_native_uncertainty(
+    monkeypatch, code, status, retryable, unknown
+):
+    _, calls = mock_client(
+        monkeypatch,
+        lambda _: response(
+            status,
+            {"code": code, "request_id": str(uuid4()), "retryable": retryable},
+        ),
+    )
+
+    async def scenario():
+        async with AsyncMemoryClient("https://memory.test", "fixed.identity.signature") as client:
+            with pytest.raises(MemoryClientError) as failure:
+                await client.observe(observation(), idempotency_key="policy")
+            error = failure.value.error
+            assert error.code == code and error.native_status == status
+            assert error.retryable is retryable and error.outcome_unknown is unknown
+        assert len(calls) == 2
+
+    asyncio.run(scenario())
+
+
 def test_read_failure_and_cancellation_close_without_claiming_mutation(monkeypatch):
     started = asyncio.Event()
 
