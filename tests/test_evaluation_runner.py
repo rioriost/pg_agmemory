@@ -16,6 +16,7 @@ from pg_agmemory.evaluation import (
 from pg_agmemory.evaluation_runner import (
     EvaluationAnswer,
     LocalEvaluation,
+    ranked_answer_context,
     read_bounded,
     rendered_sources,
     select_context,
@@ -120,6 +121,24 @@ def test_context_selection_counts_complete_utf8_source_envelopes():
     newest_size = len(rendered_sources([sources[-1]]).encode("utf-8"))
     assert select_context(sources, budget=newest_size, full=False) == [sources[-1]]
     assert select_context(sources, budget=newest_size - 1, full=False) == []
+
+
+def test_ranked_answer_budget_uses_complete_source_prefix_not_recall_snippet_budget():
+    sources = corpus().sources
+    sources[0] = sources[0].model_copy(update={"text": "\u65e5" * 80})
+    first_bytes = len(rendered_sources(sources[:1]).encode("utf-8"))
+    assert ranked_answer_context(sources, budget=first_bytes) == sources[:1]
+    assert ranked_answer_context(sources, budget=first_bytes - 1) == []
+    assert len(rendered_sources(sources).encode("utf-8")) > first_bytes
+
+
+def test_oversized_answer_context_rejects_before_any_model_call(tmp_path, monkeypatch):
+    evaluator = LocalEvaluation(configuration(), journal=tmp_path / "calls.jsonl", budget_bytes=256)
+    data = corpus()
+    data.sources[0] = data.sources[0].model_copy(update={"text": "x" * 300})
+    with pytest.raises(ValueError, match="context budget"):
+        asyncio.run(evaluator.answer(data.questions[0], data.sources, seed=17))
+    assert evaluator.calls == 0 and journal(evaluator) == []
 
 
 @pytest.mark.parametrize(
@@ -408,6 +427,7 @@ def test_invalid_answers_stay_in_every_baseline_denominator_without_retries(
                 for answer in answers
             )
             assert evaluator.calls == 9
+            assert all(answer.context_bytes <= evaluator.budget_bytes for answer in answers)
             assert not (
                 await client.recall(
                     Recall(

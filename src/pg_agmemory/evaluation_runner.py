@@ -84,6 +84,9 @@ class AnswerObservation(EvaluationContract):
     exact_match: bool | None
     unanswerable_nonabstention: bool | None
     failure_code: AnswerFailureCode | None = None
+    context_source_ids: list[str] = Field(default_factory=list)
+    context_bytes: Annotated[int, Field(ge=0)] = 0
+    context_truncated: bool = False
     human_review: Literal["not_reviewed"] = "not_reviewed"
 
 
@@ -113,6 +116,17 @@ def select_context(
         if len(rendered_sources(candidate).encode()) > budget:
             break
         selected = candidate
+    return selected
+
+
+def ranked_answer_context(
+    sources: list[EvaluationSource], *, budget: int
+) -> list[EvaluationSource]:
+    selected: list[EvaluationSource] = []
+    for source in sources:
+        if len(rendered_sources([*selected, source]).encode("utf-8")) > budget:
+            break
+        selected.append(source)
     return selected
 
 
@@ -148,7 +162,8 @@ class LocalEvaluation:
         return hashlib.sha256(
             json.dumps(
                 {
-                    "recipe": "native-retrieval-grounded-qa-v1",
+                    "recipe": "native-retrieval-grounded-qa-v2",
+                    "answer_context_policy": "whole-source-ranked-prefix-utf8-v1",
                     "settings": self.settings.model_dump(mode="json"),
                     "answer_system_prompt": ANSWER_SYSTEM_PROMPT,
                     "answer_schema": EvaluationAnswer.model_json_schema(),
@@ -199,6 +214,8 @@ class LocalEvaluation:
         model = self.settings.text_model
         if model is None or self.settings.max_output_tokens is None:
             raise ValueError("Answer measurement requires a pinned text model and output limit")
+        if len(rendered_sources(sources).encode("utf-8")) > self.budget_bytes:
+            raise ValueError("Answer evidence exceeds the declared UTF-8 context budget")
         payload = {
             "model": model.name,
             "messages": [
@@ -449,8 +466,21 @@ class LocalEvaluation:
                             )
                             continue
                         selected_sources = [source_map[source_id] for source_id in selected]
+                        context = ranked_answer_context(selected_sources, budget=self.budget_bytes)
+                        context_ids = [source.source_id for source in context]
+                        context_bytes = len(rendered_sources(context).encode("utf-8"))
+                        context_truncated = len(context) < len(selected_sources)
+                        self.record(
+                            "answer_context",
+                            question_id=question.question_id,
+                            baseline=baseline,
+                            seed=seed,
+                            source_ids=context_ids,
+                            byte_count=context_bytes,
+                            truncated=context_truncated,
+                        )
                         try:
-                            generated = await self.answer(question, selected_sources, seed=seed)
+                            generated = await self.answer(question, context, seed=seed)
                         except AnswerFailure as error:
                             answers.append(
                                 AnswerObservation(
@@ -462,6 +492,9 @@ class LocalEvaluation:
                                     exact_match=False,
                                     unanswerable_nonabstention=None,
                                     failure_code=error.code,
+                                    context_source_ids=context_ids,
+                                    context_bytes=context_bytes,
+                                    context_truncated=context_truncated,
                                 )
                             )
                             self.record("answer_failed", **answers[-1].model_dump(mode="json"))
@@ -481,6 +514,9 @@ class LocalEvaluation:
                                 unanswerable_nonabstention=not generated.abstained
                                 if not question.relevant
                                 else None,
+                                context_source_ids=context_ids,
+                                context_bytes=context_bytes,
+                                context_truncated=context_truncated,
                             )
                         )
                         self.record("answer", **answers[-1].model_dump(mode="json"))
