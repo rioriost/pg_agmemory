@@ -39,11 +39,11 @@ def evaluation_request():
         or settings.embedding_model is None
         or settings.embedding_model.name != "qwen3-embedding:0.6b"
         or settings.embedding_model.revision
-        != "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d"
+        != "ollama-sha256:ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d"
         or settings.text_model is None
         or settings.text_model.name != "qwen2.5:7b"
         or settings.text_model.revision
-        != "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+        != "ollama-sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
         or settings.max_output_tokens != 512
     ):
         pytest.fail("Live evaluation requires the operator-approved pinned local profile")
