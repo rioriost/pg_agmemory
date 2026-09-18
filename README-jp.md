@@ -7,8 +7,8 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**次の上限付きmilestoneはv0.0.24/schema 10の選択式推論基盤です。
-文書draftで、v0.0.24は適格性確認待ちです。
+**現在の上限付き実装はv0.0.24/schema 10の選択式推論基盤です。
+実装とsynthetic provider契約は適格性確認済みで、live providerは未認定です。
 以下の検証済みv0.0.23以前の結果は過去の証拠であり、v0.0.24の証拠ではありません。
 M0/M1/M2/M3全体の完了、MVP完成版、本番リリースではありません。**
 認証付き観測保存、同一scopeのepisodeを根拠とする明示的な構造化記憶、
@@ -33,7 +33,7 @@ postgresem連携は今後の実装対象です。
 
 ## Selectable inference providers
 
-**v24は適格性確認待ちです。この基盤はM2完了ではありません。**
+**v24実装とsynthetic provider契約は適格性確認済みです。この基盤はM2完了ではありません。**
 任意の`pg-agmemory[providers]`は**httpx==0.28.1**を追加し、新しい依存versionや
 schema migrationはありません。同じcore distributionであり、独立SDKやPyPI公開の主張ではありません。
 typedな`pg_agmemory.providers` library、またはoperator command
@@ -51,8 +51,14 @@ canonical memory transactionやsession lockには参加しません。
 extension版、extension所有の互換function signature、SQL権限を検査します。
 Azure資格情報/model登録はoperatorがapplication外で準備し、対応環境ではmanaged identityを推奨します。
 adapterはinstall/configureしません。
-`inspect`はHTTP設定またはread-only SQL catalogの検査で、
-**推論、modelアクセス/quota/endpoint接続の保証ではありません**。
+HTTP `inspect`はnetwork呼出しなしにclientを構築・closeして設定と資格情報headerを検証し、
+SQL `inspect`はread-only catalogを検査します。
+推論やmodelアクセス/quota/endpoint接続の保証ではありません。
+`max_output_tokens`はHTTP summary modelが必須で、
+非defaultの`sentence_count`はFlexible Language modeだけで使えます。
+applicationはretryしません。SQL embedding/Languageは`max_attempts => 1`を明示しますが、
+`azure_ai.generate`には検証済みretry/output-token knobがありません。
+一度の`MATERIALIZED` SQL呼出しも、課金されるupstream呼出しが一度だけ、または課金上限を**保証しません**。
 
 入力はclosedな`{"text": "..."}`でtext bytesを維持し、65,536文字/256 KiB上限、
 HTTP request/responseは256 KiB/2 MiB上限です。
@@ -75,11 +81,11 @@ preview/version/lifecycle制約、operatorのprivacy/budget責任を明示し、
 [契約](docs/STATUS-jp.md#selectable-inference-providers)、
 [profileとcommand](docs/operations/README-jp.md#selectable-inference-providers)、
 [ADR 0024](docs/adr/0024-selectable-inference-jp.md)、
-[未確認の証拠](docs/STATUS-jp.md#v0024--schema-10)を参照してください。
+[適格性確認の証拠](docs/STATUS-jp.md#v0024--schema-10)を参照してください。
 
 ## Episode query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 認証付きread-only `POST /v1/episodes/query`は`Idempotency-Key`不要です。
 closedな`QueryEpisodes`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableなtimezone付き`occurred_from`/`occurred_to`、strictな`max_items`
@@ -123,7 +129,7 @@ stage `m2-selectable-inference`は`episode_query`を維持し、schema 10にmigr
 
 ## Explicit batch capture
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 認証付き`POST /v1/captures/batch`にcaller所有の`Idempotency-Key`を要求します。
 closedな`CaptureBatch`は既存`episode: Observe`と
 **1〜16件**の`memories: list[CapturedMemory]`を持ちます。
@@ -162,7 +168,7 @@ schema 10にmigrationや依存version変更はなく、provider実行は別のop
 
 ## Exact entity query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 認証付きread-only `POST /v1/entities/query`は`Idempotency-Key`不要です。
 closedな`QueryEntities`は重複しない`scope_ids`（UUID 1〜32件）、
 nullableな`entity_type`（既存8種の`EntityType`）、nullableな`canonical_label`
@@ -213,7 +219,7 @@ schema 10にはmigration、依存version、AGE変更はありません。
 
 ## Assertion metadata history
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 認証付きread-only `POST /v1/assertions/history`は`Idempotency-Key`不要です。
 closedな`AssertionHistory`は必須UUID `memory_id`、strict整数`max_items`
 （1〜100、既定20）、nullableなstrict整数`before_revision`（1〜1001、既定null）だけを受け付けます。
@@ -261,7 +267,7 @@ history tool/fieldはありません。schema 10は不変です。
 
 ## Owned-job query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 認証付きread-only `POST /v1/jobs/query`は`Idempotency-Key`不要です。
 closedな`QueryJobs`は重複しない`scope_ids`（UUID 1〜32件）、
 重複しない`states`（最大5件、`[]`/省略で全状態）、strict整数の`max_items`
@@ -307,7 +313,7 @@ Native/SDKは**31 resource method**となり、MCPの4 toolとhookは不変でjo
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.24は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.24は適格性確認済みです。**
 認証付き`POST /v1/checkpoints/head`はread-onlyで、`Idempotency-Key`は不要です。
 closedな`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
 現在読取り可能な正確なscope/run/branchだけを選び、identity override、
@@ -349,7 +355,7 @@ v20からのSQL migration、依存version/artifact固定値の変更はありま
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.24は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.24は適格性確認済みです。**
 既存Native `POST /v1/recall`、型付きSDK `recall`、MCP `memory_recall`は
 `Recall.filters: RecallFilters | None = None`を受け付けます。
 未知fieldを拒否するnested modelのfieldはnullableな`kind`（`"episode"`または`"assertion"`）、
@@ -385,7 +391,7 @@ filterはcallerの選択条件であり、信頼する指示や検証済み真�
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.24は適格性確認済みです。**
 既存Native `POST /v1/recall`、SDK `recall`、MCP `memory_recall`は
 `Recall.required_memory_refs`を受け付けます。既定は省略または`[]`で、
 最大**16**件の`MemoryReference`です。UUIDと正確なrevision **1〜1000**を選び、
@@ -420,7 +426,7 @@ write、idempotency、永続priority、cache、推論、provider呼出し、sche
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.24は適格性確認済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative認証、callerが保持する`Idempotency-Key`、
 `expected_state`（`pending`または`running`）とstrict整数`expected_attempt`
 （0〜5、runningは1以上）だけを要求します。
@@ -450,7 +456,7 @@ MCPの4 toolとread-only hookは変更しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.24/schema 10は適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.24/schema 10は適格性確認済みです。**
 `GET /healthz`は起動成功後のprocess livenessを維持し、DBを呼ばず
 `{"status":"ok"}`を返します。public・認証不要の`GET /readyz`は
 HTTP **200**と正確な`{"status":"ready"}`、または想定内の失敗時に
@@ -479,7 +485,7 @@ readinessはSDK/MCP/hook probe methodを追加せず、episode照会を含むNat
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.24は適格性確認済みです。**
 特権`pg-agmemory scope-access get|set|revoke` CLIで、既存の同一tenantに属する
 scope/principal UUIDのmembershipを管理します。
 `PGAG_ADMIN_DATABASE_URL`、RLS bypassと適切なSQL権限を持つ管理者、
@@ -507,7 +513,7 @@ PostgreSQL 18.6/pgvector 0.8.6固定imageと依存版は維持します。
 
 ## Python SDK
 
-**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.24は適格性確認待ちです。** 対応checkoutから導入します。
+**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.24は適格性確認済みです。** 対応checkoutから導入します。
 
 ```bash
 python -m pip install '.[sdk]'
@@ -619,9 +625,21 @@ GitHub Actionsではnative **linux/amd64**・**linux/arm64** runner上のDocker�
 
 synthetic container検査に商用model API keyや外部memory DBは不要です。
 初回はコンテナimageとPython依存packageを取得できる必要があります。
-**v24は適格性確認待ちです。** v24の実装SHA、local/native件数、導入結果、smoke成功は未記録です。
-synthetic HTTP/SQL fixtureは計画中であり、live Azure/modelの適格性確認ではありません。
-[未確認の証拠](docs/STATUS-jp.md#v0024--schema-10)を参照してください。
+**v24実装とsynthetic provider契約は適格性確認済みです。**
+実装
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)は
+Apple Containerのfull `./scripts/test-containers.sh`で**987合格、warning 1件、493.68秒**でした。
+完全一致SHAの[CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)は
+**amd64 987合格 / 762.27秒、arm64 987合格 / 809.06秒**でした。
+全3環境でRuff、mypy **source 22 + strict SDK consumer 1ファイル**、
+core/hook/sdk/providersの全4導入profile、全production smokeも合格しました。
+新smokeはsynthetic HTTPに実operator CLIを接続し、
+その後にNative vector upload/replay/purgeを明示します。**987 = 既存821 + 新規166 case**です。
+SQL fixtureは実際の使い捨てPostgreSQLで実行しますが、**Azure extension binaryではありません**。
+live Azure/実model呼出し、課金resource、private dataの外部送信は使っていません。
+live互換性、品質、M2完了の認定ではありません。
+[適格性確認の証拠](docs/STATUS-jp.md#v0024--schema-10)を参照してください。
+この更新の最終docs CIはまだ実行していません。
 
 **過去のv0.0.23実装の適格性確認はlocalと両native architectureで合格しました。**
 実装

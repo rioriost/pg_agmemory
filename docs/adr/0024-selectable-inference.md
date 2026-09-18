@@ -3,7 +3,7 @@
 [日本語](0024-selectable-inference-jp.md) | [Contract](../STATUS.md#selectable-inference-providers) | [Operations](../operations/README.md#selectable-inference-providers)
 
 - Date: 2026-09-18
-- Status: draft for v0.0.24/schema 10; qualification pending
+- Status: v0.0.24/schema 10 implementation and synthetic-provider contracts qualified
 - Extends: [Explicit vectors](0011-pgvector-retrieval.md), [Python SDK](0012-python-sdk.md)
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Boundary: provider foundation, not M2/MVP/production/performance/quality completion
@@ -35,8 +35,10 @@ the three backends, both Azure products, `inspect`/`summarize`/`embed`,
 Closed input is `{text}`, preserving exact UTF-8 bytes, non-whitespace and
 1–65,536 characters/256 KiB. Configuration is ≤32 KiB; HTTP requests ≤256 KiB,
 responses/SQL serialized results ≤2 MiB. Operator timeout is 1–120 seconds,
-default 30. HTTP `max_output_tokens` is 1–4096, default 1024; SQL rejects it.
-No automatic retry, redirect, proxy environment, or backend fallback.
+default 30. HTTP `max_output_tokens` is 1–4096, default 1024 for summaries,
+and requires a `text_model`; SQL rejects it.
+A nondefault `sentence_count` is allowed only in Flexible Language mode.
+No application retry, redirect, proxy environment, or backend fallback.
 HTTP uses bounded OpenAI-compatible chat/embedding shapes, not universal vendor support.
 
 `SummaryResult` carries declared model, input digest, summary, and `untrusted` status:
@@ -59,8 +61,12 @@ canonical ownership are rejected. Every call checks exact extension version,
 extension membership through `pg_depend`, one compatible non-set-returning
 overload, argument/result types, and SQL `USAGE`/`EXECUTE`.
 One `MATERIALIZED` evaluation and a server-side result-size guard bound result transfer.
+This does **not** prove one billable upstream call. SQL embedding/Language explicitly
+set `max_attempts => 1`; `azure_ai.generate` has no verified retry or output-token knob.
+Extension-internal behavior and charges are not guaranteed by the adapter.
 The adapter installs/configures nothing and does not read key settings/model registries.
-HTTP `inspect` is configuration-only; SQL `inspect` is read-only catalog inspection.
+HTTP `inspect` constructs and closes a client without network calls, validating
+configuration and credential headers; SQL `inspect` is read-only catalog inspection.
 Neither performs inference or proves model permission, quota, connectivity, or quality.
 Operators configure credentials/registrations outside the app; managed identity
 is the project's recommendation where supported. Query/provider logs, retention,
@@ -84,10 +90,37 @@ hosting on either Azure product.
 
 ## Qualification boundary
 
-V24 qualification is pending; no local/native count, implementation SHA, install
-result, or smoke success is recorded. Planned HTTP and SQL checks use synthetic
-services/catalog fixtures, **not a vendor extension binary or live Azure/LLM**.
-Even successful fixture qualification cannot establish live compatibility,
-human-review effectiveness, provider budget controls, quality, or M2 completion.
-See [pending evidence](../STATUS.md#v0024--schema-10) and
+Implementation
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)
+passed the full Apple Container `./scripts/test-containers.sh`:
+**987 passed, 1 warning, 493.68 s**.
+Exact-SHA [CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)
+passed: **amd64 987 / 762.27 s; arm64 987 / 809.06 s**.
+All three environments passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four core/hook/sdk/providers installation profiles, and all production smokes,
+including the actual operator CLI against synthetic HTTP followed by explicit
+Native vector upload/replay/purge.
+**987 = 821 retained + 166 new cases**: 51 HTTP/configuration/CLI/lifecycle and
+115 Azure SQL, including 11 real disposable PostgreSQL integration cases using
+synthetic SQL functions/extension membership, **not a vendor Azure extension binary**.
+No live Azure/real-model calls, billed resources, or private-data egress were used.
+Contract qualification does not establish live compatibility, human-review
+effectiveness, provider budget controls, quality, or M2 completion.
+`live_provider_qualified` stays false. Final-docs CI for this update has not run.
+See [qualification evidence](../STATUS.md#v0024--schema-10) and
 [historical v23 qualification](../STATUS.md#v0023--schema-10).
+
+**UTF-8 identity follow-up — synthetic-provider qualification verified.**
+Pushed commit `e3c333e4713e943afaf9615fc15d4a9319101299` validates UTF-8 encoding
+of text/embedding model `name`/`revision` and `embedding_target` at configuration
+startup, rejecting invalid Unicode surrogates before CLI serialization.
+Regression variants extend the existing configuration test; the count remains **987**.
+Full Apple Container requalification passed **987 tests in 499.65 s**, with Ruff,
+mypy **22 + 1**, all four installation profiles, and all production smokes.
+Exact-SHA [CI 35294519418](https://github.com/rioriost/pg_agmemory/actions/runs/35294519418)
+passed: **amd64 987 passed / 823.85 s; arm64 987 passed / 787.03 s**.
+Both native runs passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four optional installation profiles, and all production smokes.
+These follow-up results are separate from the original implementation and
+CI 35292285229 above. This is **synthetic-provider qualification**, not live
+Azure/model validation or M2 completion.

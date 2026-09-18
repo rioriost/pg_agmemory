@@ -3,7 +3,7 @@
 [English](0024-selectable-inference.md) | [契約](../STATUS-jp.md#selectable-inference-providers) | [運用](../operations/README-jp.md#selectable-inference-providers)
 
 - 日付: 2026-09-18
-- 状態: v0.0.24/schema 10のdraft、適格性確認待ち
+- 状態: v0.0.24/schema 10の実装とsynthetic provider契約は適格性確認済み
 - 拡張対象: [明示vector](0011-pgvector-retrieval-jp.md)、[Python SDK](0012-python-sdk-jp.md)
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 境界: provider基盤であり、M2/MVP/本番/性能/品質の完了ではない
@@ -35,8 +35,9 @@ stage `m2-selectable-inference`は`optional_provider_adapters`と`model_inferenc
 closed入力は`{text}`で、正確なUTF-8 bytesを維持し、空白だけでない
 1〜65,536文字/256 KiBです。設定は32 KiB以下、HTTP requestは256 KiB以下、
 response/SQL serialize結果は2 MiB以下です。operator timeoutは1〜120秒、既定30です。
-HTTP `max_output_tokens`は1〜4096、既定1024で、SQLでは拒否します。
-自動retry、redirect、proxy環境、backend fallbackはありません。
+HTTP `max_output_tokens`は1〜4096、要約の既定1024で、`text_model`が必須です。SQLでは拒否します。
+非defaultの`sentence_count`はFlexible Language modeだけで許可します。
+applicationのretry、redirect、proxy環境、backend fallbackはありません。
 HTTPは上限付きOpenAI互換chat/embedding shapeで、全vendor対応ではありません。
 
 `SummaryResult`は宣言model、input digest、summary、`untrusted`状態を持ち、
@@ -58,8 +59,13 @@ canonical transaction/session lockではありません。各SQL function statem
 `pg_depend`のextension所属、一意で互換のnon-set-returning overload、
 引数/結果型、SQL `USAGE`/`EXECUTE`を検査します。
 一度の`MATERIALIZED`評価とserver側size guardで結果転送を制限します。
+これは課金されるupstream呼出しが一度だけとの証明では**ありません**。
+SQL embedding/Languageは`max_attempts => 1`を明示しますが、
+`azure_ai.generate`には検証済みretry/output-token knobがありません。
+extension内部の動作や課金はadapterが保証するものではありません。
 adapterはinstall/configureせず、key設定/model registryも読みません。
-HTTP `inspect`は設定のみ、SQL `inspect`はread-only catalog検査です。
+HTTP `inspect`はnetwork呼出しなしにclientを構築・closeして設定と資格情報headerを検証し、
+SQL `inspect`はread-only catalog検査です。
 どちらも推論やmodel権限、quota、接続、品質を保証しません。
 operatorがapplication外で資格情報/登録を準備し、対応環境では本projectはmanaged identityを推奨します。
 query/provider log、retention、同意、budgetはoperator責任です。
@@ -81,10 +87,34 @@ query/provider log、retention、同意、budgetはoperator責任です。
 
 ## 検証境界
 
-v24は適格性確認待ちで、local/native件数、実装SHA、導入結果、smoke成功は未記録です。
-計画中のHTTP/SQL検査はsynthetic service/catalog fixtureで、
-**vendor extension binaryやlive Azure/LLMではありません**。
-fixture検査が合格しても、live互換性、人のreviewの有効性、provider budget制御、
-品質、M2完了は認定できません。
-[未確認の証拠](../STATUS-jp.md#v0024--schema-10)と
+実装
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)は
+Apple Containerのfull `./scripts/test-containers.sh`で**987合格、warning 1件、493.68秒**でした。
+完全一致SHAの[CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)は、
+**amd64 987合格 / 762.27秒、arm64 987合格 / 809.06秒**でした。
+全3環境でRuff、mypy **source 22 + strict SDK consumer 1ファイル**、
+core/hook/sdk/providersの全4導入profile、全production smokeも合格しました。
+これにはsynthetic HTTPに実operator CLIを接続し、
+その後にNative vector upload/replay/purgeを明示するsmokeも含みます。
+**987 = 既存821 + 新規166 case**で、HTTP/設定/CLI/lifecycleが51、Azure SQLが115です。
+後者にはsynthetic SQL function/extension所属を使う実際の使い捨てPostgreSQL integration 11 caseを含み、
+**vendor Azure extension binaryではありません**。
+live Azure/実model呼出し、課金resource、private dataの外部送信は使っていません。
+契約の適格性確認はlive互換性、人のreviewの有効性、provider budget制御、品質、M2完了の認定ではありません。
+`live_provider_qualified`はfalseのままです。この更新の最終docs CIはまだ実行していません。
+[適格性確認の証拠](../STATUS-jp.md#v0024--schema-10)と
 [過去v23の適格性確認](../STATUS-jp.md#v0023--schema-10)を参照してください。
+
+**UTF-8 identity追加修正 — synthetic providerの適格性確認済み。**
+push済みcommit `e3c333e4713e943afaf9615fc15d4a9319101299`は設定起動時に
+text/embedding modelの`name`/`revision`と`embedding_target`のUTF-8 encodingを検証し、
+CLI serialize前に不正なUnicode surrogateを拒否します。
+既存設定test内に回帰variantを追加し、件数は**987**のままです。
+full Apple Container再検証は**987合格、499.65秒**で、
+Ruff、mypy **22 + 1**、全4導入profile、全production smokeも合格しました。
+完全一致SHAの[CI 35294519418](https://github.com/rioriost/pg_agmemory/actions/runs/35294519418)は、
+**amd64 987合格 / 823.85秒、arm64 987合格 / 787.03秒**でした。
+両native runでRuff、mypy **source 22 + strict SDK consumer 1ファイル**、
+全4 optional導入profile、全production smokeも合格しました。
+この追加修正の結果は、上記の初期実装とCI 35292285229とは別です。
+**synthetic providerの適格性確認**であり、live Azure/model検証やM2完了ではありません。

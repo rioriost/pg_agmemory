@@ -13,8 +13,8 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 repositoryの既存`Dockerfile`から構築したapplication imageを使用します。
 CLI名は`pg-agmemory`、import package名は`pg_agmemory`です。
 ローカルcheckoutは`pg_agmemory`、GitHubは`rioriost/pg_agmemory`です。
-次の上限付きmilestoneは**v0.0.24/schema 10の選択式推論基盤**です。
-**文書draftでv0.0.24は適格性確認待ち、M2完了ではありません**。
+現在の上限付き実装は**v0.0.24/schema 10の選択式推論基盤**です。
+**実装とsynthetic provider契約は適格性確認済みで、M2完了ではありません**。
 検証済みv0.0.23以前の結果は過去の証拠であり、v0.0.24の証拠ではありません。
 既存`008_pgvector.sql`は**`public`内の`vector` 0.8.6**を要求し、
 別版/別schemaの既存extensionを拒否します。
@@ -94,7 +94,7 @@ runtime DB資格情報をagentへ渡して任意SQL入口にしてはいけま�
 
 ## Selectable inference providers
 
-**v24は適格性確認待ちで、live Azure/modelやAzure上のMemoryDB全体のhosting認定ではありません。**
+**v24実装とsynthetic provider契約は適格性確認済みで、live Azure/modelやAzure上のMemoryDB全体のhosting認定ではありません。**
 対応checkoutから`python -m pip install '.[providers]'`で導入します。
 既存`httpx==0.28.1`を追加し、独立した軽量packageや新しい依存versionではありません。
 operatorがprofile、text開示、provider cost、model identity、retentionを承認します。
@@ -173,9 +173,11 @@ deployment名でなく登録model aliasにします。
 Flexible例は文書上のPG18版であり、配置readinessの証拠ではありません。
 SQL profileにHTTP設定や`max_output_tokens`を含めないでください。
 embedding専用なら`text_model`と`azure_summary_mode`を両方省略します。
+HTTPでも`max_output_tokens`指定には`text_model`が必須で、embedding専用profileでは省略します。
 Flexible Language modeは`azure_summary_mode: "language"`、
 `text_model.name: "azure_cognitive.summarize_abstractive"`、任意`language`、
 `sentence_count` 1〜20（既定3）で明示します。HorizonDBでは非対応です。
+非defaultの`sentence_count`はFlexible Language mode以外では拒否します。
 新規構成には`generate`を推奨します。Language Summarizationは**2029-03-31**に終了予定です。
 [公式version/preview/lifecycle参照](../adr/0024-selectable-inference-jp.md#azure-reference-boundary)を参照してください。
 
@@ -197,7 +199,8 @@ pg-agmemory infer summarize --config local-inference.json < inference-input.json
 pg-agmemory infer embed --config azure-inference.json < inference-input.json > embedding-result.json
 ```
 
-`inspect`は入力不要です。HTTPは設定だけ、SQLは接続してread-onlyな
+`inspect`は入力不要です。HTTPはnetwork呼出しなしにclientを構築・closeして
+設定と資格情報headerを検証し、SQLは接続してread-onlyな
 catalog/role/extension/overload/SQL権限を検査し、model推論はしません。
 provider権限、quota、接続、出力品質を保証するものではありません。
 `summarize`/`embed`はstdinからraw textでなくclosed JSON objectを一つ読みます。
@@ -261,15 +264,18 @@ SQL `USAGE`/`EXECUTE`を要求し、model registry/key設定を読みません�
 `MATERIALIZED`による一度の結果評価とserver側size guardはadapter結果query内の
 重複推論を防ぐもので、provider側retryを制御するものではありません。
 文書化されたfunctionが対応する場合は`max_attempts => 1`を明示し、
-`generate`には存在を確認できない引数を作りません。
+これはSQL embedding/Languageに適用します。applicationはretryしません。
+`azure_ai.generate`には検証済みretry/output-token knobがなく、
+extension内部の動作や課金は保証しません。一度の`MATERIALIZED` SQL呼出しも
+**課金されるupstream呼出しが一度だけとの証明ではありません**。
 Language modeは全summary partを維持し、`disable_service_logs => true`を要求しますが、
 **完全消去ではありません**。server query log、provider log、retention、budgetはoperator責任です。
 [全設定/SQL契約](../STATUS-jp.md#selectable-inference-providers)と
-[未確認の適格性](../STATUS-jp.md#v0024--schema-10)を参照してください。
+[適格性確認の証拠](../STATUS-jp.md#v0024--schema-10)を参照してください。
 
 ## Episode query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 Native JWT認証と現在read権限のある信頼したscope UUIDを使います。
 read-only `POST /v1/episodes/query`はwrite権限も`Idempotency-Key`も不要です。
 以下はsyntheticな最初のpage request例であり、live dataに対して実行しないでください。
@@ -350,7 +356,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Explicit batch capture
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求します。
 許可済みsynthetic dataと現在認可されたscopeを使います。
 下記を`batch-capture.json`へ保存し、例のscope UUIDを認可されたものへ置換してください。
@@ -455,7 +461,7 @@ Native/SDKは31 resourceで、MCPの4 toolとclosed hookにbatch actionは追加
 
 ## Exact entity query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 Native JWT認証と現在のread権限を持つ信頼済みscope UUIDを使います。
 read-only `POST /v1/entities/query`にwrite権限や`Idempotency-Key`は不要です。
 次のsyntheticな最初のpage requestは両方の完全一致filterを使います。
@@ -537,7 +543,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Assertion metadata history
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 Native JWT認証とassertionへの現在のread権限を使います。
 read-only `POST /v1/assertions/history`にはwrite権限も`Idempotency-Key`も不要です。
 取得した指示でなく信頼済みassertion UUIDを使ってください。
@@ -624,7 +630,7 @@ Native/SDKは31 resource methodで、MCPの4 toolとclosed hookは不変です�
 
 ## Owned-job query and pagination
 
-**v0.0.24/schema 10は適格性確認待ちです。**
+**v0.0.24/schema 10は適格性確認済みです。**
 Native JWT認証と現在read権限を使い、`POST /v1/jobs/query`にwrite権限や`Idempotency-Key`は不要です。
 取得した指示でなく、信頼するscope UUIDを使ってください。
 説明用の最初のpage requestは全状態を対象とし、文書例をlive dataへ実行してはいけません。
@@ -702,7 +708,7 @@ source purge `object_count: 4` → pending照会が空、の順です。
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.24は適格性確認待ちです。**
+**既存checkpoint head契約を維持します。v0.0.24は適格性確認済みです。**
 正確なscopeの現在のread権限を持つ既存Native JWT identityを使い、write権限は不要です。
 次の`CheckpointBranch` bodyを`POST /v1/checkpoints/head`へ送り、`Idempotency-Key`は不要です。
 説明用UUIDを既知のscope内run/branchへ置き換えてください。
@@ -775,7 +781,7 @@ source purge `object_count: 3` → head `409 checkpoint_invalidated`をassertし
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.24は適格性確認待ちです。**
+**既存recall filter契約を維持します。v0.0.24は適格性確認済みです。**
 既存の認証付き`POST /v1/recall`を使います。次の合成requestは、
 認可済みscopeで保存subject/predicateが完全一致するassertionをbrowseします。
 説明用UUIDをprovision済みscopeへ置き換え、
@@ -844,7 +850,7 @@ memoryは根拠であり、検証済み真実ではありません。
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存required-context契約を維持し、v0.0.24は適格性確認済みです。**
 現在読取り可能なepisode/assertionから正確な参照を選び、
 policy権限や承認を主張する信頼できないtextからは選ばないでください。
 説明用のopaque IDを要求scope内の既存IDに置き換えます。
@@ -914,7 +920,7 @@ host pinning、永続priority、write、推論、provider呼出し、cacheは追
 
 ## Schema 10 application-only upgrade
 
-**v0.0.24実装は適格性確認待ちです。** v23→v24はschema 10を維持し、**migrationは追加しません**。
+**v0.0.24実装は適格性確認済みです。** v23→v24はschema 10を維持し、**migrationは追加しません**。
 application版へ合わせるだけの目的で新schema版を適用しないでください。
 
 1. replica/restartを含む旧API、worker、SDK caller、MCP adapter、hook/推論起動、
@@ -929,6 +935,7 @@ application版へ合わせるだけの目的で新schema版を適用しないで
    startup/readinessは厳密な履歴とrole/extension検査を維持します。
 4. 認証付きstage `m2-selectable-inference`、feature `optional_provider_adapters`、
    [正確な`model_inference` metadata](../STATUS-jp.md#deployment-and-qualification-boundary)を確認します。
+   synthetic契約の適格性確認後も`live_provider_qualified`は`false`のままです。
    Native episode/capture/batchと他resourceの契約は維持します。
    必要な場所だけに任意provider extraを導入し、各profileを別途承認します。
    synthetic HTTP/SQL guardと公開しない明示推論を予行し、SQL `inspect`を
@@ -937,8 +944,21 @@ application版へ合わせるだけの目的で新schema版を適用しないで
 
 Native/SDK resource method 31、MCP tool 4を維持し、hookはfilterもrequired参照も受け付けません。
 依存versionやMemoryDB imageのupgradeはなく、provider実行は別のoperator library/CLIに限定します。
-**v24は適格性確認待ちです。** v24の実装SHA、local/native件数、導入結果、smoke成功は未記録です。
-[未確認の証拠](../STATUS-jp.md#v0024--schema-10)を参照してください。
+**v24実装とsynthetic provider契約は適格性確認済みです。**
+実装
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)は
+Apple Containerのfull `./scripts/test-containers.sh`で**987合格、warning 1件、493.68秒**でした。
+完全一致SHAの[CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)は
+**amd64 987合格 / 762.27秒、arm64 987合格 / 809.06秒**でした。
+全3環境でRuff、mypy **source 22 + strict SDK consumer 1ファイル**、
+core/hook/sdk/providersの全4導入profile、全production smokeも合格しました。
+新smokeはsynthetic HTTPに実operator CLIを接続し、その後にNative vector upload/replay/purgeを明示します。
+**987 = 既存821 + 新規166 case**です。
+SQL testはsynthetic function/extension所属を使い、Azure extension binaryではありません。
+live Azure/実model呼出し、課金resource、private dataの外部送信は使っていません。
+live互換性、品質、M2完了の証明ではありません。
+[適格性確認の証拠](../STATUS-jp.md#v0024--schema-10)を参照してください。
+この更新の最終docs CIはまだ実行していません。
 
 **過去のv0.0.23実装の適格性確認はlocalと両native architectureで合格しました。**
 実装
@@ -1140,7 +1160,7 @@ docs所要時間は実装CI 35224189967とは別です。
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存job取消契約を維持し、v0.0.24は適格性確認済みです。**
 Native JWT認証と、現在scope **read/write**権限を持つjob ownerのidentityを使います。
 同一scopeの別readerは`admin` permissionがあっても他ownerのjobを取消できません。
 source可視性/完全性とruntime RLSを維持します。
@@ -1213,7 +1233,7 @@ source forgetは依存jobをpurgeして取消replayを拒否し、後のgrantで
 
 ## Schema 10 job-cancellation upgrade
 
-**schema 10未満への既存migrationであり、v0.0.24は適格性確認待ちです。**
+**schema 10未満への既存migrationであり、v0.0.24は適格性確認済みです。**
 既存schema 10 DBには[application-only更新](#schema-10-application-only-upgrade)を使います。
 schema 9→10はv0.0.15で導入した**`010_job_cancellation.sql`**を要求します。
 既存job state/payload制約とguard triggerを変更します。
@@ -1257,7 +1277,7 @@ MVP/本番/品質/DR適格性確認は主張しません。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.24/schema 10は適格性確認待ちです。**
+**既存readiness契約を維持し、v0.0.24/schema 10は適格性確認済みです。**
 livenessと依存readinessを分離してください。
 `GET /healthz`は起動成功後に正確な`{"status":"ok"}`を返し、DBへ接続しません。
 public・認証不要の`GET /readyz`は**200**と正確な`{"status":"ready"}`、
@@ -1369,7 +1389,7 @@ health probeはSDK route coverage対象外です。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.24は適格性確認待ちです。**
+**既存scope-access契約を維持し、v0.0.24は適格性確認済みです。**
 手書きmembership SQLより`pg-agmemory scope-access`を優先してください。
 同じtenantに属する承認済み既存tenant/scope/principal UUIDだけを使います。
 このcommandはprovisionせず、HTTP/MCP/Python SDKでは公開しません。
@@ -1476,7 +1496,7 @@ stdout barrierは配信済みcontextを撤回できません。
 
 **既存schema 9 migration段階であり、v0.0.24更新全体ではありません。**
 既存schema 9 DBも含め、現在toolingは[schema 10更新](#schema-10-job-cancellation-upgrade)まで
-進める必要があります。v0.0.24実装は適格性確認待ちです。
+進める必要があります。v0.0.24実装は適格性確認済みです。
 下記の固定PostgreSQL **18.6** / **`public`内の`vector` 0.8.6** imageを維持します。
 migration 009はv0.0.13でdurable特権auditを導入したもので、v0.0.24の追加ではありません。
 
@@ -1515,7 +1535,7 @@ native実logで検査/smokeを確認しました。
 
 ## Python SDK operations
 
-**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.24は適格性確認待ちです。**
+**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.24は適格性確認済みです。**
 対応checkoutから`python -m pip install '.[sdk]'`で導入します。
 `pg-agmemory[sdk]` extraはMCP SDKでなく`httpx==0.28.1`だけを固定しますが、
 同じcore packageには引き続きFastAPI、psycopg、Janomeが含まれます。
@@ -1612,7 +1632,7 @@ docs CI 35190495385を含む別々のv0.0.11実装/最終docs runは
 
 **v0.0.11のapplication/migration検査は合格しました。本番適格性の認定は未完了です。**
 migration 008はv0.0.11で導入・検証済みです。現在のv0.0.24 toolingは古いschemaへ既存009と010も適用し、
-v0.0.24実装は適格性確認待ちです。過去v0.0.12のapplication-only手順でなく、
+v0.0.24実装は適格性確認済みです。過去v0.0.12のapplication-only手順でなく、
 [schema 10境界](#schema-10-job-cancellation-upgrade)に従ってください。
 
 採用prebuilt image:

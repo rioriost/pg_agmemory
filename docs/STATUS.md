@@ -2,8 +2,8 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Next bounded milestone: v0.0.24/schema 10 selectable inference foundation.
-Documentation draft; v0.0.24 qualification pending.
+**Current bounded implementation: v0.0.24/schema 10 selectable inference foundation.
+Implementation and synthetic-provider contracts qualified; live providers remain unqualified.
 Verified v0.0.23 and earlier results remain historical evidence, not v0.0.24 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
@@ -22,7 +22,7 @@ Janome's packaged dictionary is a software dependency, not stored application me
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
-| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v24 qualification pending |
+| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v24 qualified |
 | `POST /v1/captures` | Atomically commits/reuses one episode and one explicit structured-publication job; `201` returns the episode/job pair, not a published assertion |
 | `POST /v1/captures/batch` | Atomically admits one episode and 1–16 explicit same-scope proposals; ordered job references, independent publication |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
@@ -61,7 +61,7 @@ PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
 ## Selectable inference providers
 
-**V0.0.24/schema 10 draft; qualification pending, not M2 completion.**
+**V0.0.24/schema 10 implementation and synthetic-provider contracts qualified, not M2 completion.**
 The optional `providers` extra pins existing **httpx==0.28.1** without new dependency
 versions. This is the same core distribution, not a separate lightweight package.
 `pg_agmemory.providers` exposes `ProviderSettings`, `InferenceInput`, `TextModel`,
@@ -90,9 +90,9 @@ not raw secrets: uppercase `[A-Z][A-Z0-9_]{0,127}`, supplied by trusted operator
 | `embedding_model` | Optional existing `EmbeddingModel`: 768, `cosine`, `l2-f32-v1` |
 | `embedding_target` | Optional deployment/alias distinct from canonical model identity; requires `embedding_model` |
 | `timeout_seconds` | Strict integer 1–120, default 30 |
-| `max_output_tokens` | Optional strict integer 1–4096; HTTP defaults to 1024. Forbidden for SQL: no verified token-limit knob |
+| `max_output_tokens` | Optional strict integer 1–4096; requires an HTTP `text_model`, defaults to 1024 for HTTP summaries. Forbidden for SQL: no verified token-limit knob |
 | `azure_summary_mode` | Explicit `generate` or `language` with a SQL text model; absent without one |
-| `language`, `sentence_count` | Language mode only for language selection (optional ISO-style code); strict sentence count 1–20, default 3 |
+| `language`, `sentence_count` | Language selection (optional ISO-style code) is Language-mode-only; strict sentence count 1–20, default 3. A nondefault count is allowed only in Flexible Language mode |
 
 Language mode is **Flexible Server only**, with
 `text_model.name: "azure_cognitive.summarize_abstractive"`. Horizon Language is unsupported.
@@ -108,7 +108,8 @@ HTTP uses `chat/completions` and `embeddings` under the configured base path,
 verified TLS, no proxy environment or redirects, one connection, bounded timeout
 and **2 MiB response** limit. Compatible wire shape is not universal model/vendor support.
 Summary requests use `max_tokens`, no streaming; partial/tool/refusal outputs are rejected.
-`inspect` validates local configuration/secret presence only, without contacting the model.
+`inspect` constructs and closes the HTTP client without network calls, validating
+configuration and credential headers, not provider connectivity.
 
 SQL uses a dedicated autocommit connection, **TLS `verify-full`** with system CAs
 unless an operator supplies a CA file, a 5-second connect/lock timeout, and configured
@@ -125,6 +126,10 @@ SQL `inspect` uses read-only catalog checks, never inference; successful preflig
 does not prove provider connectivity, quota, or remote model permission.
 Inference results are evaluated once in a `MATERIALIZED` CTE with a server-side
 2 MiB serialized-result guard before transfer.
+This is one SQL invocation, **not proof of one billable upstream call**.
+The application does not retry; SQL embedding/Language explicitly set
+`max_attempts => 1`. `azure_ai.generate` has no verified retry or output-token knob,
+so extension-internal behavior and charges are not guaranteed by this adapter.
 
 | SQL operation | Deliberately supported contract |
 |---|---|
@@ -181,11 +186,11 @@ Documented Azure versions/preview limits are not live verification; see
 Operators own credentials, model deployment, privacy, logging/retention, and budgets.
 No live Azure/LLM, quality, performance, MVP, or M2 completion is claimed.
 See [profiles/operations](operations/README.md#selectable-inference-providers)
-and [pending qualification](#v0024--schema-10).
+and [qualification evidence](#v0024--schema-10).
 
 ## Episode query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Native JWT authenticated `POST /v1/episodes/query` is read-only, requiring current
 read access but no write permission or `Idempotency-Key`.
 Closed `QueryEpisodes` accepts only:
@@ -282,7 +287,7 @@ See [operations](operations/README.md#episode-query-and-pagination),
 
 ## Explicit batch capture
 
-**v0.0.24/schema 10 contract; qualification pending.** Native JWT and caller-owned
+**v0.0.24/schema 10 contract qualified.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -374,7 +379,7 @@ See [operations](operations/README.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -469,7 +474,7 @@ See [operations](operations/README.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -563,7 +568,7 @@ See [operations](operations/README.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -651,7 +656,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.24 qualification pending.**
+**Retained checkpoint-head contract; v0.0.24 qualified.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -729,7 +734,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.24 qualification pending.**
+**Retained recall-filter contract; v0.0.24 qualified.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -800,7 +805,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.24 qualification pending.**
+**Retained required-context contract; v0.0.24 qualified.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -882,7 +887,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.24 qualification pending.**
+**Retained job-cancellation contract; v0.0.24 qualified.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -975,7 +980,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.24/schema 10 qualification pending.**
+**Retained readiness contract; v0.0.24/schema 10 qualified.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -1058,7 +1063,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.24 qualification pending.**
+**Retained scope-access contract; v0.0.24 qualified.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -1189,7 +1194,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualification pending.**
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualified.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -1202,12 +1207,13 @@ Install the matching checkout with `python -m pip install '.[sdk]'`.
 `pg-agmemory[sdk]` adds only `httpx==0.28.1`; **the core distribution still includes
 FastAPI, psycopg, and Janome**. This is not a separately published lightweight
 SDK or a PyPI publication claim. SDK import without HTTPX raises a clear static
-`ImportError`; HTTPX supplied by `mcp`/`hook` also works. Detection is dependency
+`ImportError`; HTTPX supplied by `mcp`/`hook`/`providers` also works. Detection is dependency
 availability, not the identity of the selected extra. Docker test/runtime include
-`sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
-including absence of the MCP SDK in hook-only and sdk-only installations.
-All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification remain required; v0.0.24 installation qualification is pending.
+`sdk` and `providers` alongside `mcp` and `hook`; core-only/hook-only/sdk-only/providers-only
+checks are implemented, including absence of the MCP SDK in all four profiles.
+All four genuine noneditable core/hook/sdk/providers installation profiles and
+packaged `py.typed` verification passed in the 987-test qualification, locally
+and on both native architectures.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -2759,19 +2765,31 @@ Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemor
 
 <a id="v0024--schema-10"></a>
 
-### v0.0.24 / schema 10 — qualification pending
+### v0.0.24 / schema 10 — implementation and synthetic-provider contracts qualified
 
-**Selectable inference foundation draft, not M2 completion.**
-No v24 implementation SHA, local/native test count, optional-installation result,
-or smoke success is recorded. Combined qualification evidence and final-docs CI
-have not been supplied.
-Planned coverage includes closed settings/input, loopback/HTTPS and secret references,
+**Selectable inference foundation qualified, 2026-09-18 JST; not M2 completion.**
+Implementation
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)
+(`feat: support selectable HTTP and Azure SQL inference`) passed the full Apple
+Container `./scripts/test-containers.sh`: **987 passed, 1 warning, 493.68 s**.
+Exact-SHA [CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)
+passed: **amd64 987 / 762.27 s; arm64 987 / 809.06 s**.
+All three environments passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four core/hook/sdk/providers installation profiles, and all production smokes.
+
+**987 = 821 retained + 166 new cases**: 51 HTTP/configuration/CLI/lifecycle and
+115 Azure SQL cases. The latter include **11 real disposable PostgreSQL integration
+cases with synthetic SQL functions and extension membership**, not a vendor Azure
+extension binary. Verified coverage includes closed settings/input, loopback/HTTPS and secret references,
 bounded HTTP responses, model/vector validation, sanitized failures/billing uncertainty,
 SQL role/extension-ownership/overload/permission guards, single result evaluation,
 and explicit non-publishing CLI/library workflows.
-HTTP and SQL fixtures are synthetic, **not the vendor extension binary or live Azure/LLM**.
-Future fixture results must not be presented as live provider, MemoryDB Azure-hosting,
-quality, budget-control, human-review, or M2/MVP completion evidence.
+The new production smoke runs the actual operator CLI against synthetic HTTP,
+followed by explicit Native vector upload/replay/purge.
+No live Azure/real-model calls, billed resources, or private-data egress were used.
+These results do not qualify live provider compatibility, MemoryDB Azure hosting,
+quality, budget controls, human-review effectiveness, or M2/MVP completion.
+`live_provider_qualified` remains **false**. Final-docs CI for this update has not run.
 See [the contract](#selectable-inference-providers) and
 [ADR 0024](adr/0024-selectable-inference.md).
 

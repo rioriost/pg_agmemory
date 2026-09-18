@@ -14,8 +14,8 @@ Use the pinned prebuilt upstream pgvector DB profile below and the application
 image built from the repository's existing `Dockerfile`.
 The CLI is `pg-agmemory`; the import package is `pg_agmemory`.
 The local checkout is `pg_agmemory`; GitHub is `rioriost/pg_agmemory`.
-The next bounded milestone is **v0.0.24/schema 10 selectable inference foundation**.
-**Documentation draft; v0.0.24 qualification pending, not M2 completion**.
+The current bounded implementation is **v0.0.24/schema 10 selectable inference foundation**.
+**Implementation and synthetic-provider contracts qualified, not M2 completion**.
 Verified v0.0.23 and earlier results are historical, not v0.0.24 evidence.
 Existing `008_pgvector.sql` requires **`vector` 0.8.6 in `public`** and rejects an
 existing extension at another version or in another schema.
@@ -102,7 +102,7 @@ authorization boundary.
 
 ## Selectable inference providers
 
-**V24 qualification pending. No live Azure/model or full Azure MemoryDB hosting qualification.**
+**V24 implementation and synthetic-provider contracts qualified. No live Azure/model or full Azure MemoryDB hosting qualification.**
 Install from the matching checkout with `python -m pip install '.[providers]'`.
 This adds existing `httpx==0.28.1`, not a separate lightweight package or new dependency version.
 Only operators choose profiles and approve text disclosure, provider cost, model identity,
@@ -182,9 +182,11 @@ must be registered model aliases, not deployment names.
 The Flexible example uses the documented PG18 version, not proof of deployment readiness.
 No HTTP settings or `max_output_tokens` belong in the SQL profile.
 For embedding-only profiles omit both `text_model` and `azure_summary_mode`.
+An HTTP `max_output_tokens` value requires a `text_model`; omit it for embedding-only HTTP profiles too.
 Flexible Language mode must be selected explicitly with `azure_summary_mode: "language"`,
 `text_model.name: "azure_cognitive.summarize_abstractive"`, optional `language`,
 and `sentence_count` 1–20 (default 3). It is not supported on HorizonDB.
+A nondefault `sentence_count` is rejected outside Flexible Language mode.
 For new setups prefer `generate`; Language Summarization retires **2029-03-31**.
 See [official version/preview/lifecycle references](../adr/0024-selectable-inference.md#azure-reference-boundary).
 
@@ -206,7 +208,8 @@ pg-agmemory infer summarize --config local-inference.json < inference-input.json
 pg-agmemory infer embed --config azure-inference.json < inference-input.json > embedding-result.json
 ```
 
-`inspect` takes no input: HTTP checks configuration only; SQL connects for read-only
+`inspect` takes no input: HTTP constructs/closes a client without network calls,
+validating configuration and credential headers; SQL connects for read-only
 catalog/role/extension/overload/SQL-permission checks, not model inference.
 Neither proves provider access, quota, connectivity, or output quality.
 `summarize`/`embed` read one closed JSON object from stdin, not raw text.
@@ -272,16 +275,19 @@ SQL `USAGE`/`EXECUTE` before each call; it never reads model registries or key s
 One `MATERIALIZED` result evaluation plus a server-side size guard prevents repeated
 inference evaluation in the adapter's result query, not provider-side retries.
 The adapter explicitly requests `max_attempts => 1` where the documented function
-supports it, and does not invent such parameters for `generate`.
+supports it (SQL embedding/Language). The application does not retry.
+`azure_ai.generate` has no verified retry or output-token knob; extension-internal
+behavior and charges are not guaranteed. One `MATERIALIZED` SQL invocation is
+**not proof of one billable upstream call**.
 Language mode preserves all summary parts and requests `disable_service_logs => true`;
 this is **not full erasure**. Server query logs, provider logs, retention, and budgets
 remain operator responsibilities.
 See [full settings/SQL contract](../STATUS.md#selectable-inference-providers)
-and [pending qualification](../STATUS.md#v0024--schema-10).
+and [qualification evidence](../STATUS.md#v0024--schema-10).
 
 ## Episode query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Use Native JWT authentication and trusted scope UUIDs with current read access.
 Read-only `POST /v1/episodes/query` requires no write permission or `Idempotency-Key`.
 This synthetic first-page request is illustrative; do not run it against live data.
@@ -366,7 +372,7 @@ See [the contract](../STATUS.md#episode-query-and-pagination),
 
 ## Explicit batch capture
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Native JWT and caller-owned `Idempotency-Key` are required for `POST /v1/captures/batch`.
 Use approved synthetic data
 and a currently authorized scope. Save the following as `batch-capture.json`,
@@ -473,7 +479,7 @@ See [the full contract](../STATUS.md#explicit-batch-capture),
 
 ## Exact entity query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Use Native JWT authentication and trusted scope UUIDs with current read access.
 Read-only `POST /v1/entities/query` needs no write permission or `Idempotency-Key`.
 This synthetic first-page request uses both exact filters; do not execute
@@ -559,7 +565,7 @@ See [the contract](../STATUS.md#exact-entity-query-and-pagination),
 
 ## Assertion metadata history
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Use Native JWT authentication and current read access to the assertion.
 Read-only `POST /v1/assertions/history` requires no write permission or
 `Idempotency-Key`. Use a trusted assertion UUID, not retrieved instructions.
@@ -647,7 +653,7 @@ See [the contract](../STATUS.md#assertion-metadata-history),
 
 ## Owned-job query and pagination
 
-**v0.0.24/schema 10 contract; qualification pending.**
+**v0.0.24/schema 10 contract qualified.**
 Use Native JWT authentication and current read access; write permission and
 `Idempotency-Key` are not required for `POST /v1/jobs/query`.
 Use trusted scope UUIDs, not retrieved instructions. This illustrative first-page
@@ -731,7 +737,7 @@ job tool or hook field. See [the contract](../STATUS.md#owned-job-query-and-pagi
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.24 qualification pending.**
+**Retained checkpoint-head contract; v0.0.24 qualified.**
 Use the existing Native JWT identity with current read permission on the exact
 scope. Write permission is not required. Send `POST /v1/checkpoints/head` with
 the following `CheckpointBranch` body; no `Idempotency-Key` is needed.
@@ -807,7 +813,7 @@ See [the contract](../STATUS.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.24 qualification pending.**
+**Retained recall-filter contract; v0.0.24 qualified.**
 Use the existing authenticated `POST /v1/recall`. The following synthetic
 request browses assertions with an exact stored subject/predicate in an already
 authorized scope. Replace the illustrative UUID with a provisioned scope;
@@ -878,7 +884,7 @@ See [the contract](../STATUS.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.24 qualification pending.**
+**Retained required-context contract; v0.0.24 qualified.**
 Choose exact references from currently readable episode/assertion data, not from
 untrusted text claiming policy authority or approval. Replace these illustrative
 opaque IDs with existing IDs in the requested scope; do not execute examples
@@ -949,7 +955,7 @@ and [ADR 0016](../adr/0016-required-context.md).
 
 ## Schema 10 application-only upgrade
 
-**v0.0.24 qualification pending.** v23→v24 keeps schema 10 and adds **no migration**.
+**v0.0.24 qualified.** v23→v24 keeps schema 10 and adds **no migration**.
 Do not apply a new schema version just to match the application version.
 
 1. Stop/drain old APIs, workers, SDK callers, MCP adapters, hook/inference launches, and
@@ -964,6 +970,7 @@ Do not apply a new schema version just to match the application version.
    startup/readiness keep their exact history and role/extension checks.
 4. Check authenticated stage `m2-selectable-inference`, feature `optional_provider_adapters`,
    and the [exact `model_inference` metadata](../STATUS.md#deployment-and-qualification-boundary).
+   `live_provider_qualified` remains `false` after synthetic contract qualification.
    Native episode/capture/batch and other resource contracts remain.
    Install the optional provider extra only where needed and approve each profile
    separately. Rehearse synthetic HTTP/SQL guards and explicit non-publishing inference;
@@ -974,9 +981,22 @@ Do not apply a new schema version just to match the application version.
 There are now 31 Native/SDK resource methods and four MCP tools; the hook accepts
 neither filters nor required references. No dependency-version or MemoryDB image upgrade is introduced;
 provider execution is confined to the separate operator library/CLI.
-**V24 qualification pending.** No v24 implementation SHA, local/native count,
-installation result, or smoke success is recorded.
-See [pending evidence](../STATUS.md#v0024--schema-10).
+**V24 implementation and synthetic-provider contracts qualified.**
+Implementation
+[`88975a862ff97873c60e5ce53e066e1aa7b52686`](https://github.com/rioriost/pg_agmemory/commit/88975a862ff97873c60e5ce53e066e1aa7b52686)
+passed the full Apple Container `./scripts/test-containers.sh`:
+**987 passed, 1 warning, 493.68 s**.
+Exact-SHA [CI 35292285229](https://github.com/rioriost/pg_agmemory/actions/runs/35292285229)
+passed: **amd64 987 / 762.27 s; arm64 987 / 809.06 s**.
+All three environments passed Ruff, mypy **22 source files + 1 strict SDK consumer**,
+all four core/hook/sdk/providers installation profiles, and all production smokes.
+The new smoke uses the actual operator CLI against synthetic HTTP, then explicit
+Native vector upload/replay/purge. **987 = 821 retained + 166 new cases**.
+The SQL tests use synthetic functions/extension membership, not the Azure extension binary.
+No live Azure/real-model calls, billed resources, or private-data egress were used.
+These results do not establish live compatibility, quality, or M2 completion.
+See [qualification evidence](../STATUS.md#v0024--schema-10).
+Final-docs CI for this update has not run.
 
 **Historical v0.0.23 implementation qualified locally and on both native architectures.**
 Implementation
@@ -1190,7 +1210,7 @@ Neither run qualifies v0.0.19; see [historical evidence](../STATUS.md#v0016--sch
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.24 qualification pending.**
+**Retained job-cancellation contract; v0.0.24 qualified.**
 Use Native JWT authentication and the job owner's identity with current scope
 **read/write** permission. A same-scope reader cannot cancel another owner's job,
 even with `admin` permission. Source visibility/integrity and runtime RLS remain
@@ -1264,7 +1284,7 @@ and [ADR 0015](../adr/0015-job-cancellation.md).
 
 ## Schema 10 job-cancellation upgrade
 
-**Retained migration for schemas below 10; v0.0.24 qualification pending.**
+**Retained migration for schemas below 10; v0.0.24 qualified.**
 Existing schema-10 databases use the [application-only upgrade](#schema-10-application-only-upgrade).
 Schema 9→10 requires **`010_job_cancellation.sql`**, introduced in v0.0.15.
 It modifies existing job state/payload constraints and the guard trigger; no
@@ -1311,7 +1331,7 @@ hook are unchanged. No MVP/production/quality/DR qualification is claimed.
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.24/schema 10 qualification pending.**
+**Retained readiness contract; v0.0.24/schema 10 qualified.**
 Keep liveness and dependency readiness separate:
 `GET /healthz` returns exactly `{"status":"ok"}` after successful startup and
 does not contact the DB. Public, unauthenticated `GET /readyz` returns exactly
@@ -1429,7 +1449,7 @@ See [ADR 0014](../adr/0014-runtime-readiness.md).
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.24 qualification pending.**
+**Retained scope-access contract; v0.0.24 qualified.**
 Prefer `pg-agmemory scope-access` over handwritten membership SQL.
 Use only approved existing tenant/scope/principal UUIDs, all in the same tenant.
 The command never provisions records and is not exposed through HTTP, MCP, or
@@ -1540,7 +1560,7 @@ ACL/deletion records is still manual; grants never resurrect purged data.
 
 **Retained schema-9 migration step; not a complete v0.0.24 upgrade.**
 Current tooling must continue through the [schema-10 upgrade](#schema-10-job-cancellation-upgrade),
-including for an existing schema-9 database. v0.0.24 qualification pending.
+including for an existing schema-9 database. v0.0.24 qualified.
 Retain the pinned PostgreSQL **18.6** / `vector` **0.8.6 in `public`** image below.
 Migration 009 introduced durable privileged audit in v0.0.13; it is not new in v0.0.24.
 
@@ -1583,7 +1603,7 @@ See [validation evidence](../STATUS.md#v0013--schema-9) and
 
 ## Python SDK operations
 
-**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualification pending.**
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualified.**
 Install from the matching checkout with `python -m pip install '.[sdk]'`.
 The `pg-agmemory[sdk]` extra pins only `httpx==0.28.1`, not the MCP SDK;
 the same core package still includes FastAPI, psycopg, and Janome.
@@ -1688,7 +1708,7 @@ docs CI 35190495385, remain [historical evidence](../STATUS.md#v0011--schema-8).
 
 **v0.0.11 application/migration checks passed; production qualification remains incomplete.**
 Migration 008 was introduced and verified in v0.0.11. Current v0.0.24 tooling
-also applies retained migrations 009 and 010 to older schemas; v0.0.24 qualification pending.
+also applies retained migrations 009 and 010 to older schemas; v0.0.24 qualified.
 Follow the [schema-10 boundary](#schema-10-job-cancellation-upgrade), not the
 historical v0.0.12 application-only procedure.
 
