@@ -251,6 +251,23 @@ retrieval-run.json,retrieval-report.json}`. The journal retains all 144 raw
 answer responses and failed observations; source payloads and raw responses are
 not bundled in this repository. All human-review fields remain `not_reviewed`.
 
+### QA schema correction after the recorded v2 measurement
+
+Inspection of all 144 recorded v2 response shapes found that all 72 contract
+failures were empty answers with `abstained=true` **and nonempty citations**.
+The receiving validator correctly rejected them, but the generated wire schema
+did not express its cross-field abstention rule. Recipe
+`native-retrieval-grounded-qa-v3` now sends two complete `anyOf` alternatives:
+an answer with `abstained=false`, nonempty text and unique nonempty citations,
+or `abstained=true`, the literal empty answer and an empty citation array.
+The actual compiled wire schema is bound into the profile digest.
+
+The prompt, seeds, evidence budget and semantic grading are unchanged. Local
+UTF-8, whitespace, citation-membership and abstention validation remain in force;
+a provider ignoring the schema still fails without retry or output repair.
+This fixes a schema/validator mismatch, not semantic answer quality. Earlier v2
+results remain unchanged; v3 requires its own explicitly versioned measurement.
+
 ## What the scorer actually does
 
 [`evaluation.py`](../src/pg_agmemory/evaluation.py) consumes a normalized dataset
@@ -419,7 +436,8 @@ valid-time/as-of behavior.
 ### Independent profile, call cap and crash accounting
 
 The evaluation profile digest independently binds
-`native-retrieval-grounded-qa-v2`, whole-source-prefix selection, normalized
+`native-retrieval-grounded-qa-v3`, whole-source-prefix selection, the compiled
+answer-or-empty-abstention schema, normalized
 provider settings, the QA system prompt/schema and context budgets. Earlier
 retrieval runs retain their v1 digest. It is **not** the background `WorkerProfile`
 digest and must not be presented as that policy authorization. Model identity,

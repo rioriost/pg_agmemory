@@ -8,7 +8,7 @@ import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
@@ -73,6 +73,18 @@ class EvaluationAnswer(EvaluationContract):
         if len(self.citations) != len(set(self.citations)):
             raise ValueError("Citations must be unique")
         return self
+
+
+def answer_schema() -> dict[str, Any]:
+    answered = EvaluationAnswer.model_json_schema()
+    answered["properties"]["abstained"]["const"] = False
+    answered["properties"]["answer"]["minLength"] = 1
+    answered["properties"]["citations"].update(minItems=1, uniqueItems=True)
+    abstained = EvaluationAnswer.model_json_schema()
+    abstained["properties"]["abstained"]["const"] = True
+    abstained["properties"]["answer"].update(const="", maxLength=0)
+    abstained["properties"]["citations"]["maxItems"] = 0
+    return {"anyOf": [answered, abstained]}
 
 
 class AnswerObservation(EvaluationContract):
@@ -162,11 +174,12 @@ class LocalEvaluation:
         return hashlib.sha256(
             json.dumps(
                 {
-                    "recipe": "native-retrieval-grounded-qa-v2",
+                    "recipe": "native-retrieval-grounded-qa-v3",
                     "answer_context_policy": "whole-source-ranked-prefix-utf8-v1",
+                    "answer_contract_policy": "answer-or-empty-abstention-v1",
                     "settings": self.settings.model_dump(mode="json"),
                     "answer_system_prompt": ANSWER_SYSTEM_PROMPT,
-                    "answer_schema": EvaluationAnswer.model_json_schema(),
+                    "answer_schema": answer_schema(),
                     "recent_budget_bytes": min(self.budget_bytes, 2000),
                     "context_budget_bytes": self.budget_bytes,
                 },
@@ -240,7 +253,7 @@ class LocalEvaluation:
                 "json_schema": {
                     "name": "memory_evaluation_answer",
                     "strict": True,
-                    "schema": EvaluationAnswer.model_json_schema(),
+                    "schema": answer_schema(),
                 },
             },
             "max_tokens": self.settings.max_output_tokens,

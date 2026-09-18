@@ -2,6 +2,7 @@ import asyncio
 import json
 from uuid import uuid4
 
+import jsonschema
 import psycopg
 import pytest
 from pydantic import ValidationError
@@ -14,8 +15,10 @@ from pg_agmemory.evaluation import (
     retrieval_report,
 )
 from pg_agmemory.evaluation_runner import (
+    AnswerFailure,
     EvaluationAnswer,
     LocalEvaluation,
+    answer_schema,
     ranked_answer_context,
     read_bounded,
     rendered_sources,
@@ -155,6 +158,45 @@ def test_oversized_answer_context_rejects_before_any_model_call(tmp_path, monkey
 def test_answer_contract_cannot_disguise_claims_as_abstention(payload):
     with pytest.raises(ValidationError):
         EvaluationAnswer.model_validate(payload)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(payload, answer_schema())
+
+
+def test_answer_wire_schema_expresses_both_complete_alternatives():
+    jsonschema.Draft202012Validator.check_schema(answer_schema())
+    answered, abstained = answer_schema()["anyOf"]
+    for branch in (answered, abstained):
+        assert branch["type"] == "object"
+        assert branch["additionalProperties"] is False
+        assert set(branch["required"]) == {"answer", "abstained", "citations"}
+        assert set(branch["properties"]) == {"answer", "abstained", "citations"}
+        assert branch["properties"]["answer"]["type"] == "string"
+        assert branch["properties"]["abstained"]["type"] == "boolean"
+        assert branch["properties"]["citations"]["type"] == "array"
+        assert branch["properties"]["citations"]["items"]["type"] == "string"
+    assert answered["properties"]["abstained"]["const"] is False
+    assert answered["properties"]["answer"]["minLength"] == 1
+    assert answered["properties"]["answer"]["maxLength"] == 4096
+    assert answered["properties"]["citations"]["minItems"] == 1
+    assert answered["properties"]["citations"]["maxItems"] == 20
+    assert answered["properties"]["citations"]["uniqueItems"] is True
+    assert abstained["properties"]["abstained"]["const"] is True
+    assert abstained["properties"]["answer"]["const"] == ""
+    assert abstained["properties"]["answer"]["maxLength"] == 0
+    assert abstained["properties"]["citations"]["maxItems"] == 0
+    assert "minLength" not in EvaluationAnswer.model_json_schema()["properties"]["answer"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"answer": "", "abstained": True, "citations": []},
+        {"answer": "value", "abstained": False, "citations": ["source"]},
+    ],
+)
+def test_answer_wire_schema_preserves_valid_answers_and_empty_abstention(payload):
+    jsonschema.validate(payload, answer_schema())
+    assert EvaluationAnswer.model_validate(payload).model_dump() == payload
 
 
 def test_answer_prompt_excludes_gold_and_binds_exact_citations(tmp_path, monkeypatch):
@@ -169,6 +211,7 @@ def test_answer_prompt_excludes_gold_and_binds_exact_citations(tmp_path, monkeyp
         assert set(user) == {"question", "evidence"}
         assert set(user["evidence"][0]) == {"source_id", "text", "source_occurred_at"}
         assert payload["seed"] == 17 and payload["temperature"] == 0
+        assert payload["response_format"]["json_schema"]["schema"] == answer_schema()
         assert journal(evaluator)[-1]["event"] == "call_reserved"
         return {
             "choices": [
@@ -196,6 +239,35 @@ def test_answer_prompt_excludes_gold_and_binds_exact_citations(tmp_path, monkeyp
         "answer_response",
         "call_completed",
     ]
+
+
+def test_provider_ignoring_abstention_schema_is_still_rejected_without_retry(
+    tmp_path, monkeypatch
+):
+    evaluator = LocalEvaluation(configuration(), journal=tmp_path / "calls.jsonl")
+    data = corpus()
+    calls = 0
+
+    async def exchange(self, path, payload):
+        nonlocal calls
+        calls += 1
+        return {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"answer":"","abstained":true,"citations":["later"]}',
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(HTTPProvider, "exchange", exchange)
+    with pytest.raises(AnswerFailure, match="invalid_answer_contract"):
+        asyncio.run(evaluator.answer(data.questions[0], data.sources, seed=17))
+    assert calls == evaluator.calls == 1
+    assert [row["event"] for row in journal(evaluator)] == ["call_reserved", "answer_response"]
 
 
 @pytest.mark.parametrize(
@@ -267,6 +339,15 @@ def test_profile_digest_pins_prompt_schema_budget_and_model(tmp_path, monkeypatc
     original = first.profile_digest()
     monkeypatch.setattr("pg_agmemory.evaluation_runner.ANSWER_SYSTEM_PROMPT", "Changed recipe")
     assert first.profile_digest() != original
+
+
+def test_profile_digest_binds_compiled_wire_schema(tmp_path, monkeypatch):
+    evaluator = LocalEvaluation(configuration(), journal=tmp_path / "calls.jsonl")
+    original = evaluator.profile_digest()
+    monkeypatch.setattr(
+        "pg_agmemory.evaluation_runner.answer_schema", EvaluationAnswer.model_json_schema
+    )
+    assert evaluator.profile_digest() != original
 
 
 def provision_scope(env):

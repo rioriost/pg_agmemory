@@ -230,6 +230,21 @@ retrieval-run.json,retrieval-report.json}`。journalは144件のraw回答と失�
 source payloadやraw回答をrepositoryに同梱しない。
 全人手review fieldは`not_reviewed`のままである。
 
+### 記録済みv2実測後のQA schema修正
+
+v2の144応答の形を確認すると、72件の契約違反はすべて空回答かつ
+`abstained=true`なのに**citationが空でない**形だった。受信validatorは正しく
+拒否していたが、送信schemaにfield間のabstention条件が表現されていなかった。
+recipe `native-retrieval-grounded-qa-v3`は完全なobject二つの`anyOf`を送る。
+一方は`abstained=false`、空でないtext、重複のない非空citation配列であり、
+他方は`abstained=true`、literal空回答、空citation配列である。
+実際の送信schemaもprofile digestに束縛する。
+
+prompt、seed、根拠予算、意味的採点は変更しない。受信側のUTF-8、空白、
+citation所属、abstention検証を維持し、schemaを無視したproviderもretryや
+出力修復なしで拒否する。schema/validatorの不一致修正であって、意味的品質の
+認定ではない。過去v2結果を書き換えず、v3は版を分けた新規測定を必要とする。
+
 ## Scorer が実際に行うこと
 
 [`evaluation.py`](../src/pg_agmemory/evaluation.py) は正規化 dataset と実測した
@@ -386,7 +401,8 @@ valid-time/as-of 動作を認定しない。
 
 ### 独立 profile、呼出し上限、crash accounting
 
-評価profile digestは`native-retrieval-grounded-qa-v2`、全文source-prefix選択、
+評価profile digestは`native-retrieval-grounded-qa-v3`、全文source-prefix選択、
+実際のanswer-or-empty-abstention送信schema、
 正規化provider settings、QA system prompt/schema、context budgetを束縛する。
 過去の検索runはv1 digestを維持する。Background
 `WorkerProfile` の digest **ではなく**、その policy 許可として提示してはいけない。
