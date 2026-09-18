@@ -19,6 +19,7 @@ from pg_agmemory.models import (
     Explain,
     Forget,
     Identity,
+    InferredMemory,
     MemoryItem,
     MemoryReference,
     Observe,
@@ -157,6 +158,8 @@ class MemoryService:
             await self.object(UUID(result["synthesis_job_id"]), "write")
         for job_id in result.get("synthesis_job_ids", []):
             await self.object(UUID(job_id), "write")
+        if result.get("embedding_job_id") is not None:
+            await self.object(UUID(result["embedding_job_id"]), "write")
         if "deletion_id" in result:
             for scope in result["scope_ids"]:
                 await self.scope(UUID(scope), "delete")
@@ -247,6 +250,17 @@ class MemoryService:
         await self.validate_capture(data)
         key_hash, payload_hash, previous = await self.replay("observe", key, data.model_dump_json())
         if previous is not None:
+            if data.auto_extract or data.auto_embed:
+                from pg_agmemory.processing import Processing
+
+                processing = Processing(self)
+                for enabled, kind in ((data.auto_extract, "extract"), (data.auto_embed, "embed")):
+                    if enabled:
+                        policy, _ = await processing.policy(data.scope_id, kind)
+                        await processing.source(
+                            data.scope_id, MemoryReference(memory_id=UUID(previous["memory_id"])),
+                            policy,
+                        )
             return previous
         event_hash = await self.digest(
             json.dumps([data.source_namespace, data.source_event_id], ensure_ascii=False)
@@ -267,8 +281,8 @@ class MemoryService:
             object_id = await self.new_object(data.scope_id, "episode")
             await self.conn.execute(
                 """INSERT INTO memory.episode
-                   (tenant_id, id, scope_id, occurred_at, content, consent_reference)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                   (tenant_id,id,scope_id,occurred_at,content,consent_reference,source_namespace)
+                   VALUES (%s, %s, %s, %s, %s, %s,%s)""",
                 (
                     self.tenant,
                     object_id,
@@ -276,6 +290,7 @@ class MemoryService:
                     data.occurred_at,
                     data.content,
                     data.consent_reference,
+                    data.source_namespace,
                 ),
             )
             await self.conn.execute(
@@ -292,6 +307,24 @@ class MemoryService:
             )
             await self.audit("observe", object_id)
         result = {"memory_id": str(object_id), "revision": 1, "synthesis_job_id": None}
+        if data.auto_extract or data.auto_embed:
+            from pg_agmemory.models import ProcessMemory
+            from pg_agmemory.processing import Processing
+
+            for enabled, kind, field in (
+                (data.auto_extract, "extract", "synthesis_job_id"),
+                (data.auto_embed, "embed", "embedding_job_id"),
+            ):
+                if enabled:
+                    job = await Processing(self).enqueue(
+                        ProcessMemory.model_validate({
+                            "scope_id": data.scope_id,
+                            "source": {"memory_id": object_id, "revision": 1},
+                            "kind": kind,
+                        }),
+                        "observe-processing-v1:" + key_hash + ":" + kind,
+                    )
+                    result[field] = job["job_id"]
         await self.save_result("observe", key_hash, payload_hash, result)
         return result
 
@@ -340,7 +373,7 @@ class MemoryService:
         await self.save_result("remember", key_hash, payload_hash, result)
         return result
 
-    async def publish_assertion(self, data: Remember) -> dict[str, Any]:
+    async def publish_assertion(self, data: Remember | InferredMemory) -> dict[str, Any]:
         await self.scope(data.scope_id, "write")
         await self.validate_evidence(data.scope_id, data.evidence)
         object_id = await self.new_object(data.scope_id, "assertion")
@@ -350,7 +383,8 @@ class MemoryService:
             (self.tenant, object_id, data.scope_id, data.subject, data.predicate),
         )
         await self.insert_revision(object_id, data.scope_id, 1, data)
-        result = {"memory_id": str(object_id), "revision": 1, "epistemic_status": "reported"}
+        result = {"memory_id": str(object_id), "revision": 1,
+                  "epistemic_status": "reported" if data.explicit_intent else "inferred"}
         await self.audit("remember", object_id)
         return result
 
@@ -369,13 +403,14 @@ class MemoryService:
                 raise MemoryError("invalid_evidence", 422)
 
     async def insert_revision(
-        self, object_id: UUID, scope_id: UUID, revision: int, data: Remember | ReviseAssertion
+        self, object_id: UUID, scope_id: UUID, revision: int,
+        data: Remember | ReviseAssertion | InferredMemory,
     ) -> None:
         await self.conn.execute(
             """INSERT INTO memory.assertion_revision
                (tenant_id, assertion_id, scope_id, revision, value,
-                valid_time, explicit_intent, correction_reason)
-               VALUES (%s, %s, %s, %s, %s, tstzrange(%s, %s, '[)'), true, %s)""",
+                valid_time, explicit_intent, correction_reason,epistemic_status)
+               VALUES (%s, %s, %s, %s, %s, tstzrange(%s, %s, '[)'), %s, %s,%s)""",
             (
                 self.tenant,
                 object_id,
@@ -384,7 +419,9 @@ class MemoryService:
                 data.value,
                 data.valid_from,
                 data.valid_to,
+                data.explicit_intent,
                 data.reason if isinstance(data, ReviseAssertion) else None,
+                "reported" if data.explicit_intent else "inferred",
             ),
         )
         for evidence in data.evidence:
@@ -461,6 +498,7 @@ class MemoryService:
                     SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
                            NULL::uuid AS source_entity, NULL::uuid AS target_entity,
+                           'reported'::text AS epistemic_status,
                            CASE WHEN %(profile)s = 'simple-v1' THEN e.search_text
                                 ELSE lex.search_text END AS search_text, vec.embedding
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
@@ -480,7 +518,7 @@ class MemoryService:
                     SELECT o.id, o.kind, lower(r.system_time), r.revision,
                            a.subject || ' / ' || a.predicate || ': ' || r.value, NULL,
                            lower(r.valid_time), upper(r.valid_time),
-                           link.source_id, endpoint.target_id,
+                           link.source_id, endpoint.target_id,r.epistemic_status,
                            CASE WHEN %(profile)s = 'simple-v1'
                                 THEN a.search_text || r.search_text ELSE lex.search_text END,
                            vec.embedding
@@ -616,6 +654,7 @@ class MemoryService:
                     occurred_at=row["occurred_at"],
                     valid_from=row["valid_from"],
                     valid_to=row["valid_to"],
+                    epistemic_status=row["epistemic_status"],
                     source=[source["parent_id"] for source in sources],
                     relation=RelationEndpoints(
                         source_entity=row["source_entity"], target_entity=row["target_entity"]
@@ -641,8 +680,11 @@ class MemoryService:
         epoch = await self.epochs()
         pending = await (
             await self.conn.execute(
-                """SELECT EXISTS(SELECT 1 FROM memory_ops.job WHERE tenant_id = %s
-                   AND scope_id = ANY(%s) AND state IN ('pending','running')) AS pending""",
+                """SELECT count(*)>0 AS pending,
+                          COALESCE(bool_or(kind='extract'),false) AS synthesis_pending,
+                          COALESCE(bool_or(kind='embed'),false) AS projection_pending
+                   FROM memory_ops.job WHERE tenant_id=%s AND scope_id=ANY(%s)
+                     AND state IN ('pending','running')""",
                 (self.tenant, data.scope_ids),
             )
         ).fetchone()
@@ -656,7 +698,8 @@ class MemoryService:
             else None,
             "coverage": {
                 "retrieval_complete": not incomplete,
-                "synthesis_pending": False,
+                "synthesis_pending": bool(pending and pending["synthesis_pending"]),
+                "projection_pending": bool(pending and pending["projection_pending"]),
                 "jobs_pending": bool(pending and pending["pending"]),
                 "lexical_incomplete": lexical_incomplete,
                 "vector_incomplete": vector_incomplete,
@@ -689,7 +732,8 @@ class MemoryService:
                 """SELECT a.subject, a.predicate, a.is_relation, r.value,
                           lower(r.valid_time) AS valid_from,
                           upper(r.valid_time) AS valid_to, lower(r.system_time) AS recorded_at,
-                          upper(r.system_time) AS known_until, r.correction_reason
+                          upper(r.system_time) AS known_until, r.correction_reason,
+                          r.epistemic_status
                    FROM memory.assertion a JOIN memory.assertion_revision r
                      ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
                    WHERE a.tenant_id = %s AND a.id = %s AND r.revision = %s""",
@@ -721,15 +765,28 @@ class MemoryService:
                 (self.tenant, data.memory_id, data.revision),
             )
         ).fetchall()
+        if not evidence:
+            raise MemoryError("assertion_invalidated", 409)
+        derivation = await (
+            await self.conn.execute(
+                """SELECT metadata FROM memory.assertion_derivation
+                   WHERE tenant_id=%s AND assertion_id=%s AND revision=%s""",
+                (self.tenant, data.memory_id, data.revision),
+            )
+        ).fetchone()
+        status = row.pop("epistemic_status")
+        if status == "inferred" and derivation is None:
+            raise MemoryError("assertion_invalidated", 409)
         return {
             "memory_id": data.memory_id,
             "revision": data.revision,
             "type": "assertion",
             "assertion": row,
             "evidence": evidence,
-            "epistemic_status": "reported",
+            "epistemic_status": status,
             "confidence": {"score": None, "method": "uncalibrated"},
             "relation": relation,
+            "derivation": derivation["metadata"] if derivation else None,
         }
 
     async def assertion_history(self, data: AssertionHistory) -> dict[str, Any]:
@@ -814,6 +871,25 @@ class MemoryService:
                     SELECT source_id, job_id FROM memory_ops.job_input
                     WHERE tenant_id = %(tenant)s
                     UNION
+                    SELECT job_id,assertion_id FROM memory.assertion_derivation
+                    WHERE tenant_id=%(tenant)s
+                    UNION
+                    SELECT assertion_id,job_id FROM memory_ops.extraction_candidate
+                    WHERE tenant_id=%(tenant)s AND assertion_id IS NOT NULL
+                    UNION
+                    SELECT adopted_assertion_id,job_id FROM memory_ops.extraction_candidate
+                    WHERE tenant_id=%(tenant)s AND adopted_assertion_id IS NOT NULL
+                    UNION
+                    SELECT job_id,checkpoint_id FROM memory.working_snapshot
+                    WHERE tenant_id=%(tenant)s
+                    UNION
+                    SELECT checkpoint_id,job_id FROM memory.working_snapshot
+                    WHERE tenant_id=%(tenant)s
+                    UNION
+                    SELECT w.source_id,c.id FROM memory.working_event w
+                    JOIN memory.checkpoint c USING (tenant_id,scope_id,run_id)
+                    WHERE w.tenant_id=%(tenant)s
+                    UNION
                     SELECT result_id, id FROM memory_ops.job
                     WHERE tenant_id = %(tenant)s AND result_id IS NOT NULL
                     UNION
@@ -854,6 +930,31 @@ class MemoryService:
         if data.mode == "preview":
             return {"mode": "preview", "object_count": len(targets), "changed": False}
         if data.mode == "purge":
+            await self.conn.execute(
+                """UPDATE memory.checkpoint_run r SET effects_invalidated=true
+                   WHERE r.tenant_id=%s AND NOT r.effects_invalidated AND EXISTS (
+                       SELECT 1 FROM memory.working_event w WHERE w.tenant_id=r.tenant_id
+                       AND w.scope_id=r.scope_id AND w.run_id=r.run_id AND w.source_id=ANY(%s)
+                   )""", (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.working_event w USING memory.checkpoint_run r
+                   WHERE w.tenant_id=r.tenant_id AND w.scope_id=r.scope_id AND w.run_id=r.run_id
+                   AND r.tenant_id=%s AND r.effects_invalidated""", (self.tenant,),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory.working_snapshot WHERE tenant_id=%s AND checkpoint_id=ANY(%s)",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                """DELETE FROM memory.assertion_derivation
+                   WHERE tenant_id=%s AND assertion_id=ANY(%s)""",
+                (self.tenant, targets),
+            )
+            await self.conn.execute(
+                "DELETE FROM memory_ops.extraction_candidate WHERE tenant_id=%s AND job_id=ANY(%s)",
+                (self.tenant, targets),
+            )
             await self.conn.execute(
                 "DELETE FROM memory_ops.job_input WHERE tenant_id = %s AND job_id = ANY(%s)",
                 (self.tenant, targets),

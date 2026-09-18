@@ -2,10 +2,13 @@ from typing import assert_type
 from uuid import UUID
 
 from pg_agmemory.models import (
+    AdoptCandidate,
+    AppendWorkingEvent,
     AssertionExplanation,
     AssertionHistory,
     AssertionHistoryPage,
     CancelJob,
+    CandidateReviewPage,
     Capture,
     CaptureBatch,
     CaptureBatchResult,
@@ -13,6 +16,7 @@ from pg_agmemory.models import (
     CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
+    CompactWorking,
     CreateCheckpoint,
     CreateEntity,
     CreateRelation,
@@ -37,10 +41,12 @@ from pg_agmemory.models import (
     Observe,
     ObserveResult,
     PlanToolEffect,
+    ProcessMemory,
     PutEmbedding,
     QueryEntities,
     QueryEpisodes,
     QueryJobs,
+    QueryWorkingEvents,
     Recall,
     RecallFilters,
     RecallResult,
@@ -53,8 +59,12 @@ from pg_agmemory.models import (
     ToolEffectDetail,
     ToolEffectReceipt,
     TransitionToolEffect,
+    WorkingEventPage,
+    WorkingEventReceipt,
+    WorkingSnapshot,
 )
 from pg_agmemory.providers import (
+    ExtractionResult,
     GeneratedEmbedding,
     InferenceInput,
     InferenceProvider,
@@ -70,6 +80,32 @@ async def typed_inference(settings: ProviderSettings, data: InferenceInput) -> N
     assert_type(provider, InferenceProvider)
     assert_type(await provider.summarize(data), SummaryResult)
     assert_type(await provider.embed(data), GeneratedEmbedding)
+    assert_type(await provider.extract(data), ExtractionResult)
+
+
+async def typed_processing(
+    client: AsyncMemoryClient,
+    identity: UUID,
+    key: str,
+    processing: ProcessMemory,
+    event: AppendWorkingEvent,
+    query: QueryWorkingEvents,
+    compact: CompactWorking,
+    adoption: AdoptCandidate,
+) -> None:
+    async with client as memory:
+        assert_type(await memory.process_memory(processing, idempotency_key=key), JobReceipt)
+        assert_type(
+            await memory.append_working_event(event, idempotency_key=key), WorkingEventReceipt
+        )
+        assert_type(await memory.query_working_events(query), WorkingEventPage)
+        assert_type(await memory.compact_working(compact, idempotency_key=key), JobReceipt)
+        assert_type(await memory.get_working_snapshot(identity), WorkingSnapshot)
+        assert_type(await memory.get_extraction_candidates(identity), CandidateReviewPage)
+        assert_type(
+            await memory.adopt_candidate(identity, 0, adoption, idempotency_key=key),
+            RememberResult,
+        )
 
 
 async def typed_calls(

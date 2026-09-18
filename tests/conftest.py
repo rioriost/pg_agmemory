@@ -321,7 +321,36 @@ def database():
             admin.execute("SELECT max(version) FROM public.pgag_schema_migration").fetchone()[0]
             == 10
         )
-    migrate(url)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:11])
+        migrate(url)
+    for version, table in (
+        (12, "memory.scope_synthesis_policy"),
+        (13, "memory.working_event"),
+    ):
+        with pytest.MonkeyPatch.context() as patch:
+            def fail_processing_ledger(self, query, params=None, _version=version, **kwargs):
+                if (
+                    query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)"
+                    and params == (_version,)
+                ):
+                    raise RuntimeError("simulated processing migration failure")
+                return execute(self, query, params, **kwargs)
+
+            patch.setattr(psycopg.Connection, "execute", fail_processing_ledger)
+            with pytest.raises(RuntimeError, match="simulated processing migration failure"):
+                migrate(url)
+        with psycopg.connect(url) as admin:
+            assert admin.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0] is None
+            if version == 13:
+                assert admin.execute(
+                    """SELECT count(*) FROM pg_attribute
+                       WHERE attrelid='memory_ops.extraction_candidate'::regclass
+                       AND attname='adopted_assertion_id' AND NOT attisdropped"""
+                ).fetchone()[0] == 0
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:version])
+            migrate(url)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

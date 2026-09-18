@@ -32,6 +32,9 @@ text model を設定した既存の operator 管理 profile を使用する。
 依存しない。summarize/embed の request/result は変更しない。
 `configured_operations` / `inspect.operations` は対応時だけ既存操作の末尾に
 `extract` を追加する。
+既存の HTTP 要約指示は内容を変えず `SUMMARY_SYSTEM_PROMPT` として公開する。
+`EXTRACTION_SYSTEM_PROMPT` と合わせて、operator は指示文を重複定義せず実際の内容を
+pin できる。Azure の要約 prompt の文言は変更しない。
 
 ### 閉じた候補・結果契約
 

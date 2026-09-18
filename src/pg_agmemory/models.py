@@ -1,10 +1,18 @@
 import json
 import math
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
 Content = Annotated[str, Field(min_length=1, max_length=65536)]
@@ -71,6 +79,19 @@ class Observe(Contract):
     occurred_at: AwareDatetime
     content: Content
     consent_reference: ShortText
+    auto_extract: Annotated[bool, Field(strict=True)] = False
+    auto_embed: Annotated[bool, Field(strict=True)] = False
+
+    # No serializer return schema: retain the original typed OpenAPI model.
+    @model_serializer(mode="wrap")
+    def stable_capture_payload(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
+        result = handler(self)
+        for field in ("auto_extract", "auto_embed"):
+            if not result.get(field):
+                result.pop(field, None)
+        return dict(result)
 
 
 class EpisodeCursor(Contract):
@@ -155,6 +176,12 @@ class Capture(Contract):
     episode: Observe
     memory: CapturedMemory
 
+    @model_validator(mode="after")
+    def structured_only(self) -> "Capture":
+        if self.episode.auto_extract or self.episode.auto_embed:
+            raise ValueError("Automatic processing flags are supported by observe only")
+        return self
+
 
 class CaptureBatch(Contract):
     episode: Observe
@@ -162,6 +189,8 @@ class CaptureBatch(Contract):
 
     @model_validator(mode="after")
     def distinct_memories(self) -> "CaptureBatch":
+        if self.episode.auto_extract or self.episode.auto_embed:
+            raise ValueError("Automatic processing flags are supported by observe only")
         if len({memory.model_dump_json() for memory in self.memories}) != len(self.memories):
             raise ValueError("captured memories must be distinct")
         return self
@@ -341,7 +370,7 @@ class MemoryItem(BaseModel):
     occurred_at: datetime | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    epistemic_status: Literal["reported"] = "reported"
+    epistemic_status: Literal["reported", "inferred"] = "reported"
     confidence: dict[str, str | None] = Field(
         default_factory=lambda: {"score": None, "method": "uncalibrated"}
     )
@@ -377,7 +406,15 @@ class ErrorBody(BaseModel):
 class ObserveResult(BaseModel):
     memory_id: UUID
     revision: Literal[1]
-    synthesis_job_id: None = None
+    synthesis_job_id: UUID | None = None
+    embedding_job_id: UUID | None = None
+
+    @model_serializer(mode="wrap")
+    def stable_result(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        result = handler(self)
+        if result.get("embedding_job_id") is None:
+            result.pop("embedding_job_id", None)
+        return dict(result)
 
 
 class CaptureResult(BaseModel):
@@ -416,7 +453,8 @@ class ContextPack(BaseModel):
 
 class Coverage(BaseModel):
     retrieval_complete: bool
-    synthesis_pending: Literal[False]
+    synthesis_pending: bool
+    projection_pending: bool = False
     jobs_pending: bool = False
     lexical_incomplete: bool = False
     vector_incomplete: bool = False
@@ -490,9 +528,17 @@ class AssertionExplanation(BaseModel):
     type: Literal["assertion"]
     assertion: ExplainedAssertion
     evidence: list[ExplainedEvidence]
-    epistemic_status: Literal["reported"]
+    epistemic_status: Literal["reported", "inferred"]
     confidence: dict[str, str | None]
     relation: RelationEndpoints | None = None
+    derivation: dict[str, Any] | None = None
+
+    @model_serializer(mode="wrap")
+    def stable_result(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        result = handler(self)
+        if result.get("derivation") is None:
+            result.pop("derivation", None)
+        return dict(result)
 
 
 class AssertionHistory(Contract):
@@ -508,7 +554,7 @@ class AssertionRevisionMetadata(BaseModel):
     recorded_at: datetime
     known_until: datetime | None
     correction_reason: str | None
-    epistemic_status: Literal["reported"]
+    epistemic_status: Literal["reported", "inferred"]
     evidence_refs: Annotated[list[MemoryReference], Field(min_length=1, max_length=32)]
     relation: RelationEndpoints | None
 
@@ -551,7 +597,10 @@ class DeletionPreview(BaseModel):
     changed: Literal[False]
 
 
-JobError = Literal["dependency_unavailable", "stale_context", "invalid_input", "attempt_limit"]
+JobError = Literal[
+    "dependency_unavailable", "stale_context", "invalid_input", "attempt_limit",
+    "policy_denied", "provider_failed", "billing_unknown", "compaction_conflict",
+]
 JobState = Literal["pending", "running", "succeeded", "failed", "cancelled"]
 
 
@@ -593,8 +642,8 @@ class CancelJob(Contract):
 
 class JobReceipt(BaseModel):
     job_id: UUID
-    kind: Literal["structured_remember"] = "structured_remember"
-    recipe_version: Literal["structured-remember-v1"] = "structured-remember-v1"
+    kind: Literal["structured_remember", "extract", "embed", "compact"] = "structured_remember"
+    recipe_version: str = "structured-remember-v1"
 
 
 class JobDetail(JobReceipt):
@@ -609,6 +658,16 @@ class JobDetail(JobReceipt):
     error_code: JobError | None
     input_refs: list[MemoryReference]
     result: MemoryReference | None
+    processing_result: dict[str, Any] | None = None
+    call: dict[str, Any] | None = None
+
+    @model_serializer(mode="wrap")
+    def stable_result(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        result = handler(self)
+        if self.kind == "structured_remember":
+            result.pop("processing_result", None)
+            result.pop("call", None)
+        return dict(result)
 
 
 class ListedJob(JobDetail):
@@ -718,6 +777,28 @@ class CheckpointState(Contract):
     pending_effects: Annotated[list[PendingEffect], Field(max_length=100)] = Field(
         default_factory=list
     )
+    pending_approvals: Annotated[list[StateText], Field(max_length=64)] = Field(
+        default_factory=list
+    )
+    important_ids: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    versions: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    paths: Annotated[list[StateText], Field(max_length=64)] = Field(default_factory=list)
+    failed_actions: Annotated[list[StateText], Field(max_length=100)] = Field(default_factory=list)
+    in_progress_actions: Annotated[list[StateText], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+    blocked_actions: Annotated[list[StateText], Field(max_length=100)] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def stable_state(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        result = handler(self)
+        for name in (
+            "pending_approvals", "important_ids", "versions", "paths",
+            "failed_actions", "in_progress_actions", "blocked_actions",
+        ):
+            if not result.get(name):
+                result.pop(name, None)
+        return dict(result)
 
     @model_validator(mode="after")
     def unique_effects(self) -> "CheckpointState":
@@ -863,3 +944,96 @@ class CheckpointEnvelope(CheckpointReceipt):
     tool_effects: list[ToolEffectSummary] = Field(default_factory=list)
     resume_allowed: bool
     automatic_reexecution: Literal[False] = False
+
+
+class ProcessMemory(Contract):
+    scope_id: UUID
+    source: MemoryReference
+    kind: Literal["extract", "embed"]
+    retry_of: UUID | None = None
+
+
+class AppendWorkingEvent(CheckpointBranch):
+    source: MemoryReference
+
+
+class WorkingEventReceipt(Contract):
+    scope_id: UUID
+    run_id: UUID
+    branch_id: UUID
+    sequence: int
+    source: MemoryReference
+
+
+class QueryWorkingEvents(CheckpointBranch):
+    after_sequence: Annotated[int, Field(ge=0, strict=True)] = 0
+    max_items: Annotated[int, Field(ge=1, le=100, strict=True)] = 20
+
+
+class WorkingEventPage(Contract):
+    events: list[WorkingEventReceipt]
+    next_after_sequence: int | None
+    consistency: Consistency
+
+
+class CompactWorking(CheckpointBranch):
+    expected_head: UUID
+    through_sequence: Annotated[int, Field(ge=1, strict=True)]
+    retry_of: UUID | None = None
+
+
+class WorkingSnapshot(Contract):
+    checkpoint: CheckpointEnvelope
+    summary: str
+    status: Literal["untrusted"] = "untrusted"
+    input_refs: list[MemoryReference]
+    coverage_start: int
+    coverage_end: int
+    input_digest: str
+    checksum: str
+    model: dict[str, Any]
+    recipe_version: str
+    job_id: UUID
+    tail: WorkingEventPage
+
+
+class InferredMemory(Contract):
+    scope_id: UUID
+    subject: ShortText
+    predicate: Predicate
+    value: Content
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=1)]
+    explicit_intent: Literal[False] = False
+    valid_from: None = None
+    valid_to: None = None
+
+
+class CandidateReview(Contract):
+    ordinal: Annotated[int, Field(ge=0, le=15)]
+    candidate: dict[str, Any]
+    disposition: Literal["published", "duplicate", "quarantined"]
+    reason: str
+    assertion_id: UUID | None
+    adopted_assertion_id: UUID | None
+    adopted_by: UUID | None
+
+
+class CandidateReviewPage(Contract):
+    job_id: UUID
+    candidates: Annotated[list[CandidateReview], Field(max_length=16)]
+    status: Literal["untrusted"]
+    input_refs: list[MemoryReference]
+    derivation: dict[str, Any] | None
+
+
+class AdoptCandidate(Contract):
+    explicit_intent: Literal[True]
+    expected_input_digest: Digest
+    reason: ShortText
+
+    @model_validator(mode="before")
+    @classmethod
+    def declared_intent(cls, data: Any) -> Any:
+        if isinstance(data, dict) and type(data.get("explicit_intent")) is not bool:
+            raise ValueError("adoption requires an explicit boolean intent declaration")
+        return data

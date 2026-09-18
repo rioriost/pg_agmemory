@@ -42,21 +42,23 @@ class Jobs:
             raise MemoryError("job_invalidated", 409)
         inputs = await (
             await self.conn.execute(
-                """SELECT source_id FROM memory_ops.job_input
+                """SELECT source_id,source_revision FROM memory_ops.job_input
                    WHERE tenant_id = %s AND job_id = %s ORDER BY source_id""",
                 (self.tenant, job_id),
             )
         ).fetchall()
         if len(inputs) != row["reference_count"]:
             raise MemoryError("job_invalidated", 409)
-        row["input_refs"] = [{"memory_id": item["source_id"], "revision": 1} for item in inputs]
+        row["input_refs"] = [
+            {"memory_id": item["source_id"], "revision": item["source_revision"]} for item in inputs
+        ]
         return row
 
     async def get(self, job_id: UUID) -> dict[str, Any]:
         row = await self.load(job_id)
         if row["result_id"] is not None:
             await self.memory.object(row["result_id"])
-        return {
+        result = {
             "job_id": job_id,
             "kind": row["kind"],
             "recipe_version": row["recipe_version"],
@@ -73,6 +75,24 @@ class Jobs:
             if row["result_id"] is not None
             else None,
         }
+        if row["kind"] != "structured_remember":
+            published = row["processing_result"]
+            if published:
+                for ref in published.get("assertions", []):
+                    await self.memory.object(UUID(ref["memory_id"]))
+                if published.get("checkpoint_id"):
+                    from pg_agmemory.checkpoints import Checkpoints
+
+                    await Checkpoints(self.memory).load(UUID(published["checkpoint_id"]))
+            result["processing_result"] = published
+            result["call"] = await (
+                await self.conn.execute(
+                    """SELECT outcome,billing_unknown,input_bytes,max_output_tokens
+                       FROM memory_ops.model_call WHERE tenant_id=%s AND job_id=%s""",
+                    (self.tenant, job_id),
+                )
+            ).fetchone()
+        return result
 
     async def query(self, data: QueryJobs) -> dict[str, Any]:
         rows = await (
@@ -223,25 +243,46 @@ class Jobs:
             raise MemoryError("job_cancel_conflict", 409)
         await self.memory.audit("job_cancelled", job_id)
         result = {"job_id": str(job_id)}
+        if row["kind"] != "structured_remember":
+            result.update(kind=row["kind"], recipe_version=row["recipe_version"])
         await self.memory.save_result("cancel_job", key_hash, request_hash, result)
         return result
 
-    async def claim(self, lease_seconds: int = 30) -> dict[str, Any] | None:
+    async def claim(
+        self, lease_seconds: int = 30, *, profile_digest: str | None = None
+    ) -> dict[str, Any] | None:
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 300:
             raise ValueError("lease_seconds must be an integer between 1 and 300")
         row = await (
             await self.conn.execute(
                 """SELECT id FROM memory_ops.job WHERE tenant_id = %s AND principal_id = %s
                    AND memory.permitted(scope_id,'write')
+                   AND (kind='structured_remember'
+                        OR (%s::text IS NOT NULL AND payload->>'profile_digest'=%s))
                    AND ((state = 'pending' AND available_at <= clock_timestamp())
                         OR (state = 'running' AND lease_until <= clock_timestamp()))
                    ORDER BY available_at,created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED""",
-                (self.tenant, self.memory.principal),
+                (self.tenant, self.memory.principal, profile_digest, profile_digest),
             )
         ).fetchone()
         if row is None:
             return None
         job = await self.load(row["id"], "write")
+        if job["kind"] != "structured_remember":
+            call = await (
+                await self.conn.execute(
+                    "SELECT 1 FROM memory_ops.model_call WHERE tenant_id=%s AND job_id=%s",
+                    (self.tenant, row["id"]),
+                )
+            ).fetchone()
+            if call:
+                await self.conn.execute(
+                    """UPDATE memory_ops.job SET state='failed',payload=NULL,
+                       lease_token=NULL,lease_until=NULL,error_code='billing_unknown'
+                       WHERE tenant_id=%s AND id=%s""", (self.tenant, row["id"]),
+                )
+                await self.memory.audit("job_failed", row["id"])
+                return {"job_id": row["id"], "state": "failed"}
         if job["attempt"] == 5:
             await self.conn.execute(
                 """UPDATE memory_ops.job SET state = 'failed',payload = NULL,
@@ -259,7 +300,7 @@ class Jobs:
                    captured_deletion_epoch = t.deletion_epoch,
                    error_code = NULL FROM memory.tenant t
                    WHERE j.tenant_id = t.id AND j.tenant_id = %s AND j.id = %s
-                   RETURNING j.id AS job_id,j.state,j.payload,j.lease_token,j.attempt""",
+                   RETURNING j.id AS job_id,j.state,j.payload,j.lease_token,j.attempt,j.kind""",
                 (uuid4(), lease_seconds, self.tenant, row["id"]),
             )
         ).fetchone()

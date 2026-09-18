@@ -589,6 +589,13 @@ def test_sdk_route_surface_covers_native_resources(env):
         "/v1/jobs/{job_id}",
         "/v1/jobs/{job_id}/retry",
         "/v1/jobs/{job_id}/cancel",
+        "/v1/jobs/{job_id}/candidates",
+        "/v1/jobs/{job_id}/candidates/{ordinal}/adopt",
+        "/v1/processing",
+        "/v1/working/events",
+        "/v1/working/events/query",
+        "/v1/working/compact",
+        "/v1/working/snapshots/{checkpoint_id}",
         "/v1/checkpoints",
         "/v1/checkpoints/head",
         "/v1/checkpoints/{checkpoint_id}",
@@ -603,7 +610,7 @@ def test_sdk_route_surface_covers_native_resources(env):
         for name, value in inspect.getmembers(AsyncMemoryClient, inspect.iscoroutinefunction)
         if not name.startswith("_")
     }
-    assert len(methods) == len(expected) == 31
+    assert len(methods) == len(expected) == 38
 
 
 @pytest.mark.parametrize("outcome", ["missing", "invalidated", "wrong_status", "bad_shape", "lost"])

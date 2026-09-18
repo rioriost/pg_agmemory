@@ -13,10 +13,13 @@ except ModuleNotFoundError as exc:
     raise ImportError("Python SDK requires the pg-agmemory[sdk] extra") from None
 
 from pg_agmemory.models import (
+    AdoptCandidate,
+    AppendWorkingEvent,
     AssertionExplanation,
     AssertionHistory,
     AssertionHistoryPage,
     CancelJob,
+    CandidateReviewPage,
     Capture,
     CaptureBatch,
     CaptureBatchResult,
@@ -24,6 +27,7 @@ from pg_agmemory.models import (
     CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
+    CompactWorking,
     CreateCheckpoint,
     CreateEntity,
     CreateRelation,
@@ -48,10 +52,12 @@ from pg_agmemory.models import (
     Observe,
     ObserveResult,
     PlanToolEffect,
+    ProcessMemory,
     PutEmbedding,
     QueryEntities,
     QueryEpisodes,
     QueryJobs,
+    QueryWorkingEvents,
     Recall,
     RecallResult,
     Remember,
@@ -63,6 +69,9 @@ from pg_agmemory.models import (
     ToolEffectDetail,
     ToolEffectReceipt,
     TransitionToolEffect,
+    WorkingEventPage,
+    WorkingEventReceipt,
+    WorkingSnapshot,
 )
 from pg_agmemory.native_client import (
     MAX_REQUEST_BYTES,
@@ -99,6 +108,7 @@ SDK_NATIVE_CODES = frozenset(SAFE_NATIVE_CODES) | {
     "effect_transition_conflict",
     "job_invalidated",
     "job_retry_conflict",
+    "job_retry_unknown",
     "job_cancel_conflict",
     "job_intent_conflict",
     "job_limit_exceeded",
@@ -108,6 +118,16 @@ SDK_NATIVE_CODES = frozenset(SAFE_NATIVE_CODES) | {
     "embedding_unavailable",
     "embedding_conflict",
     "embedding_limit_exceeded",
+    "synthesis_policy_denied",
+    "synthesis_policy_invalid",
+    "invalid_processing_reference",
+    "processing_input_limit",
+    "processing_call_limit",
+    "compaction_conflict",
+    "working_invalidated",
+    "working_event_limit",
+    "candidate_adoption_conflict",
+    "candidate_input_conflict",
 }
 
 
@@ -206,6 +226,51 @@ class AsyncMemoryClient:
             mutation=True,
             status=201,
             key=idempotency_key,
+        )
+
+    async def process_memory(self, request: ProcessMemory, *, idempotency_key: str) -> JobReceipt:
+        return await self._post(
+            "/v1/processing", request, ProcessMemory, TypeAdapter(JobReceipt),
+            mutation=True, status=202, key=idempotency_key,
+        )
+
+    async def append_working_event(
+        self, request: AppendWorkingEvent, *, idempotency_key: str
+    ) -> WorkingEventReceipt:
+        return await self._post(
+            "/v1/working/events", request, AppendWorkingEvent, TypeAdapter(WorkingEventReceipt),
+            mutation=True, status=201, key=idempotency_key,
+        )
+
+    async def query_working_events(self, request: QueryWorkingEvents) -> WorkingEventPage:
+        return await self._post(
+            "/v1/working/events/query", request, QueryWorkingEvents, TypeAdapter(WorkingEventPage),
+            mutation=False,
+        )
+
+    async def compact_working(
+        self, request: CompactWorking, *, idempotency_key: str
+    ) -> JobReceipt:
+        return await self._post(
+            "/v1/working/compact", request, CompactWorking, TypeAdapter(JobReceipt),
+            mutation=True, status=202, key=idempotency_key,
+        )
+
+    async def get_working_snapshot(self, checkpoint_id: UUID) -> WorkingSnapshot:
+        return await self._get(f"/v1/working/snapshots/{_id(checkpoint_id)}", WorkingSnapshot)
+
+    async def get_extraction_candidates(self, job_id: UUID) -> CandidateReviewPage:
+        return await self._get(f"/v1/jobs/{_id(job_id)}/candidates", CandidateReviewPage)
+
+    async def adopt_candidate(
+        self, job_id: UUID, ordinal: int, request: AdoptCandidate, *, idempotency_key: str
+    ) -> RememberResult:
+        if type(ordinal) is not int or not 0 <= ordinal <= 15:
+            raise failure("invalid_request")
+        return await self._post(
+            f"/v1/jobs/{_id(job_id)}/candidates/{ordinal}/adopt",
+            request, AdoptCandidate, TypeAdapter(RememberResult),
+            mutation=True, status=201, key=idempotency_key,
         )
 
     async def query_episodes(self, request: QueryEpisodes) -> EpisodePage:

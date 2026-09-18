@@ -32,6 +32,9 @@ path are introduced by this adapter capability. Core-only imports remain
 independent of the optional `providers` extra. Summarize/embed requests and
 results are unchanged. `configured_operations`/`inspect.operations` append
 `extract` after existing operations where supported.
+The unchanged HTTP summary instruction is exposed as `SUMMARY_SYSTEM_PROMPT`,
+alongside `EXTRACTION_SYSTEM_PROMPT`, so an operator can pin the actual instructions
+without duplicating them. This does not change Azure summary prompt wording.
 
 ### Closed candidate and result contracts
 

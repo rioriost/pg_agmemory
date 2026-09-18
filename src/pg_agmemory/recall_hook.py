@@ -8,8 +8,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
-from pg_agmemory.models import Contract, Recall, RecallResult, SearchProfile, ShortText
+from pg_agmemory.models import (
+    Contract,
+    Recall,
+    RecallResult,
+    SearchProfile,
+    ShortText,
+    WorkingSnapshot,
+)
 from pg_agmemory.native_client import (
+    SAFE_NATIVE_CODES,
     AdapterError,
     AdapterFailure,
     NativeHTTPClient,
@@ -25,6 +33,13 @@ logger = logging.getLogger("pg_agmemory.recall_hook")
 class HookInput(Contract):
     event: HookEvent
     query: Annotated[str, Field(max_length=4096)]
+    working_snapshot_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def snapshot_event(self) -> "HookInput":
+        if self.working_snapshot_id is not None and self.event != "after_compaction":
+            raise ValueError("Working snapshots are only accepted after compaction")
+        return self
 
 
 class HookSettings(Contract):
@@ -38,6 +53,7 @@ class HookSettings(Contract):
     max_items: Annotated[int, Field(ge=1, le=20)] = 20
     search_profile: SearchProfile = "simple-v1"
     timeout_seconds: Annotated[float, Field(ge=0.1, le=20, allow_inf_nan=False)] = 2.0
+    working_snapshot_budget_bytes: Annotated[int, Field(ge=0, le=65536)] = 0
 
     @model_validator(mode="after")
     def validate_startup(self) -> "HookSettings":
@@ -78,6 +94,10 @@ class HookOutput(BaseModel):
     error: AdapterError | None
 
 
+class SnapshotHookOutput(HookOutput):
+    working_snapshot: WorkingSnapshot
+
+
 def parse_input(raw: bytes) -> HookInput:
     if len(raw) > MAX_INPUT_BYTES:
         raise failure("hook_input_too_large")
@@ -90,6 +110,8 @@ def parse_input(raw: bytes) -> HookInput:
 
 
 async def recall(settings: HookSettings, data: HookInput, native: NativeHTTPClient) -> RecallResult:
+    if data.working_snapshot_id is not None:
+        raise failure("working_snapshot_requires_context")
     try:
         async with asyncio.timeout(settings.timeout_seconds):
             await native.validate()
@@ -98,6 +120,10 @@ async def recall(settings: HookSettings, data: HookInput, native: NativeHTTPClie
             )
     except TimeoutError:
         raise failure("hook_deadline_exceeded", retryable=True) from None
+    return validate_result(settings, result)
+
+
+def validate_result(settings: HookSettings, result: RecallResult) -> RecallResult:
     try:
         byte_count = len(
             json.dumps(
@@ -122,9 +148,87 @@ async def recall(settings: HookSettings, data: HookInput, native: NativeHTTPClie
     return result
 
 
+async def snapshot_context(
+    settings: HookSettings, data: HookInput, native: NativeHTTPClient
+) -> SnapshotHookOutput:
+    if data.working_snapshot_id is None or settings.working_snapshot_budget_bytes == 0:
+        raise failure("working_snapshot_disabled")
+    try:
+        async with asyncio.timeout(settings.timeout_seconds):
+            await native.validate()
+            snapshot = await native.request(
+                f"/v1/working/snapshots/{data.working_snapshot_id}",
+                None,
+                TypeAdapter(WorkingSnapshot),
+            )
+            checkpoint = snapshot.checkpoint
+            if checkpoint.checkpoint_id != data.working_snapshot_id:
+                raise failure("invalid_native_response")
+            if checkpoint.scope_id not in settings.scope_ids:
+                raise failure("working_snapshot_scope_mismatch")
+            if snapshot.tail.next_after_sequence is not None:
+                raise failure("working_tail_incomplete")
+            if (
+                snapshot.coverage_start != 1
+                or snapshot.coverage_end < 1
+                or any(
+                    event.scope_id != checkpoint.scope_id
+                    or event.run_id != checkpoint.run_id
+                    or event.branch_id != checkpoint.branch_id
+                    or event.sequence <= snapshot.coverage_end
+                    for event in snapshot.tail.events
+                )
+            ):
+                raise failure("invalid_native_response")
+            if (
+                len(snapshot.model_dump_json().encode("utf-8"))
+                > settings.working_snapshot_budget_bytes
+            ):
+                raise failure("budget_exhausted")
+            required = list(
+                {event.source.memory_id: event.source for event in snapshot.tail.events}.values()
+            )
+            if len(required) > min(16, settings.max_items):
+                raise failure("budget_exhausted")
+            request = Recall.model_validate(
+                settings.request(data).model_dump() | {"required_memory_refs": required}
+            )
+            result = validate_result(
+                settings,
+                await native.request("/v1/recall", request, TypeAdapter(RecallResult)),
+            )
+            if (
+                checkpoint.current_access_epoch != result.consistency.access_epoch
+                or checkpoint.current_deletion_epoch != result.consistency.deletion_epoch
+                or snapshot.tail.consistency != result.consistency
+                or checkpoint.saved_access_epoch != checkpoint.current_access_epoch
+                or checkpoint.saved_deletion_epoch != checkpoint.current_deletion_epoch
+            ):
+                raise failure("stale_context")
+            if [(item.memory_id, item.revision) for item in result.items[: len(required)]] != [
+                (ref.memory_id, ref.revision) for ref in required
+            ]:
+                raise failure("invalid_native_response")
+            return SnapshotHookOutput(
+                status="ok", event=data.event, result=result, error=None, working_snapshot=snapshot
+            )
+    except TimeoutError:
+        raise failure("hook_deadline_exceeded", retryable=True) from None
+
+
 async def run(settings: HookSettings, data: HookInput) -> RecallResult:
     async with NativeSettings(settings.api_url, settings.api_token).client() as client:
         return await recall(settings, data, NativeHTTPClient(client))
+
+
+async def run_context(settings: HookSettings, data: HookInput) -> SnapshotHookOutput:
+    async with NativeSettings(settings.api_url, settings.api_token).client() as client:
+        native = NativeHTTPClient(
+            client,
+            safe_codes=SAFE_NATIVE_CODES
+            | {"working_invalidated", "checkpoint_invalidated", "stale_context"},
+        )
+        return await snapshot_context(settings, data, native)
 
 
 def main() -> None:
@@ -140,8 +244,11 @@ def main() -> None:
         data = parse_input(raw)
         event = data.event
         exit_code = 1
-        result = asyncio.run(run(settings, data))
-        output = HookOutput(status="ok", event=event, result=result, error=None)
+        if data.working_snapshot_id is None:
+            result = asyncio.run(run(settings, data))
+            output: HookOutput = HookOutput(status="ok", event=event, result=result, error=None)
+        else:
+            output = asyncio.run(run_context(settings, data))
         exit_code = 0
     except AdapterFailure as exc:
         logger.warning("hook_error code=%s", exc.error.code)

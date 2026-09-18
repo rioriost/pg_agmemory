@@ -21,6 +21,8 @@ MIGRATIONS = (
     "009_scope_access.sql",
     "010_job_cancellation.sql",
     "011_capture_policy.sql",
+    "012_background_processing.sql",
+    "013_working_compaction.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

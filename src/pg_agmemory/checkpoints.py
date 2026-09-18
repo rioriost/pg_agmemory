@@ -44,6 +44,25 @@ class Checkpoints:
         ).fetchone()
         if row is None or row["effects_invalidated"]:
             raise MemoryError("checkpoint_invalidated", 409)
+        stale_snapshot = await (
+            await self.conn.execute(
+                """WITH RECURSIVE ancestors(id,parent_id,access_epoch,deletion_epoch) AS (
+                    SELECT id,parent_id,access_epoch,deletion_epoch FROM memory.checkpoint
+                    WHERE tenant_id=%s AND id=%s
+                    UNION ALL
+                    SELECT c.id,c.parent_id,c.access_epoch,c.deletion_epoch
+                    FROM memory.checkpoint c JOIN ancestors a ON c.id=a.parent_id
+                    WHERE c.tenant_id=%s
+                ) SELECT 1 FROM ancestors a JOIN memory.working_snapshot s
+                    ON s.tenant_id=%s AND s.checkpoint_id=a.id
+                  JOIN memory.tenant t ON t.id=s.tenant_id
+                  WHERE a.access_epoch<>t.access_epoch OR a.deletion_epoch<>t.deletion_epoch
+                  LIMIT 1""",
+                (self.tenant, checkpoint_id, self.tenant, self.tenant),
+            )
+        ).fetchone()
+        if stale_snapshot:
+            raise MemoryError("checkpoint_invalidated", 409)
         refs = await (
             await self.conn.execute(
                 """SELECT source_id, source_revision FROM memory.checkpoint_reference
@@ -135,7 +154,9 @@ class Checkpoints:
             raise MemoryError("checkpoint_invalidated", 409)
         return saved
 
-    async def create(self, data: CreateCheckpoint, key: str) -> dict[str, Any]:
+    async def create(
+        self, data: CreateCheckpoint, key: str, *, preserved_state: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         await self.memory.scope(data.scope_id, "write")
         key_hash, payload_hash, previous = await self.memory.replay(
             "checkpoint", key, data.model_dump_json()
@@ -187,16 +208,25 @@ class Checkpoints:
             raise MemoryError("checkpoint_invalidated", 409)
         if branch["head_id"] != data.expected_head:
             raise MemoryError("checkpoint_head_conflict", 409)
+        parent = None
         if data.expected_head is not None:
             parent = await self.load(data.expected_head)
             if data.event_watermark < parent["event_watermark"]:
                 raise MemoryError("checkpoint_watermark_conflict", 409)
-        result = await self.insert(data, branch["sequence"] + 1, data.expected_head)
+        if preserved_state is not None and (
+            parent is None or preserved_state != parent["state"]
+            or CheckpointState.model_validate(preserved_state) != data.state
+        ):
+            raise MemoryError("checkpoint_head_conflict", 409)
+        result = await self.insert(
+            data, branch["sequence"] + 1, data.expected_head, preserved_state=preserved_state
+        )
         await self.memory.save_result("checkpoint", key_hash, payload_hash, result)
         return result
 
     async def insert(
-        self, data: CreateCheckpoint, sequence: int, parent_id: UUID | None
+        self, data: CreateCheckpoint, sequence: int, parent_id: UUID | None,
+        *, preserved_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         refs = await self.memory.validate_refs(data.scope_id, data.memory_refs)
         epochs = await self.memory.epochs()
@@ -212,7 +242,8 @@ class Checkpoints:
             "harness_version": data.harness_version,
             "state_schema_version": data.state_schema_version,
             "event_watermark": data.event_watermark,
-            "state": data.state.model_dump(mode="json"),
+            "state": preserved_state if preserved_state is not None
+            else data.state.model_dump(mode="json"),
             "memory_refs": [
                 {"memory_id": ref["memory_id"], "revision": ref["revision"]} for ref in refs
             ],

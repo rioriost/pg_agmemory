@@ -714,7 +714,7 @@ def test_v6_job_replay_and_historical_backfill_survive_migration(env, database):
 
 def test_japanese_profile_contract_and_limits(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 11
+    assert capabilities["schema_version"] == 13
     assert capabilities["search_profiles"] == ["simple-v1", JAPANESE_PROFILE]
     assert capabilities["default_search_profile"] == "simple-v1"
     assert capabilities["japanese_fts"]["normalization"] == "none"

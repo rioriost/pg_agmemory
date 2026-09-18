@@ -12,8 +12,16 @@ from pydantic import ValidationError
 
 from pg_agmemory import __version__
 from pg_agmemory.database import SCHEMA_VERSION
+from pg_agmemory.models import WorkingSnapshot
 from pg_agmemory.native_client import AdapterFailure, NativeHTTPClient, NativeSettings
-from pg_agmemory.recall_hook import MAX_INPUT_BYTES, HookInput, HookSettings, parse_input, recall
+from pg_agmemory.recall_hook import (
+    MAX_INPUT_BYTES,
+    HookInput,
+    HookSettings,
+    parse_input,
+    recall,
+    snapshot_context,
+)
 
 
 def settings(**changes):
@@ -489,5 +497,264 @@ def test_shared_client_keeps_fixed_credentials_and_disables_ambient_proxy(monkey
             assert http.headers["Authorization"] == "Bearer fixed.identity.signature"
             assert not http.follow_redirects and not http.trust_env
             assert http.timeout.connect == 5 and http.timeout.read == 10
+
+    asyncio.run(scenario())
+
+
+def working_snapshot(config, checkpoint_id):
+    return {
+        "checkpoint": {
+            "checkpoint_id": str(checkpoint_id),
+            "run_id": str(uuid4()),
+            "branch_id": str(uuid4()),
+            "sequence": 2,
+            "parent_checkpoint": str(uuid4()),
+            "checksum": "a" * 64,
+            "scope_id": str(config.scope_ids[0]),
+            "harness_id": "synthetic",
+            "harness_version": "1",
+            "state_schema_version": 1,
+            "event_watermark": 0,
+            "state": {"goal": "Resume the exact task", "constraints": ["Approval is pending"]},
+            "memory_refs": [],
+            "saved_access_epoch": 1,
+            "saved_deletion_epoch": 1,
+            "current_access_epoch": 1,
+            "current_deletion_epoch": 1,
+            "requires_reconciliation": [],
+            "resume_allowed": True,
+        },
+        "summary": "Synthetic untrusted summary",
+        "status": "untrusted",
+        "input_refs": [],
+        "coverage_start": 1,
+        "coverage_end": 1,
+        "input_digest": "b" * 64,
+        "checksum": "c" * 64,
+        "model": {"name": "synthetic", "revision": "1"},
+        "recipe_version": "working-compaction-v1",
+        "job_id": str(uuid4()),
+        "tail": {
+            "events": [],
+            "next_after_sequence": None,
+            "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+        },
+    }
+
+
+@pytest.mark.parametrize("event", ["session_start", "task_switch"])
+def test_snapshot_reference_cannot_be_used_on_other_hook_events(event):
+    with pytest.raises(AdapterFailure, match="invalid_hook_input"):
+        parse_input(
+            json.dumps(
+                {
+                    "event": event,
+                    "query": "",
+                    "working_snapshot_id": str(uuid4()),
+                }
+            ).encode()
+        )
+
+
+def test_snapshot_reference_requires_explicit_operator_budget_not_prompt_override():
+    config = settings()
+    data = HookInput(event="after_compaction", query="", working_snapshot_id=uuid4())
+    assert config.working_snapshot_budget_bytes == 0
+
+    async def upstream(request):
+        pytest.fail("Disabled snapshot path made a network request")
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            base_url=config.api_url, transport=httpx.MockTransport(upstream)
+        ) as http:
+            native = NativeHTTPClient(http)
+            with pytest.raises(AdapterFailure, match="working_snapshot_disabled"):
+                await snapshot_context(config, data, native)
+            with pytest.raises(AdapterFailure, match="working_snapshot_requires_context"):
+                await recall(config, data, native)
+
+    asyncio.run(scenario())
+    with pytest.raises(AdapterFailure, match="invalid_hook_input"):
+        parse_input(
+            json.dumps(
+                {
+                    **data.model_dump(mode="json"),
+                    "working_snapshot_budget_bytes": 65536,
+                }
+            ).encode()
+        )
+
+
+def test_snapshot_context_retains_typed_state_and_requires_uncompacted_tail_evidence():
+    config = settings(working_snapshot_budget_bytes=8192)
+    checkpoint_id, source = uuid4(), uuid4()
+    saved = working_snapshot(config, checkpoint_id)
+    checkpoint = saved["checkpoint"]
+    saved["tail"]["events"] = [
+        {
+            "scope_id": checkpoint["scope_id"],
+            "run_id": checkpoint["run_id"],
+            "branch_id": checkpoint["branch_id"],
+            "sequence": 2,
+            "source": {"memory_id": str(source), "revision": 1},
+        }
+    ]
+    retrieved = empty_result()
+    retrieved["consistency"] = {"access_epoch": 1, "deletion_epoch": 1}
+    retrieved["items"] = [
+        {
+            "memory_id": str(source),
+            "revision": 1,
+            "type": "episode",
+            "content": "Tail evidence",
+            "recorded_at": "2026-09-18T00:00:00Z",
+        }
+    ]
+    calls = []
+
+    async def upstream(request):
+        calls.append(request)
+        if request.url.path == "/v1/capabilities":
+            return response(capabilities())
+        if request.url.path.startswith("/v1/working/snapshots/"):
+            return response(saved)
+        assert json.loads(request.content)["required_memory_refs"] == [
+            {"memory_id": str(source), "revision": 1}
+        ]
+        return response(retrieved)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            base_url=config.api_url, transport=httpx.MockTransport(upstream)
+        ) as http:
+            result = await snapshot_context(
+                config,
+                HookInput(event="after_compaction", query="", working_snapshot_id=checkpoint_id),
+                NativeHTTPClient(http),
+            )
+            assert result.working_snapshot.checkpoint.state.constraints == ["Approval is pending"]
+            assert result.working_snapshot.status == "untrusted"
+            assert not result.working_snapshot.checkpoint.automatic_reexecution
+            assert result.result.items[0].memory_id == source
+            assert set(result.model_dump()) == {
+                "status",
+                "event",
+                "result",
+                "error",
+                "working_snapshot",
+            }
+        assert [request.method for request in calls] == ["GET", "GET", "POST"]
+        assert all("Idempotency-Key" not in request.headers for request in calls)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("fault", "code"),
+    [
+        ("wrong_id", "invalid_native_response"),
+        ("scope", "working_snapshot_scope_mismatch"),
+        ("tail_page", "working_tail_incomplete"),
+        ("coverage", "invalid_native_response"),
+        ("tail_scope", "invalid_native_response"),
+        ("budget", "budget_exhausted"),
+        ("too_many_required", "budget_exhausted"),
+        ("access_epoch", "stale_context"),
+        ("deletion_epoch", "stale_context"),
+        ("tail_epoch", "stale_context"),
+        ("saved_epoch", "stale_context"),
+        ("missing_required", "invalid_native_response"),
+    ],
+)
+def test_snapshot_context_never_silently_omits_budget_scope_epoch_or_tail_failures(fault, code):
+    config = settings(working_snapshot_budget_bytes=65536)
+    checkpoint_id = uuid4()
+    saved = working_snapshot(config, checkpoint_id)
+    retrieved = empty_result()
+    retrieved["consistency"] = {"access_epoch": 1, "deletion_epoch": 1}
+    if fault == "wrong_id":
+        saved["checkpoint"]["checkpoint_id"] = str(uuid4())
+    elif fault == "scope":
+        saved["checkpoint"]["scope_id"] = str(uuid4())
+    elif fault == "tail_page":
+        saved["tail"]["next_after_sequence"] = 100
+    elif fault == "coverage":
+        saved["coverage_end"] = 0
+    elif fault == "budget":
+        config = config.model_copy(update={"working_snapshot_budget_bytes": 1})
+    elif fault in ("access_epoch", "deletion_epoch"):
+        retrieved["consistency"][fault] = 2
+    elif fault == "tail_epoch":
+        saved["tail"]["consistency"]["access_epoch"] = 2
+    elif fault == "saved_epoch":
+        saved["checkpoint"]["saved_access_epoch"] = 2
+    else:
+        checkpoint = saved["checkpoint"]
+        saved["tail"]["events"] = [
+            {
+                "scope_id": str(uuid4()) if fault == "tail_scope" else checkpoint["scope_id"],
+                "run_id": checkpoint["run_id"],
+                "branch_id": checkpoint["branch_id"],
+                "sequence": index + 2,
+                "source": {"memory_id": str(uuid4()), "revision": 1},
+            }
+            for index in range(17 if fault == "too_many_required" else 1)
+        ]
+
+    async def upstream(request):
+        if request.url.path == "/v1/capabilities":
+            return response(capabilities())
+        if request.url.path.startswith("/v1/working/snapshots/"):
+            return response(saved)
+        return response(retrieved)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            base_url=config.api_url, transport=httpx.MockTransport(upstream)
+        ) as http:
+            with pytest.raises(AdapterFailure, match=code) as error:
+                await snapshot_context(
+                    config,
+                    HookInput(
+                        event="after_compaction", query="", working_snapshot_id=checkpoint_id
+                    ),
+                    NativeHTTPClient(http),
+                )
+            assert not error.value.error.outcome_unknown
+
+    asyncio.run(scenario())
+
+
+def test_snapshot_byte_budget_accepts_exact_serialized_boundary_and_rejects_one_less():
+    config = settings(working_snapshot_budget_bytes=65536)
+    checkpoint_id = uuid4()
+    saved = working_snapshot(config, checkpoint_id)
+    size = len(WorkingSnapshot.model_validate(saved).model_dump_json().encode("utf-8"))
+    retrieved = empty_result()
+    retrieved["consistency"] = {"access_epoch": 1, "deletion_epoch": 1}
+
+    async def upstream(request):
+        if request.url.path == "/v1/capabilities":
+            return response(capabilities())
+        return response(retrieved if request.url.path == "/v1/recall" else saved)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            base_url=config.api_url, transport=httpx.MockTransport(upstream)
+        ) as http:
+            data = HookInput(event="after_compaction", query="", working_snapshot_id=checkpoint_id)
+            result = await snapshot_context(
+                config.model_copy(update={"working_snapshot_budget_bytes": size}),
+                data,
+                NativeHTTPClient(http),
+            )
+            assert result.status == "ok"
+            with pytest.raises(AdapterFailure, match="budget_exhausted"):
+                await snapshot_context(
+                    config.model_copy(update={"working_snapshot_budget_bytes": size - 1}),
+                    data,
+                    NativeHTTPClient(http),
+                )
 
     asyncio.run(scenario())

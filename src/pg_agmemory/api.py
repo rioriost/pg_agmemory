@@ -9,7 +9,7 @@ import jwt
 import psycopg
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Path, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pg_agmemory import __version__
 from pg_agmemory.capture import Captures
 from pg_agmemory.checkpoints import Checkpoints
+from pg_agmemory.compaction import Working
 from pg_agmemory.database import (
     SCHEMA_VERSION,
     VECTOR_VERSION,
@@ -30,10 +31,13 @@ from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
+    AdoptCandidate,
+    AppendWorkingEvent,
     AssertionExplanation,
     AssertionHistory,
     AssertionHistoryPage,
     CancelJob,
+    CandidateReviewPage,
     Capture,
     CaptureBatch,
     CaptureBatchResult,
@@ -41,6 +45,7 @@ from pg_agmemory.models import (
     CheckpointBranch,
     CheckpointEnvelope,
     CheckpointReceipt,
+    CompactWorking,
     CreateCheckpoint,
     CreateEntity,
     CreateRelation,
@@ -67,10 +72,12 @@ from pg_agmemory.models import (
     Observe,
     ObserveResult,
     PlanToolEffect,
+    ProcessMemory,
     PutEmbedding,
     QueryEntities,
     QueryEpisodes,
     QueryJobs,
+    QueryWorkingEvents,
     ReadinessStatus,
     Recall,
     RecallResult,
@@ -84,7 +91,11 @@ from pg_agmemory.models import (
     ToolEffectDetail,
     ToolEffectReceipt,
     TransitionToolEffect,
+    WorkingEventPage,
+    WorkingEventReceipt,
+    WorkingSnapshot,
 )
+from pg_agmemory.processing import Processing
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
 logger = logging.getLogger("pg_agmemory")
@@ -220,7 +231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="pg_agmemory",
         version=__version__,
         lifespan=lifespan,
-        description="Initial M1 slice. Not a production-qualified memory service.",
+        description="Development M2 vertical slice. Not a production-qualified memory service.",
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
             status: {"model": ErrorBody} for status in (400, 401, 403, 404, 409, 413, 422, 503)
@@ -276,7 +287,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-scope-capture-policy",
+            "stage": "m2-background-processing",
             "features": [
                 "observe",
                 "episode_query",
@@ -299,6 +310,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "structured_relations",
                 "graph_expand",
                 "durable_jobs",
+                "background_extraction",
+                "background_embeddings",
+                "working_compaction",
             ],
             "graph_backend": "sql",
             "episode_query": {
@@ -319,6 +333,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "max_items": 100,
             },
             "auto_synthesis": False,
+            "background_processing": {
+                "default": "deny",
+                "opt_in_observe_fields": ["auto_extract", "auto_embed"],
+                "endpoint": "/v1/processing",
+                "policy_command": "scope-synthesis",
+                "policy_compare_and_swap": "tenant_access_epoch",
+                "worker_profile": "local-worker-v1",
+                "automatic_backends": ["local_http"],
+                "external_automatic_egress": False,
+                "calls_per_job": 1,
+                "unknown_call_retry": False,
+                "lease_seconds": 180,
+                "heartbeat_seconds": 20,
+                "provider_timeout_max_seconds": 120,
+                "candidates_max": 16,
+                "synthesis_pending_kinds": ["extract"],
+                "projection_pending_kinds": ["embed"],
+                "candidate_status": "untrusted",
+                "publish_rule": "allowlisted_literal_low_impact_preference",
+                "publish_predicates": [
+                    "preferred_language", "preferred_editor", "preferred_theme", "preferred_format",
+                ],
+                "review_endpoint": "/v1/jobs/{job_id}/candidates",
+                "adoption_endpoint": "/v1/jobs/{job_id}/candidates/{ordinal}/adopt",
+                "adoption_authority": "caller_declared_explicit_intent",
+                "adoption_verifies_human_review": False,
+                "human_quality_qualified": False,
+            },
+            "working_compaction": {
+                "endpoint": "/v1/working/compact",
+                "events_endpoint": "/v1/working/events",
+                "snapshot_endpoint": "/v1/working/snapshots/{checkpoint_id}",
+                "same_scope_and_run": True,
+                "typed_state": "exact_copy",
+                "summary_status": "untrusted",
+                "coverage": "server_owned_sequence",
+                "max_covered_events": 100,
+                "max_events_per_branch": 1000,
+                "source_deletion": False,
+                "vendor_harness_integration": False,
+            },
             "capture_policy": {
                 "transport": "admin-cli",
                 "command": "scope-capture",
@@ -337,7 +392,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "extra": "providers",
                 "backends": ["local_http", "openai_compatible", "azure_ai"],
                 "azure_products": ["flexible_server", "horizondb"],
-                "operations": ["inspect", "summarize", "embed"],
+                "operations": ["inspect", "summarize", "embed", "extract"],
                 "automatic": False,
                 "publishes_memory": False,
                 "live_provider_qualified": False,
@@ -356,7 +411,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "admission_atomic": True,
                 "publication_atomic": False,
             },
-            "job_kinds": ["structured_remember"],
+            "job_kinds": ["structured_remember", "extract", "embed", "compact"],
             "job_query": {
                 "endpoint": "/v1/jobs/query",
                 "ownership": "caller",
@@ -479,9 +534,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         }
 
-    @app.post("/v1/observe", status_code=201, response_model=ObserveResult)
+    @app.post(
+        "/v1/observe", status_code=201, response_model=ObserveResult,
+        response_model_exclude_unset=True,
+    )
     async def observe(data: Observe, request: Request, idempotency_key: IdempotencyKey) -> Any:
         return await service(request).observe(data, idempotency_key)
+
+    @app.post("/v1/processing", status_code=202, response_model=JobReceipt)
+    async def process_memory(
+        data: ProcessMemory, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Processing(service(request)).enqueue(data, idempotency_key)
+
+    @app.get("/v1/jobs/{job_id}/candidates", response_model=CandidateReviewPage)
+    async def extraction_candidates(job_id: UUID, request: Request) -> Any:
+        return await Processing(service(request)).candidates(job_id)
+
+    @app.post(
+        "/v1/jobs/{job_id}/candidates/{ordinal}/adopt",
+        status_code=201, response_model=RememberResult,
+    )
+    async def adopt_candidate(
+        job_id: UUID, ordinal: Annotated[int, Path(ge=0, le=15)],
+        data: AdoptCandidate, request: Request, idempotency_key: IdempotencyKey,
+    ) -> Any:
+        return await Processing(service(request)).adopt(job_id, ordinal, data, idempotency_key)
+
+    @app.post("/v1/working/events", status_code=201, response_model=WorkingEventReceipt)
+    async def append_working(
+        data: AppendWorkingEvent, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Working(service(request)).append(data, idempotency_key)
+
+    @app.post("/v1/working/events/query", response_model=WorkingEventPage)
+    async def working_events(data: QueryWorkingEvents, request: Request) -> Any:
+        return await Working(service(request)).events(data)
+
+    @app.post("/v1/working/compact", status_code=202, response_model=JobReceipt)
+    async def compact_working(
+        data: CompactWorking, request: Request, idempotency_key: IdempotencyKey
+    ) -> Any:
+        return await Working(service(request)).enqueue(data, idempotency_key)
+
+    @app.get("/v1/working/snapshots/{checkpoint_id}", response_model=WorkingSnapshot)
+    async def working_snapshot(checkpoint_id: UUID, request: Request) -> Any:
+        return await Working(service(request)).get(checkpoint_id)
 
     @app.post("/v1/episodes/query", response_model=EpisodePage)
     async def query_episodes(data: QueryEpisodes, request: Request) -> Any:

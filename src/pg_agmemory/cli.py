@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import sys
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg
@@ -35,6 +36,11 @@ def main() -> None:
 
         capture_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["scope-synthesis"]:
+        from pg_agmemory.synthesis_policy import main as synthesis_main
+
+        synthesis_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -48,6 +54,7 @@ def main() -> None:
             "recall-hook",
             "scope-access",
             "scope-capture",
+            "scope-synthesis",
             "infer",
         ],
     )
@@ -57,15 +64,24 @@ def main() -> None:
     parser.add_argument(
         "--once", action="store_true", help="Worker: process at most one due job and exit"
     )
+    parser.add_argument("--provider-config", type=Path, help="Worker: trusted local profile JSON")
+    parser.add_argument(
+        "--print-profile-digest", action="store_true",
+        help="Worker: validate local profile and print policy digest without making model calls",
+    )
     args = parser.parse_args()
     if args.once and args.command != "worker":
         parser.error("--once is only supported by worker")
+    if (args.provider_config or args.print_profile_digest) and args.command != "worker":
+        parser.error("provider configuration is only supported by worker")
     if args.command == "reindex-lexical" and args.subject is not None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
     if args.command == "scope-access":
         parser.error("scope-access must precede its arguments; use scope-access --help")
     elif args.command == "scope-capture":
         parser.error("scope-capture must precede its arguments; use scope-capture --help")
+    elif args.command == "scope-synthesis":
+        parser.error("scope-synthesis must precede its arguments; use scope-synthesis --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":
@@ -93,10 +109,31 @@ def main() -> None:
     elif args.command == "reindex-lexical":
         print(json.dumps(reindex_lexical(os.environ["PGAG_ADMIN_DATABASE_URL"])))
     elif args.command == "worker":
+        profile = None
+        if args.provider_config is not None:
+            try:
+                from pg_agmemory.providers import ProviderFailure
+                from pg_agmemory.worker_profile import WorkerProfile
+            except ImportError as exc:
+                if str(exc) != "Inference providers require the pg-agmemory[providers] extra":
+                    raise
+                parser.error("model worker requires pg-agmemory[providers]")
+            try:
+                with args.provider_config.open("rb") as stream:
+                    profile = WorkerProfile.parse(stream.read(32769))
+            except (OSError, ValueError, ProviderFailure):
+                parser.error("invalid_worker_profile")
+        if args.print_profile_digest:
+            if profile is None:
+                parser.error("--print-profile-digest requires --provider-config")
+            print(json.dumps({"profile_digest": profile.digest}), flush=True)
+            return
         if not args.subject or not 1 <= len(args.subject) <= 256:
             parser.error("worker requires --subject with 1 to 256 characters")
         logging.basicConfig(level=logging.INFO)
-        asyncio.run(run(os.environ["PGAG_DATABASE_URL"], args.subject, once=args.once))
+        asyncio.run(run(
+            os.environ["PGAG_DATABASE_URL"], args.subject, once=args.once, profile=profile
+        ))
     elif args.command == "provision":
         if not args.subject or not 1 <= len(args.subject) <= 256:
             parser.error("provision requires --subject with 1 to 256 characters")
