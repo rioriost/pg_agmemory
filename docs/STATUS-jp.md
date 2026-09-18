@@ -2,13 +2,118 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-**現在の上限付きmilestoneはv0.0.25/schema 10のCA image修正と正確なprofileでのlive証拠です。
-local適格性確認全体と完全一致SHAのnative CIは合格しました。
-検証済みv0.0.24以前の結果は過去の証拠であり、v0.0.25の適格性確認ではありません。
+**現在の上限付きmilestoneはv0.0.26/schema 11のscope capture policyです。
+実装`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`のlocal適格性確認と
+完全一致SHAのnative Docker amd64/arm64 CIは合格しました。
+検証済みv0.0.25以前の結果は過去の証拠であり、v0.0.26の適格性確認ではありません。
 M0/M1/M2/M3全体の完了、MVP完成、本番適格性の確認を意味しません。**
 実装プランは将来の要求を示すもので、現在のAPIそのものではありません。
 性能、記憶品質、災害復旧、完全消去の受入目標は未測定または未認定です。
 ローカルとCIの検査が合格しても、これらのgateが完了したとは扱いません。
+以下のlocal/native結果は[完全一致実装SHA](#v0026--schema-11)の適格性確認であり、
+後続の文書専用publication commitを対象としません。
+
+## Scope capture policy
+
+**現在の契約：service 0.0.26 / API v1 / schema 11、
+stage `m2-scope-capture-policy`。実装はlocal・native CI検証済みです。**
+現在のAPI、worker、SDK、MCP、hook、管理componentをすべて対応版に揃えます。
+API/worker/readinessと管理検査は厳密なmigration履歴**1〜11**と
+**`public`内の`vector` 0.8.6**を要求します。固定PostgreSQLは**18.6**のままです。
+以下の過去releaseの合格は現在のtreeを適格とはしません。
+
+`pg-agmemory scope-capture get|set`は`PGAG_ADMIN_DATABASE_URL`を使う管理者専用CLIです。
+memory REST route、SDK resource、MCP toolではありません。
+Native/SDKは**31 memory resource**、MCPは**4 tool**、hookは不変です。
+認証付きcapabilitiesに次を追加します。
+
+```json
+{
+  "capture_policy": {
+    "transport": "admin-cli",
+    "command": "scope-capture",
+    "compare_and_swap": "tenant_access_epoch",
+    "fields": ["enabled", "source_namespaces", "consent_references", "max_content_bytes"],
+    "enforced_on": ["observe", "capture", "capture_batch"],
+    "replay_revalidated": true,
+    "unconfigured": "legacy_admission",
+    "secret_pii_detection": false,
+    "provider_egress_control": false
+  }
+}
+```
+
+### Policy document and mutation
+
+closedな全置換であり、4 fieldすべて必須、未知fieldは拒否します。
+`enabled`はstrict booleanです。`source_namespaces`と`consent_references`は
+それぞれ`null`（制限なし）、または空白除去後**1〜256文字**の相異なる**最大64文字列**で、
+C0 controlと不正UTF-8を含めません。listを正規sortし、空白正規化後の重複は不正です。
+`[]`はすべて拒否します。既存requestの空白正規化後、大文字小文字を区別した完全一致で、
+wildcard、case folding、同意lookupはありません。
+`max_content_bytes`はstrict整数**1〜262144**で、正規化した`Observe.content`の
+UTF-8 byte数に適用します。raw JSONやcapture request全体の上限ではありません。
+既存の本文**65,536文字**上限とNative request body **256 KiB**上限は独立に維持します。
+
+rowなしは`{enabled: true, source_namespaces: null, consent_references: null,
+max_content_bytes: 262144}`を意味します。`get`はtenant/scope UUIDを受け付け、
+mutation引数は受け付けません。`set`には`--expected-access-epoch`と完全なJSONの
+`--policy-file`（**64 KiB**上限）も必要です。`access_epoch`は現在のtenant epoch、
+`policy_access_epoch`は最後のpolicy変更epoch（rowなしなら`null`）です。
+`configured`はrow有無、`changed`はこの操作による実変更を示します。
+tenant CASは当該scopeだけでなく、他scopeのpolicy/membership変更も含みます。
+
+古いepochは同値policyでも`access_epoch_conflict`です。
+同値policy（listの順序変更やrowなしでのdefault設定を含む）はno-opで、
+epoch増加、row作成、audit eventはありません。完全なlegacy policyへ戻しても
+以前設定したrowは残ります。実変更はpolicy書込み、tenant epochの一度だけの増加、
+private `memory_ops.capture_policy_event`の変更前後snapshotと`database_role`を原子的に記録します。
+signed bigint最大値**9223372036854775807**でも正しいepochのno-opは可能ですが、
+実変更は`access_epoch_exhausted`となり、部分書込みはありません。
+
+共有admin helperはscope-accessのerror/import互換性、schema/extension/role検証、
+commitから**CLI出力deliveryまで**のtenant session advisory barrierを維持します。
+roleにはforced RLS bypassと必要なtable/schema権限が必要で、
+runtime資格情報を管理者資格情報として使いません。
+既存`pg_agmemory.scope_access`の`ScopeAccessError`、`MAX_EPOCH`、`Epoch`の
+importは維持し、`ScopeAccessError`は`pg_agmemory.admin.AdminError`のaliasです。
+公開SDKのadmin resource追加ではありません。
+schema 11はFORCE RLSの`memory.scope_capture_policy`を追加し、
+runtimeは現在読取り可能なscopeの**SELECTのみ**です。
+FORCE RLSのprivate auditに**runtime accessはありません**。
+管理失敗の出力は`{error: {code, outcome_unknown}}`だけです。
+commit/transport結果が不明なら`get`で現在state/epochを読み、
+必要に応じて特権auditを調べて整合を確認します。mutationのblind再送はしません。
+
+### Admission ordering and limits
+
+現在のscope **readとwrite**認可をpolicy lookup/拒否より先に検査します。
+不存在/未認可scopeは**404 `not_found`**です。observe、capture、batch captureは
+idempotency replayとsource-event dedupより前にpolicyを検証します。
+無効化・制限後は過去の完全一致replayも**403 `capture_policy_denied`**となり得ます。
+拒否時はsource、idempotency、episode、job、auditを書き込みません。
+不正な保存policyは**503 `capture_policy_invalid`**でfail-closed、
+capture本文の不正UTF-8は既存Pydantic request検証で**422 `invalid_request`**です。
+capture専用の新errorはありません。通常のrequest形状/size検証も維持し、
+OpenAPIはpolicy拒否の型付き403 error応答を宣言します。
+
+SDKは`capture_policy_denied`と`capture_policy_invalid`を既知Native codeとして保持します。
+mutationの403拒否は`retryable: false` / `outcome_unknown: false`です。
+503はfail-closedなpolicy応答でも保守的に
+`retryable: true` / `outcome_unknown: true`を維持します。
+これらのflagは自動retryや元key/bodyの変更を許可しません。
+
+これは**将来のepisode受付**制御であり、遡及削除やcancelではありません。
+既存内容はACLに従って読取り可能で、既存episodeを使う明示remember/jobも許可します。
+実変更はclaim済みjobと古いcontext/checkpoint epochをfenceしますが、
+workerは新epochで復旧できます。capture無効化はqueued publicationの永久停止を約束しません。
+同意検証、secret/PII検出、provider egress認可、自動capture/抽出/合成、
+compactionではありません。同意参照はcaller申告labelにすぎず、
+operator推論は別経路のままです。
+
+[管理とmigration](operations/README-jp.md#scope-capture-administration)、
+[ADR 0026](adr/0026-scope-capture-policy-jp.md)、
+[適格性確認の証拠](#v0026--schema-11)を参照してください。
 
 ## 実装済みの範囲
 
@@ -20,7 +125,7 @@ Janome同梱辞書はsoftware依存であり、保存されたapplication memory
 | Endpoint | 現在の動作 |
 |---|---|
 | `POST /v1/observe` | caller指定の発生時刻・同意参照とともにepisodeを1件保存。revisionは`1`、`synthesis_job_id`は`null`で、job enqueueは行わない |
-| `POST /v1/episodes/query` | 既存の現在読取り可能scopeのepisode metadataをread-only照会。半開occurred-time境界とrecorded-time keyset page。v25 local・native CI検証済み |
+| `POST /v1/episodes/query` | 既存の現在読取り可能scopeのepisode metadataをread-only照会。半開occurred-time境界とrecorded-time keyset page。v26実装はlocal・native CI検証済み |
 | `POST /v1/captures` | episode一つと明示構造化publication job一つを原子的にcommit/再利用。`201`はepisode/job組でありassertion公開済みではない |
 | `POST /v1/captures/batch` | episode一つと同一scopeの明示proposal 1〜16件を原子的受付。順序付きjob参照で公開は独立 |
 | `POST /v1/remember` | 同一scopeの読取り可能なepisodeからの原文引用を根拠とし、明示的に要求された構造化assertionを保存 |
@@ -60,14 +165,15 @@ PostgreSQLへの継続的なreadiness検査ではありません。
 
 ## Selectable inference providers
 
-**v0.0.25/schema 10はlocal・native CI検証済みで、M2完了ではありません。**
+**既存provider契約を維持し、v26実装はlocal・native CI検証済みですが、M2完了ではありません。**
+以下のCA結果は過去v25の証拠であり、v26の適格性確認ではありません。
 上限付き変更はDocker baseの`SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`指定と、
 non-root production smokeでの環境変数値・root CA store読込み検査です。
 local実libpq TLS 9 caseと対象Ruffが合格し、別のnon-root runtime検査で
 環境変数値とtrusted CA 150件の読込みを確認しました。
 明示DSN CA fileを使ったv24 Azure live実行とは別です。
 local full suiteと全check/smokeは合格し、完全一致SHAのnative CIは合格しました。
-stage `m2-selectable-inference`、`auto_synthesis: false`、
+過去v25のstageは`m2-selectable-inference`です。`auto_synthesis: false`、
 `model_inference.live_provider_qualified: false`は不変です。
 任意の`providers` extraは既存の**httpx==0.28.1**を固定し、新しい依存versionはありません。
 同じcore distributionで、独立した軽量packageではありません。
@@ -165,7 +271,7 @@ CLI成功は`{status: "ok", result, error: null}`、provider失敗は
 
 ### Deployment and qualification boundary
 
-stage `m2-selectable-inference`はfeature `optional_provider_adapters`と次を追加します。
+stage `m2-scope-capture-policy`はfeature `optional_provider_adapters`と次を維持します。
 
 ```json
 {
@@ -182,9 +288,9 @@ stage `m2-selectable-inference`はfeature `optional_provider_adapters`と次を�
 }
 ```
 
-厳密なservice **0.0.25 / API v1 / schema 10**、schema履歴1〜10、
+厳密なservice **0.0.26 / API v1 / schema 11**、schema履歴1〜11、
 MemoryDBのPostgreSQL 18.6 / `vector` 0.8.6 artifact固定を維持します。
-SQL migrationや依存version変更はなく、推論DSNは別のAzure DBにできます。
+schema 11はcapture policy migration 011を追加し、依存versionは不変です。推論DSNは別のAzure DBにできます。
 Flexible Server/HorizonDBでMemoryDB全体をhostingする適格性確認ではありません。
 文書上のAzure version/preview制約はlive検証ではありません。
 [公式参照とlifecycle制約](adr/0024-selectable-inference-jp.md#azure-reference-boundary)を参照してください。
@@ -198,7 +304,7 @@ Azureの英語入力要約が一度スペイン語になり、言語/grounding/�
 
 ## Episode query and pagination
 
-**v0.0.25/schema 10はlocal・native CI検証済みです。**
+**v0.0.26/schema 11で既存契約を維持します。実装はlocal・native CI検証済みです。**
 Native JWT認証付き`POST /v1/episodes/query`はread-onlyで現在read権限を要求し、
 write権限や`Idempotency-Key`は不要です。closedな`QueryEpisodes`は次だけを受け付けます。
 
@@ -266,8 +372,8 @@ read-only応答消失はsanitizedな`outcome_unknown: false`で、mutation結果
 自動pagination/retry、provider呼出し、cache、SDK管理/worker methodはありません。
 Native/SDKは**31 resource method**で、MCPの4 toolとclosed hookは不変、
 episode-query toolやhook fieldはありません。
-厳密なservice **0.0.25 / API v1 / schema 10**を要求します。
-stage `m2-selectable-inference`はfeature `episode_query`を維持します。
+厳密なservice **0.0.26 / API v1 / schema 11**を要求します。
+stage `m2-scope-capture-policy`はfeature `episode_query`を維持します。
 
 ```json
 {
@@ -282,16 +388,15 @@ stage `m2-selectable-inference`はfeature `episode_query`を維持します。
 }
 ```
 
-v24→v25はapplication-onlyで、schema 10/履歴1〜10と固定artifactを維持し、
-SQL migrationや依存version変更はありません。
-旧componentを停止/drainして対応版を使い、混在versionは保証しません。
+現在v26はschema 11/履歴1〜11とmigration 011を要求し、依存versionと固定artifactは不変です。
+旧componentを停止/drainしてmigration後に対応版を使い、混在versionは保証しません。
 [運用](operations/README-jp.md#episode-query-and-pagination)、
 [ADR 0023](adr/0023-episode-query-jp.md)、
 [適格性確認の証拠](#v0023--schema-10)を参照してください。
 
 ## Explicit batch capture
 
-**v0.0.25/schema 10はlocal・native CI検証済みです。**
+**v0.0.26/schema 11で既存契約を維持します。実装はlocal・native CI検証済みです。**
 `POST /v1/captures/batch`はNative JWTとcaller所有の`Idempotency-Key`を要求し、
 既存の現在tenant/scope read/write権限、RLS、response-drain barrierを適用します。
 closedな`CaptureBatch`は`episode: Observe`と
@@ -310,6 +415,10 @@ provider呼出し、自動captureではありません。literal根拠は真実�
 既存`Capture`、`CaptureResult`、`POST /v1/captures`、`atomic_capture`は単一job形式を維持します。
 
 ### 原子的受付とjob単位の公開
+
+現在のscope認可と[capture policy](#scope-capture-policy)を、
+完全一致receipt replayとsource/intent dedupの両方より先に検査します。
+以下の結果はpolicyがepisodeを許可する場合で、policy拒否時は書込みません。
 
 Observeと`Jobs.enqueue`を既存の一つのtenant transaction/barrierで実行します。
 operation `capture_batch`のreceipt/auditを持ち、内部合成は別の
@@ -352,8 +461,8 @@ callerは不確実なmutation結果で同じkey/bodyを維持し、取消はroll
 個別に有効な大きいcandidate 16件でもNative body上限を超えて**413**になり得ます。
 SDKは上限を回避せず、requestを分割しません。
 Native/SDKは**31 resource method**で、MCPの4 toolとclosedなread-only hookは不変、
-batch操作/fieldはありません。厳密なservice **0.0.25 / API v1 / schema 10**を要求します。
-stage `m2-selectable-inference`はfeature `atomic_batch_structured_capture`を維持します。
+batch操作/fieldはありません。厳密なservice **0.0.26 / API v1 / schema 11**を要求します。
+stage `m2-scope-capture-policy`はfeature `atomic_batch_structured_capture`を維持します。
 
 ```json
 {
@@ -369,16 +478,15 @@ stage `m2-selectable-inference`はfeature `atomic_batch_structured_capture`を�
 ```
 
 既存`atomic_capture` metadataは`max_jobs: 1`で不変です。
-v24→v25はapplication-onlyでschema 10/履歴1〜10と固定artifactを維持し、
-SQL migrationや依存version変更はありません。
-旧componentを停止/drainして対応版を使い、混在versionは保証しません。
+現在v26はschema 11/履歴1〜11とmigration 011を要求し、依存versionと固定artifactは不変です。
+旧componentを停止/drainしてmigration後に対応版を使い、混在versionは保証しません。
 [運用](operations/README-jp.md#explicit-batch-capture)、
 [ADR 0022](adr/0022-batch-capture-jp.md)、
 [検証状況と証拠](#v0022--schema-10)を参照してください。
 
 ## Exact entity query and pagination
 
-**v0.0.25/schema 10はlocal・native CI検証済みです。**
+**v0.0.26/schema 11で既存契約を維持します。実装はlocal・native CI検証済みです。**
 Native JWT認証付き`POST /v1/entities/query`はread-onlyで、現在のread権限が必要ですが、
 write権限や`Idempotency-Key`は不要です。closedな`QueryEntities`は次だけを受け付けます。
 
@@ -455,20 +563,20 @@ SDK response parsingも100-entity上限を検証します。
 Native/SDKは**31 resource method**で、MCPの4 toolは不変、
 closed hookに新entity field/operationはありません。SDKの管理/worker機能、
 mutation、provider呼出し、cache、自動identity選択は追加しません。
-全adapterで厳密な**service 0.0.25 / API v1 / schema 10**を要求します。
-stage `m2-selectable-inference`は`entity_query`を維持します。
+全adapterで厳密な**service 0.0.26 / API v1 / schema 11**を要求します。
+stage `m2-scope-capture-policy`は`entity_query`を維持します。
 `endpoint: "/v1/entities/query"`、`match: "exact"`、
 `order: ["recorded_at_desc", "memory_id_desc"]`、`pagination: "exclusive_keyset"`、
 `max_items: 100`です。
-v24→v25はapplication-onlyで、schema 10/履歴1〜10と固定artifactを維持し、
-SQL migration、依存version、AGE変更はありません。
+現在v26はschema 11/履歴1〜11とmigration 011を要求し、
+依存version、固定artifact、AGEは変更しません。
 旧componentを停止/drainして対応版を起動し、混在versionは保証しません。
 [運用](operations/README-jp.md#exact-entity-query-and-pagination)、
 [ADR 0021](adr/0021-entity-query-jp.md)、[過去のv21証拠](#v0021--schema-10)を参照してください。
 
 ## Assertion metadata history
 
-**v0.0.25/schema 10はlocal・native CI検証済みです。**
+**v0.0.26/schema 11で既存契約を維持します。実装はlocal・native CI検証済みです。**
 read-only `POST /v1/assertions/history`にはNative JWT認証と現在のread権限が必要で、
 `Idempotency-Key`やwrite権限は不要です。
 closedな`AssertionHistory` modelは次だけを受け付けます。
@@ -547,20 +655,20 @@ MCP/hookのsafe-error allowlistは不変です。
 mutation、cache、provider呼出し、watch、retention objectは追加しません。
 Native/SDKは**31 resource method**で、MCPの4 toolとclosed hookは不変です。
 history tool/fieldやSDKの管理/worker機能は追加しません。
-全adapterで厳密な**service 0.0.25 / API v1 / schema 10**を要求します。
-stage `m2-selectable-inference`は`assertion_history` metadataを維持します。
+全adapterで厳密な**service 0.0.26 / API v1 / schema 11**を要求します。
+stage `m2-scope-capture-policy`は`assertion_history` metadataを維持します。
 `endpoint: "/v1/assertions/history"`、`order: "revision_desc"`、
 `pagination: "exclusive_revision"`、`max_items: 100`、`includes_values: false`、
 `includes_evidence_quotes: false`です。
-v24→v25はapplication-onlyで、schema 10/履歴1〜10と固定artifactを維持し、
-SQL migrationや依存version変更はありません。
+現在v26はschema 11/履歴1〜11とmigration 011を要求し、
+依存versionと固定artifactは変更しません。
 旧componentを停止/drainして対応版だけを起動し、混在version互換性は主張しません。
 [運用](operations/README-jp.md#assertion-metadata-history)、
 [ADR 0020](adr/0020-assertion-history-jp.md)、[過去の証拠](#v0020--schema-10)を参照してください。
 
 ## Owned-job query and pagination
 
-**v0.0.25/schema 10はlocal・native CI検証済みです。**
+**v0.0.26/schema 11で既存契約を維持します。実装はlocal・native CI検証済みです。**
 read-only `POST /v1/jobs/query`にはNative JWT認証が必要で、
 `Idempotency-Key`やwrite権限は不要です。closedな`QueryJobs`のfieldは次だけです。
 
@@ -628,20 +736,20 @@ sanitizedなread-only errorの`outcome_unknown: false`を使い、自動retry/pa
 既存SDK safe `job_invalidated`を再利用し、新error codeは追加しません。
 **Native/SDK resource methodは31**で、MCPの4 toolは不変、MCP job toolやhook fieldはありません。
 管理/worker CLI機能はSDK resourceではありません。
-全adapterで厳密な**service 0.0.25 / API v1 / schema 10**を要求します。
-stage `m2-selectable-inference`は`job_query` metadataを維持します。
+全adapterで厳密な**service 0.0.26 / API v1 / schema 11**を要求します。
+stage `m2-scope-capture-policy`は`job_query` metadataを維持します。
 `endpoint: "/v1/jobs/query"`、`ownership: "caller"`、
 `order: ["created_at_desc", "job_id_desc"]`、`pagination: "exclusive_keyset"`、
 `max_items: 100`です。
-v24→v25にはSQL migration、依存version/artifact固定値変更はありません。
-旧componentを停止/drainして対応版を使い、履歴1〜10は不変です。
+過去v24→v25にはSQL migration、依存version/artifact固定値変更はありませんでした。
+現在v26は停止/drain後のmigration 011と履歴1〜11を要求します。
 性能、MVP、本番、DR適格性確認は主張しません。
 [運用](operations/README-jp.md#owned-job-query-and-pagination)、
 [ADR 0019](adr/0019-job-query-jp.md)、[過去の証拠](#v0019--schema-10)を参照してください。
 
 ## Checkpoint-head lookup
 
-**既存checkpoint head契約を維持します。v0.0.25はlocal・native CI検証済みです。**
+**既存checkpoint head契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**
 `POST /v1/checkpoints/head`はNative JWT認証とscopeの現在のread権限を要求し、
 write権限は不要です。`Idempotency-Key`も不要です。
 closedな型付き`CheckpointBranch` bodyは必須UUIDの`scope_id`、`run_id`、`branch_id`だけです。
@@ -697,10 +805,10 @@ read-only transport失敗は`outcome_unknown: false`で、自動retryはあり�
 `checkpoint_invalidated`は既存SDK safe codeであり、新error codeは追加しません。
 **Native/SDK resource methodは31**となりますが、**MCP toolは4**のままです。
 MCP/hook surfaceは不変で、checkpoint toolやhook入力fieldはありません。
-全adapterで厳密な**service 0.0.25 / API v1 / schema 10**を要求します。
-API/worker/readinessは厳密な履歴1〜10を維持します。
-v24→v25にはSQL migration、依存version/artifact固定値変更がなく、旧componentを停止/drainして対応版を使います。
-stageは`m2-selectable-inference`で、capabilitiesの`checkpoint_head`を維持します。
+全adapterで厳密な**service 0.0.26 / API v1 / schema 11**を要求します。
+API/worker/readinessは厳密な履歴1〜11を要求します。
+過去v24→v25にはSQL migration、依存version/artifact固定値変更がありませんでした。現在は停止/drain後にmigration 011を適用します。
+stageは`m2-scope-capture-policy`で、capabilitiesの`checkpoint_head`を維持します。
 `endpoint: "/v1/checkpoints/head"`、`read_only: true`、
 `branch_identity: ["scope_id", "run_id", "branch_id"]`、`fallback_to_ancestor: false`です。
 harness連携、compaction、MVP、汎用復旧/本番/DRの適格性確認ではありません。
@@ -709,7 +817,7 @@ harness連携、compaction、MVP、汎用復旧/本番/DRの適格性確認で�
 
 ## Exact structured recall filters
 
-**既存recall filter契約を維持します。v0.0.25はlocal・native CI検証済みです。**
+**既存recall filter契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**
 既存requestへ`Recall.filters: RecallFilters | None = None`を追加します。
 `RecallFilters`は共有の型付きclosed nested契約で、未知fieldを拒否します。
 
@@ -764,10 +872,10 @@ SDK recallはread-only、`outcome_unknown: false`、sanitized call時error、自
 hook入力は`filters`に**非対応**で、未知fieldを拒否します。
 内部`Recall.filters`は既定`None`で、信頼する起動時境界を維持します。
 filterは権限付与、内容検証、意図推論を行いません。
-v20からのSQL migration、依存version/index変更、永続priority、cacheは追加しません。
-schema 10と厳密な履歴1〜10を維持し、停止/drain後に対応する
-**service 0.0.25 / API v1 / schema 10** componentを使います。
-stageは`m2-selectable-inference`で、capabilitiesの`recall_filters`を維持します。
+recall filter自体は依存version/index変更、永続priority、cacheを追加しません。
+schema 11と厳密な履歴1〜11を要求し、停止/drain・migration後に対応する
+**service 0.0.26 / API v1 / schema 11** componentを使います。
+stageは`m2-scope-capture-policy`で、capabilitiesの`recall_filters`を維持します。
 `fields: ["kind", "subject", "predicate"]`、`match: "exact"`、`combination: "and"`、
 `retrieval_modes: ["lexical", "vector", "hybrid"]`です。
 MVP、意味品質、性能、本番、DRの適格性確認は主張しません。
@@ -776,7 +884,7 @@ MVP、意味品質、性能、本番、DRの適格性確認は主張しません
 
 ## Required-context recall
 
-**既存required-context契約を維持し、v0.0.25はlocal・native CI検証済みです。**
+**既存required-context契約を維持し、v0.0.26実装はlocal・native CI検証済みです。**
 既存`Recall`への追加fieldであり、新routeやSDK methodではありません。
 
 | Request規則 | 契約 |
@@ -843,10 +951,10 @@ hook入力は`required_memory_refs`に**非対応**で、追加fieldとして拒
 内部で構築する`Recall`は既定`[]`のままで、host pinningは追加しません。
 共有の制限付きsafe-code catalogに`budget_exhausted`を追加し、
 SDKはより広いNative error catalogを維持します。
-adapterは厳密な**service 0.0.25 / API v1 / schema 10**を要求します。
-API/worker/readinessは厳密なschema履歴1〜10を維持します。
-v24→v25に**migration、依存upgrade、固定image変更はなく**、古いschemaは停止/drain後にmigrationします。
-stageは`m2-selectable-inference`で、capabilitiesに`required_context`を維持します。
+adapterは厳密な**service 0.0.26 / API v1 / schema 11**を要求します。
+API/worker/readinessは厳密なschema履歴1〜11を要求します。
+過去v24→v25に**migration、依存upgrade、固定image変更はありませんでした**。現在は停止/drain後にmigration 011を適用します。
+stageは`m2-scope-capture-policy`で、capabilitiesに`required_context`を維持します。
 `retrieval_modes: ["lexical"]`、`max_refs: 16`、`order: "request_order"`、
 `budget_policy: "all_required_or_error"`です。
 [運用](operations/README-jp.md#required-context-recall)、
@@ -854,7 +962,7 @@ stageは`m2-selectable-inference`で、capabilitiesに`required_context`を維�
 
 ## Explicit job cancellation
 
-**既存job取消契約を維持し、v0.0.25はlocal・native CI検証済みです。**
+**既存job取消契約を維持し、v0.0.26実装はlocal・native CI検証済みです。**
 `POST /v1/jobs/{job_id}/cancel`はNative JWT認証とcallerの`Idempotency-Key`を要求します。
 `CancelJob`が受け付けるのは次のfieldだけです。
 
@@ -934,8 +1042,8 @@ SDKの非同期`cancel_job(UUID, CancelJob, *, idempotency_key) -> JobReceipt`�
 modelを再検証し、正確なHTTP 200を要求してsafe Native error catalogへ`job_cancel_conflict`を追加します。
 episode照会による現在のNative resource/SDK surfaceは**31 method**です。MCPの4 toolとread-only hookは変更しません。
 Python taskのcancelはこのjob取消endpointを呼びません。
-全adapterは**service 0.0.25 / API v1 / schema 10**を要求し、readinessは厳密な履歴1〜10を検査します。
-過去v0.0.15のstageは`m2-job-cancellation`、現在は`m2-selectable-inference`です。
+全adapterは**service 0.0.26 / API v1 / schema 11**を要求し、readinessは厳密な履歴1〜11を検査します。
+過去v0.0.15のstageは`m2-job-cancellation`、現在は`m2-scope-capture-policy`です。
 capabilitiesは`job_cancellation` metadataを維持します。
 `endpoint: "/v1/jobs/{job_id}/cancel"`、`compare_and_swap: ["state", "attempt"]`、
 `terminal_state: "cancelled"`、`provider_interruption: false`を追加します。
@@ -944,7 +1052,7 @@ capabilitiesは`job_cancellation` metadataを維持します。
 
 ## Runtime readiness
 
-**既存readiness契約を維持し、v0.0.25/schema 10はlocal・native CI検証済みです。**
+**既存readiness契約を維持し、v0.0.26/schema 11実装はlocal・native CI検証済みです。**
 health probeはpublic・認証不要のpathであり、Native memory resource routeではありません。
 `GET /healthz`は起動成功後にDBを呼ばず正確な`{"status":"ok"}`を返す動作を維持します。
 v0.0.14で導入した`GET /readyz`は渡された認証headerを無視し、tenant/principalを選びません。
@@ -968,7 +1076,7 @@ admin資格情報やfallbackは使いません。API起動とworker検証を含�
 
 - superuser、`BYPASSRLS`、`memory`または`memory_ops`のtable所有権/owner-role membershipを
   拒否し、`NOINHERIT` membershipも対象です。
-- 厳密なmigration履歴`[1,2,3,4,5,6,7,8,9,10]`を要求します。
+- 厳密なmigration履歴`[1,2,3,4,5,6,7,8,9,10,11]`を要求します。
 - **`public`内の`vector` 0.8.6**を要求します。
 
 memory本文読取り、tenant lock、audit/epoch/job/receipt書込み、migration、
@@ -1010,20 +1118,20 @@ busy 503も考慮したorchestrator失敗/復旧thresholdを設定し、
 deployment perimeterでpublic probeを制限/rate-limitします。
 Kubernetes、Compose、Docker `HEALTHCHECK`設定は追加しません。
 
-過去v0.0.14のstageは`m2-runtime-readiness`で、現在は`m2-selectable-inference`です。認証付きcapabilitiesに
+過去v0.0.14のstageは`m2-runtime-readiness`で、現在は`m2-scope-capture-policy`です。認証付きcapabilitiesに
 `health_probes` metadataとして`liveness: "/healthz"`、`readiness: "/readyz"`、
 `readiness_timeout_seconds: 5.0`、`readiness_max_in_flight_per_process: 1`を追加します。
 episode照会を含むpublic memory surfaceは**31 resource method**のままで、health pathはSDK resource-route coverage対象外です。
 SDK/MCP/hook probe methodは追加しません。
-対応adapterはすべて**service 0.0.25 / API v1 / schema 10**を要求します。
-readiness動作は維持しますが、job取消のschema 10にはmigration 010が必要です。
+対応adapterはすべて**service 0.0.26 / API v1 / schema 11**を要求します。
+readiness動作は維持し、schema 11には既存job取消のmigration 010に続く011が必要です。
 依存や固定imageは変更しません。
 [運用](operations/README-jp.md#runtime-readiness)と
 [ADR 0014](adr/0014-runtime-readiness-jp.md)を参照してください。
 
 ## Scope-access administration
 
-**既存scope-access契約を維持し、v0.0.25はlocal・native CI検証済みです。**
+**既存scope-access契約を維持し、v0.0.26実装はlocal・native CI検証済みです。**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 は特権管理CLIであり、agent toolやruntime APIではありません。
 **既存の同一tenant**のtenant/scope/principalを対象とし、identityやscopeは作成しません。
@@ -1044,7 +1152,7 @@ JWT、`--subject`、`--once`、runtime URLへのfallbackはありません。
 `SELECT`/`UPDATE`/`INSERT`/`DELETE`、`memory_ops`の`USAGE`と
 `scope_access_event`の`INSERT`が必要です。
 readもsession advisory barrierを取得し、table権限がread-onlyでもRLS bypass roleは必須です。
-操作前にrole、厳密なschema履歴**1〜10**、**`public`内の`vector` 0.8.6**を検査します。
+操作前にrole、厳密なschema履歴**1〜11**、**`public`内の`vector` 0.8.6**を検査します。
 
 | 操作 | 必須intent | 意味 |
 |---|---|---|
@@ -1138,7 +1246,7 @@ cancel、process kill、stdout喪失でも変更結果は不明になり得ま�
 
 barrierは配信済みcontextを撤回できません。最新ACL/削除記録のrestoreは手動であり、
 grantによってpurge済みdataは復活しません。
-過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-selectable-inference`です。
+過去のv0.0.13 stageは`m2-scope-access`で、現在stageは`m2-scope-capture-policy`です。
 capabilitiesは`scope_access_administration`
 metadataとして`transport: "admin-cli"`、`command: "scope-access"`、
 `compare_and_swap: "tenant_access_epoch"`、`audit: "database_role"`を追加します。
@@ -1148,7 +1256,7 @@ PostgreSQL 18.6/pgvector 0.8.6の固定imageとPython依存版は変更しませ
 
 ## Python SDK
 
-**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.25はlocal・native CI検証済みです。**
+**SDKはmemoryの31 methodを維持し、providerは別library/CLIです。v0.0.26実装はlocal・native CI検証済みです。**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError`で既存public Native
 memory resource用のasync専用clientを公開します。
 request/response型は`pg_agmemory.models`からimportします。
@@ -1167,7 +1275,7 @@ Docker test/runtimeは`mcp`・`hook`とともに`sdk`・`providers`を含みま�
 core-only/hook-only/sdk-only/providers-only検査と、全4 profileにMCP SDKがないことの検査を実装しています。
 真のnoneditable core/hook/sdk/providersの全4導入profileと同梱`py.typed`検査は、
 過去のv24・987件の適格性確認でlocalと両native architectureとも合格しました。
-v25の適格性確認ではありません。
+v26の適格性確認ではありません。
 Python依存のupgradeはありません。
 
 `AsyncMemoryClient(api_url, api_token)`へ明示引数を渡し、信頼できないcall入力から
@@ -1179,7 +1287,7 @@ request scopeは現在のserver ACLを狭めるだけで、identity変更や権�
 
 client instanceごとに`async with ... as memory:`を一度だけ使います。
 entryで所有HTTP clientを作り、resource利用前に必須の認証付きcapabilities照会で
-厳密な**service `0.0.25` / API `v1` / schema `10`**一致を要求します。
+厳密な**service `0.0.26` / API `v1` / schema `11`**一致を要求します。
 entry失敗時も`finally`で所有resourceを閉じます。
 entry前/exit後のcallは`client_not_open`、再entryは`client_already_used`で拒否します。
 exitは接続を解放するだけで、**dataは消去しません**。
@@ -1249,7 +1357,7 @@ MCP/hookのrequest上限は引き上げません。
 `MemoryClientError`は既存`AdapterFailure`のaliasです。
 `exc.error.code`、`.retryable`、`.outcome_unknown`、`.native_status`、
 `.request_id`を参照します。診断はsanitizedで、raw応答/入力/tokenを含めません。
-SDKだけが現在のNative domain error catalogを許可し、
+SDKだけが`capture_policy_denied`と`capture_policy_invalid`を含む現在のNative domain error catalogを許可し、
 MCP/hookの共有の制限付きsafe code集合にはrequired-context errorの`budget_exhausted`を追加します。
 未知server codeは`native_api_error`です。
 call時の不正request model、path UUID、idempotency keyは**送信前**に
@@ -1266,7 +1374,8 @@ keyは**1〜256文字の可視ASCIIで、trimしません**。
 network error、5xx、不正応答、想定外成功status、不正成功bodyでは、
 変更結果を保守的に不明と扱います。SDKはretry、新key生成、未commitの推測をしません。
 `retryable`は情報であり、自動retry指示ではありません。
-**同じkeyとbody**で照合し、現在のACL、削除、revision、replay guardを維持します。
+**同じkeyとbody**で照合し、現在のACL、capture policy、削除、revision、replay guardを維持します。
+policyによるreplay拒否は、元の受付がcommitしなかった証明ではありません。
 Python taskのcancelは`MemoryClientError`へ変換せず伝播します。処理中の変更は同様に結果不明と
 扱って照合し、cancelを**rollbackと見なしてはいけません**。`cancel_job`も呼びません。
 
@@ -1459,7 +1568,7 @@ embedding-input/upload toolは追加しません。
 Native応答の非lexical `retrieval_mode`、non-nullの`embedding_model`/item `retrieval`、
 trueの`coverage.vector_incomplete`も拒否し、予期しないvector出力を黙って降格しません。
 Observe、capture、job、workerはembedding生成やprovider呼出しを行いません。
-MCP両protocol時代を維持し、v0.0.25の起動時一致は**service `0.0.25` / API `v1` / schema `10`**です。
+MCP両protocol時代を維持し、v0.0.26の起動時一致は**service `0.0.26` / API `v1` / schema `11`**です。
 capabilitiesに`retrieval_modes: ["lexical", "vector", "hybrid"]`と
 `default_retrieval_mode: "lexical"`を追加します。
 v0.0.11のAPI stageは`m2-pgvector-retrieval`でした。embedding inputはHTTP 200、upload/replayはHTTP 201です。
@@ -1469,6 +1578,10 @@ M0〜M3/MVP/本番/DR/消去/性能/品質の全gateは未完了です。
 [合成data例](operations/README-jp.md#synthetic-vector-example)を参照してください。
 
 ## Atomic structured capture
+
+schema 11は過去の完全一致replayを含むidempotency/source dedupの前で
+[scope capture policy](#scope-capture-policy)を検査します。
+以下の既存受付/replay結果は現在の認可とpolicy許可を前提とします。
 
 1〜16件のproposalには別の[batch route](#explicit-batch-capture)を使い、
 以下の単一job契約は変更しません。
@@ -1589,7 +1702,7 @@ stage名はM2や他受入gateの完了を意味しません。
 
 captureは**SDKも対象とするNative resource**であり5番目のMCP toolではありません。
 recall-hookは読取り専用で、両adapterとも自動captureしません。
-MCP/hook起動は厳密な**service `0.0.25` / API `v1` / schema `10`**を要求します。
+MCP/hook起動は厳密な**service `0.0.26` / API `v1` / schema `11`**を要求します。
 既存schema 8 migrationは既存capture semanticsとは別です。
 captureはembedding生成、LLM/provider呼出し、intent抽出、自然言語/自動synthesis、意味品質の認定を行いません。
 tenant HTTP response-drain barrierは変更せず、原子的host context配信、回収、
@@ -1608,7 +1721,7 @@ toolやsafe error codeを追加せず、required参照の適格性を迂回で�
 
 v0.0.8で`pg-agmemory mcp`を追加しました。**stdio専用の信頼するlocal Native API
 client**であり、別の永続化/認可serviceではありません。任意の`pg-agmemory[mcp]`は公式
-`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.25のrepository Docker test/runtime両stageに
+`mcp==2.2.0`と`httpx==0.28.1`を固定し、v0.0.26のrepository Docker test/runtime両stageに
 `mcp`・`hook`・`sdk`を含めます。抽出する共有の上限付きNative HTTP clientは以下の
 MCP不変条件をすべて維持する必要があります。過去のv0.0.9はlocalとnative Docker両architectureで
 合格しました。過去v0.0.10/v0.0.11と最終local/native v0.0.12検査も合格しています。
@@ -1685,9 +1798,9 @@ tool引数でURL/header/token/identityを上書きできません。`mcp`の`--s
 拒否します。固定subjectのDB workerと混同しないでください。
 
 stdio提供前に、認証付き`GET /v1/capabilities`で`api_version: "v1"`、
-`service_version: "0.0.25"`、`schema_version: 10`を要求します。
+`service_version: "0.0.26"`、`schema_version: 11`を要求します。
 設定/認証/versionのerrorはsanitized診断だけで非zero終了します。
-v0.0.25はschema 10を維持しますが、adapter自体はmigrationを行いません。
+v0.0.26はschema 11を要求しますが、adapter自体はmigrationを行いません。
 固定tokenの更新にはadapterを再起動し、refresh grantは提供しません。
 起動検証は認可のcacheではなく、全callでNative認証、現在のACL、削除を検査します。
 
@@ -1799,7 +1912,7 @@ URL、token、scope IDは**すべて必須**です。共有`NativeSettings`はor
 これらの不正origin caseは過去のv0.0.9 localと両native CI suiteで検査済みです。
 
 呼出しごとに新しく認証付き`GET /v1/capabilities`で厳密な
-**service `0.0.25` / API `v1` / schema `10`**を要求し、その後`POST /v1/recall`を送ります。
+**service `0.0.26` / API `v1` / schema `11`**を要求し、その後`POST /v1/recall`を送ります。
 `mode: "implicit"`、設定scope/recall値、Nativeの現在時刻defaultを使い、
 eventから過去時刻を指定できません。両callで同じ固定tokenを使用します。
 現在のNative認証、ACL、時間選択、削除、根拠、coverageが引き続き正です。
@@ -1962,8 +2075,9 @@ sourceにはできません。free-text subject/valueをentity IDへ解決しま
 現在の外界の事実として断定するにはsourceへの再照会が必要です。
 取得本文は根拠資料であり、信頼できる指示ではありません。
 
-`consent_reference`はcallerによる同意の申告を記録します。同意台帳の検証、
-capture-policy engine、secret/PII自動除去はありません。
+`consent_reference`はcallerによる同意の申告を記録します。
+scope capture policyはlabelのallowlistを指定できますが、同意台帳の検証や
+secret/PII自動除去はしません。汎用の同意/egress policy engineではありません。
 callerは許可済み・除去処理済みのdataだけを送信してください。
 
 ### Assertion revisionの契約
@@ -2573,25 +2687,25 @@ backupから復元したDBは最新の削除台帳とACL失効を再適用する
 
 ## Schema互換性
 
-**v0.0.25はschema 10を維持し、migrationを追加しません**。
-既存schema 10 DBには[application-only更新](operations/README-jp.md#schema-10-application-only-upgrade)を使います。
+**v0.0.26はschema 11とmigration `011_capture_policy.sql`を要求します**。
+既存schema 10 DBには[schema 11保守更新](operations/README-jp.md#schema-11-scope-capture-policy-upgrade)を使います。
 古いschemaにはv0.0.15でjob state/payload制約とterminal guard用に導入した
-`010_job_cancellation.sql`を、[既存migration sequence](operations/README-jp.md#schema-10-job-cancellation-upgrade)で適用します。
+`010_job_cancellation.sql`を、[011までのmigration sequence](operations/README-jp.md#schema-11-scope-capture-policy-upgrade)で適用します。
 過去のv0.0.13がdurable admin audit用の`009_scope_access.sql`を導入しました。
 既存の特権専用`memory_ops.scope_access_event`はforced RLS、runtime policy/grantなし、
 原子的membership/epoch/audit変更を使います。
 固定PostgreSQL 18.6/pgvector 0.8.6 imageを維持します。
-旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.25 componentだけを
+旧API、worker、adapter、hook、SDK callerを停止/drainしてから対応v0.0.26 componentだけを
 導入します。混在版/rolling互換性は主張しません。
-すべての古いschemaには010までの既存migrationが必要です。
+すべての古いschemaには011までの連続migrationが必要です。
 古いDBには引き続きv0.0.11の`008_pgvector.sql`が必要です。
 migrationは**`public`内の`vector` 0.8.6**を要求し、別schema/版の既存extensionを拒否します。
 上記の固定prebuilt上流DB profileを使い、旧PostgreSQL imageが不変と想定したり、
-未固定extensionを使ったりしないでください。schema 10で古いschemaのprocessを起動してはいけません。
+未固定extensionを使ったりしないでください。schema 11で古いschemaのprocessを起動してはいけません。
 既存episode/assertion revision projectionにはforced RLS、canonical `ON DELETE CASCADE`、
 runtime SELECT/INSERTのみを適用します。
 既存dataの**embedding backfillはなく**、生成/再構築/provider呼出しは明示的な外部操作のままです。
-MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.25`、API `v1`、schema `10`を要求します。
+MCP adapter、hook、SDKはHTTPのみでDDLを行わず、対応するservice `0.0.26`、API `v1`、schema `11`を要求します。
 以下の既存migration履歴はschema 7より古いDBに引き続き適用します。
 
 変更しないmigration 001〜006に続き、追加的な`007_japanese_fts.sql`を適用します。
@@ -2603,7 +2717,7 @@ schema 6からのupgradeは6のままです。一方、明示reindexの失敗は
 projectionを維持します。
 typed graph/job/effect/checkpoint履歴とguard、legacy `Remember` JSON/HMAC順、
 source identity、checkpoint checksumは維持します。projectionはcheckpoint/effect参照kindを
-追加しません。v0.0.25のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`と
+追加しません。v0.0.26のAPI**とworker**は厳密な履歴`[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`と
 schema `public`内のextension `vector` 0.8.6を要求し、不一致と安全でないruntime roleを拒否します。
 
 migration/rebuildにはforced RLSをbypassできる適切な権限の管理者が必要で、
@@ -2611,24 +2725,104 @@ migrationにはDDL権限、`btree_gist`、PostgreSQL serverへ導入した対応
 `row_security = off`はbackfillがRLSで
 filterされる場合にfail-closedにする設定であり、bypass権限を与えません。
 `pg-agmemory reindex-lexical`は選択DBの**全tenantを対象とするoffline管理操作**です。
-`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.25/schema 10 toolingを使い、migration lock下でlexical projectionだけを
+`PGAG_ADMIN_DATABASE_URL`と対応するv0.0.26/schema 11 toolingを使い、migration lock下でlexical projectionだけを
 原子的に置換します。source本文ではなく`profile`と`episodes`/`assertion_revisions`件数を
 出力します。`--subject`はprincipal/scope filterではなく明示拒否し、
 `--once`もworker専用として拒否します。
 旧版・新版の全API**とworker**を停止/drainし、backup、原子的migration/rebuildの後に、
-対応するv0.0.25 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
+対応するv0.0.26 processだけを起動してください。保守中はadapter、hook起動、SDK caller、管理commandも停止します。
 lexical reindexはvectorを生成/投入/再構築しません。
 **すべての旧imageを停止してください。v0.0.1にはschema起動guardがありません。**
 rolling共存やdowngradeは非対応です。
-[現在のschema 10運用](operations/README-jp.md#schema-10-application-only-upgrade)に従ってください。
+[現在のschema 11運用](operations/README-jp.md#schema-11-scope-capture-policy-upgrade)に従ってください。
+schema 10 binaryはschema 11を拒否します。code revertだけではDBは戻らず、
+downgrade commandはありません。更新前backupを保全し、復元DBでtrafficを再開する前に
+現在のACL/削除/policy判断を整合確認してください。
 
 ## 検証証拠
 
 公開repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory)。
 
+<a id="v0026--schema-11"></a>
+
+### v0.0.26 / schema 11 — 実装`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`：local・native CI適格性確認済み
+
+現在milestoneはfeature branch `feat/scope-capture-policy`の
+scope capture policy、stage `m2-scope-capture-policy`です。
+**適格性確認済みschema 11 code rollback checkpointは
+`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`です。**
+継承した**未適格rollback checkpoint `9740f96`**は再開作業を保存したもので、
+適格性確認SHAでも安定したschema 10 fallbackでもありません。
+安定したmigration前の**v25/schema 10 code参照は`869b854`**です。
+いずれのcode参照もDB backupを代替せず、schema 11 DBをdowngradeしません。
+以下の過去v25/v24記録からv26の結果を推測してはいけません。
+
+**最初のlocal試行は1064合格、4失敗、5 skip**で、**適格性確認ではありません**。
+後続修正はSDKのpolicy code保持、型付きOpenAPI 403、既存422 `invalid_request`契約、
+schema ledger期待値、および保護timestampを巻き戻さず実leaseを失効させる復旧fixtureを対象とします。
+修正した復旧coverageは同じjobのattempt 2を確認します。
+この過去の失敗試行は、以下の成功したlocal/native実行とは別記録です。
+
+実装
+[`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`](https://github.com/rioriost/pg_agmemory/commit/c07630009ff4dcc34542e3ea80064d4f10c4d8b5)
+で**Apple Container native Linux arm64の`./scripts/test-containers.sh`がexit 0で合格**しました。
+pytestは**1083合格、opt-in live skip 5件、既存Starlette deprecation warning 1件 / 499.15秒**です。
+Ruff、mypy **source 24ファイル**、strict SDK consumer **1ファイル**、
+**core/hook/sdk/providers**の全optional導入profile、全non-root runtime smokeも合格しました。
+
+scope-capture smokeは管理者CAS、全3受付経路、replay拒否、restore、purgeを確認し、
+既存scope-access smokeも合格しました。
+既存CA、日本語tokenizer、API、readiness、worker、MCP両protocol、
+hook全3 event、capture、vector、SDK、required-context、recall-filter、
+checkpoint-head、cancel、job-query、assertion-history、entity、batch、
+episode-query、synthetic-provider smokeもすべて合格しました。
+**live model/profile呼出しやcloud resourceは使用していません。**
+これは上記実装SHAの結果であり、未commit文書や将来の文書専用commitの結果ではありません。
+
+**完全一致SHAのnative CIも成功しました。**
+実装`c07630009ff4dcc34542e3ea80064d4f10c4d8b5`の
+[run 35308638587](https://github.com/rioriost/pg_agmemory/actions/runs/35308638587)の結果です。
+
+| Native Docker環境 | Job | Pytest結果 |
+| --- | --- | --- |
+| Linux amd64 | [105485882110](https://github.com/rioriost/pg_agmemory/actions/runs/35308638587/job/105485882110) | 1083合格 / opt-in live skip 5件 / 既存warning 1件 / **558.30秒** |
+| Linux arm64 | [105485882271](https://github.com/rioriost/pg_agmemory/actions/runs/35308638587/job/105485882271) | 1083合格 / opt-in live skip 5件 / 既存warning 1件 / **784.48秒** |
+
+両jobでRuff、mypy **source 24ファイル**、strict SDK consumer **1ファイル**、
+全4 optional導入profile、**全non-root runtime smoke**が合格し、
+新capture-policyと既存scope-access coverageも含みます。
+両方が最後の`Container tests ... passed (docker)`確認まで到達しました。
+**live呼出しはありません。** 実装CIの証拠であり、
+後続の文書専用publication SHAでsuiteを実行した証拠ではありません。
+
+| 必要な証拠 | 現在の状態 |
+| --- | --- |
+| 適格性を確認した実装SHAとcommand/environment | `c07630009ff4dcc34542e3ea80064d4f10c4d8b5`、Apple Container native Linux arm64とnative Docker Linux amd64/arm64、`./scripts/test-containers.sh`合格 |
+| Local suite件数、warning/skip、所要時間 | 1083合格 / opt-in live skip 5件 / 既存warning 1件 / 499.15秒 |
+| Ruff、strict mypy/source + SDK consumer件数、導入profile | 合格、source 24 + strict SDK consumer 1ファイル、全4 profile |
+| scope-capture CAS/deny/replay/restoreと既存scope-access barrierを含むproduction smoke | purgeと全既存non-root smokeを含め全3環境合格 |
+| Schema 10→11 migration、RLS/audit分離、最大epochと不明結果のregression | Full local・両native suite合格 |
+| 完全一致SHAのnative amd64/arm64 CI URL、結果、所要時間 | [Source CI 35308638587](https://github.com/rioriost/pg_agmemory/actions/runs/35308638587)成功、amd64 558.30秒 / arm64 784.48秒、各1083合格 / skip 5件 / warning 1件 |
+| 後続の文書専用publication commit | 検査済み実装SHAではなく、その後続commitでのsuite実行は主張しない |
+
+実測証拠だけで更新し、実装とfinal-doc SHA、localとCI結果を区別します。
+新しいlive provider試行を意味しません。
+M2/MVP/production、性能、memory品質、DR、full-erasure gateは未完了です。
+この限定scope-capture-policy milestoneを妨げる未決定事項はありません。
+以下は別gateを持つ将来scopeであり、未完了のv26適格性確認ではありません。
+
+**v26後の次の限定再開点（本変更では未実装）は、M2の自動synthesis、embedding統合、
+compactionと残る品質/task-replay gateです。**
+承認済みepisodeのopt-in抽出/proposal workflowから始め、
+明示的な同意/provider egress承認、untrusted proposal reviewと根拠検証、
+安定したintent/replay処理、EN/JA品質/費用評価を自動publicationより先に別途定義します。
+上限付きcompactionとtask-replay受入は明示gateとし、episode受付から達成済みと推測しません。
+capture policyはprovider egressを認可せず、品質/性能要件も完了させません。
+[ADR 0026](adr/0026-scope-capture-policy-jp.md)を参照してください。
+
 <a id="v0025--schema-10"></a>
 
-### v0.0.25 / schema 10 — local・native CI適格性確認済み
+### 過去のv0.0.25 / schema 10 — local・native CI適格性確認済み
 
 Apple Containerのfull `./scripts/test-containers.sh`は
 **999合格、live skip 5件、既知warning 1件、494.49秒**でした。
