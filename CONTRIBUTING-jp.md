@@ -96,6 +96,16 @@ TLS、catalog・権限検査、parameter binding、入出力上限、
 通常suiteのために実会話データを使ったり、有料resourceやモデルを利用したりしません。
 実モデルの品質・managed serviceの適格性は別検証です。
 [ADR 0024](docs/adr/0024-selectable-inference-jp.md)を参照してください。
+実providerの検査はopt-inです。pytestの`live` markerは
+`PGAG_LIVE_PROVIDER_CONFIG`が未設定ならskipし、承認されたcontainer内の
+合成data検証にのみ設定します。両モデルを含むprofileでは5ケース・6回のモデル呼出しを
+選択し、既存のNative embedding登録・再送・検索・purgeシナリオも再利用します。
+このシナリオには使い捨ての`PGAG_TEST_DATABASE_URL`も必要です。
+契約とlifecycleの検査であり、M2の品質gateではありません。
+通常のローカル/CI実行はlive profileやkeyを注入しません。
+モデル選定、OpenAIの安全な設定、host/containerのloopbackの違いは
+[推論profile](docs/INFERENCE_PROFILES-jp.md)を参照してください。
+検証のためにloopback制約を緩めたり、Ollamaを全interfaceへ公開したりしてはいけません。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

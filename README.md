@@ -88,6 +88,9 @@ See [the contract](docs/STATUS.md#selectable-inference-providers),
 [ADR 0024](docs/adr/0024-selectable-inference.md), and
 [qualification evidence](docs/STATUS.md#v0024--schema-10).
 
+For concrete Ollama/OpenAI configuration files, secret handling, and opt-in live
+checks, see the [inference profile guide](docs/INFERENCE_PROFILES.md).
+
 ## Episode query and pagination
 
 **v0.0.24/schema 10 contract qualified.**

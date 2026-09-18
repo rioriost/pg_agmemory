@@ -8,6 +8,10 @@
 !src/**
 !tests/
 !tests/**
+!examples/
+!examples/inference/
+!examples/inference/ollama.json
+!examples/inference/openai.json
 !scripts/
 !scripts/check-adapter-extras.py
 **/__pycache__/

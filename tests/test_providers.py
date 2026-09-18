@@ -3,6 +3,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from pathlib import Path
 from uuid import UUID
 
 import httpx
@@ -371,21 +372,52 @@ def test_http_api_key_header_and_distinct_embedding_target(monkeypatch):
     assert result.model.name == "synthetic-embedding"
 
 
+@pytest.mark.parametrize("name", ["ollama", "openai"])
+def test_example_profiles_are_valid_and_inspection_makes_no_network_call(monkeypatch, name):
+    path = Path(__file__).parents[1] / "examples" / "inference" / f"{name}.json"
+    settings = parse_settings(path.read_bytes())
+    assert settings.text_model is not None
+    assert settings.embedding_model.dimensions == 768
+    if name == "openai":
+        assert settings.api_key_env == "OPENAI_API_KEY"
+        monkeypatch.setenv("OPENAI_API_KEY", "synthetic-test-key-not-a-credential")
+    else:
+        assert settings.api_key_env is None
+        assert settings.text_model.revision.startswith("ollama-sha256:")
+        assert settings.embedding_model.revision.startswith("ollama-sha256:")
+
+    async def fail_request(*args, **kwargs):
+        pytest.fail("Configuration inspection must not contact a model")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fail_request)
+    result = asyncio.run(HTTPProvider(settings).inspect())
+    assert result["operations"] == ["summarize", "embed"]
+    assert result["inference_tested"] is False
+
+
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "provider_mode", ["synthetic", pytest.param("live", marks=pytest.mark.live)]
+)
 def test_generated_embedding_uses_native_digest_replay_and_current_purge_checks(
-    env, api_process, monkeypatch
+    env, api_process, monkeypatch, request, provider_mode
 ):
+    if provider_mode == "live":
+        provider = request.getfixturevalue("live_provider")
+        if provider.settings.embedding_model is None:
+            pytest.skip("The selected profile has no embedding model")
+    else:
+        mock_http(
+            monkeypatch,
+            lambda request: upstream({"data": [{"index": 0, "embedding": [1.0] + [0.0] * 767}]}),
+        )
+        provider = HTTPProvider(configuration())
     source = UUID(env.observe("Synthetic provider input").json()["memory_id"])
     stale = UUID(env.observe("Synthetic stale provider input").json()["memory_id"])
-    mock_http(
-        monkeypatch,
-        lambda request: upstream({"data": [{"index": 0, "embedding": [1.0] + [0.0] * 767}]}),
-    )
     with api_process("provider-embedding.log") as (http, _):
 
         async def scenario():
             async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
-                provider = HTTPProvider(configuration())
                 canonical = await sdk.embedding_input(Explain(memory_id=source))
                 generated = await provider.embed(InferenceInput(text=canonical.text))
                 assert generated.input_digest == canonical.input_digest

@@ -83,6 +83,9 @@ preview/version/lifecycle制約、operatorのprivacy/budget責任を明示し、
 [ADR 0024](docs/adr/0024-selectable-inference-jp.md)、
 [適格性確認の証拠](docs/STATUS-jp.md#v0024--schema-10)を参照してください。
 
+具体的なOllama/OpenAI設定file、secretの扱い、opt-in live検査は
+[推論profile guide](docs/INFERENCE_PROFILES-jp.md)を参照してください。
+
 ## Episode query and pagination
 
 **v0.0.24/schema 10は適格性確認済みです。**

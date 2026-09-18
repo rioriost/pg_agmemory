@@ -2643,6 +2643,29 @@ live provider互換性、MemoryDBのAzure hosting、品質、budget制御、
 [契約](#selectable-inference-providers)と
 [ADR 0024](adr/0024-selectable-inference-jp.md)を参照してください。
 
+**Local model workflow follow-up（2026-09-18 JST）：**上記987件のsynthetic適格性確認と別に、
+live契約4 caseが**23.97秒**、Native lifecycleのsynthetic/live 2 caseが**3.98秒**で合格しました。
+**別々の実行を合わせたlive 5 case**であり、一括実行の所要時間ではありません。
+実CLI `inspect`/`summarize`/`embed`も成功し、実model呼出しは合計**8回**
+（契約4＋Native 2＋CLI 2。inspectは推論なし）です。
+すべてsynthetic textを使い、Apple ContainerのLinux arm64からguard付きhost bridgeを通って
+host-loopbackのOllama 0.34.1へ接続しました。
+Native upload/replay/recall/purgeとpurge後のreplay/stale upload拒否を確認し、
+固定版PostgreSQL 18.6 / pgvector 0.8.6のtmpfs containerは削除済みです。
+その後のApple Container full `./scripts/test-containers.sh`は
+**989合格、live skip 5件、warning 1件、500.46秒**でした。
+Ruff、mypy **source 22 + strict SDK consumer 1ファイル**、
+core/hook/sdk/providersの全4導入check/smoke、全production smokeも合格しました。
+所有するOllama/host-relay/client-relay processは追跡IDで停止し、
+名前を特定したlive client container/test imageは削除しました。
+full scriptも自身のcontainer/imageをcleanupし、承認済みmodel weightだけを保持します。
+**このpatchのnative CIは未実行です。** Service **0.0.24 / schema 10**とAPI v1は不変で、
+人による品質認定やM2完了ではありません。
+OpenAIは未試験、Azureはregion/target確認待ちのread-only preflight、
+HorizonDBの個別testは免除であって適格性確認ではありません。
+正確なartifact、二つのsynthetic要約、残るscopeは
+[profile guide](INFERENCE_PROFILES-jp.md#recorded-local-contract-evidence)を参照してください。
+
 <a id="v0023--schema-10"></a>
 
 ### v0.0.23 / schema 10 — 過去の実装適格性確認

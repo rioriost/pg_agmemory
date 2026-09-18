@@ -35,7 +35,10 @@ packages = ["src/pg_agmemory"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-markers = ["integration: requires a disposable PostgreSQL database"]
+markers = [
+  "integration: requires a disposable PostgreSQL database",
+  "live: opt-in real inference using PGAG_LIVE_PROVIDER_CONFIG (may incur charges)",
+]
 
 [tool.ruff]
 target-version = "py312"

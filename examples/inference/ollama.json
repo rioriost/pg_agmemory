@@ -1,0 +1,17 @@
+{
+  "backend": "local_http",
+  "endpoint": "http://127.0.0.1:11434/v1",
+  "text_model": {
+    "name": "qwen2.5:7b",
+    "revision": "ollama-sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+  },
+  "embedding_model": {
+    "name": "qwen3-embedding:0.6b",
+    "revision": "ollama-sha256:ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    "dimensions": 768,
+    "distance_metric": "cosine",
+    "normalization": "l2-f32-v1"
+  },
+  "timeout_seconds": 120,
+  "max_output_tokens": 512
+}

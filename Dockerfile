@@ -16,6 +16,7 @@ FROM build AS test
 RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
+COPY examples/ ./examples/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps

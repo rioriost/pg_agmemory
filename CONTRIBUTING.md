@@ -96,6 +96,16 @@ binding, input/output limits, and the absence of automatic retries/fallbacks.
 Never use real conversation data, provision paid resources, or invoke billable
 models merely to run the default suite. Real-model quality and managed-service
 qualification are separate; see [ADR 0024](docs/adr/0024-selectable-inference.md).
+Real-provider cases are opt-in: the `live` pytest marker uses
+`PGAG_LIVE_PROVIDER_CONFIG` and skips when it is unset. Only configure it in an
+authorized, containerized run using synthetic data. A full two-model profile
+selects five cases and six model calls, including the existing Native embedding
+publication/replay/recall/purge scenario; that scenario also requires a disposable
+`PGAG_TEST_DATABASE_URL`. These cases check contracts and lifecycle behavior, not
+M2 quality gates. Default local and CI runs never inject live profiles or keys.
+See [inference profiles](docs/INFERENCE_PROFILES.md) for model selection, safe
+OpenAI configuration, and the host/container loopback distinction. Never loosen
+the loopback restriction or expose Ollama on all interfaces merely to run a test.
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

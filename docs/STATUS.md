@@ -2793,6 +2793,29 @@ quality, budget controls, human-review effectiveness, or M2/MVP completion.
 See [the contract](#selectable-inference-providers) and
 [ADR 0024](adr/0024-selectable-inference.md).
 
+**Local-model workflow follow-up (2026-09-18 JST):** separately from the 987-case
+synthetic qualification above, four live contract cases passed in **23.97 s**;
+the Native lifecycle's synthetic/live pair passed in **3.98 s**. These are **five
+live cases across separate runs**, not one combined timed run. Actual CLI
+`inspect`/`summarize`/`embed` also succeeded: **eight real model calls** total
+(four contract + two Native + two CLI; inspect performs no inference), all using
+synthetic text on Apple Container Linux arm64 through a guarded host bridge to
+host-loopback Ollama 0.34.1. Native upload/replay/recall/purge and rejection of
+post-purge replay/stale upload passed; its pinned PostgreSQL 18.6 / pgvector 0.8.6
+tmpfs container was removed. The full Apple Container `./scripts/test-containers.sh`
+then reported **989 passed, 5 live skipped, 1 warning, 500.46 s**; Ruff, mypy
+**22 source files + 1 strict SDK consumer**, all four core/hook/sdk/providers
+installation checks/smokes, and all production smokes passed.
+Owned Ollama/host-relay/client-relay processes were stopped by tracked IDs;
+the named live client container/test image were removed, and the full script
+cleaned up its own containers/images. Only approved model weights remain.
+**Native CI for this patch has not run.** Service **0.0.24 / schema 10** and API v1
+are unchanged; this is not human quality certification or M2 completion.
+OpenAI is untested; Azure is read-only preflight awaiting region/target confirmation;
+the separate HorizonDB test is waived, not qualified.
+See [the profile guide](INFERENCE_PROFILES.md#recorded-local-contract-evidence)
+for exact artifacts, the two synthetic summaries, and the remaining scope.
+
 <a id="v0023--schema-10"></a>
 
 ### v0.0.23 / schema 10 — historical implementation qualification

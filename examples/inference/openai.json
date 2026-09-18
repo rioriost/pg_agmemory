@@ -1,0 +1,19 @@
+{
+  "backend": "openai_compatible",
+  "endpoint": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "auth_header": "bearer",
+  "text_model": {
+    "name": "gpt-4.1-mini-2025-04-14",
+    "revision": "2025-04-14"
+  },
+  "embedding_model": {
+    "name": "text-embedding-3-small",
+    "revision": "operator-openai-text-embedding-3-small-768-v1",
+    "dimensions": 768,
+    "distance_metric": "cosine",
+    "normalization": "l2-f32-v1"
+  },
+  "timeout_seconds": 60,
+  "max_output_tokens": 512
+}

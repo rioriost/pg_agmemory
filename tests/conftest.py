@@ -32,6 +32,17 @@ from pg_agmemory.database import Settings, migrate, validate_runtime
 
 
 @pytest.fixture
+def live_provider():
+    from pg_agmemory.providers import make_provider, parse_settings
+
+    path = os.environ.get("PGAG_LIVE_PROVIDER_CONFIG")
+    if not path:
+        pytest.skip("Set PGAG_LIVE_PROVIDER_CONFIG only for authorized real inference")
+    with open(path, "rb") as stream:
+        return make_provider(parse_settings(stream.read(32769)))
+
+
+@pytest.fixture
 def lose_first_response_transport():
     class LoseFirstResponse(httpx.AsyncHTTPTransport):
         calls = 0
