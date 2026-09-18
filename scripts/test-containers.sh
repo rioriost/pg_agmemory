@@ -1119,4 +1119,7 @@ asyncio.run(smoke())
 print("Production scope access smoke passed: inspect, read-only CAS, replay denial, revoke")
 ' "$provisioned"
 
-echo "Container tests and production admin/SDK/vector/capture/API/worker/MCP/hook smoke passed ($engine)."
+echo "Running isolated logical-backup recovery drill..."
+PGAG_RECOVERY_TEST_IMAGE="$test_image" bash scripts/test-recovery-containers.sh "$engine"
+
+echo "Container tests and production admin/SDK/vector/capture/API/worker/MCP/hook/recovery smoke passed ($engine)."
