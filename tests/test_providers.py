@@ -151,6 +151,14 @@ def test_inference_input_preserves_source_bytes_and_rejects_bad_envelopes():
     for raw in (b"{}", b"PRIVATE", b"x" * 32769):
         with pytest.raises(ProviderFailure, match="invalid_provider_configuration"):
             parse_settings(raw)
+    for field, value in (
+        ("text_model", {"name": "synthetic", "revision": "\ud800"}),
+        ("embedding_model", {"name": "\ud800", "revision": "1"}),
+        ("embedding_target", "\ud800"),
+    ):
+        raw = json.dumps(configuration().model_dump() | {field: value}).encode()
+        with pytest.raises(ProviderFailure, match="invalid_provider_configuration"):
+            parse_settings(raw)
     assert parse_settings(configuration().model_dump_json().encode()) == configuration()
 
 

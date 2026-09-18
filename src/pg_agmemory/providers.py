@@ -101,6 +101,12 @@ class ProviderSettings(Contract):
     def valid_configuration(self) -> "ProviderSettings":
         if self.text_model is None and self.embedding_model is None:
             raise ValueError("Configure at least one inference model")
+        for model in (self.text_model, self.embedding_model):
+            if model is not None:
+                model.name.encode("utf-8")
+                model.revision.encode("utf-8")
+        if self.embedding_target is not None:
+            self.embedding_target.encode("utf-8")
         if self.embedding_target is not None and self.embedding_model is None:
             raise ValueError("An embedding target requires a model identity")
         if self.max_output_tokens is not None and self.text_model is None:
