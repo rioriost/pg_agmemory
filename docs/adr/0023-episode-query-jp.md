@@ -8,6 +8,13 @@
 - Repository/license: `rioriost/pg_agmemory`。MIT不変、二言語文書
 - 受入: M0〜M3/MVP/性能/記憶品質/本番/DRの適格性確認ではない
 
+**過去版の注記:** このADRはv0.0.23/schema 10の決定と初期実装の適格性確認を維持します。
+別の最終docs CI 35282317544はattempt 2で成功しました。
+テスト前のamd64 Docker Hub認証接続resetに対して失敗jobだけを再試行し、
+product codeは変更していません。[過去の証拠](../STATUS-jp.md#v0023--schema-10)を参照してください。
+[ADR 0024](0024-selectable-inference-jp.md)はv0.0.24 provider基盤のdraftで、
+適格性確認待ち、M2は未完了です。以下の本文は変更しません。
+
 ## 決定とrequest境界
 
 認証付きread-only `POST /v1/episodes/query`を追加し、現在のread権限を要求します。

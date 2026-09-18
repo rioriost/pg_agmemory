@@ -54,7 +54,22 @@ from pg_agmemory.models import (
     ToolEffectReceipt,
     TransitionToolEffect,
 )
+from pg_agmemory.providers import (
+    GeneratedEmbedding,
+    InferenceInput,
+    InferenceProvider,
+    ProviderSettings,
+    SummaryResult,
+    make_provider,
+)
 from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+
+async def typed_inference(settings: ProviderSettings, data: InferenceInput) -> None:
+    provider = make_provider(settings)
+    assert_type(provider, InferenceProvider)
+    assert_type(await provider.summarize(data), SummaryResult)
+    assert_type(await provider.embed(data), GeneratedEmbedding)
 
 
 async def typed_calls(

@@ -9,7 +9,7 @@ from importlib.resources import files
 from pg_agmemory.api import create_app
 
 profile = sys.argv[1]
-assert profile in ("core", "hook", "sdk")
+assert profile in ("core", "hook", "sdk", "providers")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
 assert (importlib.util.find_spec("httpx") is not None) == (profile != "core")
@@ -21,6 +21,12 @@ if profile == "core":
         assert str(exc) == "Python SDK requires the pg-agmemory[sdk] extra"
     else:
         raise AssertionError("SDK imported without its HTTP dependency")
+    try:
+        importlib.import_module("pg_agmemory.providers")
+    except ImportError as exc:
+        assert str(exc) == "Inference providers require the pg-agmemory[providers] extra"
+    else:
+        raise AssertionError("Provider module imported without its HTTP dependency")
 else:
     from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 
@@ -33,6 +39,13 @@ else:
             assert not exc.error.outcome_unknown
 
     asyncio.run(probe())
+    from pg_agmemory.providers import ProviderSettings, make_provider
+
+    inspected = asyncio.run(make_provider(ProviderSettings(
+        backend="local_http", endpoint="http://127.0.0.1:1/v1",
+        text_model={"name": "synthetic", "revision": "1"},
+    )).inspect())
+    assert inspected["inference_tested"] is False
 for command in ("mcp", "recall-hook"):
     process = subprocess.run(
         ["pg-agmemory", command],
@@ -57,4 +70,13 @@ for command in ("mcp", "recall-hook"):
         extra = "mcp" if command == "mcp" else "hook"
         assert f"requires the pg-agmemory[{extra}] extra" in process.stderr
     assert "Traceback" not in process.stderr
+inference = subprocess.run(
+    ["pg-agmemory", "infer", "inspect", "--config", "/missing-synthetic-provider-config.json"],
+    capture_output=True, text=True, timeout=15,
+)
+assert inference.returncode == 2 and "Traceback" not in inference.stderr
+if profile == "core":
+    assert inference.stdout == "" and "pg-agmemory[providers]" in inference.stderr
+else:
+    assert json.loads(inference.stdout)["error"]["code"] == "invalid_provider_configuration"
 print(f"Optional adapter installation smoke passed: {profile}")

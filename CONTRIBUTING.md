@@ -88,6 +88,14 @@ half-open occurrence ranges before pagination; order by admission time, not
 occurrence time. Do not expose content or consent references in metadata pages,
 or treat the cursor as authority, a snapshot, or a compaction watermark;
 see [ADR 0023](docs/adr/0023-episode-query.md).
+The selectable-inference smoke uses a synthetic local HTTP model, the operator
+CLI, and explicit Native vector publication/purge. Provider tests exercise
+Azure SQL contracts with synthetic fixtures, not the managed extension binary
+or a live Azure deployment. Preserve TLS, catalog/privilege checks, parameter
+binding, input/output limits, and the absence of automatic retries/fallbacks.
+Never use real conversation data, provision paid resources, or invoke billable
+models merely to run the default suite. Real-model quality and managed-service
+qualification are separate; see [ADR 0024](docs/adr/0024-selectable-inference.md).
 It uses separate disposable PostgreSQL containers for tests and
 the startup smoke check and cleans up its own resources. Do not aim tests,
 schema resets, purge drills, or restore experiments at a persistent/shared DB.

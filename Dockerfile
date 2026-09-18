@@ -13,13 +13,13 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
 
 FROM build AS test
-RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk \
+RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps
-RUN uv sync --frozen --no-dev --no-editable --extra mcp --extra hook --extra sdk \
+RUN uv sync --frozen --no-dev --no-editable --extra mcp --extra hook --extra sdk --extra providers \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 
 FROM build AS adapter-extras-check
@@ -29,7 +29,9 @@ RUN uv sync --frozen --no-dev --no-editable \
     && uv sync --frozen --no-dev --no-editable --extra hook \
     && python check-adapter-extras.py hook \
     && uv sync --frozen --no-dev --no-editable --extra sdk \
-    && python check-adapter-extras.py sdk
+    && python check-adapter-extras.py sdk \
+    && uv sync --frozen --no-dev --no-editable --extra providers \
+    && python check-adapter-extras.py providers
 
 FROM base AS runtime
 RUN groupadd --system --gid 10001 pgag \

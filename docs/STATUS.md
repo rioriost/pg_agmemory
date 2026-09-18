@@ -2,9 +2,9 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-**Current bounded implementation: v0.0.23/schema 10 episode query and pagination.
-Implemented and qualified locally and on both native architectures.
-Verified v0.0.22 and earlier results remain historical evidence, not v0.0.23 results.
+**Next bounded milestone: v0.0.24/schema 10 selectable inference foundation.
+Documentation draft; v0.0.24 qualification pending.
+Verified v0.0.23 and earlier results remain historical evidence, not v0.0.24 results.
 This is not completion of M0/M1/M2/M3, an MVP, or a production-qualified release.**
 The implementation plan describes future requirements, not the current API.
 Performance, memory quality, disaster recovery, and full-erasure acceptance
@@ -14,14 +14,15 @@ complete these gates.
 ## Implemented surface
 
 PostgreSQL is the sole application persistence store, including the durable job
-queue and lexical projections. There is no external memory database, model
-service, queue, or file-based memory index. Janome's packaged dictionary is a
-software dependency, not stored application memory.
+queue and lexical projections. The canonical memory path needs no external model
+service, memory database, queue, or file-based memory index. Optional operator
+inference is separate and never publishes memory automatically.
+Janome's packaged dictionary is a software dependency, not stored application memory.
 
 | Endpoint | Current behavior |
 |---|---|
 | `POST /v1/observe` | Stores one episode with caller-supplied event time and consent reference. Returns revision `1`; `synthesis_job_id` is `null`, and no job is enqueued |
-| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v23 qualified |
+| `POST /v1/episodes/query` | Read-only episode metadata in currently readable scopes, half-open occurred-time bounds and recorded-time keyset pages; v24 qualification pending |
 | `POST /v1/captures` | Atomically commits/reuses one episode and one explicit structured-publication job; `201` returns the episode/job pair, not a published assertion |
 | `POST /v1/captures/batch` | Atomically admits one episode and 1–16 explicit same-scope proposals; ordered job references, independent publication |
 | `POST /v1/remember` | Stores an explicitly requested, structured assertion with literal evidence from readable episodes in the same scope |
@@ -58,9 +59,133 @@ Typed request and response models define the OpenAPI schemas exposed through
 `/healthz` reports process liveness following startup validation, not continuous
 PostgreSQL readiness. `/readyz` adds the bounded check below, outside `/v1`.
 
+## Selectable inference providers
+
+**V0.0.24/schema 10 draft; qualification pending, not M2 completion.**
+The optional `providers` extra pins existing **httpx==0.28.1** without new dependency
+versions. This is the same core distribution, not a separate lightweight package.
+`pg_agmemory.providers` exposes `ProviderSettings`, `InferenceInput`, `TextModel`,
+`SummaryResult`, `GeneratedEmbedding`, `InferenceProvider`, `ProviderFailure`,
+`parse_settings`, `parse_input`, and `make_provider`.
+HTTPX supplied by another extra also satisfies the dependency; missing HTTPX
+raises a static installation `ImportError`.
+The operator CLI is `pg-agmemory infer inspect|summarize|embed --config FILE`;
+one trusted profile is selected per call, without fallback or automatic retries.
+It adds no Native/SDK resource or MCP/hook action: **31 memory resources/four tools** remain.
+It does not persist memory, enqueue work, automatically summarize, ingest, or compact.
+
+### Closed configuration and input
+
+`ProviderSettings` is closed and frozen; at least one model must be configured.
+Configuration parsing is bounded to **32 KiB**. Environment references are names,
+not raw secrets: uppercase `[A-Z][A-Z0-9_]{0,127}`, supplied by trusted operators.
+
+| Field | Contract |
+|---|---|
+| `backend` | `local_http`, `openai_compatible`, or `azure_ai` |
+| `endpoint` | Required for HTTP; base path such as `/v1` allowed, unlike Native SDK origins. No userinfo/query/fragment, whitespace, percent-encoded path or dot segments. Local requires loopback HTTP/HTTPS; API requires HTTPS |
+| `api_key_env`, `auth_header` | Optional HTTP secret reference; `bearer` default or `api-key` |
+| `database_url_env`, `azure_product`, `azure_extension_version` | Required for SQL; product `flexible_server` or `horizondb`, exact extension pin. No HTTP endpoint/key; no `api-key` header mode |
+| `text_model` | Optional `TextModel` with bounded `name` and `revision` |
+| `embedding_model` | Optional existing `EmbeddingModel`: 768, `cosine`, `l2-f32-v1` |
+| `embedding_target` | Optional deployment/alias distinct from canonical model identity; requires `embedding_model` |
+| `timeout_seconds` | Strict integer 1–120, default 30 |
+| `max_output_tokens` | Optional strict integer 1–4096; HTTP defaults to 1024. Forbidden for SQL: no verified token-limit knob |
+| `azure_summary_mode` | Explicit `generate` or `language` with a SQL text model; absent without one |
+| `language`, `sentence_count` | Language mode only for language selection (optional ISO-style code); strict sentence count 1–20, default 3 |
+
+Language mode is **Flexible Server only**, with
+`text_model.name: "azure_cognitive.summarize_abstractive"`. Horizon Language is unsupported.
+HTTP profiles cannot include Azure connection/mode/language settings.
+Closed `InferenceInput` contains only `text`: non-whitespace, 1–65,536 characters,
+UTF-8 ≤256 KiB, with original whitespace/bytes preserved. JSON input and HTTP
+requests are also ≤256 KiB; encoding/wrapper overhead can exceed that bound.
+`input_digest` is SHA-256 of those exact UTF-8 text bytes.
+
+### HTTP, SQL, and output boundaries
+
+HTTP uses `chat/completions` and `embeddings` under the configured base path,
+verified TLS, no proxy environment or redirects, one connection, bounded timeout
+and **2 MiB response** limit. Compatible wire shape is not universal model/vendor support.
+Summary requests use `max_tokens`, no streaming; partial/tool/refusal outputs are rejected.
+`inspect` validates local configuration/secret presence only, without contacting the model.
+
+SQL uses a dedicated autocommit connection, **TLS `verify-full`** with system CAs
+unless an operator supplies a CA file, a 5-second connect/lock timeout, and configured
+statement/overall timeout. It does not join a canonical memory transaction or session lock.
+Each function statement still necessarily has a database transaction; external
+provider execution/charges can outlive cancellation.
+Reject superuser/BYPASSRLS, canonical namespace ownership, and membership in
+`azure_pg_admin`, `azure_ai_settings_manager`, or `model_registry_manager`.
+Before every call, check the exact `azure_ai` version, extension ownership through
+`pg_depend`, a unique compatible non-set-returning overload, required argument/result
+types, and schema `USAGE`/function `EXECUTE`. Missing/ambiguous contracts fail closed.
+The adapter neither installs/configures the extension nor reads credential settings/model registries.
+SQL `inspect` uses read-only catalog checks, never inference; successful preflight
+does not prove provider connectivity, quota, or remote model permission.
+Inference results are evaluated once in a `MATERIALIZED` CTE with a server-side
+2 MiB serialized-result guard before transfer.
+
+| SQL operation | Deliberately supported contract |
+|---|---|
+| `embed` | `azure_openai.create_embeddings`; Flexible first arg is deployment name, Horizon is model-registry alias. Named `dimensions => 768`, `timeout_ms`, `throw_on_error => true`, `max_attempts => 1`; `real[]` |
+| `summarize` / `generate` | `azure_ai.generate` with named `prompt`, `model`, `json_schema`, `system_prompt`; schema wrapper `{name, strict: true, schema}`. Inspect deployed overload, accept text JSON or JSONB result, validate closed `{summary}`. No invented token/timeout arguments; statement timeout applies |
+| `summarize` / `language` | Flexible `azure_cognitive.summarize_abstractive`; text/language, sentence count, `disable_service_logs => true`, explicit timeout/error/max-attempts controls. Preserve all `text[]` parts joined by blank lines, not just the first |
+
+`SummaryResult` has `model`, `input_digest`, `summary`, and `status: "untrusted"`;
+it is not a grounded assertion, approval, or compaction snapshot.
+`GeneratedEmbedding` extends existing `VectorQuery` with `input_digest`; require
+exactly **768 finite values with finite nonzero norm**, without padding/truncation.
+Operator-pinned metadata/revisions do not cryptographically verify remote aliases,
+deployment changes, or AIMM upgrades; a new model space needs a new identity/revision.
+Use explicit Native `embedding_input` → provider `embed` → `PutEmbedding` with
+unchanged digest/model/current-ACL/purge checks. There is no automatic upload.
+Retain the exact generated payload and caller write key for uncertain write recovery,
+not a newly generated embedding from a repeated model call.
+
+`ProviderFailure.error` exposes sanitized `code`, `retryable`, `billing_unknown`;
+no raw provider response, prompt, secret, or DSN is included in errors.
+Request loss, timeout, or failed/malformed inference conservatively preserves possible billing.
+`retryable` is not automatic retry or proof of no charge.
+Cancellation propagates; do not infer provider rollback. Billing uncertainty is
+separate from Native mutation `outcome_unknown` and is not a memory commit receipt.
+CLI success is `{status: "ok", result, error: null}`; provider failure is
+`{status: "error", result: null, error}`. Invalid-input/configuration errors exit 2,
+other provider errors exit 1. Successful output can contain private/untrusted content.
+
+### Deployment and qualification boundary
+
+Stage `m2-selectable-inference` adds feature `optional_provider_adapters` and:
+
+```json
+{
+  "model_inference": {
+    "interface": "operator_cli_and_python",
+    "extra": "providers",
+    "backends": ["local_http", "openai_compatible", "azure_ai"],
+    "azure_products": ["flexible_server", "horizondb"],
+    "operations": ["inspect", "summarize", "embed"],
+    "automatic": false,
+    "publishes_memory": false,
+    "live_provider_qualified": false
+  }
+}
+```
+
+Keep exact service **0.0.24 / API v1 / schema 10**, schema history 1–10, and the
+MemoryDB PostgreSQL 18.6 / `vector` 0.8.6 artifact pins. No SQL migration or
+dependency-version change; inference DSN may point to a separate Azure database.
+This is not qualification of full MemoryDB hosting on Flexible Server/HorizonDB.
+Documented Azure versions/preview limits are not live verification; see
+[official references and lifecycle limits](adr/0024-selectable-inference.md#azure-reference-boundary).
+Operators own credentials, model deployment, privacy, logging/retention, and budgets.
+No live Azure/LLM, quality, performance, MVP, or M2 completion is claimed.
+See [profiles/operations](operations/README.md#selectable-inference-providers)
+and [pending qualification](#v0024--schema-10).
+
 ## Episode query and pagination
 
-**v0.0.23/schema 10 implemented and qualified.**
+**v0.0.24/schema 10 contract; qualification pending.**
 Native JWT authenticated `POST /v1/episodes/query` is read-only, requiring current
 read access but no write permission or `Idempotency-Key`.
 Closed `QueryEpisodes` accepts only:
@@ -133,8 +258,8 @@ mutation outcome; an explicit repeat can see changed current data.
 There is no automatic pagination/retry, provider call, cache, or SDK admin/worker method.
 Native/SDK has **31 resource methods**; four MCP tools and the closed hook are
 unchanged, without an episode-query tool or hook field.
-Require exact service **0.0.23 / API v1 / schema 10**.
-Stage `m2-episode-query` adds feature `episode_query`:
+Require exact service **0.0.24 / API v1 / schema 10**.
+Stage `m2-selectable-inference` retains feature `episode_query`:
 
 ```json
 {
@@ -149,15 +274,15 @@ Stage `m2-episode-query` adds feature `episode_query`:
 }
 ```
 
-v22→v23 is application-only: schema 10/history 1–10 and pinned artifacts remain,
-without SQL migration or dependency/provider changes. Stop/drain old components
+v23→v24 is application-only: schema 10/history 1–10 and pinned artifacts remain,
+without SQL migration or dependency-version changes. Stop/drain old components
 and use matching versions; no mixed-version promise.
 See [operations](operations/README.md#episode-query-and-pagination),
 [ADR 0023](adr/0023-episode-query.md), and [qualification evidence](#v0023--schema-10).
 
 ## Explicit batch capture
 
-**v0.0.23/schema 10 implemented and qualified.** Native JWT and caller-owned
+**v0.0.24/schema 10 contract; qualification pending.** Native JWT and caller-owned
 `Idempotency-Key` are required for `POST /v1/captures/batch`, under existing
 current tenant/scope read/write authorization, RLS, and response-drain barrier.
 Closed `CaptureBatch` has exactly `episode: Observe` and
@@ -224,8 +349,8 @@ valid large candidates can exceed the Native body limit and receive **413**;
 the SDK does not bypass the bound or split the request.
 Native/SDK has **31 resource methods**; MCP's four tools and the closed read-only
 hook are unchanged, with no batch operation/field.
-Require exact service **0.0.23 / API v1 / schema 10**.
-Stage `m2-episode-query` retains feature `atomic_batch_structured_capture`:
+Require exact service **0.0.24 / API v1 / schema 10**.
+Stage `m2-selectable-inference` retains feature `atomic_batch_structured_capture`:
 
 ```json
 {
@@ -241,15 +366,15 @@ Stage `m2-episode-query` retains feature `atomic_batch_structured_capture`:
 ```
 
 Existing `atomic_capture` metadata is unchanged with `max_jobs: 1`.
-v22→v23 is application-only: schema 10/history 1–10 and pinned artifacts remain;
-no SQL migration, dependency, backend, or provider change. Stop/drain old
+v23→v24 is application-only: schema 10/history 1–10 and pinned artifacts remain;
+no SQL migration or dependency-version change. Stop/drain old
 components and use matching versions; no mixed-version promise.
 See [operations](operations/README.md#explicit-batch-capture),
 [ADR 0022](adr/0022-batch-capture.md), and [qualification evidence](#v0022--schema-10).
 
 ## Exact entity query and pagination
 
-**v0.0.23/schema 10 implemented and qualified.**
+**v0.0.24/schema 10 contract; qualification pending.**
 Native JWT authenticated `POST /v1/entities/query` is read-only, requiring
 current read access but no write permission or `Idempotency-Key`.
 Closed `QueryEntities` accepts only:
@@ -331,20 +456,20 @@ Existing `entity_invalidated` is reused; MCP/hook safe-error behavior is unchang
 Native/SDK has **31 resource methods**; MCP has four unchanged tools and the
 closed hook has no new entity field/operation. No SDK admin/worker function,
 mutation, provider call, cache, or automatic identity selection is added.
-Require exact **service 0.0.23 / API v1 / schema 10** across adapters.
-Stage `m2-episode-query` retains `entity_query`:
+Require exact **service 0.0.24 / API v1 / schema 10** across adapters.
+Stage `m2-selectable-inference` retains `entity_query`:
 `endpoint: "/v1/entities/query"`, `match: "exact"`,
 `order: ["recorded_at_desc", "memory_id_desc"]`, `pagination: "exclusive_keyset"`,
 `max_items: 100`.
-v22→v23 is application-only: schema 10/history 1–10 and pinned artifacts remain,
-with no SQL migration, dependency/provider, or AGE change.
+v23→v24 is application-only: schema 10/history 1–10 and pinned artifacts remain,
+with no SQL migration, dependency-version, or AGE change.
 Stop/drain old components and start matching versions; no mixed-version promise.
 See [operations](operations/README.md#exact-entity-query-and-pagination),
 [ADR 0021](adr/0021-entity-query.md), and [historical v21 evidence](#v0021--schema-10).
 
 ## Assertion metadata history
 
-**v0.0.23/schema 10 implemented and qualified.**
+**v0.0.24/schema 10 contract; qualification pending.**
 Native JWT authentication and current read access are required for
 read-only `POST /v1/assertions/history`; no `Idempotency-Key` or write permission.
 The closed `AssertionHistory` model accepts only:
@@ -425,20 +550,20 @@ The SDK recognizes sanitized `assertion_invalidated` and retains
 It adds no mutation, cache, provider call, watch, or retention object.
 Native/SDK has **31 resource methods**; MCP's four tools and the closed hook stay
 unchanged, with no history tool/field or SDK admin/worker function.
-Require exact **service 0.0.23 / API v1 / schema 10** across adapters.
-Stage `m2-episode-query` retains `assertion_history` metadata:
+Require exact **service 0.0.24 / API v1 / schema 10** across adapters.
+Stage `m2-selectable-inference` retains `assertion_history` metadata:
 `endpoint: "/v1/assertions/history"`, `order: "revision_desc"`,
 `pagination: "exclusive_revision"`, `max_items: 100`, `includes_values: false`,
 `includes_evidence_quotes: false`.
-v22→v23 is application-only: schema 10/history 1–10 and pinned artifacts remain,
-with no SQL migration or dependency/provider change. Stop/drain old components
+v23→v24 is application-only: schema 10/history 1–10 and pinned artifacts remain,
+with no SQL migration or dependency-version change. Stop/drain old components
 and start only matching versions; no mixed-version compatibility is claimed.
 See [operations](operations/README.md#assertion-metadata-history),
 [ADR 0020](adr/0020-assertion-history.md), and [historical evidence](#v0020--schema-10).
 
 ## Owned-job query and pagination
 
-**v0.0.23/schema 10 implemented and qualified.**
+**v0.0.24/schema 10 contract; qualification pending.**
 Native JWT authentication is required for read-only `POST /v1/jobs/query`;
 no `Idempotency-Key` or write permission is required.
 The closed `QueryJobs` model has these fields only:
@@ -513,12 +638,12 @@ sanitized read-only errors with `outcome_unknown: false`, and no automatic retry
 or pagination. Existing SDK safe `job_invalidated` is reused; no new error code.
 There are **31 Native/SDK resource methods**, four unchanged MCP tools, and no
 MCP job tool or hook field. Administration/worker CLI functions are not SDK resources.
-Require exact **service 0.0.23 / API v1 / schema 10** across adapters.
-Stage `m2-episode-query` retains `job_query` metadata:
+Require exact **service 0.0.24 / API v1 / schema 10** across adapters.
+Stage `m2-selectable-inference` retains `job_query` metadata:
 `endpoint: "/v1/jobs/query"`, `ownership: "caller"`,
 `order: ["created_at_desc", "job_id_desc"]`, `pagination: "exclusive_keyset"`,
 `max_items: 100`.
-v22→v23 has no SQL migration or dependency/provider/artifact-pin change.
+v23→v24 has no SQL migration or dependency-version/artifact-pin change.
 Stop/drain old components and use matching versions; history 1–10 is unchanged.
 No performance, MVP, production, or DR qualification is claimed.
 See [operations](operations/README.md#owned-job-query-and-pagination),
@@ -526,7 +651,7 @@ See [operations](operations/README.md#owned-job-query-and-pagination),
 
 ## Checkpoint-head lookup
 
-**Retained checkpoint-head contract; v0.0.23 qualified.**
+**Retained checkpoint-head contract; v0.0.24 qualification pending.**
 `POST /v1/checkpoints/head` requires Native JWT authentication and current read
 access to the scope, not write access. No `Idempotency-Key` is required.
 The closed typed `CheckpointBranch` body has exactly three required UUIDs:
@@ -592,10 +717,10 @@ and call-time model validation. Read-only transport failures have
 `checkpoint_invalidated` is already a recognized SDK safe code; no new error code is added.
 There are now **31 Native/SDK resource methods**, but still **four MCP tools**.
 MCP and hook surfaces are unchanged: no checkpoint tool or hook input field.
-Require exact **service 0.0.23 / API v1 / schema 10** across adapters.
-API/worker/readiness retain exact history 1–10. v22→v23 adds no SQL migration or
-dependency/provider/artifact-pin change; stop/drain old components and use matching versions.
-Stage is `m2-episode-query`; capabilities retain `checkpoint_head`:
+Require exact **service 0.0.24 / API v1 / schema 10** across adapters.
+API/worker/readiness retain exact history 1–10. v23→v24 adds no SQL migration or
+dependency-version/artifact-pin change; stop/drain old components and use matching versions.
+Stage is `m2-selectable-inference`; capabilities retain `checkpoint_head`:
 `endpoint: "/v1/checkpoints/head"`, `read_only: true`,
 `branch_identity: ["scope_id", "run_id", "branch_id"]`, `fallback_to_ancestor: false`.
 This is not harness integration, compaction, MVP, or general recovery/production/DR qualification.
@@ -604,7 +729,7 @@ See [operations](operations/README.md#checkpoint-head-lookup),
 
 ## Exact structured recall filters
 
-**Retained recall-filter contract; v0.0.23 qualified.**
+**Retained recall-filter contract; v0.0.24 qualification pending.**
 Add `Recall.filters: RecallFilters | None = None` to the existing request.
 `RecallFilters` is a shared, typed, closed nested contract: unknown fields are rejected.
 
@@ -663,10 +788,10 @@ sanitized call-time errors, and no automatic retry.
 Hook input does **not** accept `filters`; unknown fields are rejected, and its
 internal `Recall.filters` defaults to `None`, preserving trusted startup boundaries.
 Filters do not grant authority, verify content, or infer intent.
-No SQL migration from v20, dependency/provider/index change, persisted priority,
+No SQL migration from v20, dependency-version/index change, persisted priority,
 or cache is introduced. Schema 10 and exact history 1–10 remain; use matching
-**service 0.0.23 / API v1 / schema 10** components after stop/drain.
-Stage is `m2-episode-query`; capabilities retain `recall_filters`:
+**service 0.0.24 / API v1 / schema 10** components after stop/drain.
+Stage is `m2-selectable-inference`; capabilities retain `recall_filters`:
 `fields: ["kind", "subject", "predicate"]`, `match: "exact"`, `combination: "and"`,
 `retrieval_modes: ["lexical", "vector", "hybrid"]`.
 MVP, semantic-quality, performance, production, and DR qualification are not claimed.
@@ -675,7 +800,7 @@ See [operations](operations/README.md#exact-structured-recall-filters),
 
 ## Required-context recall
 
-**Retained required-context contract; v0.0.23 qualified.**
+**Retained required-context contract; v0.0.24 qualification pending.**
 This is an additive field on existing `Recall`, not a new route or SDK method.
 
 | Request rule | Contract |
@@ -746,10 +871,10 @@ The hook input does **not** accept `required_memory_refs`: extra fields are reje
 and its internally constructed `Recall` defaults to `[]`. No host pinning is added.
 The shared restricted safe-code catalog adds `budget_exhausted`; SDK retains its
 broader Native error catalog.
-Require exact **service 0.0.23 / API v1 / schema 10** across adapters.
-API/worker/readiness retain exact schema history 1–10. v22→v23 adds **no migration**,
+Require exact **service 0.0.24 / API v1 / schema 10** across adapters.
+API/worker/readiness retain exact schema history 1–10. v23→v24 adds **no migration**,
 dependency upgrade, or pinned-image change; older schemas still migrate after stop/drain.
-Stage is `m2-episode-query`; capabilities retain `required_context` with
+Stage is `m2-selectable-inference`; capabilities retain `required_context` with
 `retrieval_modes: ["lexical"]`, `max_refs: 16`, `order: "request_order"`,
 and `budget_policy: "all_required_or_error"`.
 See [operations](operations/README.md#required-context-recall),
@@ -757,7 +882,7 @@ See [operations](operations/README.md#required-context-recall),
 
 ## Explicit job cancellation
 
-**Retained job-cancellation contract; v0.0.23 qualified.**
+**Retained job-cancellation contract; v0.0.24 qualification pending.**
 `POST /v1/jobs/{job_id}/cancel` requires Native JWT authentication and the caller's
 `Idempotency-Key`. `CancelJob` accepts exactly:
 
@@ -832,16 +957,16 @@ trigger, adding no table. Cancelled state is DB-immutable: no revival or rewrite
 Constraints require null payload/result/lease/error; initial jobs must still be
 pending at attempt 0. Existing pending/running/succeeded/failed semantics remain.
 Schema-9→10 migration requires stopping/draining old processes; PostgreSQL 18.6,
-pgvector 0.8.6, dependencies, providers, and pinned artifacts are unchanged.
+pgvector 0.8.6, dependency versions, and pinned artifacts are unchanged.
 
 SDK `cancel_job(UUID, CancelJob, *, idempotency_key) -> JobReceipt` is asynchronous,
 revalidates models, expects exactly HTTP 200, and includes `job_cancel_conflict`
 in its safe Native error catalog. With entity query, the current Native
 resource/SDK surface is **31 methods**. MCP's four tools and the read-only hook are unchanged.
 Cancelling a Python task does not invoke this job-cancellation endpoint.
-All adapters require **service 0.0.23 / API v1 / schema 10**; readiness checks
+All adapters require **service 0.0.24 / API v1 / schema 10**; readiness checks
 exact history 1–10. The historical v0.0.15 stage was `m2-job-cancellation`;
-the current stage is `m2-episode-query`. Capabilities retain
+the current stage is `m2-selectable-inference`. Capabilities retain
 `job_cancellation` metadata: `endpoint: "/v1/jobs/{job_id}/cancel"`,
 `compare_and_swap: ["state", "attempt"]`, `terminal_state: "cancelled"`,
 `provider_interruption: false`.
@@ -850,7 +975,7 @@ See [operations](operations/README.md#explicit-job-cancellation) and
 
 ## Runtime readiness
 
-**Retained readiness contract; v0.0.23/schema 10 qualified.**
+**Retained readiness contract; v0.0.24/schema 10 qualification pending.**
 Health probes are public, unauthenticated paths, not Native memory resource
 routes. `GET /healthz` retains exactly `{"status":"ok"}` after successful startup
 without DB calls. `GET /readyz`, introduced in v0.0.14, ignores supplied authorization headers and
@@ -920,12 +1045,12 @@ storms. Configure orchestrator failure/recovery thresholds, including for busy
 No Kubernetes, Compose, or Docker `HEALTHCHECK` configuration is added.
 
 The historical v0.0.14 stage was `m2-runtime-readiness`; the current stage is
-`m2-episode-query`. Authenticated capabilities retain
+`m2-selectable-inference`. Authenticated capabilities retain
 `health_probes` metadata: `liveness: "/healthz"`, `readiness: "/readyz"`,
 `readiness_timeout_seconds: 5.0`, `readiness_max_in_flight_per_process: 1`.
-Episode query brings the public memory surface to **31 resource methods**; health paths are
+The public memory surface retains **31 resource methods**, including episode query; health paths are
 excluded from SDK resource-route coverage. No SDK/MCP/hook probe method is added.
-All matching adapters require **service 0.0.23 / API v1 / schema 10**.
+All matching adapters require **service 0.0.24 / API v1 / schema 10**.
 Readiness behavior is retained, but schema 10 requires migration 010 for job
 cancellation; no dependency or pinned-image changes are added.
 See [operations](operations/README.md#runtime-readiness) and
@@ -933,7 +1058,7 @@ See [operations](operations/README.md#runtime-readiness) and
 
 ## Scope-access administration
 
-**Retained scope-access contract; v0.0.23 qualified.**
+**Retained scope-access contract; v0.0.24 qualification pending.**
 `pg-agmemory scope-access get|set|revoke --tenant-id UUID --scope-id UUID --principal-id UUID`
 is a privileged administrative CLI, not an agent tool or runtime API.
 It targets **existing same-tenant** tenant/scope/principal records; it never
@@ -1054,7 +1179,7 @@ using the freshly observed epoch. There is no automatic retry.
 The barrier cannot retract already-delivered context. Restoring latest ACL and
 deletion records remains manual; granting access cannot resurrect purged data.
 The historical v0.0.13 stage was `m2-scope-access`; the current stage is
-`m2-episode-query`. Capabilities retain
+`m2-selectable-inference`. Capabilities retain
 `scope_access_administration` metadata:
 `transport: "admin-cli"`, `command: "scope-access"`,
 `compare_and_swap: "tenant_access_epoch"`, `audit: "database_role"`.
@@ -1064,7 +1189,7 @@ and [ADR 0013](adr/0013-scope-access.md).
 
 ## Python SDK
 
-**SDK adds read-only episode query: 31 methods; v0.0.23 qualified.**
+**SDK retains 31 memory methods; providers use a separate library/CLI; v0.0.24 qualification pending.**
 `from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError` exposes an
 async-only client for the existing public Native memory resources. Import
 request/response types from `pg_agmemory.models`; requests are revalidated at call
@@ -1082,8 +1207,7 @@ availability, not the identity of the selected extra. Docker test/runtime includ
 `sdk` alongside `mcp` and `hook`; core-only/hook-only/sdk-only checks are implemented,
 including absence of the MCP SDK in hook-only and sdk-only installations.
 All three genuine noneditable wheel-install checks and packaged `py.typed`
-verification passed in the 821-test v0.0.23 qualification, locally and on both
-native architectures.
+verification remain required; v0.0.24 installation qualification is pending.
 There are no Python dependency upgrades.
 
 Construct with explicit `AsyncMemoryClient(api_url, api_token)`, never untrusted
@@ -1096,7 +1220,7 @@ never select another identity or grant access.
 
 Use `async with ... as memory:` exactly once per client instance. Entry creates
 an owned HTTP client and performs a mandatory authenticated capabilities probe
-requiring exact **service `0.0.23` / API `v1` / schema `10`** before resource use.
+requiring exact **service `0.0.24` / API `v1` / schema `10`** before resource use.
 Failed entry closes owned resources in `finally`. Calls before entry or after exit
 raise `client_not_open`; re-entry raises `client_already_used`.
 Exit releases connections only: **it does not forget data**.
@@ -1395,7 +1519,7 @@ The fixed-startup hook stays **lexical-only and read-only**; event JSON cannot p
 `coverage.vector_incomplete`; it does not silently downgrade unexpected vector output.
 Observe, capture, jobs, and workers do not generate
 embeddings or call providers. Both MCP protocol eras remain; startup matching is
-**service `0.0.23` / API `v1` / schema `10`** for v0.0.23.
+**service `0.0.24` / API `v1` / schema `10`** for v0.0.24.
 Capabilities add `retrieval_modes: ["lexical", "vector", "hybrid"]` and
 `default_retrieval_mode: "lexical"`. The v0.0.11 stage was `m2-pgvector-retrieval`;
 embedding input returns HTTP 200 and upload/replay returns HTTP 201. Full M0–M3/MVP/production/DR/erasure/
@@ -1526,7 +1650,7 @@ The stage label does not complete M2 or any other acceptance gate.
 
 Capture is a **Native resource also covered by the SDK**, not a fifth MCP tool. Recall-hook stays read-only;
 neither adapter automatically captures. MCP/hook startup requires exact
-**service `0.0.23` / API `v1` / schema `10`**. The retained schema-8 migration is separate
+**service `0.0.24` / API `v1` / schema `10`**. The retained schema-8 migration is separate
 from the retained capture semantics. Capture does not generate embeddings,
 invoke LLM/providers, extract intent, perform natural-language/automatic synthesis,
 or establish semantic quality.
@@ -1548,7 +1672,7 @@ It adds no tool or safe error code and cannot bypass required-reference eligibil
 v0.0.8 introduced `pg-agmemory mcp`, a **stdio-only, trusted local Native API
 client**, not a second persistence or authorization service. Optional
 `pg-agmemory[mcp]` pins official `mcp==2.2.0` and `httpx==0.28.1`; repository
-v0.0.23 Docker test/runtime stages retain `mcp`, `hook`, and `sdk` extras.
+v0.0.24 Docker test/runtime stages retain `mcp`, `hook`, and `sdk` extras.
 The extracted shared bounded Native HTTP client must retain all MCP invariants
 below. Historical v0.0.9 checks passed locally and on both native Docker
 architectures. Historical v0.0.10/v0.0.11 and final local/native v0.0.12 checks passed.
@@ -1634,9 +1758,9 @@ cannot override URL, headers, token, or identity. `--subject` and `--once` are
 rejected for `mcp`; do not confuse it with the fixed-subject database worker.
 
 Before serving stdio, authenticated `GET /v1/capabilities` must report
-`api_version: "v1"`, `service_version: "0.0.23"`, and `schema_version: 10`.
+`api_version: "v1"`, `service_version: "0.0.24"`, and `schema_version: 10`.
 Configuration, authentication, and version errors terminate nonzero with
-sanitized diagnostics. v0.0.23 retains schema 10; the adapter itself performs no migration.
+sanitized diagnostics. v0.0.24 retains schema 10; the adapter itself performs no migration.
 Restart the adapter to refresh its fixed token; there is no refresh grant.
 Startup validation does not cache authorization: Native authentication,
 current ACLs, and deletion checks run on every call.
@@ -1755,7 +1879,7 @@ and invalid IDNA before transport. These invalid-origin cases are covered by
 the historical v0.0.9 local and both native CI suites.
 
 Every invocation makes a fresh authenticated `GET /v1/capabilities`, requires
-exact **service `0.0.23` / API `v1` / schema `10`**, then sends `POST /v1/recall`
+exact **service `0.0.24` / API `v1` / schema `10`**, then sends `POST /v1/recall`
 with `mode: "implicit"`, configured scopes/settings, and Native current-time
 defaults (no event-supplied historical times). Both calls use the same fixed
 token. Current Native authentication, ACLs, time selection, deletion, evidence,
@@ -2575,7 +2699,7 @@ and DR qualification are not implemented.
 
 ## Schema compatibility
 
-**v0.0.23 retains schema 10 and adds no migration.**
+**v0.0.24 retains schema 10 and adds no migration.**
 Existing schema-10 databases use the [application-only upgrade](operations/README.md#schema-10-application-only-upgrade).
 Older schemas still apply `010_job_cancellation.sql`, introduced in v0.0.15 for
 job-state/payload constraints and the terminal guard, via the
@@ -2585,7 +2709,7 @@ The retained privileged-only `memory_ops.scope_access_event` table uses forced R
 no runtime policy/grant, and atomic membership/epoch/audit changes.
 Retain the pinned PostgreSQL 18.6/pgvector 0.8.6 images.
 Stop/drain old APIs, workers, adapters, hooks, and SDK callers, then deploy only
-matching v0.0.23 components; no mixed-version/rolling-compatibility claim is made.
+matching v0.0.24 components; no mixed-version/rolling-compatibility claim is made.
 All older schemas need the retained migrations through 010.
 Older databases still need v0.0.11's `008_pgvector.sql`.
 Migration requires **`vector` 0.8.6 in `public`** and rejects
@@ -2596,7 +2720,7 @@ The retained episode/assertion-revision projections use forced RLS, canonical
 `ON DELETE CASCADE`, and runtime SELECT/INSERT only. **No embedding backfill**
 runs for existing data; generation/rebuild/provider calls remain explicit and external.
 The MCP adapter, hook, and SDK use HTTP only, perform no DDL, and require matching
-service `0.0.23`, API `v1`, schema `10`.
+service `0.0.24`, API `v1`, schema `10`.
 The retained migration history below still applies to databases older than schema 7.
 
 Additive `007_japanese_fts.sql` follows unchanged migrations 001–006. It creates
@@ -2609,7 +2733,7 @@ projection DDL/data and the schema ledger together: a schema-6 upgrade remains a
 Typed graph/job/effect/checkpoint histories and guards,
 legacy `Remember` JSON/HMAC ordering, source identities, and checkpoint checksums
 remain unchanged. Projections add no checkpoint/effect reference kinds.
-The v0.0.23 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`
+The v0.0.24 API **and worker** require exact history `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`
 and extension `vector` 0.8.6 in schema `public`, rejecting mismatches and unsafe runtime roles.
 
 Migration/rebuild requires a forced-RLS-bypassing administrator with appropriate
@@ -2617,13 +2741,13 @@ rights; migration also requires DDL rights, `btree_gist`, and the matching pgvec
 extension installed on the PostgreSQL server. `row_security = off`
 fails closed if RLS would filter backfill; it does not grant bypass privileges.
 `pg-agmemory reindex-lexical` is an **all-tenant offline admin operation** on the
-selected database. Use matching v0.0.23/schema-10 tooling with `PGAG_ADMIN_DATABASE_URL`.
+selected database. Use matching v0.0.24/schema-10 tooling with `PGAG_ADMIN_DATABASE_URL`.
 It atomically replaces only lexical projections under the migration lock, emitting the
 `profile` and `episodes`/`assertion_revisions` counts, not source content.
 `--subject` is explicitly rejected, not a principal/scope filter; `--once` is
 also rejected as worker-only.
 Stop/drain all old/new APIs **and workers**, back up, migrate/rebuild atomically,
-then start only matching v0.0.23 processes. Stop adapters, hook launches, SDK callers, and admin commands during maintenance too.
+then start only matching v0.0.24 processes. Stop adapters, hook launches, SDK callers, and admin commands during maintenance too.
 Lexical reindex does not generate, populate, or rebuild vectors.
 **Keep all old images stopped; v0.0.1 has no schema startup guard.**
 No rolling coexistence or downgrade is supported. Follow
@@ -2633,9 +2757,27 @@ No rolling coexistence or downgrade is supported. Follow
 
 Public repository: [rioriost/pg_agmemory](https://github.com/rioriost/pg_agmemory).
 
+<a id="v0024--schema-10"></a>
+
+### v0.0.24 / schema 10 — qualification pending
+
+**Selectable inference foundation draft, not M2 completion.**
+No v24 implementation SHA, local/native test count, optional-installation result,
+or smoke success is recorded. Combined qualification evidence and final-docs CI
+have not been supplied.
+Planned coverage includes closed settings/input, loopback/HTTPS and secret references,
+bounded HTTP responses, model/vector validation, sanitized failures/billing uncertainty,
+SQL role/extension-ownership/overload/permission guards, single result evaluation,
+and explicit non-publishing CLI/library workflows.
+HTTP and SQL fixtures are synthetic, **not the vendor extension binary or live Azure/LLM**.
+Future fixture results must not be presented as live provider, MemoryDB Azure-hosting,
+quality, budget-control, human-review, or M2/MVP completion evidence.
+See [the contract](#selectable-inference-providers) and
+[ADR 0024](adr/0024-selectable-inference.md).
+
 <a id="v0023--schema-10"></a>
 
-### v0.0.23 / schema 10 — implementation qualified
+### v0.0.23 / schema 10 — historical implementation qualification
 
 **Episode query implemented and qualified, 2026-09-18 JST.**
 Implementation
@@ -2658,7 +2800,13 @@ metadata-only read-only SQL without audit writes, typed SDK mock/real workflows,
 and production SDK explicit query/select/Explain/Remember.
 Service 0.0.23 / API v1 / schema 10, 31 Native/SDK resources, four MCP tools,
 and the closed hook retain the documented contract, with no dependency or migration change.
-These are implementation qualification results; final-docs CI for this update has not run.
+Separate final v23 docs
+[`9bc5092e5919997abb945554ec8363e4bf0e6dae`](https://github.com/rioriost/pg_agmemory/commit/9bc5092e5919997abb945554ec8363e4bf0e6dae)
+completed [CI 35282317544](https://github.com/rioriost/pg_agmemory/actions/runs/35282317544)
+successfully on attempt 2: **821 cases each, amd64 851.59 s / arm64 802.42 s**.
+Attempt 1's amd64 Docker Hub authentication connection reset occurred **before tests**;
+only that failed job was retried, without product code changes.
+This final-docs run is distinct from implementation CI; neither is v24 qualification.
 See [the contract](#episode-query-and-pagination) and [ADR 0023](adr/0023-episode-query.md).
 No MVP, production, performance, memory-quality, or DR acceptance is claimed.
 
@@ -3546,7 +3694,7 @@ exactly-once behavior, an MVP, production readiness, backup/DR, or full-erasure 
 
 ## Still roadmap work
 
-Automatic enqueue/NL extraction/synthesis, LLM/provider processing, global
+Automatic enqueue/NL extraction/synthesis, automatic LLM/provider memory processing, global
 multi-tenant scheduling/fairness/cost pools, separate working snapshots/
 compaction, automatic embedding/provider integration, ANN/HNSW, qualified vector/hybrid
 retrieval quality and performance, AGE, SQL/PGQ,

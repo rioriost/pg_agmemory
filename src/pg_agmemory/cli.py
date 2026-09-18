@@ -15,6 +15,16 @@ from pg_agmemory.worker import run
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["infer"]:
+        try:
+            from pg_agmemory.inference import main as inference_main
+        except ImportError as exc:
+            if str(exc) != "Inference providers require the pg-agmemory[providers] extra":
+                raise
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(2) from None
+        inference_main(sys.argv[2:])
+        return
     if sys.argv[1:2] == ["scope-access"]:
         from pg_agmemory.scope_access import main as access_main
 
@@ -32,6 +42,7 @@ def main() -> None:
             "mcp",
             "recall-hook",
             "scope-access",
+            "infer",
         ],
     )
     parser.add_argument(
@@ -47,6 +58,8 @@ def main() -> None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
     if args.command == "scope-access":
         parser.error("scope-access must precede its arguments; use scope-access --help")
+    elif args.command == "infer":
+        parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":
         if args.subject is not None:
             parser.error("recall-hook uses its fixed startup token; --subject is not supported")

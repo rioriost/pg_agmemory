@@ -885,6 +885,100 @@ asyncio.run(smoke())
 print("Production episode query smoke passed: metadata pages, explicit evidence selection, source purge")
 ' "$scope_id"
 
+"$engine" exec -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from uuid import UUID
+from pg_agmemory.models import Explain, Forget, Observe, PutEmbedding, Recall, VectorQuery
+from pg_agmemory.sdk import AsyncMemoryClient
+
+class SyntheticModel(BaseHTTPRequestHandler):
+    calls = 0
+    def log_message(self, *args):
+        pass
+    def do_POST(self):
+        SyntheticModel.calls += 1
+        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path == "/v1/chat/completions":
+            payload = {"choices": [{"finish_reason": "stop", "message": {
+                "role": "assistant", "content": "Synthetic summary, not a verified claim.",
+            }}]}
+        elif self.path == "/v1/embeddings":
+            assert request["dimensions"] == 768
+            payload = {"data": [{"index": 0, "embedding": [1.0] + [0.0] * 767}]}
+        else:
+            raise AssertionError("Unexpected inference route")
+        encoded = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticModel)
+thread = threading.Thread(target=server.serve_forever)
+thread.start()
+try:
+    with tempfile.TemporaryDirectory() as directory:
+        config = Path(directory) / "provider.json"
+        config.write_text(json.dumps({
+            "backend": "local_http", "endpoint": "http://127.0.0.1:" + str(server.server_port) + "/v1",
+            "text_model": {"name": "synthetic-summary", "revision": "1"},
+            "embedding_model": {"name": "synthetic-provider-embedding", "revision": "1"},
+        }))
+        def infer(operation, text=None):
+            result = subprocess.run(
+                ["pg-agmemory", "infer", operation, "--config", str(config)],
+                input=json.dumps({"text": text}) if text is not None else "",
+                capture_output=True, text=True, timeout=15, check=True,
+            )
+            output = json.loads(result.stdout)
+            assert output["status"] == "ok" and output["error"] is None
+            return output["result"]
+        assert infer("inspect")["inference_tested"] is False and SyntheticModel.calls == 0
+        summary = infer("summarize", "Synthetic pending approval")
+        assert summary["status"] == "untrusted"
+        async def smoke():
+            async with AsyncMemoryClient(
+                "http://127.0.0.1:8000", os.environ["PGAG_SDK_API_TOKEN"],
+            ) as sdk:
+                scope = UUID(sys.argv[1])
+                source = await sdk.observe(Observe(
+                    scope_id=scope, source_namespace="provider-smoke", source_event_id="1",
+                    occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                    content="Synthetic provider evidence", consent_reference="synthetic-smoke",
+                ), idempotency_key="provider-source")
+                canonical = await sdk.embedding_input(Explain(memory_id=source.memory_id))
+                generated = infer("embed", canonical.text)
+                assert generated["input_digest"] == canonical.input_digest
+                upload = PutEmbedding(memory_id=source.memory_id, **generated)
+                saved = await sdk.put_embedding(upload, idempotency_key="provider-vector")
+                assert await sdk.put_embedding(upload, idempotency_key="provider-vector") == saved
+                found = await sdk.recall(Recall(
+                    scope_ids=[scope], purpose="synthetic provider smoke", retrieval_mode="vector",
+                    vector_query=VectorQuery(model=upload.model, values=upload.values),
+                ))
+                assert [item.memory_id for item in found.items] == [source.memory_id]
+                purged = await sdk.forget(Forget(memory_ids=[source.memory_id], reason="smoke"),
+                                          idempotency_key="provider-purge")
+                assert purged.object_count == 1
+        asyncio.run(smoke())
+        assert SyntheticModel.calls == 2
+finally:
+    server.shutdown()
+    thread.join()
+    server.server_close()
+print("Production selectable inference smoke passed: synthetic HTTP, CLI, explicit vector publication, purge")
+' "$scope_id"
+
 "$engine" exec \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     -e "PGAG_SDK_API_TOKEN=$mcp_token" "$api_name" python -c '

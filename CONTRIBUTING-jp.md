@@ -88,6 +88,14 @@ page件数制限より前に適用し、発生日時ではなく受付日時で�
 metadata pageに本文や同意参照を含めず、cursorを権限・snapshot・
 compaction watermarkとみなさないでください。
 [ADR 0023](docs/adr/0023-episode-query-jp.md)を参照してください。
+selectable-inference smokeでは合成HTTPモデル、operator CLI、
+明示的なNative vector登録・purgeを検査します。Azure SQLの契約検査は合成fixtureであり、
+managed extensionのbinaryや実Azure環境の検証ではありません。
+TLS、catalog・権限検査、parameter binding、入出力上限、
+自動retry/fallbackを行わない境界を維持してください。
+通常suiteのために実会話データを使ったり、有料resourceやモデルを利用したりしません。
+実モデルの品質・managed serviceの適格性は別検証です。
+[ADR 0024](docs/adr/0024-selectable-inference-jp.md)を参照してください。
 テストと起動smoke確認で別の使い捨てPostgreSQL containerを使い、
 自分が作成したresourceを片付けます。テスト、schema reset、purge訓練、
 restore実験を永続/共有DBへ向けないでください。

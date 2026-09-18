@@ -8,6 +8,14 @@
 - Repository/license: `rioriost/pg_agmemory`; MIT unchanged; bilingual documentation
 - Acceptance: not M0–M3/MVP/performance/memory-quality/production/DR qualification
 
+**Historical version notice:** this ADR preserves the v0.0.23/schema 10 decision
+and original implementation qualification. Separate final-docs CI 35282317544
+completed successfully on attempt 2 after retrying only an amd64 Docker Hub
+authentication connection reset before tests, without product code changes.
+See [historical evidence](../STATUS.md#v0023--schema-10).
+[ADR 0024](0024-selectable-inference.md) drafts the v0.0.24 provider foundation;
+qualification is pending and M2 remains incomplete. The body below is unchanged.
+
 ## Decision and request boundary
 
 Add authenticated read-only `POST /v1/episodes/query`, requiring current read
