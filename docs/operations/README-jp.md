@@ -9,6 +9,11 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## Schema 13 background processing
 
+[2026-09-19改訂計画](../PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)は人手の意味評価や
+model比較をgateから外しますが、運用上の安全要件は維持します。
+次は対応履歴全体のlogical restoreと最新削除/ACL/policy/model予約/quotaの照合です。
+下記の限定drillを超える実装は未完であり、範囲変更を理由に復元workerを再開しないでください。
+
 **現在はservice 0.0.27 / API v1 / schema 13**、
 stage `m2-background-processing`です。PostgreSQL 18.6 / pgvector 0.8.6は維持します。
 本節と[ADR 0028](../adr/0028-background-processing-jp.md)が、
@@ -111,7 +116,7 @@ schema 13 tombstoneには展開済みobject IDがありますが、targetごと�
 localは`bash scripts/test-containers.sh container`でApple Container内で実行し、
 CIはnative Docker amd64/arm64です。production M2 smokeは正確に3回のsynthetic
 loopback応答を使い、実model品質の証明ではありません。明示local model/生成ACL opt-in、
-固定manifest、失敗callの記録、人手・実task gateはEVALUATIONを参照してください。
+固定manifest、失敗callの記録、改訂後の本体受入残作業はEVALUATIONを参照してください。
 local実験のための新Azure resourceや有料model callは不要です。
 
 ## 保存されたv26運用

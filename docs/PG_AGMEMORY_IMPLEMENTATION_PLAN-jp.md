@@ -2,15 +2,15 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.1 / 設計レビュー反映版
+- 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 実装着手段階。実装前にGit repositoryを初期化し、原案を初期commit済み。以下の工程は完了済み機能を示すものではなく、性能値・品質値は受入目標であり、測定結果ではない。
+- 状態: service 0.0.27 / schema 13のcore経路は実装済み、M2受入れは未完了。本改訂は計画の変更であり、runtime動作やrelease状態の変更ではない。完全一致の実装証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
 ## 1. 採用方針
 
-**pg_agmemoryは、記憶の意味・根拠・時間・権限を管理するNative Memory APIと、そのPostgreSQL実装として構築する。** MCPは外部エージェント向けadapter、postgresemは任意の統合先とする。通常の入力は`observe`で記録し、背景処理が根拠付きassertionを生成する。利用時は、構造化データとトークン予算内のcontext packを`recall`で返す。
+**エージェント＋LLMが利用できる、信頼できる記憶システムをPostgreSQLで提供する。「判断」システムにはしない。** Native Memory APIは記憶の構造・根拠参照・時間・権限・lifecycleを管理する。MCPは外部エージェント向けadapter、postgresemは任意の統合先とする。入力は`observe`で記録し、明示許可された背景処理がmodelの提案を取得できる。`recall`は構造化データと予算内のcontext packを返し、正しさを認定した回答を返すものではない。
 
 永続データの正本はPostgreSQLの通常テーブルに置く。JSONBは可変の内容・実行状態、pgvectorの`vector`は意味検索、Apache AGEまたはSQL/PGQは関係探索に使う。グラフに権限・時間・根拠の唯一の正本を持たせない。
 
@@ -39,9 +39,44 @@ Redis、Kafka、外部vector DB、Neo4j、SQLite、ファイルベースのmemor
 
 - ChatGPTなどの非公開メモリ実装や非公開プロトコルの再現。
 - 自律的な業務実行エンジン、外部副作用のexactly-once保証、モデル学習基盤。
+- model順位表、複数modelの品質比較、自動的な最適model選択、生成内容の意味的正しさや利用agentのtask成功の保証。
 - 全会話の無条件保存、LLMによる任意SQL/Cypher、任意schema変更。
 - MVP時点の分散DB、tenant横断の知識共有、任意長graph traversal、マルチモーダル記憶。
 - 記憶だけで業務DBの現在値を保証すること。現在値を要求された場合は出典へ再照会する。
+
+### 1.3 責務の境界と評価範囲
+
+ユーザー/operatorが予算と用途に応じ、generation、embedding、対応する場合は
+rerankのmodel/providerを指定する。意味の解釈や重要度の判断は、それらの部品または
+callerの責務である。役割ごとに異なるmodelを使えてよいが、その比較研究は目的ではない。
+明示的な構造化記憶と決定的検索はgenerationなしでも利用できるものとする。
+固定ranking、時点filter、ACL、retention、公開policyはソフトウェアの規則であり、
+LLMへ判断を委ねない。
+
+| 担当 | 責務 |
+|---|---|
+| pg_agmemory | データ/API契約の検証、原子的保存、根拠・版の関係、認可付き検索、CAS、削除、復旧、予算、provider呼出し会計 |
+| 指定model/providerまたはcaller | 抽出、自然言語要約、embedding、任意の意味的rerank。権限付与・承認の捏造・記憶契約の迂回は許可しない |
+| ユーザー/operator | model選択、明示的な処理/公開policy、資料の利用許可、配置設定 |
+| プロジェクトのbenchmark | 一つの固定した参照構成による実際の保存・検索・圧縮・復元の例と限界。model比較や意味的品質認定ではない |
+
+modelを指定できることは、任意protocol・次元への互換性保証ではない。
+M2は明示したgeneration/embedding契約を検証し、未対応設定を拒否する。
+現行background workerはlocal専用、vectorは768次元固定である。
+本計画はremote workerを有効化せず、rerankerの実装済みも意味しない。
+任意のrerank adapterは具体的な後続連携要求（M4）、追加embedding空間と移行はM5で扱う。
+互換性は制御したprovider応答と一つのlive参照構成で検証し、model別スコア表を作らない。
+良い結果を得るための無断provider切替や送信範囲の拡大を禁止する。
+
+**2026-09-19の決定:** 意味的assertion precision 95%、重要claim保持98%、
+自然言語更新95%、根拠なし回答2%、実agent task 20件・成功率低下2 percentage points以内は、
+M2以降の完了gateから外す。合格扱いにも、別の必須作業への移管にもしない。
+任意の意味的観測は正確に区別して報告するが、大規模な人手注釈・複数model比較は対象外。
+再現可能な一つの参考benchmarkは成果物として残し、model品質の合格点は設けない。
+旧dataset上のRecall@20 90%以上/vector baseline以上、nDCG/MRR非劣化も参考結果とし、
+普遍的なmodel品質保証にはしない。検索実装の契約への一致は引き続き必須である。
+17–18章は過去の証跡・ADRにあるmilestone/品質gateの記述に優先する。
+認可、決定的な正しさ、復旧、資源上限の要件は緩和しない。
 
 ## 2. 現行技術の確認と設計への反映
 
@@ -133,7 +168,7 @@ assertionは`subject + predicate + object + qualifiers + valid_time + epistemic_
 
 `epistemic_status`は`reported / inferred / verified / disputed / retracted`を使う。例えば「ユーザーがXと言った」というepisodeは直接観測でも、「Xが真実である」は通常`reported`である。明示的な`remember`は保存意図を示すもので、confidence=1にはしない。
 
-confidenceには`score: 0..1 or null`、`method`、`calibration_version`を持たせる。LLM自己申告値は別の`extraction_score`に隔離する。初期は確率として未校正の値をnullにでき、authority分類と根拠数を表示する。校正済みscoreを採用する段階でBrier score/ECEを測る。同じ記事の転載や過去summaryの再取込みを独立した複数証拠として加点しない。
+confidenceには`score: 0..1 or null`、`method`、`calibration_version`を持たせる。LLM自己申告値は別の`extraction_score`に隔離する。未校正値は確率ではなく、nullを許可してsource classと根拠数を表示する。校正を主張する場合は外部から与えた方法/証跡を識別し、プロジェクトでmodel校正研究は行わない。転載やsummary再取込みを独立証拠として加点しない。
 
 ### 4.3 二時点とsupersession
 
@@ -278,7 +313,7 @@ CREATE INDEX assertion_valid ON memory.assertion_revision USING gist (valid_time
 - GIN: `tsvector`と実際に検索するJSONB属性。すべてのJSONBに無条件GINを作らない。
 - GiST: valid/system range。長期episodeの時系列scanは量を測ってBRIN・月partitionを検討。
 - HNSW: model revisionごとに専用table/partitionまたは固定predicateのpartial indexを作る。同じ次元でも異なるmodel空間を混在させない。
-- embeddingはmodel IDだけでなくrevision、dimensions、distance metric、normalization、input digestを記録する。再embeddingは旧新を併存させ、coverageと評価の合格後に切替える。
+- embeddingはmodel ID、revision、dimensions、distance metric、normalization、input digestを記録する。M5の移行では空間を分離し、coverage、参照整合性、query空間互換性、rollback検査の合格後にoperator明示承認で切り替える。model品質順位を切替条件にしない。
 - PostgreSQL標準全文検索をBM25と呼ばない。日本語はアプリ側の固定version tokenizerで分かち書きして`tsvector`化し、queryにも同じ処理を使う。英語、日本語、ID・固有名詞を別評価する。
 
 ANNのfilterで結果数が不足するときは、iterative scan、許可範囲のexact検索、tenant別index配置を順に評価する。HNSWの`vector`は2,000次元までというindex側制限もあるため、大きな次元への変更は型とindexを再設計する。[pgvector filtering・index仕様](https://github.com/pgvector/pgvector)
@@ -444,13 +479,13 @@ episodeとjob enqueueを同じtransactionでcommitする。job tableを正本と
 
 workerは`FOR UPDATE SKIP LOCKED`で少数jobをclaimし、lease tokenを更新して直ちにcommitする。LLM/APIを待つ間にDB transactionやrow lockを保持しない。timeout、heartbeat、最大attempt、指数backoff+jitter、dead-letter状態を設け、tenant別の並列数・費用上限で公平性を保つ。
 
-保証はat-least-onceである。公開時にinput revision、access/deletion epoch、source生存、lease tokenを再検査し、古いworkerの結果は棄却する。`job kind + input IDs/revisions + recipe version`のdedup keyと一意制約で公開を冪等にする。LLM再試行の費用までexactly-onceにはできない。
+jobの実行はat-least-onceだが、成否不明の外部呼出しを再送してよい意味ではない。送信前に永続予約し、crash・削除・restoreをまたいでunknown結果と消費済み予約を保持する。記録した結果と明示policyが許す場合だけ再試行する。公開時にinput revision、access/deletion epoch、source生存、profile、lease tokenを再検査し、古い結果は棄却する。完全な操作・入力・profile identityと一意制約で重複公開を防ぐ。provider課金のexactly-onceは保証できない。
 
 ### 9.2 Synthesisの段階
 
 ```text
 authorized episode
-  -> secret/PII and capture-policy check
+  -> capture, authorization and explicit processing-policy check
   -> typed extraction candidates
   -> source span validation
   -> entity resolution candidates
@@ -460,7 +495,12 @@ authorized episode
   -> embeddings / graph projection
 ```
 
-LLMが提案するのはtyped candidateまでとする。任意のentity ID、scope、ACL、時刻、信頼度を無検証で採用しない。sourceに存在する文字列span、JSON pointer、tool receiptなどの根拠を検証し、型不正・根拠不足・曖昧な更新はquarantineへ送る。
+LLMが提案するのはtyped candidateまでとする。任意のentity ID、scope、ACL、時刻、信頼度を無検証で採用しない。宣言schemaに従ってsource span、JSON pointer、tool receiptを検証する。契約違反は拒否し、契約が有効でも公開権限のない提案は意味を推測せずquarantineへ送る。
+
+参照/span検証が示すのは構造上の関係であり、意味的真実ではない。
+形式不正のprovider出力は拒否し、形式が有効でも未承認のcandidateは隔離する。
+operatorがsecret/PII分類を必要とする場合は別途明示設定する制御であり、
+本serviceが暗黙に保証する意味的な検出能力ではない。
 
 entity resolutionはscope内の正規化IDと明示的aliasを優先する。embeddingだけによる自動mergeは初期にはしない。後続のmergeもalias履歴、根拠、undo可能なmappingで管理し、誤merge時は影響するassertionとprojectionを再計算する。
 
@@ -468,7 +508,10 @@ entity resolutionはscope内の正規化IDと明示的aliasを優先する。emb
 
 ### 9.3 Working compaction
 
-context windowの圧迫、episode数、idle時間をtriggerにし、run単位のworking snapshotを生成する。初期閾値はwindowの70%などの設定値とし、model/harness別評価で調整する。compaction前後で以下を比較する。
+M2はcallerが明示指定するrun/head/coverageと入出力上限を使う。
+context圧迫やidle時間による自動triggerはM4の任意harness作業とし、
+M2のmodel調整作業にはしない。callerのtyped stateと未信頼summaryを分離し、
+compaction前後で以下を検査する。
 
 | 必ず維持する項目 | 保存方法 |
 |---|---|
@@ -481,9 +524,19 @@ context windowの圧迫、episode数、idle時間をtriggerにし、run単位の
 
 生成中の新eventはtailとして残す。snapshotのhead revisionとcovered sequenceをCASで更新し、古いcompactionが最新stateを上書きしないようにする。検証失敗なら旧snapshotとtailを維持する。compactionを原文削除と同一操作にしない。
 
+typed値を完全保持し、検証済みprovider結果を意味的に書き換えず保存する。
+source revision、coverage、model、recipe、input digest、job identityも保存する。
+これらは意図的に質の悪いものを含む固定summaryでも検証できる。
+serviceは必須fieldを散文から補完したり、要約が重要事項をすべて残すと保証したりしない。
+復元は保存state・summary・tailを現在の権限下で組み立てる処理であり、
+modelが失った意味の逆圧縮ではない。
+
 ### 9.4 Semantic consolidationとretention
 
-類似assertionの統合、矛盾の整理、summary生成は独立jobとする。同じscope・目的・時間粒度の範囲でのみまとめ、生成物の各claimからsourceへの対応を残す。summaryのsummaryを繰り返す場合もleaf episodeに戻れるようにする。
+M2の明示的な抽出/圧縮を超えるsemantic consolidationは延期する。
+後に要求された場合もmodel提案が自律的に真偽判定・entity merge・事実のsupersedeを
+行ってはならない。callerの決定または明示規則を用い、同じscope・目的・時間粒度で
+独立jobと可逆なprovenanceを管理する。summaryのsummaryもleaf episodeへ辿れるようにする。
 
 原文retention終了時は、(a)同じ保持規則で派生物も削除、または(b)明示的に許可された最小evidence excerptを独立した保持対象として残す、のいずれかをpolicyで選ぶ。digestだけでは意味的な根拠の検証はできない。検証根拠がなくなるassertionを`verified`のまま残さない。
 
@@ -565,7 +618,11 @@ projectionが古い場合はwatermarkを比較し、不足をcanonical backend�
 
 SQL/PGQ profileではAGE用の二重書込みをなくせる可能性があるが、導入しただけで高速化やRLSの同等性は保証されない。property graphの権限・underlying tableのRLS・owner実行・time filterをCIで検証する。開発版での成功と安定版／managed serviceでの利用可能性を別項目として報告する。
 
-M3完了条件はAGEまたはSQL/PGQの少なくとも一つで、実データを使った有用なgraph recallと認可・削除試験を通すこと。両方の同時本番運用をMVP必須にはしない。
+M3完了条件はAGEまたはSQL/PGQの少なくとも一つで、上限付きqueryのcanonical SQL
+との完全一致、認可、削除、projection再構築、復旧を検証すること。
+明示入力されたentity/relationと固定path oracleを使い、LLMのentity抽出や回答品質を
+gateにしない。上限付きpath/query費用の例を公開する。
+両backend、agent成功率の改善、model比較は必須にしない。
 
 ## 13. MCP adapter
 
@@ -610,7 +667,7 @@ read replicaを導入する場合は、ingest visibility、ACL epoch、deletion 
 | embedding provider停止 | FTS/entity/exact metadata検索、vector未完了の表示 | 異なるmodelのquery vectorで検索 |
 | synthesis停止 | raw episode・explicit structured memoryの利用 | pendingを抽出完了として返す |
 | AGE projection停止 | canonical SQL検索、graph無効表示 | 失効済みpathを返す |
-| optional reranker停止 | 基本rankingで返す | 未認可候補を外部rerankerへ送る |
+| optional reranker停止 | 明示設定済みの基本ranking fallbackだけをdegradedと表示。それ以外はerror | 無断の代替や未認可候補の外部送信 |
 | policy/deletion判定不能 | 503または対象scopeの利用停止 | 古いcacheを無条件提供 |
 | DB停止 | 503と安全なretry指示 | durableでない保存成功を応答 |
 
@@ -671,20 +728,52 @@ domainはHTTP、MCP、model providerを知らない。DB repositoryはcallerか�
 
 ## 17. 段階的MVPとroadmap
 
-工程は依存順に進める。人数やmodel/providerの制約で変わるため、週数は1〜2名程度の小チームにおける初期見積りであり納期保証ではない。安全性gateの不合格をfeature flagだけで回避して本番出荷しない。
+工程は依存順に進める。M0/M1行は原案の範囲を保持し、全体認定済みとはしない。
+M2以降は残るengineering作業から再見積りし、原案の週数は撤回する。
+feature flagや良いmodel benchmarkで安全性gateの不合格を回避して出荷しない。
 
 | 段階 | 範囲・成果物 | 完了gate | 目安 |
 |---|---|---|---|
 | M0 / 設計固定 | ADR、API/schema、脅威モデル、fixture、version matrix、AGE/SQL/PGQ小規模spike | 二時点・scope・削除契約のgolden例が合意され、対応artifactを取得・起動できる | 1〜2週 |
 | M1 / walking skeleton | PostgreSQL schema/RLS、observe、structured remember、basic recall/explain/forget、idempotency、typed checkpoint、SQL graph oracle | 2 tenantsのE2Eで保存→検索→説明→訂正→復旧→削除が成功。漏洩・再出現0 | 3〜4週 |
-| M2 / core MVP v0.1 | pgvector+FTS hybrid、日本語tokenizer、background extraction、same-scope compaction、implicit hook、MCP、job recovery | core品質・認可・削除・復旧gate合格。20件以上の実task replayと公開評価のbaseline報告 | 4〜6週 |
-| M3 / graph MVP v0.2 | AGE優先のgraph adapter、bounded expansion、projection rebuild、temporal multi-hop | AGEまたはSQL/PGQで要求機能を実証。canonical oracleとの一致、性能/有用性評価を完了 | 3〜4週 |
-| M4 / 統合pilot v0.3 | postgresem adapter、source ACL失効連携、freshness再照会、checkpoint harness adapter、運用強化 | 業務queryの権限を変えずmemoryを利用。部分障害とsource削除が正しく伝播 | 4〜6週 |
-| M5 / 本番候補 | 容量拡張、HA/PITR、tenant分離、model migration、安定版SQL/PGQ採否 | 本番相当load、DR、upgrade、削除retentionの証跡。互換契約の固定 | pilot後に再見積り |
+| M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の残作業 |
+| M3 / graph MVP v0.2 | AGE優先または実用可能なSQL/PGQ adapter一つ、上限付き時間付き探索、projection世代/再構築 | SQL oracleとのID/path/time/ACL一致、失効/削除barrier、古い/再構築中projectionの挙動、query資源上限 | M2後 |
+| M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | core/graphの依存完了後 |
+| M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
 
 M2はgraph要件を満たす最終版ではない。早期利用可能なcore MVPと、要求されたAGE/SQL/PGQを含むM3のgraph MVPを明確に区別する。SQL/PGQの安定版採用はPostgreSQLの公開状況と実測次第であり、M3のAGE経路の完了を待たせない。
 
+### 現在のM2完了backlog（2026-09-19）
+
+schema 13実装`1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`は、
+native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
+これは対象経路の証跡であり、以下の作業の完了ではない。
+
+| 順序 | 作業と完了証跡 | 現状 |
+|---|---|---|
+| M2-A | 対応API/SDK/MCP/hookごとの不変条件と完全一致SHAの検査を対応付け、構造化stateと生成文を区別。旧評価/reportの扱いを本計画と整合させ、過去結果を再採点しない | core経路は実装済み。受入一覧とreport契約の見直しが残る |
+| M2-B | 対応する全削除mode/receiptと派生物を扱うversion付き復旧metadata・隔離restoreを実装。公開/worker起動前に最新ACL、処理policy、call予約、unknown、quota消費を照合 | **次の実装優先項目。** 現drillはpurge 1件/失効1件のみで、model状態を拒否 |
+| M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | 未認定。unitのmemory検査はこの負荷の代用ではない |
+| M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
+
+M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、
+snapshot/candidate/embeddingと、読み続けられるpositive controlを対象とする。
+schema 13 tombstoneには対象ごとのreceipt/mode紐付けがないため、新migrationを追加し、
+upgrade/backfillの制限を検証する。公開済みmigrationの書換えや過去の対応関係の捏造はしない。
+正本台帳が欠落・不整合ならrestoreの隔離とmodel worker停止を維持する。
+unknown callの再試行可能化、消費済みquotaの巻戻しを許可しない。
+HA/PITRと本番RPO/RTO認定はM5だが、安全なlogical restoreをM2から延期する意味ではない。
+
+M2 engineeringに**現時点で人手labelの依存はない**。
+未採点Wikipedia packetはprovider単体の診断として残すが、評価票、実task 20件、
+新規dataset収集、多数modelをM2完了の必須条件にしない。
+`human_review_verified=false`や過去の`NOT_MEASURED`は事実のまま保持する。
+旧reportの`m2_qualified=false`はrelease判定の正本ではなく、
+計画変更だけを理由にtrueへ切り替えない。
+
 ### 17.1 M0で確定するADR
+
+原案の設計checklistを追跡用に保持するもので、新しいM2作業一覧ではない。
 
 1. PostgreSQL/pgvector/AGEの固定version、SQL/PGQ実験profile。
 2. 二時点revision、fact key、単値/複数値predicate、supersession transaction。
@@ -695,6 +784,8 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 7. checkpoint schema、external effect ledger、最初に対応するharness一つ。
 
 ### 17.2 最初の実装backlog
+
+原案の実装順序。再開には上記の現在のM2 backlogを使う。
 
 1. 実装前のGit初期化と原案の初期commitは完了。本計画の日本語版・英語版を`docs/`で管理し、MIT license・二言語README・利用手順を整備して公開GitHub repositoryで開発を進める。ADRはM0で追加する。
 2. 2 tenants、同名entity、異なるscope、遡及訂正、削除対象を含むgolden fixtureを作る。
@@ -718,11 +809,11 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 | Unit / property | time range境界、revision順序、rank融合、budget、predicate型 | 不変条件を満たす。未対応入力は明示拒否 |
 | PostgreSQL integration | composite FK、RLS、constraint、rollback、pool再利用 | 他tenant参照不可、identity持越しなし |
 | Temporal golden | 未来変更、遡及訂正、out-of-order、同時訂正、DST、未知日付 | 手作りoracleとの完全一致 |
-| Provenance | 全claimのleaf source、偽span、循環、source削除、同一source転載 | 根拠なし公開0、循環0、二重加点なし |
+| Provenance | leaf参照、偽span、循環、source削除、同一source転載 | 参照/span/policy契約に違反した公開0、循環0、二重加点なし。意味的支持の証明ではない |
 | API contract | schema、idempotency、409、version、job status | 同じkeyの並列再送でも一つの効果 |
 | MCP/native parity | 同じidentity/query/時点/予算 | 結果の権限・意味が一致 |
 | Security | user/agent偽装、他scope ID、hidden graph node、explain/trace、checkpoint、cache | 非公開本文・識別子の出力0 |
-| Injection / poisoning | 「以前の指示を無視」、偽の承認、偽source、重要度を上げる文 | policy不変、tool permission不変、根拠検証で拒否 |
+| Injection / poisoning | 「以前の指示を無視」、偽の承認、偽source、重要度を上げる文 | 本文がpolicy・typed承認・tool権限を変えない。不正参照は拒否。字面の検証を意味的poisoning検出器としない |
 | Worker chaos | claim後kill、LLM後kill、lease奪取、再試行、DB切断 | lost job 0、二重公開0、stale workerの書込み0 |
 | Deletion races | recall中forget、embedding中forget、summary再生成中ACL失効、backup復元 | barrier以後の新読出し0、再出現0 |
 | Checkpoint recovery | CAS競合、別branch、旧schema、外部成功後crash、source削除後restore | 安全なresumeまたは明示停止。副作用の無条件再実行0 |
@@ -731,39 +822,58 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 
 セキュリティfixtureは小さな固定例に加え、ランダム生成したtenant/scope/派生DAGと操作sequenceで繰り返す。ゼロ件は「試験範囲でゼロ」を意味し、未知の攻撃が存在しない証明とはしない。
 
-### 18.2 Memory品質評価
+### 18.2 一つの参考記憶benchmark
 
-公開評価は[LongMemEval](https://github.com/xiaowu0162/LongMemEval)と[LoCoMo](https://github.com/snap-research/locomo)を採用候補とする。LongMemEvalは情報抽出・複数session推論・時間推論・知識更新・abstentionを分けて測る。LoCoMoでは長期会話からの検索・回答を比較する。どちらもtenant ACL、削除、外部副作用の安全性の代用にはしない。
+一つの固定generation/embedding構成で再現可能な例を公開する。rerankは無効でよい。
+記録済みlocal構成と利用許可済み/synthetic fixtureを再利用し、model比較や
+LongMemEval/LoCoMo/Wikipediaの人手注釈を必須にしない。
+過去の公開runは診断として残し、失敗とdataset制限も保持する。
 
-追加の内部datasetを少なくとも500問、50以上のtask/session群で作る。日本語/英語、entity同名、時間変更、否定、矛盾、古いpreference、保存禁止、根拠不足、source更新、prompt injectionを層化する。実userの履歴を無断でbenchmarkに流用しない。
+実際のpg_agmemory経路で、既知のsourceとtyped stateの取込み、検索、
+明示的訂正、圧縮、新しいtailを含む復元、削除と可視性確認を行う。
+入力したfield/ID/source coverageの決定的保持と、生成文の意味的保持は分ける。
+必要なら帰属表示付き原文/要約の小例を添えるが、有効なlabelなしに意味的保持率を主張しない。
+質の悪い出力や拒否された出力も報告対象であり、M2を合格させるまでmodelを調整しない。
 
-testの質問・正解をsynthesis/embedding時の入力に入れない。時系列とsession/entity単位でtrain/dev/testを分離し、parameter調整後のtest使い回しを避ける。model、prompt、tokenizer、seed、retrieval K、context budget、dataset commit、judge rubricを固定する。
+実装SHA、dataset digest/license、完全model revision、provider/recipe/tokenizer版、
+設定、予算、実call、失敗、latency、footprintを記録し、秘密や私的dataはgitへ入れない。
+構造fixtureと固定vectorは契約検証に使い、実provider実行だけをlive benchmarkと表示する。
+goldは生成・取込み・ranking入力へ渡さない。既存600問/50 groupの検索証跡を再利用し、
+新たな最小dataset件数を追加しない。
 
-比較baselineは(1)memoryなし、(2)直近window、(3)予算に収まる全文context、(4)vector-only、(5)FTS+vector、(6)temporal/provenance込み、(7)graph込みとする。graph・synthesis・compactionが費用に見合うかをablationで判定する。全文を収められない場合はその条件を明記し、無理な同条件比較に見せない。
-
-回答品質は固定answer modelで測り、retrieval品質と別に報告する。LLM judgeだけに依存せず、ID/時刻/数値は機械判定し、評価subsetは人手で二重確認する。abstentionは正答率だけでなく誤断定率と回答率を併記する。複数回実行とsession単位bootstrapの信頼区間を報告する。
+比較する場合は同じ参照構成での記憶経路（vector/hybrid、圧縮前後など）に限定し、
+model間比較はしない。入力予算を揃えるか、全文参照条件を明確に区別する。
+既存harnessの全arm、agent回答model、複数seedの意味採点、人手評価者、実task 20件は
+必須にしない。未回答・失敗・skipを隠さず報告する。dataset内の検索指標や任意の意味的
+観測は利用例であり、製品の一般的保証ではない。
 
 ### 18.3 指標と初期受入目標
 
-下記は設計目標であり未測定。M0のbaselineで現実性を確認し、変更するときは理由と新旧値をADRに残す。security/correctnessのゼロ許容条件は速度のために緩めない。
+下記は宣言した対応入力と検証配置profileに対する本体受入gateである。
+範囲変更と廃止した目標は1.3節に記録し、過去の測定を合格へ読み替えない。
+fixture/profile変更と理由は認定前に固定する。スコア改善のために正しさや認可を緩めない。
 
 | 指標 | 定義 | 初期gate |
 |---|---|---|
 | Tenant/ACL leakage | 未認可の本文・出典・path・metadataが返った試験件数 | 0 / 10,000以上の生成ケース、固定攻撃suiteは全合格 |
 | Temporal correctness | golden時点queryで正しいrevision/値/不存在を返す率 | 100% |
-| Provenance integrity | 公開claimが許可済みleaf evidenceへ辿れる率 | 100%。意味的支持は別途人手評価 |
-| Assertion precision | 採用assertionのうち根拠が実際に支持する割合 | 人手標本で95%以上。重大な架空事実0 |
-| Retrieval Recall@20 | 権限上利用可能な正解evidenceの取得率 | 内部held-outで90%以上、単独vector baseline以上 |
-| nDCG@10 / MRR | relevance labelに対する順位品質 | baseline比非劣化。time/更新categoryを個別表示 |
-| Update correctness | 訂正後queryで現行情報を選び、過去queryも維持する率 | deterministic cases 100%、自然文fixture 95%以上 |
-| Unsupported assertion rate | 根拠不足にもかかわらず回答が断定した率 | 2%以下を目標、重大categoryは0 |
-| Compaction fidelity | 必須制約・ID・未完了状態の保持率 | typed field 100%、重要claimの人手評価98%以上 |
-| Task continuation | compaction前後のreplayで達成条件を満たす率 | 非圧縮baselineとの差が2 percentage points以内 |
+| Provenance integrity | 許可済みsource/revision/span参照と派生closure | 構造上の完全一致100%。推定を検証済み真実へ昇格しない |
+| Retrieval contract | 固定候補/vector、time/ACL filter、rank融合、model空間identity、context予算とtruncation | 決定的経路はoracleと完全一致。ANNは固定profileでexact検索と比較。Recall/nDCG/MRRの例に普遍的な意味品質gateは設けない |
+| Explicit update correctness | 明示した訂正と並行更新下の履歴query | golden一致100%。自然文提案が明示更新契約を迂回しない |
+| Compaction / restore integrity | typed field、受理summary payload、原文参照、coverage、tail、CAS | 完全保持または明示的無効化/error。隠れた欠落/原文削除やsummary本文の承認への昇格なし |
+| Provider boundary | schema/version、不正出力、timeout、model停止、unknown、予算超過 | 契約に沿う結果または明示失敗。未許可送信、無断provider切替、blind再callなし |
 | Deletion visibility | barrier完了後の新read/restore/workerで対象情報が見える件数 | 0。purge時間・backup期限は別記 |
-| Calibration | verified labelに対するBrier/ECE | 数値confidence採用時のみ測定。未校正scoreを確率表示しない |
 | Duplicate/lost publication | chaos下のjob二重公開・消失 | 0。処理重複自体はat-least-onceとして許容 |
-| Cost | episode 1,000件あたりのLLM/embedding token・費用、query費用 | baselineと併記し、tenant上限を超えない |
-| Footprint | episode/assertion/vector件数あたりのDB/index/WAL/backup bytes | 増加率とmodel再生成時のpeakを記録 |
+| Recovery | 旧backupと最新の正本削除/ACL/policy/call会計状態 | 対応履歴の照合後stateが一致。再出現・quota巻戻し・unknown call再送なし。台帳欠落はfail closed |
+| Resource limits | call、入出力、context、queue、DB/worker上限 | 並行load下でも宣言上限を強制。unknown会計を保持し、予約とprovider実課金を区別 |
+| Reference benchmark | 18.2節の単一構成artifact | 条件と失敗を含む結果を再現可能に公開。model順位や意味的合格点なし |
+| Footprint / server latency | 18.4節profileのDB/index/WAL/backup量とserver単体時間 | 固定配置上限に対して実測。model実行時間/費用は別記 |
+
+ANN経路を有効化する場合は、vector、認可済みexact top-K、同順位の扱い、
+選択率、index recallの下限、fallback/error方針を認定実行前に固定する。
+不足結果を黙って完全一致とせず、ANNを無効化する場合も認定済みexact経路と
+明示capability変更を要求する。これはindex/検索実装の検証であり、
+embedding modelの意味理解の採点ではない。
 
 ### 18.4 性能測定profile
 
@@ -774,28 +884,32 @@ testの質問・正解をsynthesis/embedding時の入力に入れない。時系
 - Load: 20 recall/s、5 observe/s、背景worker 2、30分以上の定常負荷。cold/warm cacheを分離する。
 - 選択率: 許可候補が全体の100%、10%、1%、0.1%の場合を測り、exact検索をrecall oracleにする。
 - 初期目標: observe DB commit p95 < 150 ms、implicit recallのserver retrieval+pack p95 < 500 ms、explicit bounded graph p95 < 1.5 s。
-- provider時間を含むE2Eも別に測定する。query embedding込みimplicit p95 < 2 sをpilot目標とするが、provider別に結果を表示する。
-- synthesis lagは上記ingest下でp95 < 60 sを初期目標とし、入力長・model・rate limitを併記する。
+- E2Eとsynthesis lagは一つの参照構成で測り、入力長・model・rate limitを併記する。旧provider込み2秒/60秒目標は参考であり、本体release gateやprovider比較作業にはしない。
 - forget barrierは小規模selectorでp95 < 1 sを目標。大量closureのactive-store purgeは対象件数別に測り、初期目標は10k objectsで15分以内。
 
-M profileの達成を前提に実装を複雑化しない。まずSで正しさを確定し、Mで問題が出た箇所にだけpartition、batching、index調整、worker分離を追加する。
+M2では実行前にS上限を固定し、上記server側目標は明示記録した配置範囲の変更なしに
+緩和しない。制御したproviderでserver/queue測定を分離し、live参照構成は別記する。
+M3はbounded graph、M5はM、本番容量、model移行時peakを認定する。
+測定できていない項目を合格にせず、modelの回答スコアを目標に最適化しない。
 
 ## 19. リスク・優先順位・採否条件
 
 | リスク | 対策 | 採否/停止条件 |
 |---|---|---|
 | graph/RLSが想定どおり機能しない | 固定template、tenant graph分離、canonical oracle、中間node攻撃試験 | 未許可pathが出るbackendは本番無効。M3完了を主張しない |
-| synthesisが架空の事実を蓄積 | 根拠span、typed candidate、source class、review/quarantine | precision gate未達なら自動公開を止める |
+| synthesisが架空の事実を提案 | 未信頼candidate、明示source class、参照検証、opt-in公開policy | 契約/policy違反なら公開停止。model推定を検証済み真実と表示しない。意味精度は本体合格点にしない |
 | 複雑な削除伝播が漏れる | provenance DAG、read barrier、worker fencing、restore replay | 再出現が1件でもあればrelease不可 |
 | 記憶が業務の現在値として誤用される | observed_at、requires_refresh、source再照会 | freshness確認不可なら過去観測としてのみ回答 |
 | tenant増加でANN品質低下 | exact fallback、選択率別評価、必要tenantのindex分離 | 権限を緩めてrecall数を稼がない |
 | 過剰なmicroservice/DSL設計 | modular monolith、scope membership、固定predicate/graph template | benchmarkで必要性がない機構は延期 |
 | background費用増大 | incremental watermark、dedup、quota、変更のないscopeを処理しない | 予算上限でjobを停止しpendingを表示 |
-| model変更で意味が変わる | version pin、shadow eval、dual embedding、rollback | held-out劣化時は切替しない |
+| model変更で出力/vector空間が変わる | version/profile固定、operator明示選択、空間分離、version付き移行 | 非互換・未承認profileを拒否。無断再embeddingや自動的な最適model切替をしない |
 | PostgreSQL 19/managed環境の差 | AGE経路を先行、SQL/PGQはprofile別qualification | 開発版成功だけで本番対応と表示しない |
 | OSS範囲が広すぎる | M2/M3を分け、最初のharness/言語/providerを限定 | pilot価値が出なければ拡張前に再評価 |
 
-優先順位は **認可・削除・根拠 → 時間・競合・復旧 → 検索品質 → synthesis/compaction → graphによる増分価値 → 統合・規模拡張** とする。graphは要件としてM3で実装するが、常時利用はablationで効果があったqueryに限定する。
+優先順位は **認可・削除・provenance → 時間・競合・復旧可能性 → 上限付き検索とprovider契約
+→ 圧縮/復元の整合性 → graphの一致性 → 外部連携と運用** とする。
+graph/model機能を使うかはユーザーが選び、各段階をmodel品質競争で足止めしない。
 
 ## 20. 実装開始前レビューと要求対応
 
@@ -805,7 +919,7 @@ M profileの達成を前提に実装を複雑化しない。まずSで正しさ�
 - **過剰設計**: 初期はAPI/workerと通常テーブルを中心にし、microservice分割、任意ACL DSL、全backend同時運用、分散queueを省く。
 - **不足項目**: 二時点の訂正、派生物の削除、in-flight worker、過去checkpoint、backup復旧後の再出現、認可変更後のcontextを追加した。
 - **優先順位**: graphや自動抽出の前に、explicitな記憶の保存・説明・削除・復旧を一巡させる。M3までで要求されたgraph機能を確認する。
-- **評価の弱点**: 公開benchmarkの単一総合点に依存せず、日本語・時間更新・abstention・権限・削除・復旧を別に測る。
+- **範囲修正（2026-09-19）**: 記憶基盤の保証とmodelの判断を分離する。参考benchmark一つを残し、意味的品質/人手/task成功の必須gateとmodel比較を除外する。未完の復旧/会計と資源検証を優先する。
 
 ### 20.2 要求対応表
 
@@ -830,4 +944,7 @@ M profileの達成を前提に実装を複雑化しない。まずSで正しさ�
 | GitHub ActionsはDocker、linux/amd64・linux/arm64 | 16、18 / M0〜M1でCI整備、以後各段階で検証 |
 | 公開GitHub repository・日英ドキュメント・実装前のGit初期化 | 16、17.2 / Git初期化・原案commit済み、公開・二言語化を整備 |
 
-本計画の完了と実装の完了は区別する。Git初期化と原案commitを終えた実装着手段階であり、DDL migrationの実行、extension互換性、RLS、API、性能・品質gateは、本計画で検証済みとは主張しない。最初の着手単位はM0のADRとgolden fixture、続いてM1の安全な縦断実装とする。公開repository・二言語ドキュメント・MIT license・Apple Container/Dockerのテスト基盤整備も並行して進める。
+改訂計画と実装・releaseの完了を区別する。完全一致SHAの証跡と制限は
+STATUS/EVALUATIONへ保持する。再開点はM2-Aの受入一覧とM2-Bの復旧metadata/手順であり、
+新しい人手評価作業ではない。後続機能は別途実装・認定が必要で、
+本書はM2完了や本番readinessを宣言しない。

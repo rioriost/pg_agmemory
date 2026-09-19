@@ -9,9 +9,12 @@
 
 ## 現在の開発契約: v0.0.27 / schema 13
 
-[人手評価の準備](docs/HUMAN_REVIEW-jp.md)では、revision固定のWikipedia収集、
-明示実行するlocal-model pilot、独立評価用の未記入票を用意します。
-人による評価の実施やM2合格を認定するものではありません。
+**記憶基盤であり、判断システムではありません。** ユーザーが予算に応じて対応modelを
+指定し、pg_agmemoryはmodelの推論力でなく記憶の契約を保証します。
+[改訂M2–M5計画](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)は本体受入れと
+一つの参考benchmarkを分離し、複数model比較や人手の意味採点を必須にしません。
+[Wikipedia評価packet](docs/HUMAN_REVIEW-jp.md)は保存した任意の診断であり、
+次に行う必須作業ではありません。
 
 Stage **`m2-background-processing`** は、管理者が明示許可する既定拒否の
 local extraction/embedding job、隔離candidateのcallerによる採用、
@@ -28,8 +31,9 @@ purge依存関係でblind retryと古い結果の公開を防ぎます。
 **M2は未完了で、本番releaseではありません。** 50 group・600 held-out synthetic問で
 hybrid Recall@20は99.818%（vector-onlyと同値）、実Native APIの不正認可10,000件で
 予期しない結果0件、実workerのSIGKILL復旧、local modelを3回呼び出す
-抽出・embedding・圧縮・復元を確認しました。人手precision/fidelity評価、
-20件以上の実task replay、災害復旧の代わりにはなりません。
+抽出・embedding・圧縮・復元を確認しました。本体の残作業は、対応履歴全体のlogical
+restore、最新ACL/model呼出し会計の照合、資源認定などであり、人手labelや実agent
+task 20件ではありません。
 修正後の公開oracle QAは144試行で不正出力0件ですが、abstention 136件、
 機械的完全一致22件にとどまり、回答品質は未認定です。過去の不正出力も証跡に保持します。
 完全一致の検証SHA、失敗履歴、公開baselineの状態は

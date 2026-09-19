@@ -4,6 +4,18 @@
 
 ## 現在の状態: v0.0.27 / schema 13、M2受入れは未完了
 
+**2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
+に従う。pg_agmemoryは判断システムでなく記憶基盤である。
+人手の意味的スコアや実agent task 20件の成功をrelease gateにせず、
+model比較や新しい人手label収集も計画しない。一つの固定した参考記憶benchmarkは
+利用例として残すが、model品質の合格点は設けない。末尾に現在のengineering残作業を示す。
+
+以下の実験結果・スコア閾値・harness recipeは**2026-09-18までの過去の診断**であり、
+改訂後のrelease方針ではない。旧gateのための全baseline再実行や評価票記入は不要。
+既存の`NOT_MEASURED`、`human_review_verified=false`、`human_quality_qualified=false`、
+`m2_qualified=false`は事実のまま保持し、version付きの本体受入一覧の代わりにしない。
+意味的な測定結果を捏造しない。
+
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
 M2受入れの完了ではない。
 
@@ -786,7 +798,7 @@ artifact への参照だけとする。
 mock response、収集件数、scorer 成功から品質を推測しない。
 Capture policy だけでは provider egress を許可しない。
 
-## 残る受入れ証跡と人間の入力
+## 現在の受入れ証跡とengineering backlog（2026-09-19）
 
 自動生成された inferred assertion、隔離 proposal、caller が採用した reported
 assertion は別々の評価 cohort とする。実装済みの
@@ -794,38 +806,38 @@ assertion は別々の評価 cohort とする。実装済みの
 `explicit_intent=true`、`expected_input_digest`、`reason` を受け付けるが、lineage には
 `human_review_verified=false` を記録する。これは caller の明示宣言であり、
 人間のレビュー確認や意味的な真実の証明**ではない**。採用成功や reported という
-ラベルは、独立した precision label や人手品質ゲートの合格を供給しない。
+ラベルは、独立した意味的precision labelを供給しない。
 別途の人手レビュー用 sample を選ぶ際も、サーバーが記録した
 source/span/model/prompt/job lineage を保持する。採用しても元の disposition は
 `quarantined` のままで、別の `adopted_assertion_id` と `adopted_by` が一度の採用を
 識別する。この proposal を自動公開として数えたり、採用を他の assertion の
 supersession とみなしたりしてはいけない。
 
-| 義務 | 現在の証跡 / 残る要件 |
+| 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| 人手 assertion precision ≥ 95% | 承認済み代表 source、支持・否定・不確実性の判定基準、独立した人手 label、sampling と分母の記録 |
-| 人手 compaction fidelity ≥ 98% | 意味、重要事項、欠落の人手レビュー。Typed state の完全複写だけでは不足 |
-| 20件以上のreal task replay | 許可済みの実履歴と固定開始条件。非圧縮baselineに対する継続成功率の低下2 percentage point以内。Synthetic groupはtaskではない |
-| 更新の正確さ | 自然言語更新95%以上、決定的更新100%。構造fixtureだけでは意味的正しさを測定しない |
-| 根拠なし回答2%以下、重大case 0 | 失敗を保持した独立support reviewが必要。機械的完全一致やabstention検査はこの測定ではない |
+| M2-A 契約/証跡一覧 | 対応API/SDK/MCP/hookと完全一致SHAの不変条件を対応付ける。`1ea3f6c`のnative各1,754/8が最新実装証跡であり、包括release判定ではない |
+| State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| 削除とbackup復旧 | 隔離restoreと最新削除/ACL replayで復活0。worker再開前に最新model予約/quotaも照合し、provider側artifactを含める |
-| 公開 baseline と回答品質 | 版を固定したoracle診断は不正回答/失敗/予算修正も保持。機械的QAは人手レビューの代わりにならない |
-| Cost、latency、footprint | dev 440/held-out 2,200 embedding call、抽出/診断の失敗4 callと成功processing 3 call。public試行は別会計で、全体の金銭/latency/footprint認定ではない |
+| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 混在/複数履歴、対象別receipt/mode、派生物、独立した最新台帳。単一purge drillはmodel状態を拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
+| M2-C 資源認定 | **未完:** 固定S profileの混在load/server/queue/footprintと上限強制。model時間/費用は別記し、既存call数やunit memory検査を負荷認定に流用しない |
+| M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
+| M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 
-人手precision/fidelity、real-taskは引き続き**未測定**。
-一般backup復旧とmodel accounting照合は未認定で、単一purge実験は限定した回帰証跡に
-とどまる。held-out synthetic検索とprocess-crash実験も別測定であり、
-生成ACLの成功を独立gateへ流用してはいけない。
+旧人手precision/fidelity、自然言語更新、根拠なし回答、実task成功の目標は、
+**プロジェクト受入れから除外**したのであって合格ではない。
+任意の意味的観測は実際に評価しない限り未測定である。
+未記入Wikipedia pilotはblockerでなく採点不要。provider単体の呼出しだけであり、
+記憶経路のbenchmarkの代用にはしない。
 
-人間が dataset と local processing を許可し、代表的な real task を選び、
-評価・評定手順を承認し、独立した人手 review を供給する必要がある。LoCoMo を
-検討するなら実用途に即した license 判断も追加で必要となる。デフォルト拒否を
-維持して非モデルの構造検証を行うだけなら、それ自体に人手判断を追加する必要はない。
-ただしその検証では上記の不足を解消できない。Model judge は診断補助になり得るが、
-要求される人手 precision/fidelity の代替にはならない。
+資料利用、provider送信、配置policyの許可は引き続き人/operatorが行う。
+人手品質gateの除外は、同意・license・権限・公開制御の除外ではない。
+制御したprovider応答は境界契約の検証に使い、実callだけをlive証跡とする。
+provider側の保持はoperatorの外部依存であり、PostgreSQL serviceが暗黙に消去を
+保証できるものではない。
 
-次の限定された再開点は、統合された自動 synthesis/embedding/compaction 実装の認定と、
-別々に記録する retrieval、人手品質、task replay、ACL、chaos、復旧実験である。
-一つの合格が他の合格を意味するわけではない。
+次の実装優先項目はM2-Aの受入一覧に続く**M2-B**であり、
+version付き復旧metadata、migration/upgrade、最新削除/ACL/policy/予約/quotaの
+隔離照合を実装する。unknownを保持し、schema 13の欠落receipt/mode履歴を推測しない。
+本番HA/PITRとRPO/RTOはM5、安全な対応履歴のlogical restoreはM2のままである。
+範囲修正後も本体の復旧/資源の未完項目は残る。

@@ -2,6 +2,13 @@
 
 [English](HUMAN_REVIEW.md) | [実測証跡](EVALUATION-jp.md)
 
+**2026-09-19: 依頼していた人手評価は停止し、M2の必須作業から外しました。**
+[改訂計画](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)はmodelの要約・判断能力ではなく、
+記憶契約を認定します。本書と未採点artifactは任意のprovider診断として残し、
+プロジェクトの受入作業としては継続しません。実装再開のための評価票記入や
+追加model実行は不要です。固定packet内の説明・reportのgate名は旧計画に基づくため、
+hashと結果を維持し、合格に見せる編集はしないでください。
+
 ## 目的と境界
 
 このworkflowは**未採点の開発用予備評価**を用意するもので、M2受入れではありません。
@@ -42,10 +49,10 @@ Wikipedia contributorsへの帰属、正確なrevisionと履歴へのlink、
 projectを名乗り、件数を限定した逐次requestを使用します。拒否・rate limit時は停止し、
 browser偽装や制限回避を行いません。
 
-## 用意済みのlocal pilot: 2026-09-18
+## 保存したlocal pilot: 2026-09-18
 
-**既存fileで人手作業を開始できます。採点前に出力を再生成しないでください。**
-日英を読める独立した2名を`reviewer-a`と`reviewer-b`へ割り当てます。
+**現在は採点を依頼していません。** 別途この診断toolの利用を選ぶ場合も、
+固定出力は再生成しません。独立した2名を`reviewer-a`と`reviewer-b`へ割り当てます。
 このcheckoutでは、最初に
 `.review-artifacts/wikipedia-pilot/review/sources.html`だけを開き、
 同じdirectoryの`source-reviewer-1.json` / `source-reviewer-2.json`へ記入します。
@@ -200,14 +207,13 @@ python -m pg_agmemory.human_review score \
 自動inferred公開、callerの明示採用、未信頼proposalは別cohortです。
 閾値を満たすために、良好な低impact群を他の群へ混ぜてはいけません。
 
-M2目標は、assertion support 95%以上かつ重大な架空事実0、
-重要claimの圧縮fidelity 98%以上かつtyped state完全保持、
-自然言語更新95%以上、回答の根拠なし断定2%以下かつ重大case 0です。
-要約全体への一つの判定だけでは、claim単位の保持率の分母になりません。
-小規模Wikipedia pilotでマイルストーン全体の比率を証明せず、
-生成reportでM2合格を宣言しないでください。
+旧意味的閾値（assertion support 95%、重要claim保持98%、自然言語更新95%、
+根拠なし回答2%）はM2以降のgateではなくなりました。
+typed stateの完全保持は本体のソフトウェア契約として維持します。
+要約全体の判定はclaim保持率の分母にならず、gateの除外は測定結果を生みません。
+このtoolのreportでM2合格を宣言しないでください。
 
-pilotは判定基準の明確化と失敗原因の調査に使います。正式受入れ前には別途選んだ標本、
+プロジェクト受入れの外で意味評価の研究を行う場合は、事前に標本、
 sampling単位、cohort、分母、model/prompt/source版、評定手順を固定します。
 同じ記事の出力を独立した多数の証拠とみなさず、session/source group単位で
 不確実性を報告します。

@@ -4,6 +4,20 @@
 
 ## Current status: v0.0.27 / schema 13, M2 acceptance incomplete
 
+**Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
+now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
+system. Human semantic scores and 20 successful agent tasks are not release
+gates; neither model comparison nor a new human-label campaign is planned.
+One pinned reference memory benchmark remains required as an example, without
+a model-quality pass score. The final section lists current engineering gaps.
+
+The experiment results, score thresholds and harness recipes recorded below
+are **historical diagnostics through 2026-09-18**, not the revised release policy.
+Do not rerun all baseline arms or fill review forms merely to satisfy old gates.
+Existing `NOT_MEASURED`, `human_review_verified=false`, `human_quality_qualified=false`
+and `m2_qualified=false` fields remain truthful and unchanged; they do not replace
+the versioned core acceptance inventory. No semantic measurement is invented.
+
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
 SHA; successful software checks are not M2 acceptance.
 
@@ -855,7 +869,7 @@ Record actual requests/results, failures and explicit skips; do not infer qualit
 from installed models, mocked responses, collection counts or a successful scorer.
 Capture policy alone never authorizes provider egress.
 
-## Remaining acceptance evidence and human input
+## Current acceptance evidence and engineering backlog (2026-09-19)
 
 Automatic inferred assertions, quarantined proposals and caller-adopted reported
 assertions are distinct evaluation cohorts. The implemented
@@ -863,41 +877,39 @@ assertions are distinct evaluation cohorts. The implemented
 `explicit_intent=true`, `expected_input_digest` and `reason`; its lineage records
 `human_review_verified=false`. This is an explicit caller declaration, **not**
 verified human review or semantic truth. Neither successful adoption nor a
-reported assertion label supplies an independent precision label or closes a
-human-quality gate. Preserve the server-recorded source/span/model/prompt/job
+reported assertion label supplies an independent semantic precision label.
+Preserve the server-recorded source/span/model/prompt/job
 lineage when selecting samples for separate human review. Adoption leaves the
 original disposition `quarantined`; separate `adopted_assertion_id` and
 `adopted_by` identify its single adoption. Do not count that proposal as an
 automatic publication or treat adoption as supersession of another assertion.
 
-| Obligation | Current evidence / remaining requirement |
+| Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| Human assertion precision ≥ 95% | Approved representative sources, explicit support/negation/uncertainty rubric, independent human labels and recorded sampling/denominator |
-| Human compaction fidelity ≥ 98% | Human review of retained meaning, critical facts and omissions; exact typed-state copying alone is insufficient |
-| At least 20 real task replays | Authorized actual histories and frozen starting conditions; continuation success within 2 percentage points of the uncompressed baseline; synthetic groups are not tasks |
-| Update correctness | Natural-language updates ≥ 95%, deterministic updates 100%; structural fixtures alone do not establish semantic correctness |
-| Unsupported answers ≤ 2%, serious cases zero | Independent support review with failures retained; mechanical exact-match and abstention checks are not this measure |
+| M2-A contract/evidence inventory | Map declared API/SDK/MCP/hook operations to exact-SHA invariants; `1ea3f6c` native 1,754/8 per architecture is the latest implementation evidence, not a blanket release decision |
+| State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| Deletion and backup recovery | Isolated restore and latest deletion/ACL replay with zero reappearance; reconcile latest model reservations/quotas before worker restart, and account for provider-side artifacts |
-| Public baselines and answer quality | Versioned oracle diagnostics retain invalid answers/failures and budget corrections; mechanical QA does not replace human review |
-| Cost, latency and footprint | Dev 440 and held-out 2,200 embedding calls; four failed extraction/diagnostic calls and successful three-call processing run; public attempts accounted separately, no overall monetary/latency/footprint qualification |
+| M2-B deletion/ACL/policy/call-accounting restore | **Open:** mixed/multiple histories, per-target receipt/mode linkage, derived objects and independent latest ledgers. Single-purge drill rejects model state. Keep APIs/workers stopped on missing evidence; unknown calls and consumed quotas cannot be reset |
+| M2-C resource qualification | **Open:** frozen S mixed-load/server/queue/footprint profile and limit enforcement. Model time/cost is separate; existing call counts and unit memory checks are not workload qualification |
+| M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
+| M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
 
-Human precision/fidelity and real-task obligations remain **NOT MEASURED**.
-General backup recovery and model-accounting reconciliation remain unqualified;
-the single-purge drill is only bounded regression evidence. Held-out synthetic
-retrieval and process-crash measurements are separate. The generated ACL pass
-must not be propagated to unrelated gates.
+The old human precision/fidelity, natural-language update, unsupported-answer
+and real-task-success targets are **removed from project acceptance**, not passed.
+Optional semantic observations remain unmeasured unless genuinely evaluated.
+The pending Wikipedia pilot is not a blocker and need not be rated. It made
+provider calls only and cannot substitute for a memory-path benchmark.
 
-People must authorize the datasets and local processing, choose representative
-real tasks, approve the evaluation/rating protocol, and supply independent human
-reviews. If LoCoMo is considered, its actual-purpose license decision is additional
-required input. No human decision is needed merely to keep default-deny enabled
-and run non-model structural checks; those checks cannot close these acceptance
-gaps. Model judges can assist diagnostics but cannot replace the required human
-precision/fidelity evidence.
+People still authorize data use, provider egress and deployment policy. Removing
+human quality gates does not remove consent, licensing, permissions or publication
+controls. Controlled provider responses can establish boundary correctness;
+only real calls are live benchmark evidence. Provider retention is an operator
+dependency, not erasure that the PostgreSQL service can silently guarantee.
 
-The next bounded resume point is qualification of the combined
-automatic-synthesis/embedding/compaction implementation **and** separately
-recorded retrieval, human-quality, task-replay, ACL, chaos and recovery
-experiments. Passing one does not imply the others passed.
+The next implementation priority is **M2-B**, following the M2-A acceptance
+inventory: versioned recovery metadata, migration/upgrade behavior and isolated
+reconciliation of current deletion/ACL/policy/reservation/quota state. Preserve
+unknown outcomes; do not infer missing schema-13 receipt/mode history. General
+production HA/PITR and RPO/RTO are M5; safe supported-history logical restore is
+still M2. Core recovery/resource gaps remain open despite the scope correction.

@@ -7,6 +7,11 @@
 
 ## 背景と認定の境界
 
+**2026-09-19受入計画改訂:** [計画1.3節・17–18章](../PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
+が、本ADRの過去の人手品質/実task milestone条件に優先します。
+下記schema 13のruntime、既定拒否policy、生成物の未信頼扱い、実測証跡は変えません。
+M2は未完ですが、その理由は本体の復旧/会計/資源作業であり、人手採点の不足ではありません。
+
 [ADR 0026](0026-scope-capture-policy-jp.md) が認定したのは capture の受付であり、
 自動モデル実行ではない。[ADR 0027](0027-typed-extraction-jp.md) は型付きの未信頼
 抽出を追加した依存機能であり、公開権限ではない。本マイルストーンは明示 opt-in の

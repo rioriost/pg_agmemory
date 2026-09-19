@@ -2,6 +2,14 @@
 
 [日本語](HUMAN_REVIEW-jp.md) | [Measured evidence](EVALUATION.md)
 
+**2026-09-19: the requested human-review work is paused and no longer required
+for M2.** The [revised plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) qualifies memory
+contracts, not a model's summarization/judgment ability. This guide and the
+unrated artifacts are retained as an optional provider diagnostic, not an active
+project acceptance workstream. Do not fill the forms or run more models to
+unblock implementation. Frozen packet instructions/report gate names reflect the
+old plan; keep their hashes and results intact rather than editing them into a pass.
+
 ## Purpose and boundary
 
 This workflow prepares an **unrated development pilot**, not M2 acceptance.
@@ -47,10 +55,10 @@ and [API etiquette](https://www.mediawiki.org/wiki/API:Etiquette).
 Identify the project, use serial bounded requests, and stop on denial or rate
 limiting rather than spoofing a browser or bypassing a restriction.
 
-## Ready local pilot: 2026-09-18
+## Archived local pilot: 2026-09-18
 
-**Human work can start with the existing files; do not regenerate outputs before
-review.** Assign two independent English/Japanese-capable reviewers to
+**No review is currently requested.** If independently choosing to use these
+diagnostic tools, do not regenerate the frozen outputs. Assign two reviewers to
 `reviewer-a` and `reviewer-b`. In this checkout, first open
 `.review-artifacts/wikipedia-pilot/review/sources.html` and fill the corresponding
 `source-reviewer-1.json` / `source-reviewer-2.json`. Only afterward open
@@ -220,16 +228,14 @@ Keep automatic inferred publication, explicit caller adoption, and untrusted
 proposals in different cohorts. Do not pool a well-performing low-impact cohort
 with another cohort merely to reach a threshold.
 
-M2 targets remain assertion support of at least 95% with no serious fabrication,
-important-claim compaction fidelity of at least 98% with exact typed-state
-preservation, natural-language update correctness of at least 95%, and unsupported
-assertions in answers at most 2% with no serious cases. A holistic summary rating
-does not supply a claim-level retention denominator. This small Wikipedia pilot
-does not establish these milestone-wide rates, and no generated report should
-declare M2 qualified.
+The former semantic thresholds (95% assertion support, 98% important-claim
+retention, 95% natural-language updates, 2% unsupported answers) are no longer
+M2+ gates. Exact typed-state preservation remains a core software contract.
+A holistic rating cannot supply a claim-retention denominator, and removing a
+gate does not create a measurement. No report from this tool qualifies M2.
 
-Use the pilot to clarify the rubric and diagnose failures. Before formal
-acceptance, freeze a separately selected evaluation sample, sampling units,
+If someone elects to conduct semantic research outside project acceptance,
+first freeze the evaluation sample, sampling units,
 cohorts, denominators, model/prompt/source versions and review protocol. Report
 uncertainty at the session/source-group level rather than counting repeated
 outputs from one article as independent evidence.

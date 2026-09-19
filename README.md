@@ -8,9 +8,12 @@ and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 ## Current development contract: v0.0.27 / schema 13
 
-[Human review preparation](docs/HUMAN_REVIEW.md) provides revision-pinned
-Wikipedia collection, an opt-in local-model pilot and unfilled independent review
-forms. It does not certify human review or M2 acceptance.
+**Memory infrastructure, not a judgment system.** Users select supported models
+for their budget; pg_agmemory guarantees memory contracts, not model reasoning.
+The [revised M2–M5 plan](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md) separates core
+acceptance from one reference benchmark. Multi-model comparison and mandatory
+human semantic grading are out of scope. The [Wikipedia review packet](docs/HUMAN_REVIEW.md)
+is a retained optional diagnostic, not the next required task.
 
 Stage **`m2-background-processing`** adds default-deny, administrator-authorized
 local extraction/embedding jobs, caller adoption of quarantined candidates, and
@@ -30,8 +33,9 @@ prevent blind retries and stale publication.
 includes 600 held-out synthetic questions across 50 groups (hybrid Recall@20
 99.818%, equal to vector-only), 10,000 actual unauthorized Native requests with
 zero unexpected outcomes, real worker SIGKILL recovery, and a three-call local
-extract/embed/compact/restore lifecycle. These do not satisfy the required human
-precision/fidelity review, at least 20 actual task replays, or disaster recovery.
+extract/embed/compact/restore lifecycle. Remaining core work includes full
+supported-history logical restore, current ACL/model-call accounting
+reconciliation and resource qualification, not human labels or 20 agent tasks.
 The corrected public oracle QA diagnostic recorded zero invalid outputs in 144
 attempts, but 136 abstentions and only 22 mechanical exact matches; it does not
 establish answer quality. Earlier invalid outputs remain in the evidence record.

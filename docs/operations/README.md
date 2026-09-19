@@ -16,6 +16,12 @@ This section and [ADR 0028](../adr/0028-background-processing.md) supersede the
 version-specific v26 operations preserved below. Read [EVALUATION](../EVALUATION.md)
 before interpreting a passing lifecycle check as a quality or recovery guarantee.
 
+The [2026-09-19 plan revision](../PG_AGMEMORY_IMPLEMENTATION_PLAN.md) removes
+human semantic/model-comparison gates, not operational safety requirements.
+Next is supported-history logical restore with latest deletion/ACL/policy and
+model reservation/quota reconciliation. This remains unimplemented beyond the
+bounded drill below; do not restart restored workers based on the scope change.
+
 For an existing installation, back up the database and securely preserve its
 role/secret configuration, stop and drain **all** API/worker/adapter writers and
 automatic restarts, and run `pg-agmemory migrate` from the matching v27 image with
@@ -125,7 +131,7 @@ removed after the run; retain its content-free JSON report separately if needed.
 CI uses native Docker amd64/arm64. Production M2 smoke uses exactly three
 synthetic loopback model responses; it is not live model quality.
 The explicit local-model and generated-ACL opt-ins, immutable run manifests,
-failed-call accounting and human/task-review requirements are in EVALUATION.
+failed-call accounting and revised core acceptance gaps are in EVALUATION.
 No new Azure resources or paid model calls are needed for these local experiments.
 
 ## Retained v26 operations

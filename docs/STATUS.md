@@ -33,23 +33,39 @@ answer attempts. Corrected wire schema `9c95816` eliminated those contract error
 in a fresh 412-call run, but 136/144 abstentions and 22/144 mechanical matches
 still do not establish answer quality. Prior evidence remains unchanged.
 
-[Human review preparation](HUMAN_REVIEW.md) is now ready locally at exact code
+[Human review preparation](HUMAN_REVIEW.md) was recorded at exact code
 `1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`: six revision-pinned Wikipedia excerpts,
 24 local calls, five summaries, eleven QA records and eight retained generation
 failures. There are no accepted extraction claims and no human labels.
-The next human step is independent source-only preannotation, then output
-ratings in the two prepared forms. This provider-only development pilot does
-not measure working compaction, real-task continuation or M2 acceptance.
+Under the **2026-09-19 scope revision**, those forms are optional historical
+diagnostics; there is no human-label dependency for core implementation.
+This provider-only pilot does not measure the memory pipeline and is not its
+acceptance test. Its pending forms and failures remain unchanged.
 
-Outstanding acceptance includes human assertion support (95%), human important
-claim fidelity (98%), at least 20 executed real-task replays/continuation
-non-regression, answer-quality gates, and isolated restore with latest deletion/
-ACL replay. Backup retention and recovery remain operator-managed; no automatic
-DR or full-erasure qualification is claimed.
+The [revised plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
+defines pg_agmemory as a memory system, not a judgment system. Model semantic
+accuracy, answer success and 20 real agent tasks are no longer M2+ release gates;
+multi-model comparison is not a separate project workstream. Keep one pinned
+reference benchmark, with no model-quality pass score.
+
+The remaining M2 engineering sequence is **M2-A contract/evidence inventory →
+M2-B safe logical restore and accounting → M2-C bounded resource qualification →
+M2-D reference benchmark and release packaging**. M2-B is the next implementation
+priority: add versioned per-target deletion receipt/mode history, cover mixed and
+multiple histories and derived objects, and reconcile current ACL/policy/model
+reservations/quotas before API or worker restart. Missing authoritative records
+must leave the restore isolated. Do not rewrite published migration 13 or infer
+missing historical linkage. No automatic DR or full-erasure qualification is claimed.
 The new isolated single-purge/single-revocation drill exercises actual backup
 restoration and canonical reconciliation without starting API/model workers.
 It rejects mixed/multiple histories and model-accounting state; it is not the
 missing general recovery tool. See the [bounded procedure](operations/README.md).
+
+M3 qualifies one graph backend against canonical SQL and deletion/ACL rules;
+M4 qualifies agent/harness and optional external integrations; M5 qualifies
+production load, HA/PITR, retention and version/model-space migrations. This
+plan revision changes no runtime, schema, provider permission or quality flag
+and does not itself complete M2.
 
 ## Retained v26 contract and historical evidence
 

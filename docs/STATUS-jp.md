@@ -30,21 +30,34 @@ snapshot hookも別のoperator byte予算を設定するまで無効です。
 送信schema修正後の`9c95816`は新たな412 callで契約違反0件になりましたが、
 abstention 136/144件、機械的完全一致22/144件にとどまり、回答品質は未認定です。
 
-[人手評価の準備](HUMAN_REVIEW-jp.md)がlocalで整いました。実行codeは
+[人手評価の準備](HUMAN_REVIEW-jp.md)の記録を保持しています。実行codeは
 `1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`で、revision固定のWikipedia 6抜粋、
 local呼出し24回、要約5件、QA 11件、保持した生成失敗8件です。
 契約を通過した抽出claimや人手labelはありません。
-次の人手作業は原文だけを使った独立した事前注釈、その後の2票による出力採点です。
-providerだけの開発用pilotであり、working compaction、実task継続、M2受入れの
-測定ではありません。
+**2026-09-19の範囲改訂**により、これらは任意の過去診断であり、
+本体実装の人手label待ちはありません。provider単体のpilotは記憶処理経路を測っておらず、
+その受入試験でもありません。未記入票と失敗結果は変更せず残します。
 
-残る受入れは、人手assertion support 95%、重要claim fidelity 98%、
-20件以上の実task replayと継続成功率の非劣化、回答品質、
-最新の削除/ACL ledgerを適用する隔離backup復旧などです。
-backup保持・復旧はoperator管理で、自動DR・完全消去の認定は主張しません。
+[改訂計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)は、
+pg_agmemoryを判断システムでなく記憶システムと定義します。
+modelの意味精度、回答成功、実agent task 20件はM2以降のrelease gateから外し、
+複数model比較も別のプロジェクト作業にしません。一つの固定参照benchmarkを残し、
+model品質の合格点は設けません。
+
+M2の残作業順は **M2-A 契約/証跡一覧 → M2-B 安全なlogical restoreと会計照合
+→ M2-C 資源上限の認定 → M2-D 参考benchmarkとrelease packaging** です。
+次の実装優先項目M2-Bでは、対象ごとの削除receipt/mode履歴をversion付きで追加し、
+混在/複数履歴と派生物を扱い、API/worker再開前に最新ACL/policy/model予約/quotaを
+照合します。正本記録が不足するrestoreは隔離を維持します。
+公開済みmigration 13の書換えや、過去の紐付けの推測はしません。
+自動DR・完全消去の認定は主張しません。
 新しい隔離drillはpurge 1件/失効1件で実backup復元とcanonical照合を行い、
 API/model workerを起動しません。混在/複数履歴やmodel accounting状態は拒否し、
 未実装の一般復旧toolの代用にはしません。[限定手順](operations/README-jp.md)を参照してください。
+
+M3はgraph backend一つのcanonical SQL一致と削除/ACL、M4はagent/harnessと任意外部連携、
+M5は本番load、HA/PITR、retention、version/model空間移行を認定します。
+本改訂はruntime、schema、provider許可、品質flagを変更せず、それ自体でM2を完了しません。
 
 ## 保存されたv26契約と過去の証跡
 

@@ -7,6 +7,12 @@
 
 ## Context and qualification boundary
 
+**Acceptance-plan amendment, 2026-09-19:** [plan sections 1.3 and 17–18](../PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
+supersede this ADR's historical human-quality/real-task milestone conditions.
+The schema-13 runtime, default-deny policies, untrusted-output treatment and
+measured evidence below are unchanged. M2 remains incomplete because of core
+recovery/accounting/resource work, not missing human ratings.
+
 [ADR 0026](0026-scope-capture-policy.md) qualified capture admission, not
 automatic model execution. [ADR 0027](0027-typed-extraction.md) added a typed,
 untrusted extraction dependency, not publication authority. This milestone adds
