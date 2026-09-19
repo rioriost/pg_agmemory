@@ -40,6 +40,18 @@ ordinal guard and packaged export smoke, so is not final-source qualification.
 Do not add overlapping counts. Native exact-commit qualification is recorded
 separately after publication.
 
+Exact implementation **`99e71bd74445c2eab6fb82fe62c25b1678cdc69b`** subsequently
+passed the full local distribution run: **1,784 passed / 8 optional live skips**,
+550.73 seconds. [Native CI 35445005807](https://github.com/rioriost/pg_agmemory/actions/runs/35445005807)
+passed both architectures with the same 1,784/8 counts (amd64 1022.91s, arm64
+967.58s), all packaged smokes including `deletion-history export`, and actual
+single-purge backup recovery. That drill retained `m2_qualified=false`, checked
+four manifest targets and 35 matching canonical table fingerprints, and made no
+model calls. Its 46 contract cases overlap the full suite; do not add them.
+The initial focused development attempt had 65 passes / 2 failures from incorrect
+test assumptions about Native suppress support and preview HTTP status; these
+were corrected without enabling suppress or changing preview behavior.
+
 Legacy evaluation/QA/human-report schemas remain diagnostic contracts.
 Their hard-coded `m2_qualified=false` / quality `NOT_MEASURED` fields are not
 used to block core engineering or flipped to claim a measurement. A release
@@ -916,11 +928,11 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Map declared API/SDK/MCP/hook operations to exact-SHA invariants; `1ea3f6c` native 1,754/8 per architecture is the latest implementation evidence, not a blanket release decision |
+| M2-A contract/evidence inventory | Recorded above. `99e71bd` native 1,784/8 per architecture is current bounded implementation evidence, not a blanket release decision |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | **Open:** mixed/multiple histories, per-target receipt/mode linkage, derived objects and independent latest ledgers. Single-purge drill rejects model state. Keep APIs/workers stopped on missing evidence; unknown calls and consumed quotas cannot be reset |
+| M2-B deletion/ACL/policy/call-accounting restore | **Open:** actual multiple-history/derivative replay and latest independent ledgers/accounting. Schema 14 linkage/export is implemented, legacy mappings are not inferred, and the single-purge drill still rejects model state. Keep APIs/workers stopped on missing evidence; unknown calls/consumed quotas cannot be reset |
 | M2-C resource qualification | **Open:** frozen S mixed-load/server/queue/footprint profile and limit enforcement. Model time/cost is separate; existing call counts and unit memory checks are not workload qualification |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |

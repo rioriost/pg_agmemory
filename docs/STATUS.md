@@ -13,6 +13,16 @@ content-free snapshot; incomplete/legacy histories fail explicitly. The export
 does **not** include ACL/policy/call accounting and never authorizes restore.
 Public `forget` still supports preview/purge, not suppress.
 
+Exact implementation `99e71bd74445c2eab6fb82fe62c25b1678cdc69b` passed local
+Apple Container distribution checks and
+[native amd64/arm64 CI 35445005807](https://github.com/rioriost/pg_agmemory/actions/runs/35445005807):
+**1,784 passed / 8 optional live skips** in each full run, including the new
+packaged administrative export and all prior production smokes. The actual
+single-purge backup/restore reconciled 35 canonical table fingerprints and four
+manifest targets with zero model calls. This qualifies the bounded dependency,
+not general logical restore or M2 completion; later documentation commits do not
+inherit the tested SHA.
+
 M2-A's core contract inventory is now in [EVALUATION](EVALUATION.md). The next
 part of M2-B is actual multi-receipt restore and latest ACL/policy/model
 reservation/quota reconciliation; only the existing single-purge drill has

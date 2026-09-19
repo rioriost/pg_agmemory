@@ -35,6 +35,16 @@ schema 14開発では関連198 case、その後に早期constraint評価後の�
 成功したが、ordinal guardとpackaged export smokeの追加前なので最終source認定ではない。
 重複件数を加算しない。公開後の完全一致commitのnative認定は別途記録する。
 
+その後、完全一致実装**`99e71bd74445c2eab6fb82fe62c25b1678cdc69b`**の
+local distributionは**1,784 passed / optional live 8 skips**、550.73秒で成功した。
+[Native CI 35445005807](https://github.com/rioriost/pg_agmemory/actions/runs/35445005807)
+も両architectureで同じ1,784/8（amd64 1022.91秒、arm64 967.58秒）、
+`deletion-history export`を含む全packaged smoke、実単一purge backup復旧が成功した。
+drillは`m2_qualified=false`のまま、manifest target 4件と35 canonical tableの
+fingerprint一致を確認し、modelを呼んでいない。drillの46契約caseはfull suiteの内数。
+最初の対象開発実行は65 passed / 2 failedで、Nativeのsuppress対応とpreviewのHTTP
+statusに関するtest側の誤った想定を修正した。suppress有効化やpreview動作変更はしていない。
+
 旧evaluation/QA/human report schemaは診断契約のまま保持する。
 固定の`m2_qualified=false`や品質`NOT_MEASURED`で本体engineeringを足止めしたり、
 測定したようにtrueへ変えたりしない。release判定は改訂M2-B/C/Dの証跡による。
@@ -841,11 +851,11 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 対応API/SDK/MCP/hookと完全一致SHAの不変条件を対応付ける。`1ea3f6c`のnative各1,754/8が最新実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 上記へ記録済み。`99e71bd`のnative各1,784/8が現行の限定した実装証跡であり、包括release判定ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 混在/複数履歴、対象別receipt/mode、派生物、独立した最新台帳。単一purge drillはmodel状態を拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
+| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 実際の複数履歴/派生物replay、独立した最新台帳/会計。schema 14の対応/exportは実装済みだが旧対応は推測せず、単一purge drillはmodel状態を拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
 | M2-C 資源認定 | **未完:** 固定S profileの混在load/server/queue/footprintと上限強制。model時間/費用は別記し、既存call数やunit memory検査を負荷認定に流用しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |

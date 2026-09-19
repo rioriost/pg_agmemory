@@ -13,6 +13,14 @@ migration 014でreceiptと全対象の対応、遅延した件数/tombstone検�
 ACL/policy/call会計を含まず、**復元を許可するものではありません**。
 公開`forget`は引き続きpreview/purgeのみで、suppressは未対応です。
 
+完全一致実装`99e71bd74445c2eab6fb82fe62c25b1678cdc69b`はlocal Apple Containerと
+[native amd64/arm64 CI 35445005807](https://github.com/rioriost/pg_agmemory/actions/runs/35445005807)
+で、各full run **1,784 passed / optional live 8 skips**となりました。
+新しいpackaged管理exportと既存production smokeも成功しています。
+実際の単一purge backup/restoreでは35 canonical tableのfingerprintと
+manifest target 4件を照合し、model呼出しは0回です。この限定した依存機能の認定であり、
+一般logical restoreやM2完了ではありません。後の文書commitへ検証SHAを付け替えません。
+
 M2-Aの本体契約一覧は[EVALUATION](EVALUATION-jp.md)へ整理しました。
 M2-Bの次の作業は、実際の複数receipt復旧と最新ACL/policy/model予約/quotaの照合です。
 現時点の復旧実験は既存の単一purge drillに限ります。資源認定と一つの参考記憶benchmarkは
