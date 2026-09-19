@@ -1035,12 +1035,6 @@ class MemoryService:
                 "DELETE FROM memory.episode WHERE tenant_id = %s AND id = ANY(%s)",
                 (self.tenant, targets),
             )
-        await self.conn.execute(
-            """INSERT INTO memory_ops.object_tombstone(tenant_id, object_id, scope_id)
-               SELECT tenant_id, id, scope_id FROM memory.object
-               WHERE tenant_id = %s AND id = ANY(%s)""",
-            (self.tenant, targets),
-        )
         epoch = await (
             await self.conn.execute(
                 """UPDATE memory.tenant SET deletion_epoch = deletion_epoch + 1
@@ -1065,6 +1059,20 @@ class MemoryService:
                 len(targets),
                 epoch["deletion_epoch"],
             ),
+        )
+        await self.conn.execute(
+            """INSERT INTO memory_ops.deletion_target
+               (tenant_id,deletion_id,object_id,scope_id,ordinal)
+               SELECT tenant_id,%s,id,scope_id,row_number() OVER (ORDER BY id)
+               FROM memory.object
+               WHERE tenant_id=%s AND id=ANY(%s)""",
+            (receipt, self.tenant, targets),
+        )
+        await self.conn.execute(
+            """INSERT INTO memory_ops.object_tombstone(tenant_id, object_id, scope_id)
+               SELECT tenant_id, id, scope_id FROM memory.object
+               WHERE tenant_id = %s AND id = ANY(%s)""",
+            (self.tenant, targets),
         )
         result = {
             "deletion_id": str(receipt),

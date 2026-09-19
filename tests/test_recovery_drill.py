@@ -92,12 +92,13 @@ def evidence():
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
         "format": "pgag-isolated-purge-drill-v1",
-        "schema_version": 13,
+        "schema_version": 14,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
         "memberships": [member, revoked_member],
         "tombstones": [],
         "deletions": [],
+        "deletion_targets": [],
         "access_events": [],
         "canonical": {table: {"count": 0} for table in (
             "memory.scope_synthesis_policy", "memory_ops.model_call",
@@ -113,6 +114,11 @@ def evidence():
             "tenant_id": "tenant", "id": "receipt", "principal_id": "operator",
             "mode": "purge", "state": "active_store_purged",
             "object_count": 1, "deletion_epoch": 2,
+            "target_manifest_version": 1,
+        }],
+        "deletion_targets": [{
+            "tenant_id": "tenant", "deletion_id": "receipt",
+            "object_id": "object", "scope_id": "scope",
         }],
         "access_events": [{
             "tenant_id": "tenant", "scope_id": "scope", "principal_id": "reader",
@@ -139,6 +145,7 @@ def test_single_purge_uses_server_tombstones_and_receipt_actor():
     ("deletion_epoch", 3),
     ("principal_id", "missing-actor"),
     ("tenant_id", "another-tenant"),
+    ("target_manifest_version", 0),
 ])
 def test_incomplete_or_unsupported_receipt_is_rejected(field, value):
     before, latest = evidence()
@@ -147,7 +154,7 @@ def test_incomplete_or_unsupported_receipt_is_rejected(field, value):
         drill.validate_evidence(before, latest)
 
 
-@pytest.mark.parametrize("field", ["tombstones", "deletions", "access_events"])
+@pytest.mark.parametrize("field", ["tombstones", "deletions", "deletion_targets", "access_events"])
 def test_missing_authoritative_metadata_is_not_reconstructed(field):
     before, latest = evidence()
     latest[field] = []
@@ -155,7 +162,7 @@ def test_missing_authoritative_metadata_is_not_reconstructed(field):
         drill.validate_evidence(before, latest)
 
 
-@pytest.mark.parametrize("field", ["deletions", "tombstones", "access_events"])
+@pytest.mark.parametrize("field", ["deletions", "tombstones", "deletion_targets", "access_events"])
 def test_duplicate_or_multiple_history_is_not_guessed(field):
     before, latest = evidence()
     latest[field].append(deepcopy(latest[field][0]))
@@ -215,4 +222,12 @@ def test_acl_history_prefix_cannot_be_replaced():
     before, latest = evidence()
     before["access_events"] = [{"access_epoch": 2}]
     with pytest.raises(drill.DrillError, match="ACL history prefix"):
+        drill.validate_evidence(before, latest)
+
+
+@pytest.mark.parametrize("field", ["tenant_id", "deletion_id", "object_id", "scope_id"])
+def test_recovery_targets_must_bind_the_exact_receipt(field):
+    before, latest = evidence()
+    latest["deletion_targets"][0][field] = "different"
+    with pytest.raises(drill.DrillError, match="manifest mismatch"):
         drill.validate_evidence(before, latest)

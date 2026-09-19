@@ -1119,6 +1119,38 @@ asyncio.run(smoke())
 print("Production scope access smoke passed: inspect, read-only CAS, replay denial, revoke")
 ' "$provisioned"
 
+"$engine" exec \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$api_name" python -c '
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from pg_agmemory.deletion_history import DeletionHistory
+
+identity = json.loads(sys.argv[1])
+with TemporaryDirectory(prefix="pgag-deletion-export-") as directory:
+    path = Path(directory) / "deletions.json"
+    args = ["pg-agmemory", "deletion-history", "export", "--tenant-id", identity["tenant_id"],
+            "--out", str(path)]
+    completed = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    assert completed.returncode == 0 and completed.stderr == ""
+    result = json.loads(completed.stdout)
+    payload = path.read_bytes()
+    history = DeletionHistory.model_validate_json(payload)
+    assert history.records and not history.restore_authorized
+    assert not history.includes_acl_policy_and_call_accounting
+    assert result["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert result["history_digest"] == history.digest()
+    assert path.stat().st_mode & 0o777 == 0o600
+    repeated = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    assert repeated.returncode == 1 and path.read_bytes() == payload
+    assert json.loads(repeated.stdout)["error"]["code"] == "deletion_history_output_failed"
+print("Production deletion history smoke passed: admin CLI, complete manifests, private export, no overwrite")
+' "$provisioned"
+
 echo "Running isolated logical-backup recovery drill..."
 PGAG_RECOVERY_TEST_IMAGE="$test_image" bash scripts/test-recovery-containers.sh "$engine"
 

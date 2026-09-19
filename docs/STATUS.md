@@ -2,9 +2,30 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## v0.0.27 / schema 13: implemented core paths, M2 acceptance incomplete
+## v0.0.28 / schema 14: deletion recovery metadata, M2 incomplete
 
-The current runtime is **service 0.0.27 / API v1 / schema 13**,
+The current components require **service 0.0.28 / API v1 / schema 14**. Migration
+014 adds exact receipt-to-target manifests, deferred completeness and tombstone
+checks, same-transaction insertion and bounded unique ordinals. Old receipts
+retain `target_manifest_version=0`; no per-receipt history is guessed.
+`pg-agmemory deletion-history export` provides an admin-only, bounded, private,
+content-free snapshot; incomplete/legacy histories fail explicitly. The export
+does **not** include ACL/policy/call accounting and never authorizes restore.
+Public `forget` still supports preview/purge, not suppress.
+
+M2-A's core contract inventory is now in [EVALUATION](EVALUATION.md). The next
+part of M2-B is actual multi-receipt restore and latest ACL/policy/model
+reservation/quota reconciliation; only the existing single-purge drill has
+been exercised so far. Resource qualification and one reference memory benchmark
+remain M2-C/D. No model calls, human labels, new API resources or relaxed
+provider permissions are introduced here. See [schema-14 operations](operations/README.md#schema-14-deletion-manifests).
+
+## v0.0.27 / schema 13: retained implementation evidence
+
+The version labels and measured runs in this section are historical. The
+unchanged processing contracts remain applicable, but do not qualify schema 14.
+
+The recorded runtime was **service 0.0.27 / API v1 / schema 13**,
 stage **`m2-background-processing`**, with exact migration history 1–13,
 PostgreSQL 18.6 and `vector` 0.8.6 in `public`.
 All adapters must match; Native/SDK has 38 resources and MCP retains four tools.

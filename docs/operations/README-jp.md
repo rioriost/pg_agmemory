@@ -7,7 +7,57 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 14 deletion manifests
+
+**現行はservice 0.0.28 / API v1 / schema 14**です。PostgreSQL 18.6、pgvector 0.8.6、
+Native/SDK 38 resource、MCP 4 tool、既存model policyは変更しません。
+DBとrole/秘密設定をbackupし、全writerと自動再起動を停止・drainしてから、
+対応imageと管理DSNで`pg-agmemory migrate`を実行します。
+完全なmigration履歴**1–14**を確認して対応API/worker/adapterを起動してください。
+schema 13 binary/clientは対応版ではありません。rollbackには移行前backupと対応codeが
+必要で、最新の失効・削除・会計を照合するまで隔離します。migration行を削除して戻しません。
+
+migration 014は`memory_ops.deletion_target`、tenant内の削除epoch一意制約、
+`deletion_request.target_manifest_version`を追加します。新receiptはversion 1が必須で、
+対象数とtarget/tombstoneのscope参照を同じtransactionで検証します。
+内部の`xid8`でreceipt作成transactionに限定してtargetを記録し、commit後の追記や
+runtimeからの更新/削除を許可しません。件数検証はtargetごとでなくreceiptごとに一度です。
+receipt件数内の一意なordinalにより、途中で`SET CONSTRAINTS ... IMMEDIATE`を
+実行しても、その後の過剰な追加を防ぎます。
+対象の読取にはtenant/scope権限とreceiptのactor一致が必要で、exportは管理者専用です。
+
+旧receiptはversion **0**・対象対応なしのまま保持します。累積tombstoneからreceipt別の
+対応を推測しません。旧receipt、未対応tombstone、epoch欠落、件数不一致があれば
+`deletion_history_incomplete`でexportを拒否します。旧backup/台帳を保存し、
+拒否を迂回するために行を捏造しないでください。新version-1操作を追加しても、
+不完全なtenant履歴が遡って完全になるわけではありません。
+
+```bash
+# 管理者環境。認証情報をliteral引数へ書かない。
+# OUT_FILEは未作成、親directoryはoperatorだけがアクセスできるものを指定する。
+pg-agmemory deletion-history export --tenant-id "$TENANT_ID" --out "$OUT_FILE"
+```
+
+tenant barrierと一つのrepeatable-read snapshotを使う読取り専用commandです。
+ID/scope/actor/mode/state/epoch/全対象だけを出力し、原文、理由、認証情報は含めません。
+不明tenantと過大履歴（receipt 10,000、合計target 100,000、file 16 MiB）を拒否し、
+切捨て・上書きしません。新fileはowner専用でfsyncし、stdoutへ実file bytesのSHA-256と
+別のcanonical history digestを返します。digestは署名や最新性の証明ではありません。
+識別子も機微な運用metadataとして保護し、独立した利用許可済みの系統で保存します。
+
+**一般restore toolではありません。** `restore_authorized=false`、
+`includes_acl_policy_and_call_accounting=false`は意図した境界です。
+削除履歴が完全でも復元DBの公開やworker再開は許可されません。
+最新ACL/policy/call予約/unknown/quotaの照合、複数receipt replay、全対応派生物の
+復旧は未完です。Native/SDK/MCPの`forget`は`suppress`を引き続き拒否し、
+明示記録された履歴の保存/export形式としてだけ扱います。
+既存の隔離単一purge drillはschema 14のreceipt/target対応を検証しますが、
+複数履歴やmodel会計の復旧drillへ一般化したものではありません。
+
 ## Schema 13 background processing
+
+以下のversion固有手順は過去の記録で、現行は上記schema 14です。
+変更していない処理権限・安全条件は維持します。
 
 [2026-09-19改訂計画](../PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)は人手の意味評価や
 model比較をgateから外しますが、運用上の安全要件は維持します。

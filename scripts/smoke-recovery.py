@@ -1,4 +1,4 @@
-"""Disposable schema-13 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-14 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 Only one purge after an empty deletion baseline and one later ACL revoke are
@@ -105,7 +105,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 14)], "schema13 required")
+        require(versions == [{"version": n} for n in range(1, 15)], "schema14 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -129,8 +129,12 @@ def snapshot(url):
             "tombstones": rows(conn, """SELECT tenant_id,object_id,scope_id
                                         FROM memory_ops.object_tombstone ORDER BY object_id"""),
             "deletions": rows(conn, """SELECT tenant_id,id,principal_id,mode,state,object_count,
-                                             deletion_epoch FROM memory_ops.deletion_request
+                                             deletion_epoch,target_manifest_version
+                                      FROM memory_ops.deletion_request
                                       ORDER BY deletion_epoch"""),
+            "deletion_targets": rows(conn, """SELECT tenant_id,deletion_id,object_id,scope_id
+                                             FROM memory_ops.deletion_target
+                                             ORDER BY deletion_id,object_id"""),
             "access_events": rows(conn, """SELECT tenant_id,scope_id,principal_id,access_epoch,
                                                  operation,previous_permissions,
                                                  previous_expires_at,permissions,expires_at
@@ -144,7 +148,7 @@ def validate_evidence(before, latest):
     """Fail closed outside this bounded fixture; no inferred receipt/target mapping."""
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v1", "unknown evidence format")
-        require(evidence["schema_version"] == 13, "schema13 required")
+        require(evidence["schema_version"] == 14, "schema14 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory_ops.model_call",
                       "memory.working_snapshot", "memory_ops.extraction_candidate"):
@@ -152,12 +156,13 @@ def validate_evidence(before, latest):
                     "model processing must remain disabled")
     old, new = before["tenant"][0], latest["tenant"][0]
     require(old["id"] == new["id"], "tenant lineage mismatch")
-    require(not before["tombstones"] and not before["deletions"]
+    require(not before["tombstones"] and not before["deletions"] and not before["deletion_targets"]
             and old["deletion_epoch"] == 1, "nonempty deletion baseline unsupported")
     require(len(latest["deletions"]) == 1, "exactly one authoritative purge receipt required")
     receipt = latest["deletions"][0]
     require(receipt["tenant_id"] == new["id"] and receipt["mode"] == "purge"
             and receipt["state"] == "active_store_purged"
+            and receipt["target_manifest_version"] == 1
             and receipt["deletion_epoch"] == new["deletion_epoch"] == 2,
             "incomplete or unsupported deletion history")
     targets = latest["tombstones"]
@@ -165,6 +170,13 @@ def validate_evidence(before, latest):
             "purge receipt and complete tombstone set must agree")
     require(len({r["object_id"] for r in targets}) == len(targets)
             and all(r["tenant_id"] == new["id"] for r in targets), "invalid tombstone set")
+    mapped = latest["deletion_targets"]
+    require(len(mapped) == len(targets)
+            and all(r["tenant_id"] == new["id"] and r["deletion_id"] == receipt["id"]
+                    for r in mapped)
+            and {(r["object_id"], r["scope_id"]) for r in mapped}
+            == {(r["object_id"], r["scope_id"]) for r in targets},
+            "deletion target manifest mismatch")
     require(before["principals"] == latest["principals"], "principal changes unsupported")
     events = latest["access_events"]
     require(events[:len(before["access_events"])] == before["access_events"],
@@ -322,6 +334,7 @@ async def recover(admin_url, directory):
     )) as result:
         require(result.changed and not result.membership_exists, "revocation replay failed")
     final = snapshot(admin_url)
+    validate_evidence(before, final)
     for key in ("tenant", "principals", "memberships", "tombstones", "access_events", "canonical"):
         require(final[key] == latest[key], f"latest {key} reconciliation mismatch")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
@@ -354,14 +367,15 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema13-single-purge-single-revocation-synthetic-logical-backup",
-        "schema_version": 13,
+        "scope": "schema14-single-purge-single-revocation-synthetic-logical-backup",
+        "schema_version": 14,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
         "deleted_closure_count": len(targets),
         "retained_object_anchors": final["canonical"]["memory.object"]["count"],
         "tombstones": len(final["tombstones"]),
+        "deletion_manifest_targets": len(final["deletion_targets"]),
         "epochs": {
             "before": {k: before["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
             "restored": {k: final["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
@@ -372,7 +386,8 @@ async def recover(admin_url, directory):
         "latest": latest["canonical"],
         "restored": final["canonical"],
         "metadata_sha256": {key: digest(latest[key]) for key in
-                            ("tenant", "memberships", "tombstones", "access_events")},
+                            ("tenant", "memberships", "tombstones", "deletion_targets",
+                             "access_events")},
         "artifacts_sha256": {
             name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
             for name in ("old.dump", "latest.dump", "before.json", "latest.json")
@@ -390,7 +405,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 13, "this bounded smoke is pinned to schema13")
+    require(SCHEMA_VERSION == 14, "this bounded smoke is pinned to schema14")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

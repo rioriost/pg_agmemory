@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.27 / schema 13、M2受入れは未完了
+## 現在の状態: v0.0.28 / schema 14、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -10,11 +10,37 @@
 model比較や新しい人手label収集も計画しない。一つの固定した参考記憶benchmarkは
 利用例として残すが、model品質の合格点は設けない。末尾に現在のengineering残作業を示す。
 
-以下の実験結果・スコア閾値・harness recipeは**2026-09-18までの過去の診断**であり、
+後述の過去の証跡節の実験結果・スコア閾値・harness recipeは**2026-09-18までの診断**であり、
 改訂後のrelease方針ではない。旧gateのための全baseline再実行や評価票記入は不要。
 既存の`NOT_MEASURED`、`human_review_verified=false`、`human_quality_qualified=false`、
 `m2_qualified=false`は事実のまま保持し、version付きの本体受入一覧の代わりにしない。
 意味的な測定結果を捏造しない。
+
+### M2-A 本体契約一覧（2026-09-19）
+
+| 境界 / 実際のsurface | 決定的な責務 | 回帰証跡 |
+|---|---|---|
+| Observe、構造化remember、capture/batch、明示revision | 原子的な永続受付、冪等性、source/revision対応、caller意図。暗黙のmodel jobなし | `test_integration`、`test_capture`、`test_capture_policy`、`test_revisions` |
+| Recall/episode/entity/history/explain、SQL graph | 現在のtenant/scope/time filter、vector空間とRRF規則、上限付き完全item context、provenance。回答保証ではない | `test_recall_filters`、`test_episodes`、`test_graphs`、`test_vectors`、`test_lexical`、`test_required_context` |
+| Processing/adoption/worker/jobs | profile/policyの既定拒否、永続予約、不正出力拒否、lease/epoch検査、人手確認を主張しない明示採用 | `test_processing`、`test_jobs`、`test_extraction`、`test_providers`、`test_processing_chaos` |
+| Checkpoint/effect/working圧縮/復元 | typed state保持、checksum/head CAS、coverage/tail、現行権限。承認の推定や副作用のblind再実行なし | `test_checkpoints`、`test_effects`、`test_processing`の圧縮case、`test_recall_hook` |
+| Native SDK、MCP、hook | 共通の認可と宣言version。MCPは4 toolで、全Native操作を公開するものではない | `test_sdk`、`test_mcp`、`test_recall_hook`、`test_contract`、`test_readiness`、packaged smoke |
+| Scope/capture/synthesis管理 | 特権接続、CAS、caller barrier、送信の既定拒否、runtimeからpolicy改変不可 | `test_scope_access`、`test_capture_policy`、`test_processing` |
+| Forget/receipt/deletion-history export | Nativeはpreview/purgeのみ。依存closure、barrier、receipt別の全対象記録、manifest確定、対応不明履歴の明示拒否 | `test_integration`、各domainのpurge case、新規`test_deletion_history`、`test_recovery_drill` |
+
+これは対象契約の一覧であり、万能な保証ではない。
+schema 13の直前の完全一致SHA baselineは`1ea3f6c`で、native各1,754 passed / optional 8 skips。
+schema 14開発では関連198 case、その後に早期constraint評価後の過剰追加も含む最終対象83 caseが
+成功した。先行worktree distributionは1,783 passed / optional 8 skipsと全packaged smokeが
+成功したが、ordinal guardとpackaged export smokeの追加前なので最終source認定ではない。
+重複件数を加算しない。公開後の完全一致commitのnative認定は別途記録する。
+
+旧evaluation/QA/human report schemaは診断契約のまま保持する。
+固定の`m2_qualified=false`や品質`NOT_MEASURED`で本体engineeringを足止めしたり、
+測定したようにtrueへ変えたりしない。release判定は改訂M2-B/C/Dの証跡による。
+新しいmodel品質scorerや人手評価作業は不要である。
+
+### 過去のschema 13証跡
 
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
 M2受入れの完了ではない。

@@ -417,7 +417,7 @@ def test_runtime_cannot_edit_checkpoint_payload_or_rewind_branch(env):
 def test_checkpoint_routes_publish_typed_contracts_and_capabilities(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
     assert capabilities["checkpoints"] is True and capabilities["tool_effect_ledger"] is True
-    assert capabilities["schema_version"] == 13
+    assert capabilities["schema_version"] == 14
     assert capabilities["checkpoint_head"] == {
         "endpoint": "/v1/checkpoints/head",
         "read_only": True,
@@ -532,9 +532,15 @@ def test_tombstoned_head_without_branch_invalidation_never_falls_back(env):
     second = create(env, {**body, "expected_head": first}).json()["checkpoint_id"]
     with psycopg.connect(env.admin_url) as conn:
         conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone DISABLE TRIGGER tombstone_manifest_complete"
+        )
+        conn.execute(
             """INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id)
                VALUES (%s,%s,%s)""",
             (env.tenants[0], second, env.scopes[0]),
+        )
+        conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone ENABLE TRIGGER tombstone_manifest_complete"
         )
     assert head(env, body).status_code == 404
     assert get(env, first).status_code == 200

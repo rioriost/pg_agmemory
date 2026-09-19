@@ -41,6 +41,11 @@ def main() -> None:
 
         synthesis_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["deletion-history"]:
+        from pg_agmemory.deletion_history import main as history_main
+
+        history_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -55,6 +60,7 @@ def main() -> None:
             "scope-access",
             "scope-capture",
             "scope-synthesis",
+            "deletion-history",
             "infer",
         ],
     )
@@ -82,6 +88,8 @@ def main() -> None:
         parser.error("scope-capture must precede its arguments; use scope-capture --help")
     elif args.command == "scope-synthesis":
         parser.error("scope-synthesis must precede its arguments; use scope-synthesis --help")
+    elif args.command == "deletion-history":
+        parser.error("deletion-history must precede its arguments; use deletion-history --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

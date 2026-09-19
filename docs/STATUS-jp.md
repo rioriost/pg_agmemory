@@ -2,9 +2,29 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## v0.0.27 / schema 13: core経路は実装済み、M2受入れは未完了
+## v0.0.28 / schema 14: 削除復旧metadata、M2未完了
 
-現在のruntimeは**service 0.0.27 / API v1 / schema 13**、
+現行componentは**service 0.0.28 / API v1 / schema 14**を要求します。
+migration 014でreceiptと全対象の対応、遅延した件数/tombstone検証、
+同一transaction内の記録、一意で上限付きのordinalを追加しました。
+旧receiptは`target_manifest_version=0`とし、対応関係を推測しません。
+`pg-agmemory deletion-history export`は管理者専用・上限付き・非公開fileへの
+原文を含まないsnapshotで、旧履歴や不完全履歴は明示失敗します。
+ACL/policy/call会計を含まず、**復元を許可するものではありません**。
+公開`forget`は引き続きpreview/purgeのみで、suppressは未対応です。
+
+M2-Aの本体契約一覧は[EVALUATION](EVALUATION-jp.md)へ整理しました。
+M2-Bの次の作業は、実際の複数receipt復旧と最新ACL/policy/model予約/quotaの照合です。
+現時点の復旧実験は既存の単一purge drillに限ります。資源認定と一つの参考記憶benchmarkは
+M2-C/Dとして残ります。model呼出し、人手label、新API resource、provider許可の緩和は
+追加していません。[schema 14運用](operations/README-jp.md#schema-14-deletion-manifests)を参照してください。
+
+## v0.0.27 / schema 13: 保存した実装証跡
+
+以下の版・測定runは過去の記録です。変更していない処理契約は維持しますが、
+schema 14の認定を意味しません。
+
+記録したruntimeは**service 0.0.27 / API v1 / schema 13**、
 stage **`m2-background-processing`**です。厳密なmigration履歴1–13、
 PostgreSQL 18.6、`public`内の`vector` 0.8.6を要求します。
 adapterは同じ版に揃え、Native/SDKは38 resource、MCPは4 toolです。

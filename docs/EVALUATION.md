@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: v0.0.27 / schema 13, M2 acceptance incomplete
+## Current status: v0.0.28 / schema 14, M2 acceptance incomplete
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
@@ -11,12 +11,42 @@ gates; neither model comparison nor a new human-label campaign is planned.
 One pinned reference memory benchmark remains required as an example, without
 a model-quality pass score. The final section lists current engineering gaps.
 
-The experiment results, score thresholds and harness recipes recorded below
+The experiment results, score thresholds and harness recipes in the historical section below
 are **historical diagnostics through 2026-09-18**, not the revised release policy.
 Do not rerun all baseline arms or fill review forms merely to satisfy old gates.
 Existing `NOT_MEASURED`, `human_review_verified=false`, `human_quality_qualified=false`
 and `m2_qualified=false` fields remain truthful and unchanged; they do not replace
 the versioned core acceptance inventory. No semantic measurement is invented.
+
+### M2-A core contract inventory (2026-09-19)
+
+| Boundary / actual surface | Deterministic obligation | Regression evidence |
+|---|---|---|
+| Observe, structured remember, capture/batch, explicit revisions | Atomic durable admission, idempotency, source/revision binding, caller intent; no implicit model job | `test_integration`, `test_capture`, `test_capture_policy`, `test_revisions` |
+| Recall/episode/entity/history/explain, SQL graph | Current tenant/scope/time filters, exact vector-space and RRF rules, bounded whole-item context, provenance; no answer guarantee | `test_recall_filters`, `test_episodes`, `test_graphs`, `test_vectors`, `test_lexical`, `test_required_context` |
+| Processing/adoption/worker/jobs | Default-deny profile/policy, durable reservations, invalid-output rejection, lease/epoch fencing, explicit adoption without human-verification claim | `test_processing`, `test_jobs`, `test_extraction`, `test_providers`, `test_processing_chaos` |
+| Checkpoint/effect/working compaction/restore | Typed-state preservation, checksum/head CAS, coverage/tail, current permissions, no approval inference or blind side-effect replay | `test_checkpoints`, `test_effects`, compaction cases in `test_processing`, `test_recall_hook` |
+| Native SDK, MCP, hook | Same authorization and declared versions; MCP exposes four tools, not every Native operation | `test_sdk`, `test_mcp`, `test_recall_hook`, `test_contract`, `test_readiness`, packaged smokes |
+| Scope/capture/synthesis administration | Privileged connection, CAS, caller barrier, default-deny egress and immutable runtime policy | `test_scope_access`, `test_capture_policy`, `test_processing` |
+| Forget/receipt/deletion-history export | Native preview/purge only; full dependency closure, barrier, exact per-receipt target recording, sealed manifests, explicit refusal of unmapped history | `test_integration`, purge cases across domain tests, new `test_deletion_history`, `test_recovery_drill` |
+
+This inventory describes tested contracts, not universal assurance. The last
+schema-13 exact-SHA baseline is `1ea3f6c` (1,754 passes / 8 optional skips per
+native architecture). Schema-14 development passed 198 integration-focused
+cases, followed by 83 final focused cases including the early-constraint
+overfill regression. An earlier schema-14 worktree distribution run passed
+1,783 tests / 8 optional skips and all packaged smokes; that run predates the
+ordinal guard and packaged export smoke, so is not final-source qualification.
+Do not add overlapping counts. Native exact-commit qualification is recorded
+separately after publication.
+
+Legacy evaluation/QA/human-report schemas remain diagnostic contracts.
+Their hard-coded `m2_qualified=false` / quality `NOT_MEASURED` fields are not
+used to block core engineering or flipped to claim a measurement. A release
+decision instead requires evidence for the revised M2-B/C/D obligations below.
+No new model-quality scorer or human-review campaign is needed.
+
+### Historical schema-13 evidence
 
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
 SHA; successful software checks are not M2 acceptance.

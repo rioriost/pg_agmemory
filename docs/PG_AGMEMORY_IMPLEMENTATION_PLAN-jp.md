@@ -4,7 +4,7 @@
 
 - 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: service 0.0.27 / schema 13のcore経路は実装済み、M2受入れは未完了。本改訂は計画の変更であり、runtime動作やrelease状態の変更ではない。完全一致の実装証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: service 0.0.28 / schema 14のcore経路・削除manifestは実装済み、M2受入れは未完了。完全一致の実装証跡と認定範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -751,15 +751,17 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 
 | 順序 | 作業と完了証跡 | 現状 |
 |---|---|---|
-| M2-A | 対応API/SDK/MCP/hookごとの不変条件と完全一致SHAの検査を対応付け、構造化stateと生成文を区別。旧評価/reportの扱いを本計画と整合させ、過去結果を再採点しない | core経路は実装済み。受入一覧とreport契約の見直しが残る |
-| M2-B | 対応する全削除mode/receiptと派生物を扱うversion付き復旧metadata・隔離restoreを実装。公開/worker起動前に最新ACL、処理policy、call予約、unknown、quota消費を照合 | **次の実装優先項目。** 現drillはpurge 1件/失効1件のみで、model状態を拒否 |
+| M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
+| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | migration 014と削除専用exportは実装済み。**実際の複数receipt/model状態照合が次**。現drillはpurge 1件/失効1件のみ |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | 未認定。unitのmemory検査はこの負荷の代用ではない |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 
 M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、
 snapshot/candidate/embeddingと、読み続けられるpositive controlを対象とする。
-schema 13 tombstoneには対象ごとのreceipt/mode紐付けがないため、新migrationを追加し、
-upgrade/backfillの制限を検証する。公開済みmigrationの書換えや過去の対応関係の捏造はしない。
+schema 13 tombstoneに欠けていた対象別receipt/modeはmigration 014で新規分を記録し、
+旧対応は推測せず拒否する。Native forgetはpreview/purgeのみのままで、
+保存形式のsuppressを新たに公開したものではない。宣言履歴の復旧を検証するか、
+未対応/不完全な履歴は拒否する。公開済みmigrationの書換えや過去対応の捏造はしない。
 正本台帳が欠落・不整合ならrestoreの隔離とmodel worker停止を維持する。
 unknown callの再試行可能化、消費済みquotaの巻戻しを許可しない。
 HA/PITRと本番RPO/RTO認定はM5だが、安全なlogical restoreをM2から延期する意味ではない。

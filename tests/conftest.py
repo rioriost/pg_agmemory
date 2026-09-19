@@ -327,7 +327,22 @@ def database():
     for version, table in (
         (12, "memory.scope_synthesis_policy"),
         (13, "memory.working_event"),
+        (14, "memory_ops.deletion_target"),
     ):
+        if version == 14:
+            with psycopg.connect(url) as admin:
+                for record in legacy:
+                    record["legacy_deletion_id"] = uuid4()
+                    admin.execute(
+                        """INSERT INTO memory_ops.deletion_request
+                           (tenant_id,id,principal_id,mode,state,object_count,deletion_epoch)
+                           VALUES (%s,%s,%s,'suppress','blocked_for_reads',1,2)""",
+                        (record["tenant"], record["legacy_deletion_id"], record["principal"]),
+                    )
+                    admin.execute(
+                        "UPDATE memory.tenant SET deletion_epoch=2 WHERE id=%s",
+                        (record["tenant"],),
+                    )
         with pytest.MonkeyPatch.context() as patch:
             def fail_processing_ledger(self, query, params=None, _version=version, **kwargs):
                 if (
@@ -342,6 +357,12 @@ def database():
                 migrate(url)
         with psycopg.connect(url) as admin:
             assert admin.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0] is None
+            if version == 14:
+                assert admin.execute(
+                    """SELECT count(*) FROM pg_attribute
+                       WHERE attrelid='memory_ops.deletion_request'::regclass
+                       AND attname='target_manifest_version' AND NOT attisdropped"""
+                ).fetchone()[0] == 0
             if version == 13:
                 assert admin.execute(
                     """SELECT count(*) FROM pg_attribute

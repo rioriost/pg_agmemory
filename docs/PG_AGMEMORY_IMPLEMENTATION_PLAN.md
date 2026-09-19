@@ -4,7 +4,7 @@ English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 - Document version: 0.2 / memory-system responsibility realignment, 2026-09-19
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Core paths are implemented at service 0.0.27 / schema 13; M2 acceptance remains incomplete. This revision changes the plan, not runtime behavior or release status. Exact implementation evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Core paths and deletion manifests are implemented at service 0.0.28 / schema 14; M2 acceptance remains incomplete. Exact implementation evidence and qualification boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -761,16 +761,19 @@ This is evidence for tested paths, not completion of the following work.
 
 | Order | Work and completion evidence | Current state |
 |---|---|---|
-| M2-A | Map each supported API/SDK/MCP/hook operation to invariants and exact-SHA tests; separate structured state from generated text; reconcile legacy evaluation/report wording with this plan without relabeling old results | Core paths implemented; acceptance inventory and report-contract review remain |
-| M2-B | Implement versioned recovery metadata and an isolated restore procedure covering all supported deletion modes/receipts and derived objects; reconcile latest ACL, processing policy, call reservations, unknown outcomes and quota consumption before serving or starting workers | **Next implementation priority.** Existing drill supports only one purge/one revocation and rejects model state |
+| M2-A | Map supported API/SDK/MCP/hook contracts to invariants/tests and retain truthful legacy diagnostics rather than model-quality release gates | Inventory and report-boundary review recorded in EVALUATION; exact qualification remains per implementation |
+| M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Migration 014 and deletion-only export implemented; **actual multi-receipt and model-state reconciliation remains next**. Existing drill still permits only one purge/one revocation |
 | M2-C | Freeze and run the S resource profile in section 18.4, including mixed API/worker load, budget rejection, queue/DB bounds and failure behavior; report DB/index/WAL/backup footprint separately from reference-provider latency/cost | Not qualified; unit memory checks are not this workload |
 | M2-D | Package the existing single reference model configuration into a reproducible Native/API memory lifecycle benchmark; report typed-state/ID/coverage retention, retrieval results, failures and resource use; document installation, upgrade and restore limits and rerun exact-commit distribution checks | Existing retrieval and three-call lifecycle runs are reusable evidence; consolidated benchmark/release handoff remains |
 
 M2-B must preserve multiple/mixed suppress/purge histories, source-to-derivative
 closure, snapshots/candidates/embeddings, and a positive readable control. Schema
-13 tombstones lack per-target receipt/mode linkage: add a new migration and
-validate upgrade/backfill limitations; do not rewrite published migrations or
-invent historical linkage. Missing or inconsistent authoritative ledgers must
+13 tombstones lack per-target receipt/mode linkage; migration 014 now records it
+for new receipts but explicitly refuses to infer legacy mappings. Native forget
+still accepts only preview/purge; a stored suppress ledger entry is not a newly
+enabled public operation. Validate recovery of declared histories or refuse
+unsupported/incomplete ones. Do not rewrite published migrations or invent
+historical linkage. Missing or inconsistent authoritative ledgers must
 keep restore isolated and model workers disabled. Restore must not turn an
 unknown call into a retryable call or reset consumed quotas. HA/PITR and verified
 production RPO/RTO remain M5; this does not defer safe logical restore from M2.

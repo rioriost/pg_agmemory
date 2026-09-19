@@ -8,7 +8,63 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 14 deletion manifests
+
+**Current: service 0.0.28 / API v1 / schema 14.** PostgreSQL 18.6, pgvector 0.8.6,
+38 Native/SDK resources, four MCP tools and existing model policies are unchanged.
+Back up the database and role/secret configuration, stop/drain all writers and
+automatic restarts, then run `pg-agmemory migrate` with the matching image and
+administrative DSN. Verify the exact migration ledger **1–14** before starting
+matching API/worker/adapters. Schema-13 clients/binaries do not qualify as matching.
+Rollback needs a pre-migration backup and matching code, isolated until current
+revocations/deletions/accounting can be reconciled; never remove migration rows.
+
+Migration 014 adds `memory_ops.deletion_target`, unique tenant deletion epochs,
+and `deletion_request.target_manifest_version`. A new receipt must use version 1;
+its exact target count and target/tombstone scope references are checked in the
+same transaction. Targets can only be inserted in the receipt's creation
+transaction, tracked by an internal `xid8` marker, and runtime users cannot update
+or delete the ledger. Unique ordinals bounded by the receipt count also prevent
+overfilling after an early `SET CONSTRAINTS ... IMMEDIATE`. Each count is checked
+once per receipt, not per target.
+Target reads require tenant/scope access and the receipt's actor. Export is admin-only.
+
+Old receipts remain version **0** with no inferred targets. The migration does
+not attempt to recover per-receipt mappings from the cumulative tombstone set.
+If any old receipt, orphan tombstone, missing epoch or mismatched count exists,
+export fails with `deletion_history_incomplete`. Keep the old backup/ledgers and
+do not manufacture rows to bypass that refusal. New version-1 operations do not
+retroactively make an incomplete tenant history complete.
+
+```bash
+# Administrator environment; never pass credentials as literal arguments.
+# OUT_FILE must not exist; its parent must be an operator-private directory.
+pg-agmemory deletion-history export --tenant-id "$TENANT_ID" --out "$OUT_FILE"
+```
+
+This read-only command uses the tenant barrier and one repeatable-read snapshot.
+It exports IDs/scopes/actors/modes/states/epochs and exact targets, never source
+text, reasons or credentials. It rejects unknown tenants and oversized histories
+(10,000 receipts, 100,000 total targets, 16 MiB serialized file); it never
+truncates or overwrites. The new file is owner-private and fsynced; stdout gives
+its byte SHA-256 and a separate canonical history digest. Digests are integrity
+checks, not signatures or proof of freshness. Protect identifiers as sensitive
+operational metadata and preserve them in an independent authorized lineage.
+
+**This is not a general restore tool.** `restore_authorized=false` and
+`includes_acl_policy_and_call_accounting=false` are deliberate. Complete
+deletion history alone does not authorize exposing a restored database or
+restarting workers. Latest ACL/policy/call reservation/unknown/quota reconciliation,
+multi-receipt replay and all supported derivative recovery remain unfinished.
+Native/SDK/MCP `forget` still rejects `suppress`; that mode is retained only in
+the storage/export contract for explicitly recorded histories. The existing
+disposable single-purge drill now checks the schema-14 receipt/target binding,
+but has not become a multi-history or model-accounting recovery drill.
+
 ## Schema 13 background processing
+
+The following version-specific procedure is historical; schema 14 above is
+current. Unchanged processing permissions and safety constraints still apply.
 
 **Current: service 0.0.27 / API v1 / schema 13**, stage
 `m2-background-processing`; PostgreSQL 18.6 / pgvector 0.8.6 are unchanged.

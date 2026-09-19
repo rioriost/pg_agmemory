@@ -668,9 +668,15 @@ def test_hidden_intermediate_nodes_cannot_bridge_visible_endpoints(env, hide_sou
     # Simulate an incomplete out-of-protocol administrative deletion to exercise read guards.
     with psycopg.connect(env.admin_url) as conn:
         conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone DISABLE TRIGGER tombstone_manifest_complete"
+        )
+        conn.execute(
             """INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id)
                VALUES (%s,%s,%s)""",
             (env.tenants[0], hidden, env.scopes[0]),
+        )
+        conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone ENABLE TRIGGER tombstone_manifest_complete"
         )
     result = expand(env, a)
     assert result["paths"] == [] and result["edges"] == []
@@ -1100,7 +1106,7 @@ def test_schema_five_preserves_v4_effect_history_keys_and_replay(env, database):
     assert detail.json()["action_fingerprint"] == legacy["fingerprint"]
     assert [event["status"] for event in detail.json()["history"]] == ["planned", "dispatched"]
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 13 and capabilities["graph_backend"] == "sql"
+    assert capabilities["schema_version"] == 14 and capabilities["graph_backend"] == "sql"
     assert capabilities["limits"]["graph_paths"] == 100
     schema = env.client.get("/openapi.json").json()
     for path, verb, status in [

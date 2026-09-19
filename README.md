@@ -6,7 +6,26 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.27 / schema 13
+## Current development contract: v0.0.28 / schema 14
+
+Schema 14 adds **transaction-bound deletion target manifests** and the
+administrator-only `pg-agmemory deletion-history export` command. Each new
+receipt records its exact expanded target set; the database rejects incomplete
+or subsequently appended manifests. Existing schema-13 receipts retain an
+explicit unknown mapping, not an invented backfill.
+
+The export is deletion metadata only: **not a restore command or permission to
+restart API/model workers**. Full latest-ACL/policy/model-call/quota reconciliation
+and resource qualification remain M2 work. Native `forget` still permits
+`preview`/`purge` only; the stored `suppress` mode is not enabled as a public API.
+Use matching 0.0.28 / API v1 / schema 14 components and migration 014; see
+[current operations](docs/operations/README.md#schema-14-deletion-manifests).
+No model calls or new Native/MCP resources are added.
+
+## Retained v0.0.27 / schema 13 processing contract
+
+The processing behavior below is retained; its version-specific upgrade and
+measurement statements describe the prior release, not schema-14 qualification.
 
 **Memory infrastructure, not a judgment system.** Users select supported models
 for their budget; pg_agmemory guarantees memory contracts, not model reasoning.

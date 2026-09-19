@@ -623,9 +623,15 @@ def test_rebuild_is_atomic_and_excludes_tombstones(env, monkeypatch):
     assert calls == 2 and recall(env) == original
     with psycopg.connect(env.admin_url) as conn:
         conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone DISABLE TRIGGER tombstone_manifest_complete"
+        )
+        conn.execute(
             """INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id)
                VALUES (%s,%s,%s)""",
             (env.tenants[0], secret, env.scopes[0]),
+        )
+        conn.execute(
+            "ALTER TABLE memory_ops.object_tombstone ENABLE TRIGGER tombstone_manifest_complete"
         )
     # Simulate a stale payload with an already applied tombstone during maintenance.
     reindex_lexical(env.admin_url)
@@ -714,7 +720,7 @@ def test_v6_job_replay_and_historical_backfill_survive_migration(env, database):
 
 def test_japanese_profile_contract_and_limits(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 13
+    assert capabilities["schema_version"] == 14
     assert capabilities["search_profiles"] == ["simple-v1", JAPANESE_PROFILE]
     assert capabilities["default_search_profile"] == "simple-v1"
     assert capabilities["japanese_fts"]["normalization"] == "none"
