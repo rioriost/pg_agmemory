@@ -24,6 +24,7 @@ MIGRATIONS = (
     "012_background_processing.sql",
     "013_working_compaction.sql",
     "014_deletion_manifests.sql",
+    "015_recovery_apply.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

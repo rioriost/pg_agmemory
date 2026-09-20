@@ -93,7 +93,7 @@ def evidence():
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
         "format": "pgag-isolated-purge-drill-v3",
-        "schema_version": 14,
+        "schema_version": 15,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
         "objects": [{"tenant_id": "tenant", "id": "object", "scope_id": "scope",

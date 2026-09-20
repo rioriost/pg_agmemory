@@ -8,9 +8,85 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 15 operational-state application
+
+**Current: service 0.0.30 / API v1 / schema 15.** Stop/drain API, workers and
+automatic restarts before migration 015. Use matching components and verify
+migration history 1–15. Immediately take a new backup: migration 015 creates a
+separate per-tenant recovery key, with forced RLS, no runtime policies/grants,
+and an insert trigger for new tenants. Keys are generated from two strong random
+PostgreSQL UUIDs without adding an extension. They are neither the runtime-readable
+dedup key nor included in bundles. Preserve them in protected administrator backups.
+Pre-15 backups lack this key; independently generated replacement keys do not
+authenticate existing bundles. Do not remove migration records or invent keys
+to bypass a refusal. Rollback requires a matching protected backup/code pair.
+
+`recovery-apply` is an administrator-only **bounded state application**, not a
+general restore orchestrator. Quiesce source writers/model handlers before export.
+The target must remain isolated with API/workers stopped. It rejects other client
+sessions, requires explicit `--isolated`, holds the tenant barrier and writer-blocking
+table locks, and verifies the expected pre-state before modifying anything.
+The flag is an operator attestation, not a network-isolation detector.
+
+```bash
+# On the independently preserved authoritative latest lineage:
+pg-agmemory recovery-apply export --tenant-id "$TENANT_ID" --bundle "$BUNDLE"
+# After approved isolated content restore/deletion replay on the target:
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" --file "$EXPECTED"
+pg-agmemory recovery-apply apply --tenant-id "$TENANT_ID" \
+  --bundle "$BUNDLE" --expected "$EXPECTED" --isolated
+```
+
+The bundle contains **sensitive operational rows**, including job payload/state,
+idempotency responses and policy labels: unlike `processing-recovery`, it is not
+a content-free fingerprint artifact. Export is exclusive, owner-private and
+fsynced; keep the parent directory private and use protected/encrypted backup
+storage. Limits are 10,000 rows per mutable table and 16 MiB per bundle.
+A keyed MAC from the admin-only recovery key binds all rows, reference fingerprints
+and content fingerprints. It authenticates a preserved artifact, not its freshness;
+the operator must choose the authoritative latest lineage.
+
+Application requires the same tenant/key lineage, no epoch regression, exactly
+the already-applied deletion epoch, equivalent receipt/target deletion semantics,
+and unchanged non-replaceable operational state. **25 canonical memory tables**
+must already match the latest keyed fingerprints: this does not import missing
+episodes, regenerate summaries/vectors or perform physical erasure. Changed
+anchors, missing newer content, incomplete legacy deletion mappings or a
+different job set fail closed rather than guessing a recovery transformation.
+Access-policy history must be a complete contiguous sequence and retain its old
+prefix. Existing reservations cannot disappear, change identity, revert settled
+outcomes or refund consumed quota. Terminal jobs cannot regress.
+
+It replaces a fixed set of 11 operational tables and updates existing job rows,
+preserving original IDs, timestamps, policy epochs and model-call outcomes.
+Migration 015 makes five live-write triggers conditional on a **transaction-local,
+privileged** restore context; the normal runtime role cannot activate it, even by
+setting the GUC. No broad trigger disable or replication-role override is used.
+FK/check/uniqueness/deferred completeness constraints stay active. The transaction
+must then match all 21 operational fingerprints and the 25 content fingerprints.
+Any failure rolls back the entire application. Connection loss during commit is
+reported as outcome unknown; inspect and compare before retrying, never blindly
+repeat with a stale expected snapshot.
+
+This preserves the declared operational state, not a byte-for-byte cluster:
+general audit-event history/sequences are retained rather than replaced, and
+HA/PITR, arbitrary histories, missing content and external provider state remain
+outside the qualification. `restore_authorized=false` remains explicit; the
+command does not automatically start services or waive remaining deployment gates.
+
+The current **v4 drill** restores an old dump to a fresh cluster after deleting
+the source cluster, replays two purges after a nonempty baseline, then applies
+the authenticated latest bundle through the CLI. All original receipt IDs,
+idempotency records, ACL/policy and 21 operational fingerprints now match, as do
+35 canonical fingerprints. Three synthetic reservations (unknown, failed and
+succeeded) survive; duplicate semantic jobs retain their IDs, unknown retries
+are refused and a new call is denied at the consumed quota. Probes roll back.
+No external model requests or long-running API/worker processes are started.
+
 ## Schema 14 deletion manifests
 
-**Current: service 0.0.29 / API v1 / schema 14.** PostgreSQL 18.6, pgvector 0.8.6,
+**Historical contract: service 0.0.29 / API v1 / schema 14.** Current schema-15
+upgrade/application instructions are above. PostgreSQL 18.6, pgvector 0.8.6,
 38 Native/SDK resources, four MCP tools and existing model policies are unchanged.
 Back up the database and role/secret configuration, stop/drain all writers and
 automatic restarts, then run `pg-agmemory migrate` with the matching image and

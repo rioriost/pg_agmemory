@@ -2,7 +2,28 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## v0.0.29 / schema 14: 処理状態の照合、M2未完了
+## v0.0.30 / schema 15: 運用状態の原子的適用、M2未完了
+
+`recovery-apply export/apply`で、保持するcanonical本文が一致済みの隔離復元先へ、
+最新運用rowを適用できます。元receipt、idempotency、ACL/policy、job状態、呼出し予約を
+identityを再生成せず保持します。migration 015の管理者専用tenant別鍵でbundleを認証し、
+runtimeが読めるdedup secretとは分離します。CAS、本文不変、履歴/予約の単調性、
+構造制約、適用後fingerprintを同じtransactionで検証し、失敗時は全変更をrollbackします。
+runtime roleは履歴書込みcontextを有効化できません。
+
+実v4 backup drillで、35 canonical fingerprintに加えて21運用fingerprintも一致しました。
+syntheticなunknown/失敗/成功の予約3件を保持し、unknown retry拒否、意味的job ID維持、
+消費済みquotaが返還されないことを確認します。packaged apply CLIを使い、
+外部model requestや常駐API/worker processは起動しません。
+
+限定した適用機能であり、万能なrestore/起動toolではありません。
+canonical本文/削除効果は一致済みが条件で、新しい本文の欠落、job集合変更、
+旧削除対応不明、過大bundleは拒否します。一般audit履歴/sequenceは置換しません。
+広い派生物/復旧profile、資源認定、参考記憶benchmarkは残り、M2完了やHA/PITRは主張しません。
+[schema 15運用](operations/README-jp.md#schema-15-operational-state-application)に従い、
+upgrade後に復旧鍵を含む新backupを取得してください。
+
+## v0.0.29 / schema 14: 保存した照合証跡
 
 `processing-recovery export/check`は管理者専用・読取り専用で、固定21運用table、
 epoch、dedup系統を照合します。policy、永続model予約/結果、意味的job identity、

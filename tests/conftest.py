@@ -372,6 +372,23 @@ def database():
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:version])
             migrate(url)
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_restore_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (15,):
+                raise RuntimeError("simulated restore migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_restore_ledger)
+        with pytest.raises(RuntimeError, match="simulated restore migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT to_regprocedure('memory.recovery_apply_authorized()')"
+        ).fetchone()[0] is None
+        assert admin.execute("SELECT to_regclass('memory_ops.recovery_key')").fetchone()[0] is None
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 14
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

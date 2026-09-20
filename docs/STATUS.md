@@ -2,7 +2,32 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## v0.0.29 / schema 14: processing-state comparison, M2 incomplete
+## v0.0.30 / schema 15: atomic operational-state application, M2 incomplete
+
+`recovery-apply export/apply` now applies exact latest operational rows to an
+isolated target whose retained canonical content already matches. Original
+receipts, idempotency, ACL/policy, job states and call reservations survive
+without regenerating their identities. Bundles are authenticated by a separate
+admin-only per-tenant key introduced by migration 015, not the runtime-readable
+dedup secret. CAS, immutable-content checks, monotonic histories/reservations,
+active structural constraints and post-write fingerprints must all pass in one
+transaction; failures roll back. Runtime roles cannot activate historical writes.
+
+The v4 actual backup drill now matches both 35 canonical fingerprints and all
+21 operational fingerprints, including three synthetic unknown/failed/succeeded
+reservations. Unknown retries stay blocked, semantic job IDs stay stable and
+consumed quota is not refunded. It uses the packaged apply CLI; no external model
+requests or long-running API/worker processes are started.
+
+This is bounded application, not a universal restore/activation tool. Canonical
+content/deletion effects must already match; new/missing content, different job
+sets, legacy unmapped deletions and oversized bundles fail closed. General audit
+history/sequences are not replaced. Broader derivative/recovery profiles,
+resource qualification and the reference memory benchmark remain open; no M2
+completion or HA/PITR claim is made. Follow [schema-15 operations](operations/README.md#schema-15-operational-state-application),
+including a fresh post-upgrade backup with the recovery key.
+
+## v0.0.29 / schema 14: retained comparison evidence
 
 `processing-recovery export/check` adds an admin-only read-only comparison of
 21 fixed operational tables, epochs and dedup lineage. It includes policies,

@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.29 / schema 14、M2受入れは未完了
+## 現在の状態: v0.0.30 / schema 15、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -28,6 +28,7 @@ model比較や新しい人手label収集も計画しない。一つの固定し�
 | Scope/capture/synthesis管理 | 特権接続、CAS、caller barrier、送信の既定拒否、runtimeからpolicy改変不可 | `test_scope_access`、`test_capture_policy`、`test_processing` |
 | Forget/receipt/deletion-history export | Nativeはpreview/purgeのみ。依存closure、barrier、receipt別の全対象記録、manifest確定、対応不明履歴の明示拒否 | `test_integration`、各domainのpurge case、新規`test_deletion_history`、`test_recovery_drill` |
 | Processing-recovery export/check | 固定table全体、epoch、keyed系統の照合。不一致を明示し、payload出力・DB変更・再開許可なし | `test_processing_recovery`、v3実backup drill、packaged管理CLI smoke |
+| Recovery-apply export/apply | 管理者専用認証bundle、対象CAS/本文一致、会計/履歴の単調性、原子的適用と事後照合。自動再開なし | `test_recovery_apply`、migration 15 rollback/runtime role検査、v4実backup/適用CLI drill |
 
 これは対象契約の一覧であり、万能な保証ではない。
 schema 13の直前の完全一致SHA baselineは`1ea3f6c`で、native各1,754 passed / optional 8 skips。
@@ -894,7 +895,7 @@ supersession とみなしたりしてはいけない。
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** identity/policy/call会計を保持・明示照合する最新状態の適用。対応/export、限定replay、読取り専用processing-state export/checkは実装済み。canonical一致だけでは運用状態の一致にならないことも確認した。自動import/再開gateは未実装で、復元serviceの隔離を維持 |
+| M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
 | M2-C 資源認定 | **未完:** 固定S profileの混在load/server/queue/footprintと上限強制。model時間/費用は別記し、既存call数やunit memory検査を負荷認定に流用しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |

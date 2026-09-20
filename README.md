@@ -6,15 +6,26 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.29 / schema 14
+## Current development contract: v0.0.30 / schema 15
+
+`recovery-apply export/apply` can now restore exact operational state on an
+isolated, content-matching database: original receipts/idempotency, current
+ACL/policy, job state and durable call accounting. Authenticated bundles use a
+separate admin-only recovery key. Compare-and-swap, structural constraints and
+post-application fingerprints must all pass in one transaction; otherwise it
+rolls back. Runtime roles cannot enable the historical-write context.
+This is a bounded administrative operation, not automatic erasure, arbitrary
+point-in-time recovery or permission to start services. See
+[schema-15 recovery operations](docs/operations/README.md#schema-15-operational-state-application).
+Take a fresh schema-15 backup containing the recovery key after upgrading.
 
 The admin-only `processing-recovery export/check` command now compares a
 consistent processing-state snapshot: current policies, ACLs, call reservations,
 semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
-applying latest recovery state remains unfinished. See
+the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Schema remains 14; use matching v0.0.29 components. No model calls are made by the check.
+Use matching v0.0.30 / API v1 / schema 15 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new
@@ -26,7 +37,7 @@ The export is deletion metadata only: **not a restore command or permission to
 restart API/model workers**. Full latest-ACL/policy/model-call/quota reconciliation
 and resource qualification remain M2 work. Native `forget` still permits
 `preview`/`purge` only; the stored `suppress` mode is not enabled as a public API.
-Use matching 0.0.29 / API v1 / schema 14 components and migration 014; see
+Migration 014 introduced those manifests; migration 015 adds recovery support. See
 [current operations](docs/operations/README.md#schema-14-deletion-manifests).
 No model calls or new Native/MCP resources are added.
 

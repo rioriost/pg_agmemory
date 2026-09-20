@@ -8,7 +8,7 @@ import os
 import stat
 import time
 from pathlib import Path
-from typing import Annotated, Literal, Never, Self
+from typing import Annotated, Any, Literal, Never, Self
 from uuid import UUID
 
 import psycopg
@@ -57,7 +57,7 @@ class StateFingerprint(HistoryContract):
 
 class ProcessingRecoverySnapshot(HistoryContract):
     format: Literal["pgag-processing-recovery-v1"] = "pgag-processing-recovery-v1"
-    schema_version: Literal[14] = 14
+    schema_version: Literal[15] = 15
     tenant_id: UUID
     lineage: Digest
     access_epoch: Epoch
@@ -78,65 +78,74 @@ class ProcessingRecoveryCheck(HistoryContract):
     restore_authorized: Literal[False] = False
 
 
-def capture_processing_state(url: str, tenant_id: UUID) -> ProcessingRecoverySnapshot:
-    if SCHEMA_VERSION != 14:
-        raise AdminError("schema_version_mismatch")
+def fingerprint_tables(
+    conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID, secret: bytes,
+    tables: dict[str, str],
+) -> tuple[StateFingerprint, ...]:
     started = time.monotonic()
     total_bytes = 0
+    fingerprints = []
+    for table, keys in tables.items():
+        if time.monotonic() - started > MAX_SECONDS:
+            raise AdminError("processing_recovery_timeout")
+        digest = hmac.new(secret, ("processing-recovery-v1:" + table).encode(), hashlib.sha256)
+        order = (sql.SQL(",").join(map(sql.Identifier, keys.split(","))) if keys
+                 else sql.SQL('to_jsonb(t)::text COLLATE "C"'))
+        query = sql.SQL("SELECT to_jsonb(t) AS value FROM {} t WHERE tenant_id=%s "
+                        "ORDER BY {} LIMIT %s").format(
+            sql.Identifier(*table.split(".")), order,
+        )
+        count = 0
+        with conn.cursor(name="pgag_processing_recovery") as cursor:
+            cursor.execute(query, (tenant_id, MAX_ROWS + 1))
+            for row in cursor:
+                count += 1
+                payload = json.dumps(
+                    row["value"], sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":"), allow_nan=False,
+                ).encode("utf-8")
+                total_bytes += len(payload)
+                if count > MAX_ROWS or total_bytes > MAX_BYTES:
+                    raise AdminError("processing_recovery_limit")
+                if time.monotonic() - started > MAX_SECONDS:
+                    raise AdminError("processing_recovery_timeout")
+                digest.update(len(payload).to_bytes(8, "big"))
+                digest.update(payload)
+        fingerprints.append(StateFingerprint(table=table, rows=count, digest=digest.hexdigest()))
+    if time.monotonic() - started > MAX_SECONDS:
+        raise AdminError("processing_recovery_timeout")
+    return tuple(fingerprints)
+
+
+def capture_processing_connection(
+    conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID,
+) -> ProcessingRecoverySnapshot:
+    if SCHEMA_VERSION != 15:
+        raise AdminError("schema_version_mismatch")
+    conn.execute("SET LOCAL timezone='UTC'")
+    tenant = conn.execute(
+        "SELECT dedup_secret,access_epoch,deletion_epoch FROM memory.tenant WHERE id=%s",
+        (tenant_id,),
+    ).fetchone()
+    if tenant is None:
+        raise AdminError("tenant_not_found")
+    secret = bytes(tenant["dedup_secret"])
+    return ProcessingRecoverySnapshot(
+        tenant_id=tenant_id,
+        lineage=hmac.new(
+            secret, ("processing-recovery-lineage-v1:" + str(tenant_id)).encode(), hashlib.sha256,
+        ).hexdigest(),
+        access_epoch=tenant["access_epoch"], deletion_epoch=tenant["deletion_epoch"],
+        tables=fingerprint_tables(conn, tenant_id, secret, TABLES),
+    )
+
+
+def capture_processing_state(url: str, tenant_id: UUID) -> ProcessingRecoverySnapshot:
     try:
         with admin_connection(url, tenant_id) as conn:
             with conn.transaction():
                 conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                conn.execute("SET LOCAL timezone='UTC'")
-                tenant = conn.execute(
-                    """SELECT dedup_secret,access_epoch,deletion_epoch
-                       FROM memory.tenant WHERE id=%s""", (tenant_id,),
-                ).fetchone()
-                if tenant is None:
-                    raise AdminError("tenant_not_found")
-                secret = bytes(tenant["dedup_secret"])
-                fingerprints = []
-                for table, keys in TABLES.items():
-                    if time.monotonic() - started > MAX_SECONDS:
-                        raise AdminError("processing_recovery_timeout")
-                    digest = hmac.new(
-                        secret, ("processing-recovery-v1:" + table).encode(), hashlib.sha256,
-                    )
-                    query = sql.SQL("SELECT to_jsonb(t) AS value FROM {} t WHERE tenant_id=%s "
-                                    "ORDER BY {} LIMIT %s").format(
-                        sql.Identifier(*table.split(".")),
-                        sql.SQL(",").join(map(sql.Identifier, keys.split(","))),
-                    )
-                    count = 0
-                    with conn.cursor(name="pgag_processing_recovery") as cursor:
-                        cursor.execute(query, (tenant_id, MAX_ROWS + 1))
-                        for row in cursor:
-                            count += 1
-                            payload = json.dumps(
-                                row["value"], sort_keys=True, ensure_ascii=False,
-                                separators=(",", ":"), allow_nan=False,
-                            ).encode("utf-8")
-                            total_bytes += len(payload)
-                            if count > MAX_ROWS or total_bytes > MAX_BYTES:
-                                raise AdminError("processing_recovery_limit")
-                            if time.monotonic() - started > MAX_SECONDS:
-                                raise AdminError("processing_recovery_timeout")
-                            digest.update(len(payload).to_bytes(8, "big"))
-                            digest.update(payload)
-                    fingerprints.append(StateFingerprint(
-                        table=table, rows=count, digest=digest.hexdigest(),
-                    ))
-                if time.monotonic() - started > MAX_SECONDS:
-                    raise AdminError("processing_recovery_timeout")
-                return ProcessingRecoverySnapshot(
-                    tenant_id=tenant_id,
-                    lineage=hmac.new(
-                        secret, ("processing-recovery-lineage-v1:" + str(tenant_id)).encode(),
-                        hashlib.sha256,
-                    ).hexdigest(),
-                    access_epoch=tenant["access_epoch"], deletion_epoch=tenant["deletion_epoch"],
-                    tables=tuple(fingerprints),
-                )
+                return capture_processing_connection(conn, tenant_id)
     except psycopg.Error as exc:
         raise admin_failure(exc, False) from None
 

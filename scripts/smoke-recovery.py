@@ -1,8 +1,8 @@
-"""Disposable schema-14 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-15 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
-Replays bounded purge suffixes after an existing deletion baseline and ordered
-ACL changes. Model processing stays disabled; call reconciliation is not tested.
+It applies exact operational state after bounded deletion replay and exercises
+three synthetic call outcomes, unknown-call fences and consumed quota.
 """
 
 import asyncio
@@ -11,10 +11,12 @@ import json
 import os
 import platform
 import re
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import UUID, uuid4
 
 import psycopg
@@ -24,6 +26,7 @@ from psycopg.rows import dict_row
 from pydantic import ValidationError
 
 from pg_agmemory.admin import AdminError
+from pg_agmemory.capture_policy import CapturePolicy, CapturePolicyRequest, capture_policy
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, RuntimeValidationError, migrate, validate_runtime
 from pg_agmemory.deletion_history import DeletionHistory, purge_replay_suffix
@@ -37,16 +40,23 @@ from pg_agmemory.models import (
     Forget,
     MemoryReference,
     Observe,
+    ProcessMemory,
     Remember,
     RestoreCheckpoint,
 )
+from pg_agmemory.processing import Processing
 from pg_agmemory.processing_recovery import (
     ProcessingRecoverySnapshot,
     capture_processing_state,
     compare_processing_state,
 )
+from pg_agmemory.providers import ExtractionResult, ProviderFailure, ProviderSettings
+from pg_agmemory.recovery_apply import RecoveryBundle, export_bundle
 from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
+from pg_agmemory.synthesis_policy import SynthesisPolicy, SynthesisPolicyRequest, synthesis_policy
+from pg_agmemory.worker import run_once
+from pg_agmemory.worker_profile import WorkerProfile
 
 OPERATOR = "synthetic-recovery-operator"
 REVOKED = "synthetic-recovery-revoked"
@@ -54,6 +64,17 @@ CONTROL = "synthetic-recovery-control"
 TARGET = "synthetic-recovery-target"
 SECOND = "synthetic-recovery-second"
 BASELINE = "synthetic-recovery-baseline"
+MODEL_PREFIX = "synthetic-recovery-model-"
+BUDGET = "synthetic-recovery-budget"
+
+
+def processing_profile():
+    return WorkerProfile(ProviderSettings(
+        backend="local_http", endpoint="http://127.0.0.1:1",
+        text_model={"name": "synthetic-recovery", "revision": "1"},
+        embedding_model={"name": "synthetic-recovery-embedding", "revision": "1"},
+        max_output_tokens=128,
+    ))
 
 
 class DrillError(RuntimeError):
@@ -113,7 +134,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 15)], "schema14 required")
+        require(versions == [{"version": n} for n in range(1, 16)], "schema15 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -128,7 +149,7 @@ def snapshot(url):
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         result = {
-            "format": "pgag-isolated-purge-drill-v3",
+            "format": "pgag-isolated-purge-drill-v4",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
@@ -199,7 +220,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 14, "schema14 required")
+        require(evidence["schema_version"] == 15, "schema15 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -269,6 +290,29 @@ def validate_evidence(before, latest):
                             for m in evidence["memberships"]),
                         "trusted deletion actor no longer authorized; replay unsupported")
     return suffix_receipts, suffix, principals
+
+
+def validate_application_evidence(before, latest):
+    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v4",
+            "application evidence v4 required")
+    require(before["schema_version"] == latest["schema_version"] == 15, "schema15 required")
+    require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
+    require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
+            "changed identities or anchors unsupported")
+    try:
+        receipts = purge_replay_suffix(deletion_history(before), deletion_history(latest))
+    except AdminError as exc:
+        raise DrillError(exc.code) from None
+    principals = {p["id"]: p for p in latest["principals"]}
+    for receipt in receipts:
+        require(str(receipt.principal_id) in principals, "missing deletion actor")
+        for state in (before, latest):
+            for target in receipt.targets:
+                require(any(m["principal_id"] == str(receipt.principal_id)
+                            and m["scope_id"] == str(target.scope_id)
+                            and m["permissions"] == ["admin"] and m["expires_at"] is None
+                            for m in state["memberships"]), "deletion actor changed")
+    return receipts, principals
 
 
 def runtime_url(admin_url, *, create=False):
@@ -349,6 +393,30 @@ async def seed(admin_url):
         require(len(sources) == 3, "reader must initially see three surviving sources")
         for source in sources:
             await memory.explain(Explain(memory_id=source["id"]))
+    profile = processing_profile()
+    with synthesis_policy(admin_url, SynthesisPolicyRequest(
+        operation="set", tenant_id=tenant, scope_id=scope, expected_access_epoch=epoch,
+        policy=SynthesisPolicy(
+            enabled=True, profile_digest=profile.digest, kinds=["extract"],
+            consent_references=["disposable-recovery-drill-only"], max_calls=3,
+            max_output_tokens=128,
+        ),
+    )):
+        pass
+    async with service(url) as memory:
+        for outcome in ("unknown", "failed", "succeeded", "budget"):
+            source = await memory.observe(Observe(
+                scope_id=scope,
+                source_namespace=BUDGET if outcome == "budget" else MODEL_PREFIX + outcome,
+                source_event_id="1", occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                content="Synthetic model recovery outcome: " + outcome,
+                consent_reference="disposable-recovery-drill-only",
+            ), "model-source-" + outcome)
+            if outcome != "budget":
+                await Processing(memory).enqueue(ProcessMemory(
+                    scope_id=scope, kind="extract",
+                    source=MemoryReference(memory_id=UUID(source["memory_id"])),
+                ), "model-enqueue-" + outcome)
 
 
 async def later(admin_url):
@@ -369,6 +437,21 @@ async def later(admin_url):
             memory_ids=[source["id"]], reason="Second post-backup synthetic deletion",
         ), "second-forget")
         require(receipt["object_count"] == 1, "second purge target mismatch")
+    profile = processing_profile()
+    calls = []
+    async def extract(data):
+        outcome = data.text.rsplit(" ", 1)[1]
+        calls.append(outcome)
+        if outcome in ("unknown", "failed"):
+            raise ProviderFailure("synthetic_failure", unknown=outcome == "unknown")
+        return ExtractionResult(model=profile.settings.text_model,
+                                input_digest=data.digest(), candidates=[])
+    profile.provider.extract = extract
+    for _ in range(3):
+        result = await run_once(url, OPERATOR, profile=profile)
+        require(result["outcome"] in ("failed", "succeeded"), "synthetic call did not finish")
+    require(sorted(calls) == ["failed", "succeeded", "unknown"],
+            "three synthetic outcomes required")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
         row = conn.execute(
             """SELECT p.tenant_id,p.id AS principal_id,s.scope_id,t.access_epoch
@@ -389,6 +472,15 @@ async def later(admin_url):
         principal_id=row["principal_id"], expected_access_epoch=epoch,
     )) as result:
         require(result.changed, "source revocation must change permissions")
+        epoch = result.access_epoch
+    with capture_policy(admin_url, CapturePolicyRequest(
+        operation="set", tenant_id=row["tenant_id"], scope_id=row["scope_id"],
+        expected_access_epoch=epoch, policy=CapturePolicy(
+            enabled=True, source_namespaces=None,
+            consent_references=["disposable-recovery-drill-only"], max_content_bytes=10000,
+        ),
+    )) as result:
+        require(result.changed, "latest capture policy must differ from backup")
 
 
 async def denied(operation):
@@ -400,10 +492,53 @@ async def denied(operation):
         raise RuntimeError("deleted or revoked content is still visible")
 
 
+async def probe_model_fences(url):
+    profile = processing_profile()
+    async with service(url) as memory:
+        for outcome in ("unknown", "succeeded"):
+            row = await (await memory.conn.execute(
+                """SELECT e.id,e.scope_id,j.id AS job_id FROM memory.episode e
+                   JOIN memory_ops.job_input i ON i.tenant_id=e.tenant_id AND i.source_id=e.id
+                   JOIN memory_ops.job j ON j.tenant_id=i.tenant_id AND j.id=i.job_id
+                   WHERE e.source_namespace=%s""", (MODEL_PREFIX + outcome,),
+            )).fetchone()
+            request = ProcessMemory(scope_id=row["scope_id"], kind="extract",
+                                    source=MemoryReference(memory_id=row["id"]))
+            duplicate = await Processing(memory).enqueue(request, "recovery-duplicate-" + outcome)
+            require(duplicate["job_id"] == str(row["job_id"]), "semantic identity changed")
+            if outcome == "unknown":
+                try:
+                    await Processing(memory).enqueue(
+                        request.model_copy(update={"retry_of": row["job_id"]}), "unknown-retry"
+                    )
+                except MemoryError as exc:
+                    require(exc.code == "job_retry_unknown", "unknown retry fence mismatch")
+                else:
+                    raise DrillError("unknown call retry was accepted")
+        row = await (await memory.conn.execute(
+            "SELECT id,scope_id FROM memory.episode WHERE source_namespace=%s", (BUDGET,)
+        )).fetchone()
+        queued = await Processing(memory).enqueue(ProcessMemory(
+            scope_id=row["scope_id"], kind="extract", source=MemoryReference(memory_id=row["id"]),
+        ), "recovery-budget-probe")
+        claim = await Jobs(memory).claim(profile_digest=profile.digest)
+        require(str(claim["job_id"]) == queued["job_id"], "unexpected job during budget probe")
+        try:
+            await Processing(memory).prepare(
+                claim["job_id"], claim["lease_token"], profile, reserve=True
+            )
+        except MemoryError as exc:
+            require(exc.code == "processing_call_limit", "quota fence mismatch")
+        else:
+            raise DrillError("restored quota was refunded")
+        raise psycopg.Rollback
+
+
 async def recover(admin_url, directory):
     before = json.loads((directory / "before.json").read_text())
     latest = json.loads((directory / "latest.json").read_text())
-    receipts, events, principals = validate_evidence(before, latest)
+    receipts, principals = validate_application_evidence(before, latest)
+    bundle = RecoveryBundle.model_validate_json(json.dumps(latest["recovery_bundle"]))
     restored = snapshot(admin_url)
     require(restored == before, "old pg_dump/pg_restore canonical or metadata mismatch")
     baseline_check = compare_processing_state(
@@ -414,19 +549,6 @@ async def recover(admin_url, directory):
     url = runtime_url(admin_url, create=True)
     await validate_runtime(url)
     targets = [UUID(row["object_id"]) for row in latest["tombstones"]]
-    for event in events:
-        request = {
-            "operation": event["operation"], "tenant_id": event["tenant_id"],
-            "scope_id": event["scope_id"], "principal_id": event["principal_id"],
-            "expected_access_epoch": event["access_epoch"] - 1,
-        }
-        if event["operation"] == "set":
-            request.update(permissions=event["permissions"], no_expiry=True)
-        with scope_access(admin_url, ScopeAccessRequest.model_validate_json(
-            json.dumps(request)
-        )) as result:
-            require(result.changed and result.access_epoch == event["access_epoch"],
-                    "ACL replay failed")
     bindings = []
     for receipt in receipts:
         actor = principals[str(receipt.principal_id)]
@@ -443,9 +565,28 @@ async def recover(admin_url, directory):
                 "replayed_receipt": result["deletion_id"],
                 "deletion_epoch": receipt.deletion_epoch,
             })
+    expected = capture_processing_state(admin_url, bundle.reference.tenant_id)
+    with TemporaryDirectory(prefix="pgag-isolated-apply-") as temporary:
+        expected_file = Path(temporary) / "expected.json"
+        bundle_file = Path(temporary) / "bundle.json"
+        expected_file.write_text(expected.model_dump_json())
+        bundle_file.write_text(bundle.model_dump_json())
+        expected_file.chmod(0o600)
+        bundle_file.chmod(0o600)
+        completed = subprocess.run(
+            ["pg-agmemory", "recovery-apply", "apply",
+             "--tenant-id", str(bundle.reference.tenant_id), "--bundle", str(bundle_file),
+             "--expected", str(expected_file), "--isolated"],
+            capture_output=True, text=True, timeout=60,
+        )
+        require(completed.returncode == 0 and completed.stderr == "",
+                "packaged recovery application failed")
+        require(json.loads(completed.stdout)["status"] == "applied", "application did not commit")
+    applied = capture_processing_state(admin_url, bundle.reference.tenant_id)
+    require(applied == bundle.reference, "operational application did not match latest")
     final = snapshot(admin_url)
-    validate_evidence(before, final)
-    for key in ("tenant", "principals", "memberships", "tombstones", "access_events", "canonical"):
+    for key in ("tenant", "principals", "memberships", "tombstones", "access_events", "canonical",
+                "deletions", "deletion_targets", "processing_state"):
         require(final[key] == latest[key], f"latest {key} reconciliation mismatch")
     def normalized(evidence):
         return [r.model_dump(mode="json", exclude={"deletion_id"})
@@ -455,9 +596,7 @@ async def recover(admin_url, directory):
         ProcessingRecoverySnapshot.model_validate_json(json.dumps(final["processing_state"])),
         ProcessingRecoverySnapshot.model_validate_json(json.dumps(latest["processing_state"])),
     )
-    require(not processing_check.processing_state_matches
-            and "memory_ops.deletion_request" in processing_check.differences,
-            "regenerated receipts must not certify exact operational state")
+    require(processing_check.processing_state_matches, "latest operational state must match")
     require(final["deletions"][:len(before["deletions"])] == before["deletions"],
             "baseline receipt identity changed")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
@@ -484,13 +623,16 @@ async def recover(admin_url, directory):
     async with service(url, REVOKED) as memory:
         await denied(memory.object(control["id"]))
         await denied(memory.explain(Explain(memory_id=control["id"])))
+    await probe_model_fences(url)
     require(snapshot(admin_url)["canonical"] == latest["canonical"],
             "verification unexpectedly modified canonical state")
+    require(capture_processing_state(admin_url, bundle.reference.tenant_id) == bundle.reference,
+            "rollback probes unexpectedly modified operational state")
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema14-multi-purge-processing-comparison-v3",
-        "schema_version": 14,
+        "scope": "schema15-exact-operational-state-application",
+        "schema_version": 15,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
@@ -499,8 +641,9 @@ async def recover(admin_url, directory):
         "tombstones": len(final["tombstones"]),
         "deletion_manifest_targets": len(final["deletion_targets"]),
         "baseline_receipts": len(before["deletions"]),
-        "replayed_receipts": bindings,
-        "replayed_acl_events": len(events),
+        "transient_replay_receipts": bindings,
+        "original_receipts_restored": len(final["deletions"]),
+        "applied_acl_events": len(latest["access_events"]) - len(before["access_events"]),
         "epochs": {
             "before": {k: before["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
             "restored": {k: final["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
@@ -518,8 +661,14 @@ async def recover(admin_url, directory):
             for name in ("old.dump", "latest.dump", "before.json", "latest.json")
         },
         "model_calls": 0,
-        "model_processing_enabled": False,
-        "model_call_reconciliation": "unqualified-no-model-calls-or-worker",
+        "model_call_definition": "external model requests",
+        "synthetic_provider_calls": 3,
+        "model_call_reservations": final["canonical"]["memory_ops.model_call"]["count"],
+        "model_processing_enabled": True,
+        "model_call_reconciliation": "exact-unknown-failed-succeeded-reservations",
+        "unknown_retry_denied": True,
+        "consumed_quota_preserved": True,
+        "semantic_job_identity_preserved": True,
         "processing_baseline_matches": baseline_check.processing_state_matches,
         "latest_processing_check": processing_check.model_dump(mode="json"),
         "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "mixed-deletion-modes",
@@ -533,7 +682,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 14, "this bounded smoke is pinned to schema14")
+    require(SCHEMA_VERSION == 15, "this bounded smoke is pinned to schema15")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])
@@ -544,7 +693,10 @@ async def main():
     elif operation == "later":
         await later(admin_url)
         latest = snapshot(admin_url)
-        validate_evidence(json.loads((directory / "before.json").read_text()), latest)
+        validate_application_evidence(json.loads((directory / "before.json").read_text()), latest)
+        latest["recovery_bundle"] = export_bundle(
+            admin_url, UUID(latest["tenant"][0]["id"])
+        ).model_dump(mode="json")
         (directory / "latest.json").write_text(canonical(latest) + "\n")
     elif operation == "recover":
         await recover(admin_url, directory)

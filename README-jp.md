@@ -7,14 +7,24 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.29 / schema 14
+## 現在の開発契約: v0.0.30 / schema 15
+
+`recovery-apply export/apply`で、隔離され、保持する本文が一致する復元先へ、
+元のreceipt/idempotency、現行ACL/policy、job状態、呼出し会計を適用できます。
+bundle認証にはruntimeから読めない専用の復旧鍵を使います。
+CAS、構造制約、適用後fingerprintが一つのtransaction内ですべて一致しなければ、
+変更全体をrollbackします。runtime roleは履歴書込みcontextを有効化できません。
+限定した管理操作であり、自動消去、任意時点復旧、service起動許可ではありません。
+[schema 15復旧運用](docs/operations/README-jp.md#schema-15-operational-state-application)を参照し、
+upgrade後に復旧鍵を含む新しいschema 15 backupを取得してください。
 
 管理者専用の`processing-recovery export/check`を追加しました。
 現行policy、ACL、呼出し予約、意味的job identity、job状態と関連運用metadataを
 一貫したsnapshotで照合し、不一致なら非0で終了します。
-DBは変更せず、**一致しても再開を許可しません**。最新状態の適用処理は未完です。
+この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
+上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-schemaは14のままで、componentはv0.0.29に揃えます。照合はmodelを呼びません。
+componentはv0.0.30 / API v1 / schema 15に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
@@ -24,8 +34,8 @@ schema 13以前のreceiptは対応不明と明示し、推測でbackfillしま�
 exportは削除metadataのみで、**復元commandでもAPI/model worker再開許可でもありません**。
 最新ACL/policy/model call/quotaの全体照合と資源認定はM2の残作業です。
 Native `forget`は引き続き`preview`/`purge`のみで、保存形式の`suppress`を
-公開APIとして有効化しません。0.0.29 / API v1 / schema 14に揃えてmigration 014を
-適用し、[現行運用](docs/operations/README-jp.md#schema-14-deletion-manifests)を参照してください。
+公開APIとして有効化しません。migration 014でmanifest、015で復旧対応を追加しました。
+[manifest運用](docs/operations/README-jp.md#schema-14-deletion-manifests)も参照してください。
 model呼出しやNative/MCP resourceの追加はありません。
 
 ## 保存したv0.0.27 / schema 13 processing契約

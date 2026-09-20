@@ -1160,6 +1160,7 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from pg_agmemory.processing_recovery import ProcessingRecoverySnapshot
+from pg_agmemory.recovery_apply import RecoveryBundle
 
 identity = json.loads(sys.argv[1])
 with TemporaryDirectory(prefix="pgag-processing-recovery-") as directory:
@@ -1174,7 +1175,16 @@ with TemporaryDirectory(prefix="pgag-processing-recovery-") as directory:
         if operation == "check":
             assert body["processing_state_matches"] and body["differences"] == []
     assert path.stat().st_mode & 0o777 == 0o600
-    assert len(ProcessingRecoverySnapshot.model_validate_json(path.read_bytes()).tables) == 21
+    expected = ProcessingRecoverySnapshot.model_validate_json(path.read_bytes())
+    assert len(expected.tables) == 21
+    bundle_path = Path(directory) / "bundle.json"
+    exported = subprocess.run(["pg-agmemory", "recovery-apply", "export",
+        "--tenant-id", identity["tenant_id"], "--bundle", str(bundle_path)],
+        capture_output=True, text=True, timeout=30)
+    assert exported.returncode == 0 and exported.stderr == ""
+    assert json.loads(exported.stdout)["contains_operational_rows"] is True
+    assert bundle_path.stat().st_mode & 0o777 == 0o600
+    assert RecoveryBundle.model_validate_json(bundle_path.read_bytes()).reference == expected
 print("Production processing recovery smoke passed: private snapshot, exact state check, no restart authority")
 ' "$provisioned"
 

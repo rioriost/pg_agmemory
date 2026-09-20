@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: v0.0.29 / schema 14, M2 acceptance incomplete
+## Current status: v0.0.30 / schema 15, M2 acceptance incomplete
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
@@ -30,6 +30,7 @@ the versioned core acceptance inventory. No semantic measurement is invented.
 | Scope/capture/synthesis administration | Privileged connection, CAS, caller barrier, default-deny egress and immutable runtime policy | `test_scope_access`, `test_capture_policy`, `test_processing` |
 | Forget/receipt/deletion-history export | Native preview/purge only; full dependency closure, barrier, exact per-receipt target recording, sealed manifests, explicit refusal of unmapped history | `test_integration`, purge cases across domain tests, new `test_deletion_history`, `test_recovery_drill` |
 | Processing-recovery export/check | Complete fixed-table, epoch and keyed-lineage comparison; explicit mismatch, no payload export, no DB changes or restart authorization | `test_processing_recovery`, v3 actual backup drill, packaged admin CLI smoke |
+| Recovery-apply export/apply | Admin-only authenticated bundle, exact target CAS/content, monotonic accounting/history, all-or-nothing application and post-verification; no automatic restart | `test_recovery_apply`, migration-15 rollback/runtime-role cases, v4 backup/application CLI drill |
 
 This inventory describes tested contracts, not universal assurance. The last
 schema-13 exact-SHA baseline is `1ea3f6c` (1,754 passes / 8 optional skips per
@@ -975,7 +976,7 @@ automatic publication or treat adoption as supersession of another assertion.
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | **Open:** latest-state application preserving/reconciling identities, policy and call accounting. Linkage/export, bounded replay and read-only processing-state export/check are implemented. Operational mismatch now demonstrably prevents a clean comparison despite canonical matches; no automated importer or restart gate exists. Keep restored services isolated |
+| M2-B deletion/ACL/policy/call-accounting restore | Bounded exact-state application now preserves IDs/policy/job/call accounting, with rollback and runtime isolation. **Open:** broader content/derivative/history profiles and deployment qualification. Missing canonical content is not reconstructed; no automatic activation or blanket restore claim |
 | M2-C resource qualification | **Open:** frozen S mixed-load/server/queue/footprint profile and limit enforcement. Model time/cost is separate; existing call counts and unit memory checks are not workload qualification |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |

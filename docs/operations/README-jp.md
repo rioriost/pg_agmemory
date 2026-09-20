@@ -7,9 +7,68 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 15 operational-state application
+
+**現行はservice 0.0.30 / API v1 / schema 15**です。API/worker/自動再起動を停止・drainして
+migration 015を適用し、対応componentとmigration履歴1–15を確認します。
+直後に新backupを取得してください。015はtenant別の専用復旧鍵を追加し、RLSを強制し、
+runtime policy/権限を与えません。新tenantにもtriggerで生成します。
+拡張を追加せずPostgreSQLの強い乱数UUID 2個から鍵を作り、runtimeが読むdedup鍵とは
+分離します。bundleにも鍵を含めません。管理者用の保護されたbackupで保存してください。
+15より前のbackupには鍵がなく、別途再生成した鍵では既存bundleを認証できません。
+拒否回避のためにmigration履歴を消したり鍵を捏造したりせず、rollbackには対応backup/codeを使います。
+
+`recovery-apply`は管理者専用の**限定した状態適用**であり、一般restore orchestratorではありません。
+export前に元系統のwriter/model handlerを静止し、復元先はAPI/worker停止・隔離を維持します。
+他client sessionを拒否し、明示`--isolated`、tenant barrier、writerを止めるtable lock、
+変更前のexpected state一致を要求します。flagはoperatorの確認で、network隔離の検出器ではありません。
+
+```bash
+# 独立して保存した正本の最新系統上:
+pg-agmemory recovery-apply export --tenant-id "$TENANT_ID" --bundle "$BUNDLE"
+# 承認された隔離本文復元/削除replayを終えた復元先上:
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" --file "$EXPECTED"
+pg-agmemory recovery-apply apply --tenant-id "$TENANT_ID" \
+  --bundle "$BUNDLE" --expected "$EXPECTED" --isolated
+```
+
+bundleはjob payload/state、idempotency応答、policy labelを含む**機微な運用row**です。
+`processing-recovery`の内容を含まないfingerprint artifactとは異なります。
+exportは排他的なowner専用fileへfsyncし、親directoryも非公開にして、
+保護/暗号化されたbackup保管先で扱ってください。上限は可変tableあたり10,000 rows、
+bundle 16 MiBです。管理者専用鍵によるMACで全row、参照fingerprint、本文fingerprintを結び付けます。
+保存artifactの認証であって最新性の証明ではなく、正本の最新系統はoperatorが選びます。
+
+同じtenant/鍵系統、epoch巻戻しなし、削除適用済みepochの完全一致、
+receipt/targetの削除意味の一致、非置換運用状態の不変を要求します。
+**25 canonical memory table**も最新keyed fingerprintと一致済みでなければなりません。
+欠けたepisodeの取込み、summary/vector再生成、物理消去をこのcommandは行いません。
+anchor変更、新しい本文の欠落、旧削除対応不明、job集合の相違を推測せず拒否します。
+アクセス/policy履歴は連続した完全なepoch列で、旧prefixを保持する必要があります。
+既存予約の消失/identity変更、確定結果の巻戻し、消費quotaの返還、終端jobの巻戻しを拒否します。
+
+固定11運用tableを置換し、既存job rowを更新して元ID・時刻・policy epoch・call結果を保ちます。
+015では5つのlive-write triggerを**transaction-localかつ特権限定**の復旧contextで制御します。
+runtime roleはGUCを設定しても有効化できません。全trigger無効化やreplication-role変更は使いません。
+FK/check/一意/遅延完全性制約は維持し、適用後に21運用fingerprintと25本文fingerprintを照合します。
+失敗時は全変更をrollbackします。commit中の切断は結果不明とし、確認・照合後に判断してください。
+古いexpected snapshotのままblind retryしません。
+
+宣言した運用状態の保持であり、clusterの完全byte一致ではありません。
+一般audit-event履歴/sequenceは置換せず保持し、HA/PITR、任意履歴、欠落本文、
+provider側状態は認定外です。`restore_authorized=false`を明示し、自動起動や残る配置gateの免除はしません。
+
+現行**v4 drill**は元cluster削除後に旧dumpを新clusterへ復元し、削除済みbaseline後のpurge 2件を
+再適用してから、認証済み最新bundleをCLIで適用します。元receipt ID、idempotency、
+ACL/policy、21運用fingerprintと35 canonical fingerprintが一致します。
+synthetic予約3件（unknown/失敗/成功）を保持し、意味的job IDの維持、unknown retry拒否、
+消費済みquotaでの新call拒否を確認します。probeはrollbackし、
+外部model requestや常駐API/worker processは起動しません。
+
 ## Schema 14 deletion manifests
 
-**現行はservice 0.0.29 / API v1 / schema 14**です。PostgreSQL 18.6、pgvector 0.8.6、
+**過去の契約はservice 0.0.29 / API v1 / schema 14**です。現行15の手順は上記を使います。
+PostgreSQL 18.6、pgvector 0.8.6、
 Native/SDK 38 resource、MCP 4 tool、既存model policyは変更しません。
 DBとrole/秘密設定をbackupし、全writerと自動再起動を停止・drainしてから、
 対応imageと管理DSNで`pg-agmemory migrate`を実行します。

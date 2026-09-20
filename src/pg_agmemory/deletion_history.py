@@ -51,7 +51,7 @@ class DeletionRecord(HistoryContract):
 
 class DeletionHistory(HistoryContract):
     format: Literal["pgag-deletion-history-v1"] = "pgag-deletion-history-v1"
-    schema_version: Literal[14] = 14
+    schema_version: Literal[15] = 15
     tenant_id: UUID
     access_epoch: Epoch
     deletion_epoch: Epoch
@@ -101,7 +101,7 @@ def purge_replay_suffix(
 
 
 def export_deletions(url: str, tenant_id: UUID) -> DeletionHistory:
-    if SCHEMA_VERSION != 14:
+    if SCHEMA_VERSION != 15:
         raise AdminError("schema_version_mismatch")
     try:
         with admin_connection(url, tenant_id) as conn:

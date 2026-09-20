@@ -51,6 +51,11 @@ def main() -> None:
 
         recovery_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["recovery-apply"]:
+        from pg_agmemory.recovery_apply import main as apply_main
+
+        apply_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -67,6 +72,7 @@ def main() -> None:
             "scope-synthesis",
             "deletion-history",
             "processing-recovery",
+            "recovery-apply",
             "infer",
         ],
     )
@@ -100,6 +106,8 @@ def main() -> None:
         parser.error(
             "processing-recovery must precede its arguments; use processing-recovery --help"
         )
+    elif args.command == "recovery-apply":
+        parser.error("recovery-apply must precede its arguments; use recovery-apply --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":
