@@ -20,6 +20,14 @@ or explicitly reconciling operational identities, current policies and model
 accounting remains M2-B work. No new schema migration or model-quality gate is added.
 See [the procedure and limits](operations/README.md#processing-state-recovery-check).
 
+Exact code **`d3b1b222784c544410bb9b4eda956e7b602bda62`** passed 109 focused
+local cases and the actual v3 backup drill.
+[Native CI 35483209713](https://github.com/rioriost/pg_agmemory/actions/runs/35483209713)
+passed **1,847 tests / 8 optional skips** on both architectures, all production
+smokes and the v3 drill. Each exact-input report confirms baseline equality and
+the intended latest-operational-state mismatch, with no restart authorization.
+This qualifies the read-only comparison, not the missing state application.
+
 ## v0.0.28 / schema 14: retained deletion recovery evidence
 
 The recorded components require **service 0.0.28 / API v1 / schema 14**. Migration

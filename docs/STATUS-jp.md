@@ -17,6 +17,13 @@ v3 backup drillは復元baselineの一致を確認する一方、限定replay後
 運用identityの保持/明示照合、現行policyとmodel会計の適用はM2-Bに残ります。
 新migrationやmodel品質gateは追加しません。[手順と制限](operations/README-jp.md#processing-state-recovery-check)を参照してください。
 
+完全一致code **`d3b1b222784c544410bb9b4eda956e7b602bda62`**でlocal対象109件と
+実v3 backup drillが成功しました。
+[Native CI 35483209713](https://github.com/rioriost/pg_agmemory/actions/runs/35483209713)
+も両architectureで**1,847 passed / optional 8 skips**、全production smokeとv3 drillが
+成功しています。各完全一致reportはbaseline一致と、意図した最新運用状態の不一致を確認し、
+再開許可は与えていません。読取り専用照合の認定であり、未実装の状態適用の認定ではありません。
+
 ## v0.0.28 / schema 14: 保存した削除復旧証跡
 
 記録したcomponentは**service 0.0.28 / API v1 / schema 14**を要求します。

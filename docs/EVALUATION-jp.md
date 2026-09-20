@@ -69,6 +69,26 @@ metadata v2とprefix/target完全性検証で未対応履歴を拒否し、
 [運用手順](operations/README-jp.md)の上限を適用します。
 policy/model会計、任意履歴、全派生物、HA/PITR、M2全体は引き続き未認定です。
 
+### 読取り専用の処理状態照合（2026-09-20）
+
+完全一致実装 **`d3b1b222784c544410bb9b4eda956e7b602bda62`** はservice 0.0.29 /
+schema 14です。local対象は新規processing-state 44件とrecovery-drill 65件を含む
+**109件**が成功し、別途実backup復元も成功しました。実PostgreSQLでunknown call予約、
+syntheticな既知失敗/成功結果、identity保持、policy予算変更を扱い、
+live modelの品質やprovider実課金を測定したものではありません。
+
+[Native CI 35483209713](https://github.com/rioriost/pg_agmemory/actions/runs/35483209713)
+はamd64（1017.45秒）、arm64（1022.56秒）で**1,847 passed / optional live 8 skips**、
+新しい管理CLIを含む全packaged smokeと実v3 backup drillが成功しました。
+対象caseはfull件数の内数です。local/両nativeのreportは完全一致commitを記録し、
+復元旧processing baselineの一致と、限定replay後の最新状態との5差分
+（scope-access event、idempotency、tombstone、削除receipt、削除target）を検出しました。
+これは**不一致検出の成功**であり、最新状態適用の成功ではありません。
+35 canonical fingerprintは一致しても、再生成された運用ID/時刻は一致しません。
+`restore_authorized=false`、`m2_qualified=false`を維持します。
+初期開発ではtest fixtureのconstructor引数誤りによる失敗1件を修正しました。
+provider動作は変更せず、上記の最終完全一致sourceでは成功しています。
+
 ### 過去のschema 13証跡
 
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
@@ -870,11 +890,11 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 上記へ記録済み。`84871e0`のnative各1,802/8が現行の限定した実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 上記へ記録済み。`d3b1b22`のnative各1,847/8が現行の限定した実装証跡であり、包括release判定ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 最新policy/会計と一般の派生物照合。schema 14の対応/export、限定複数receipt/順序付きACL replayを実装したが、model状態と未対応履歴は拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
+| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** identity/policy/call会計を保持・明示照合する最新状態の適用。対応/export、限定replay、読取り専用processing-state export/checkは実装済み。canonical一致だけでは運用状態の一致にならないことも確認した。自動import/再開gateは未実装で、復元serviceの隔離を維持 |
 | M2-C 資源認定 | **未完:** 固定S profileの混在load/server/queue/footprintと上限強制。model時間/費用は別記し、既存call数やunit memory検査を負荷認定に流用しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |

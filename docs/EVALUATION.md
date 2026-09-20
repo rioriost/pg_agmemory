@@ -79,6 +79,28 @@ the limits in [operations](operations/README.md#bounded-multi-receipt-recovery-d
 apply. Policy/model-accounting, arbitrary histories, full derivative coverage,
 HA/PITR and M2 as a whole are still unqualified.
 
+### Read-only processing-state comparison (2026-09-20)
+
+Exact implementation **`d3b1b222784c544410bb9b4eda956e7b602bda62`** is service
+0.0.29 / schema 14. Local focused qualification passed **109 cases**, including
+44 new processing-state cases and 65 recovery-drill cases; actual local backup
+restoration passed separately. The real PostgreSQL cases reserve unknown calls
+and exercise synthetic known-failure/success outcomes, identity retention and
+policy-budget changes. They do not measure a live model's quality or provider billing.
+
+[Native CI 35483209713](https://github.com/rioriost/pg_agmemory/actions/runs/35483209713)
+passed **1,847 tests / 8 optional live skips** on amd64 (1017.45s) and arm64
+(1022.56s), all packaged smokes including the new administrative CLI, and the
+actual v3 backup drill. The focused cases are included in the full count.
+Local and both native reports bind exact commit inputs, match the restored old
+processing baseline, and detect five latest-state differences after bounded replay:
+scope-access events, idempotency, tombstones, deletion receipts and deletion targets.
+This is **successful mismatch detection**, not successful latest-state application.
+The 35 canonical fingerprints still match; generated operational IDs/timestamps
+do not. `restore_authorized=false` and `m2_qualified=false` remain mandatory here.
+Initial development had one test-fixture constructor-argument failure, corrected
+without changing provider behavior; the final exact-source runs above passed.
+
 ### Historical schema-13 evidence
 
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
@@ -949,11 +971,11 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Recorded above. `84871e0` native 1,802/8 per architecture is current bounded implementation evidence, not a blanket release decision |
+| M2-A contract/evidence inventory | Recorded above. `d3b1b22` native 1,847/8 per architecture is current bounded implementation evidence, not a blanket release decision |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | **Open:** latest policy/accounting and general derivative reconciliation. Schema 14 linkage/export and bounded multi-receipt/ordered-ACL replay are implemented; model state and unsupported histories are still rejected. Keep APIs/workers stopped on missing evidence; unknown calls/consumed quotas cannot be reset |
+| M2-B deletion/ACL/policy/call-accounting restore | **Open:** latest-state application preserving/reconciling identities, policy and call accounting. Linkage/export, bounded replay and read-only processing-state export/check are implemented. Operational mismatch now demonstrably prevents a clean comparison despite canonical matches; no automated importer or restart gate exists. Keep restored services isolated |
 | M2-C resource qualification | **Open:** frozen S mixed-load/server/queue/footprint profile and limit enforcement. Model time/cost is separate; existing call counts and unit memory checks are not workload qualification |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
