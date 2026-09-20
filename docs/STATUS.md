@@ -27,6 +27,14 @@ resource qualification and the reference memory benchmark remain open; no M2
 completion or HA/PITR claim is made. Follow [schema-15 operations](operations/README.md#schema-15-operational-state-application),
 including a fresh post-upgrade backup with the recovery key.
 
+Exact implementation **`21187702c43aff55c83341aa45f0de4d285fd64e`** passed the
+local packaged run and [native CI 35498710001](https://github.com/rioriost/pg_agmemory/actions/runs/35498710001):
+**1,861 tests / 8 optional skips** in each run, all production smokes and the
+actual v4 recovery/application CLI drill. All three reports identify exact
+commit inputs, three original receipts and three reservations retained,
+all 21 operational fingerprints matched, and unknown retry/quota/semantic-ID
+fences intact. These qualify the documented bounded application, not M2 as a whole.
+
 ## v0.0.29 / schema 14: retained comparison evidence
 
 `processing-recovery export/check` adds an admin-only read-only comparison of

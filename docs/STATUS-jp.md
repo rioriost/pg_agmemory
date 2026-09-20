@@ -23,6 +23,13 @@ canonical本文/削除効果は一致済みが条件で、新しい本文の欠�
 [schema 15運用](operations/README-jp.md#schema-15-operational-state-application)に従い、
 upgrade後に復旧鍵を含む新backupを取得してください。
 
+完全一致実装 **`21187702c43aff55c83341aa45f0de4d285fd64e`** はlocal packaged runと
+[native CI 35498710001](https://github.com/rioriost/pg_agmemory/actions/runs/35498710001)
+で、各 **1,861 passed / optional 8 skips**、全production smoke、
+実v4復旧/適用CLI drillが成功しました。3つのreportとも完全一致commitを示し、
+元receipt 3件、予約3件、21運用fingerprintの一致、unknown retry/quota/意味的IDの
+保護を確認しました。文書化した限定適用の認定であり、M2全体の完了ではありません。
+
 ## v0.0.29 / schema 14: 保存した照合証跡
 
 `processing-recovery export/check`は管理者専用・読取り専用で、固定21運用table、

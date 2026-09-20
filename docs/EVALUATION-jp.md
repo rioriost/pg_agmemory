@@ -90,6 +90,29 @@ live modelの品質やprovider実課金を測定したものではありませ�
 初期開発ではtest fixtureのconstructor引数誤りによる失敗1件を修正しました。
 provider動作は変更せず、上記の最終完全一致sourceでは成功しています。
 
+### 運用状態の原子的適用（2026-09-20）
+
+完全一致code **`21187702c43aff55c83341aa45f0de4d285fd64e`**、service 0.0.30 /
+schema 15でlocal対象81件と実v4復旧/適用drillが成功しました。
+最終local packaged runは**1,861 passed / optional 8 skips**、551.02秒でした。
+[Native CI 35498710001](https://github.com/rioriost/pg_agmemory/actions/runs/35498710001)
+もamd64（975.19秒）、arm64（1000.80秒）で同じ件数、全production smoke、
+実packaged apply CLIが成功しています。対象81件と別実行したdrill契約65件はfull件数の内数です。
+先行worktree distributionは最終の管理鍵分離前に中止し、認定証跡とはしていません。
+
+最終local/両native reportは`exact_commit_inputs=true`で、35 canonical fingerprint、
+**21運用fingerprint**、tombstone 6件、元receipt ID 3件、synthetic予約3件
+（unknown/失敗/成功）の一致/保持を確認しました。unknown retryは拒否し、
+重複した意味的jobは元IDを保持し、新callは消費済みquotaで拒否します。
+probeはrollbackして認証済み参照状態を変えません。復元旧baselineも完全一致します。
+管理者専用復旧鍵はlogical backupで保持し、runtimeは鍵を読めず、履歴書込みも有効化できません。
+
+以前のv3の不一致からの変化は比較条件の緩和ではなく、実際の状態適用です。
+同じ厳密な照合を、元運用rowを保持した適用transactionの後に検証しています。
+synthetic provider呼出しは3回、**外部model requestは0回**で、model品質や実課金の結果ではありません。
+本文不一致、job集合変更、旧履歴欠落、過大bundleは未対応として明示拒否します。
+一般audit履歴/sequence、本番HA/PITRは認定せず、`m2_qualified=false`と手動の配置判断を維持します。
+
 ### 過去のschema 13証跡
 
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
@@ -891,7 +914,7 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 上記へ記録済み。`d3b1b22`のnative各1,847/8が現行の限定した実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 上記へ記録済み。`2118770`のnative各1,861/8が現行の限定した実装証跡であり、包括release判定ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |

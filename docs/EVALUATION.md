@@ -102,6 +102,35 @@ do not. `restore_authorized=false` and `m2_qualified=false` remain mandatory her
 Initial development had one test-fixture constructor-argument failure, corrected
 without changing provider behavior; the final exact-source runs above passed.
 
+### Atomic operational-state application (2026-09-20)
+
+Exact code **`21187702c43aff55c83341aa45f0de4d285fd64e`**, service 0.0.30 /
+schema 15, passed 81 focused local cases and an actual v4 restore/application
+drill. The final local packaged run passed **1,861 tests / 8 optional skips**
+in 551.02s. [Native CI 35498710001](https://github.com/rioriost/pg_agmemory/actions/runs/35498710001)
+passed the same counts on amd64 (975.19s) and arm64 (1000.80s), with every production
+smoke and the actual packaged apply CLI. The 81 focused cases and separate 65
+drill contracts overlap the full count. An earlier worktree distribution run was
+cancelled before final admin-key hardening; it is not qualification evidence.
+
+Each final local/native recovery report has `exact_commit_inputs=true`, 35
+matching canonical fingerprints, **21 matching operational fingerprints**, six
+tombstones, three original receipt IDs and three durable synthetic reservations
+(unknown, failed, succeeded). Unknown retry is denied, duplicate semantic jobs
+retain their IDs, and a fresh call is denied at the already-consumed quota.
+The probes roll back and leave the authenticated reference state unchanged.
+The restored old baseline also matches exactly. The admin-only recovery key
+survives the logical backup; runtime roles cannot read it or enable historical writes.
+
+The transition from the earlier v3 mismatch is genuine state application, not a
+relaxed comparator. The apply transaction preserves original operational rows
+and verifies the same strict comparison afterward. Synthetic provider invocations
+are three; **external model requests are zero**. No model-quality result or
+provider-billing observation is implied. Content mismatch, changed job sets,
+legacy gaps and oversized bundles remain explicit unsupported cases; general
+audit history/sequences and production HA/PITR are not certified. `m2_qualified=false`
+and manual deployment approval remain in force.
+
 ### Historical schema-13 evidence
 
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
@@ -972,7 +1001,7 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Recorded above. `d3b1b22` native 1,847/8 per architecture is current bounded implementation evidence, not a blanket release decision |
+| M2-A contract/evidence inventory | Recorded above. `2118770` native 1,861/8 per architecture is current bounded implementation evidence, not a blanket release decision |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
