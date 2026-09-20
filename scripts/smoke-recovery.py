@@ -40,6 +40,11 @@ from pg_agmemory.models import (
     Remember,
     RestoreCheckpoint,
 )
+from pg_agmemory.processing_recovery import (
+    ProcessingRecoverySnapshot,
+    capture_processing_state,
+    compare_processing_state,
+)
 from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 
@@ -122,8 +127,8 @@ def snapshot(url):
         for table in ("job", "job_input", "job_identity", "extraction_candidate",
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
-        return {
-            "format": "pgag-isolated-purge-drill-v2",
+        result = {
+            "format": "pgag-isolated-purge-drill-v3",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
@@ -147,6 +152,10 @@ def snapshot(url):
                                           ORDER BY access_epoch"""),
             "canonical": counts,
         }
+    result["processing_state"] = capture_processing_state(
+        url, UUID(result["tenant"][0]["id"])
+    ).model_dump(mode="json")
+    return result
 
 
 def deletion_history(evidence):
@@ -189,7 +198,7 @@ def validate_evidence(before, latest):
     """No model/policy recovery, new objects, inferred mappings or operator regrant."""
     histories = []
     for evidence in (before, latest):
-        require(evidence["format"] == "pgag-isolated-purge-drill-v2", "unknown evidence format")
+        require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
         require(evidence["schema_version"] == 14, "schema14 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
@@ -397,6 +406,11 @@ async def recover(admin_url, directory):
     receipts, events, principals = validate_evidence(before, latest)
     restored = snapshot(admin_url)
     require(restored == before, "old pg_dump/pg_restore canonical or metadata mismatch")
+    baseline_check = compare_processing_state(
+        ProcessingRecoverySnapshot.model_validate_json(json.dumps(restored["processing_state"])),
+        ProcessingRecoverySnapshot.model_validate_json(json.dumps(before["processing_state"])),
+    )
+    require(baseline_check.processing_state_matches, "restored processing baseline mismatch")
     url = runtime_url(admin_url, create=True)
     await validate_runtime(url)
     targets = [UUID(row["object_id"]) for row in latest["tombstones"]]
@@ -437,6 +451,13 @@ async def recover(admin_url, directory):
         return [r.model_dump(mode="json", exclude={"deletion_id"})
                 for r in deletion_history(evidence).records]
     require(normalized(final) == normalized(latest), "receipt-target replay mismatch")
+    processing_check = compare_processing_state(
+        ProcessingRecoverySnapshot.model_validate_json(json.dumps(final["processing_state"])),
+        ProcessingRecoverySnapshot.model_validate_json(json.dumps(latest["processing_state"])),
+    )
+    require(not processing_check.processing_state_matches
+            and "memory_ops.deletion_request" in processing_check.differences,
+            "regenerated receipts must not certify exact operational state")
     require(final["deletions"][:len(before["deletions"])] == before["deletions"],
             "baseline receipt identity changed")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
@@ -468,7 +489,7 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema14-multiple-purge-nonempty-baseline-ordered-acl-logical-backup",
+        "scope": "schema14-multi-purge-processing-comparison-v3",
         "schema_version": 14,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
@@ -499,6 +520,8 @@ async def recover(admin_url, directory):
         "model_calls": 0,
         "model_processing_enabled": False,
         "model_call_reconciliation": "unqualified-no-model-calls-or-worker",
+        "processing_baseline_matches": baseline_check.processing_state_matches,
+        "latest_processing_check": processing_check.model_dump(mode="json"),
         "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "mixed-deletion-modes",
                         "unbounded-or-arbitrary-history", "inferred-extraction",
                         "working-compaction",

@@ -9,7 +9,7 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## Schema 14 deletion manifests
 
-**現行はservice 0.0.28 / API v1 / schema 14**です。PostgreSQL 18.6、pgvector 0.8.6、
+**現行はservice 0.0.29 / API v1 / schema 14**です。PostgreSQL 18.6、pgvector 0.8.6、
 Native/SDK 38 resource、MCP 4 tool、既存model policyは変更しません。
 DBとrole/秘密設定をbackupし、全writerと自動再起動を停止・drainしてから、
 対応imageと管理DSNで`pg-agmemory migrate`を実行します。
@@ -54,11 +54,55 @@ ID/scope/actor/mode/state/epoch/全対象だけを出力し、原文、理由、
 隔離drillは下記の限定した複数receipt履歴を扱いますが、
 model会計の復旧toolではありません。
 
+### Processing-state recovery check
+
+v0.0.29で管理者用の読取り専用照合を追加しました。
+**import、自動runtime fence、再開許可ではありません。** 復元API/workerは隔離を維持します。
+operatorは独立して保存した正本の最新系統からreferenceを取得してください。
+復元した旧DBをexportし、それを「最新」と呼んではいけません。
+
+```bash
+# 独立して保存した最新DB上でexport。fileは未作成であること。
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" --file "$STATE_FILE"
+# PGAG_ADMIN_DATABASE_URLを隔離復元先へ切り替えて照合する。
+pg-agmemory processing-recovery check --tenant-id "$TENANT_ID" --file "$STATE_FILE"
+```
+
+tenant barrier、repeatable-read/read-only transaction、UTC表現、固定21 tableの
+fingerprintを使います。principal/scope/membership、capture/synthesis policyと履歴、
+object anchor、model call（結果・課金不明・policy epochを含む）、意味的job identity、
+job payload/state、input/candidate、source-event/idempotency、tombstone/receipt/target、
+derivation、working snapshotを対象にします。access/deletion epochとtenantの
+dedup secret系統も結び付けます。全rowをstreamして長さ付きtenant-keyed HMACへ入れ、
+fileにはfingerprint、件数、epoch、tenant IDだけを保存します。原文、要約、consent label、
+subject、provider payload、secretそのものは出力しません。
+
+exportはowner専用の新fileへ排他的に保存してfsyncします。checkはサイズ制限内の
+通常fileだけを読み、symlinkを拒否し、閉じたv1形式・完全schema・順序付き全tableを要求します。
+上限はtableあたり1,000,000 rows、表現した入力合計256 MiB、定期確認するcapture予算30秒
+（実行中の処理には既存DB statement/lock timeoutも適用）、artifact 32 KiBです。
+上限超過・errorで部分成功を返しません。artifactと記録したSHA-256を保護してください。
+HMAC一致は、渡されたreferenceの真正性や最新性の証明ではありません。
+
+checkは`processing_state_matches`と、不一致のtable/epoch名を返します。
+epoch巻戻しに限らず、どちら向きの差分も終了code **1**です。tenant/dedup系統違いはerror。
+完全一致でも`restore_authorized=false`であり、原文の正しさ、完全消去、
+provider側artifact、effect、一般DR、配置の隔離を認定しません。
+policy、予算、job状態、call結果を変更せず、serviceの起動/自動停止もしません。
+
+復旧drillの証跡は**v3**へ進めました（v1/v2は拒否）。
+旧dumpの実復元は元のprocessing snapshotと一致します。
+限定replay後は35 canonical fingerprintが最新と一致しても、再生成されたreceipt ID、
+idempotency応答、audit/tombstone時刻によって運用fingerprintが不一致になります。
+新checkはこれを正しく不一致・再開許可なしとし、想定した差分でも黙って免除しません。
+identity、policy、call会計を保持または明示照合する最新状態適用手順が引き続き必要です。
+
 ### 限定した複数receipt復旧drill（2026-09-20）
 
 `bash scripts/test-recovery-containers.sh container`で実行します（CIは`docker`）。
 自分で使い捨てclusterを作り、API/workerを起動せず、既存DBのDSNも受け取りません。
-証跡v2はobject anchorと全receipt/target履歴を固定し、旧v1 artifactを読み替えず拒否します。
+現行の証跡v3はobject anchor、全receipt/target履歴、processing fingerprintを固定し、
+旧v1/v2 artifactを読み替えず拒否します。
 
 fixtureは旧backup前に完了purge 1件、その後に追加purge 2件とACL変更2件
 （権限縮小、その後の失効）を持ちます。元clusterを削除し、別の新clusterへ旧`pg_dump`を

@@ -46,6 +46,11 @@ def main() -> None:
 
         history_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["processing-recovery"]:
+        from pg_agmemory.processing_recovery import main as recovery_main
+
+        recovery_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -61,6 +66,7 @@ def main() -> None:
             "scope-capture",
             "scope-synthesis",
             "deletion-history",
+            "processing-recovery",
             "infer",
         ],
     )
@@ -90,6 +96,10 @@ def main() -> None:
         parser.error("scope-synthesis must precede its arguments; use scope-synthesis --help")
     elif args.command == "deletion-history":
         parser.error("deletion-history must precede its arguments; use deletion-history --help")
+    elif args.command == "processing-recovery":
+        parser.error(
+            "processing-recovery must precede its arguments; use processing-recovery --help"
+        )
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

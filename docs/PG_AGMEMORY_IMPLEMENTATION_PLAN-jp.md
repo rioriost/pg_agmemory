@@ -4,7 +4,7 @@
 
 - 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: service 0.0.28 / schema 14のcore経路・削除manifestは実装済み、M2受入れは未完了。完全一致の実装証跡と認定範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: service 0.0.29 / schema 14のcore経路・削除manifest・読取り専用の処理状態復旧照合は実装済み、M2受入れは未完了。完全一致の実装証跡と認定範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -752,7 +752,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 | 順序 | 作業と完了証跡 | 現状 |
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
-| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | migration 014/export、削除済みbaseline後の限定multi-purge/順序付きACL replayを実装。**policy/model会計と一般の派生物照合が次**。本番restore認定ではない |
+| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | migration 014/export、限定multi-purge/ACL replay、読取り専用processing-state export/checkを実装。**運用identityとmodel会計を保持/明示照合する最新状態の適用が次**。本番restore認定ではない |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | 未認定。unitのmemory検査はこの負荷の代用ではない |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 

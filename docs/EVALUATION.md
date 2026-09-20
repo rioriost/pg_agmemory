@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: v0.0.28 / schema 14, M2 acceptance incomplete
+## Current status: v0.0.29 / schema 14, M2 acceptance incomplete
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
@@ -29,6 +29,7 @@ the versioned core acceptance inventory. No semantic measurement is invented.
 | Native SDK, MCP, hook | Same authorization and declared versions; MCP exposes four tools, not every Native operation | `test_sdk`, `test_mcp`, `test_recall_hook`, `test_contract`, `test_readiness`, packaged smokes |
 | Scope/capture/synthesis administration | Privileged connection, CAS, caller barrier, default-deny egress and immutable runtime policy | `test_scope_access`, `test_capture_policy`, `test_processing` |
 | Forget/receipt/deletion-history export | Native preview/purge only; full dependency closure, barrier, exact per-receipt target recording, sealed manifests, explicit refusal of unmapped history | `test_integration`, purge cases across domain tests, new `test_deletion_history`, `test_recovery_drill` |
+| Processing-recovery export/check | Complete fixed-table, epoch and keyed-lineage comparison; explicit mismatch, no payload export, no DB changes or restart authorization | `test_processing_recovery`, v3 actual backup drill, packaged admin CLI smoke |
 
 This inventory describes tested contracts, not universal assurance. The last
 schema-13 exact-SHA baseline is `1ea3f6c` (1,754 passes / 8 optional skips per

@@ -53,7 +53,7 @@ MAX_TEXT_BYTES = 12_000
 MAX_PARAGRAPHS = 6
 MANIFEST_RESERVE = 128 * 1024
 TIMEOUT_SECONDS = 20
-USER_AGENT = "pg-agmemory-review-bot/0.0.28 (https://github.com/rioriost/pg_agmemory)"
+USER_AGENT = "pg-agmemory-review-bot/0.0.29 (https://github.com/rioriost/pg_agmemory)"
 LICENSE_URL: Final = "https://creativecommons.org/licenses/by-sa/4.0/"
 MODIFICATIONS = (
     "Rendered action=parse section=0 from the selected oldid; "

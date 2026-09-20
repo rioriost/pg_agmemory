@@ -1151,6 +1151,33 @@ with TemporaryDirectory(prefix="pgag-deletion-export-") as directory:
 print("Production deletion history smoke passed: admin CLI, complete manifests, private export, no overwrite")
 ' "$provisioned"
 
+"$engine" exec \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$api_name" python -c '
+import json
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from pg_agmemory.processing_recovery import ProcessingRecoverySnapshot
+
+identity = json.loads(sys.argv[1])
+with TemporaryDirectory(prefix="pgag-processing-recovery-") as directory:
+    path = Path(directory) / "state.json"
+    flags = ["--tenant-id", identity["tenant_id"], "--file", str(path)]
+    for operation in ("export", "check"):
+        result = subprocess.run(["pg-agmemory", "processing-recovery", operation] + flags,
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0 and result.stderr == ""
+        body = json.loads(result.stdout)
+        assert body["restore_authorized"] is False
+        if operation == "check":
+            assert body["processing_state_matches"] and body["differences"] == []
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert len(ProcessingRecoverySnapshot.model_validate_json(path.read_bytes()).tables) == 21
+print("Production processing recovery smoke passed: private snapshot, exact state check, no restart authority")
+' "$provisioned"
+
 echo "Running isolated logical-backup recovery drill..."
 PGAG_RECOVERY_TEST_IMAGE="$test_image" bash scripts/test-recovery-containers.sh "$engine"
 

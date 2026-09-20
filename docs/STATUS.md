@@ -2,9 +2,27 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## v0.0.28 / schema 14: deletion recovery metadata, M2 incomplete
+## v0.0.29 / schema 14: processing-state comparison, M2 incomplete
 
-The current components require **service 0.0.28 / API v1 / schema 14**. Migration
+`processing-recovery export/check` adds an admin-only read-only comparison of
+21 fixed operational tables, epochs and dedup lineage. It includes policies,
+durable model reservations/outcomes, semantic job identities and job state.
+References contain tenant-keyed fingerprints, never raw payloads or secrets;
+incomplete, oversized or wrong-lineage inputs fail. A mismatch returns nonzero,
+and even a match returns `restore_authorized=false`.
+
+Real PostgreSQL cases cover unknown, known-failed and successful call reservations
+and policy-budget changes. The v3 backup drill matches the restored baseline but
+deliberately detects the regenerated operational history after bounded replay,
+despite 35 canonical table matches. These are comparison guarantees, **not**
+an implemented latest-state import or automatic worker-start fence. Preserving
+or explicitly reconciling operational identities, current policies and model
+accounting remains M2-B work. No new schema migration or model-quality gate is added.
+See [the procedure and limits](operations/README.md#processing-state-recovery-check).
+
+## v0.0.28 / schema 14: retained deletion recovery evidence
+
+The recorded components require **service 0.0.28 / API v1 / schema 14**. Migration
 014 adds exact receipt-to-target manifests, deferred completeness and tombstone
 checks, same-transaction insertion and bounded unique ordinals. Old receipts
 retain `target_manifest_version=0`; no per-receipt history is guessed.

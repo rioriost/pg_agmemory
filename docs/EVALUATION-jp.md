@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.28 / schema 14、M2受入れは未完了
+## 現在の状態: v0.0.29 / schema 14、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -27,6 +27,7 @@ model比較や新しい人手label収集も計画しない。一つの固定し�
 | Native SDK、MCP、hook | 共通の認可と宣言version。MCPは4 toolで、全Native操作を公開するものではない | `test_sdk`、`test_mcp`、`test_recall_hook`、`test_contract`、`test_readiness`、packaged smoke |
 | Scope/capture/synthesis管理 | 特権接続、CAS、caller barrier、送信の既定拒否、runtimeからpolicy改変不可 | `test_scope_access`、`test_capture_policy`、`test_processing` |
 | Forget/receipt/deletion-history export | Nativeはpreview/purgeのみ。依存closure、barrier、receipt別の全対象記録、manifest確定、対応不明履歴の明示拒否 | `test_integration`、各domainのpurge case、新規`test_deletion_history`、`test_recovery_drill` |
+| Processing-recovery export/check | 固定table全体、epoch、keyed系統の照合。不一致を明示し、payload出力・DB変更・再開許可なし | `test_processing_recovery`、v3実backup drill、packaged管理CLI smoke |
 
 これは対象契約の一覧であり、万能な保証ではない。
 schema 13の直前の完全一致SHA baselineは`1ea3f6c`で、native各1,754 passed / optional 8 skips。

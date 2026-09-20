@@ -4,7 +4,7 @@ English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 - Document version: 0.2 / memory-system responsibility realignment, 2026-09-19
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Core paths and deletion manifests are implemented at service 0.0.28 / schema 14; M2 acceptance remains incomplete. Exact implementation evidence and qualification boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Core paths, deletion manifests and read-only processing-state recovery comparison are implemented at service 0.0.29 / schema 14; M2 acceptance remains incomplete. Exact implementation evidence and qualification boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -762,7 +762,7 @@ This is evidence for tested paths, not completion of the following work.
 | Order | Work and completion evidence | Current state |
 |---|---|---|
 | M2-A | Map supported API/SDK/MCP/hook contracts to invariants/tests and retain truthful legacy diagnostics rather than model-quality release gates | Inventory and report-boundary review recorded in EVALUATION; exact qualification remains per implementation |
-| M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Migration 014/export and bounded multi-purge/ordered-ACL replay after a nonempty baseline implemented. **Policy/model-accounting and general derivative reconciliation remain next**; no production restore claim |
+| M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Migration 014/export, bounded multi-purge/ACL replay and read-only processing-state export/check implemented. **Latest-state application preserving/reconciling operational identity and model accounting remains next**; no production restore claim |
 | M2-C | Freeze and run the S resource profile in section 18.4, including mixed API/worker load, budget rejection, queue/DB bounds and failure behavior; report DB/index/WAL/backup footprint separately from reference-provider latency/cost | Not qualified; unit memory checks are not this workload |
 | M2-D | Package the existing single reference model configuration into a reproducible Native/API memory lifecycle benchmark; report typed-state/ID/coverage retention, retrieval results, failures and resource use; document installation, upgrade and restore limits and rerun exact-commit distribution checks | Existing retrieval and three-call lifecycle runs are reusable evidence; consolidated benchmark/release handoff remains |
 

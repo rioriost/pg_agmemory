@@ -7,7 +7,14 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.28 / schema 14
+## 現在の開発契約: v0.0.29 / schema 14
+
+管理者専用の`processing-recovery export/check`を追加しました。
+現行policy、ACL、呼出し予約、意味的job identity、job状態と関連運用metadataを
+一貫したsnapshotで照合し、不一致なら非0で終了します。
+DBは変更せず、**一致しても再開を許可しません**。最新状態の適用処理は未完です。
+[処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
+schemaは14のままで、componentはv0.0.29に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
@@ -17,7 +24,7 @@ schema 13以前のreceiptは対応不明と明示し、推測でbackfillしま�
 exportは削除metadataのみで、**復元commandでもAPI/model worker再開許可でもありません**。
 最新ACL/policy/model call/quotaの全体照合と資源認定はM2の残作業です。
 Native `forget`は引き続き`preview`/`purge`のみで、保存形式の`suppress`を
-公開APIとして有効化しません。0.0.28 / API v1 / schema 14に揃えてmigration 014を
+公開APIとして有効化しません。0.0.29 / API v1 / schema 14に揃えてmigration 014を
 適用し、[現行運用](docs/operations/README-jp.md#schema-14-deletion-manifests)を参照してください。
 model呼出しやNative/MCP resourceの追加はありません。
 

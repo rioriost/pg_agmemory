@@ -10,7 +10,7 @@ databases or real user histories.
 
 ## Schema 14 deletion manifests
 
-**Current: service 0.0.28 / API v1 / schema 14.** PostgreSQL 18.6, pgvector 0.8.6,
+**Current: service 0.0.29 / API v1 / schema 14.** PostgreSQL 18.6, pgvector 0.8.6,
 38 Native/SDK resources, four MCP tools and existing model policies are unchanged.
 Back up the database and role/secret configuration, stop/drain all writers and
 automatic restarts, then run `pg-agmemory migrate` with the matching image and
@@ -61,12 +61,63 @@ the storage/export contract for explicitly recorded histories. The existing
 disposable drill now exercises a bounded multi-receipt history, described below;
 it is still not a model-accounting recovery tool.
 
+### Processing-state recovery check
+
+v0.0.29 adds a read-only administrative comparison, **not an import, automatic
+runtime fence, or restart authorization**. Keep restored API/workers isolated.
+The operator must preserve a reference from the authoritative latest lineage,
+not export the old restored database and call that reference “latest.”
+
+```bash
+# Export on the independently preserved latest database; file must be new.
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" --file "$STATE_FILE"
+# Check with PGAG_ADMIN_DATABASE_URL now identifying the isolated restore.
+pg-agmemory processing-recovery check --tenant-id "$TENANT_ID" --file "$STATE_FILE"
+```
+
+The snapshot uses the tenant barrier, a repeatable-read/read-only transaction,
+UTC serialization and 21 fixed table fingerprints. It covers principals/scopes/
+membership, capture/synthesis policy and their histories, object anchors,
+model calls (including outcome/billing uncertainty/policy epoch), semantic job
+identities, job payload/state, inputs/candidates, source-event and idempotency
+records, tombstones/receipts/targets, derivations and working snapshots.
+It also binds access/deletion epochs and the tenant's dedup-secret lineage.
+Full rows are streamed into length-framed tenant-keyed HMACs; the file contains
+only keyed fingerprints, row counts, epochs and tenant identity, not source,
+summary, consent labels, subjects, provider payloads or the secret itself.
+
+Export creates an owner-private, exclusive, fsynced file. Check accepts only a
+bounded regular nonsymlink file with the closed v1 format, exact schema and
+complete ordered table set. Limits: 1,000,000 rows/table, 256 MiB of total
+serialized input, a 30-second checked capture budget (in-flight work remains subject
+to DB statement/lock timeouts), and 32 KiB for the artifact. Exhaustion/errors fail,
+never a partial-success snapshot. Protect the artifact and its recorded SHA-256;
+HMAC equality is not proof that a supplied reference is authentic or latest.
+
+`check` returns `processing_state_matches` and differing table/epoch names.
+Differences in either direction exit **1**, not just epoch regressions; wrong
+tenant/dedup lineage is an error. Even an exact match returns
+`restore_authorized=false`: source content, complete erasure, external provider
+artifacts, effects, overall DR and deployment isolation are not certified.
+This command does not change policy, budgets, job states or call outcomes, and
+does not start or automatically stop a running service.
+
+The recovery drill now uses evidence **v3** (v1/v2 are refused). The old dump
+matches its own processing snapshot after actual restore. After bounded replay,
+35 canonical fingerprints still match the latest snapshot, but operational
+fingerprints differ because receipt IDs, idempotency responses and audit/tombstone
+timestamps were regenerated. The new check correctly returns mismatch and no
+restart authority; expected replay differences are not silently waived. A
+latest-state application procedure that preserves or explicitly reconciles these
+identities, policies and call accounting is still required.
+
 ### Bounded multi-receipt recovery drill (2026-09-20)
 
 Run `bash scripts/test-recovery-containers.sh container` (or `docker` in CI).
 It creates its own disposable clusters, never starts an API/worker, and never
-accepts an existing database DSN. The v2 evidence format pins object anchors and
-complete receipt/target history; old v1 artifacts are rejected, not reinterpreted.
+accepts an existing database DSN. The current v3 evidence format pins object anchors,
+complete receipt/target history and processing fingerprints; old v1/v2 artifacts
+are rejected, not reinterpreted.
 
 The fixture has one completed purge before the old backup, then two additional
 purges and two ACL events (permission reduction followed by revocation).

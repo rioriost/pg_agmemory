@@ -2,9 +2,24 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## v0.0.28 / schema 14: 削除復旧metadata、M2未完了
+## v0.0.29 / schema 14: 処理状態の照合、M2未完了
 
-現行componentは**service 0.0.28 / API v1 / schema 14**を要求します。
+`processing-recovery export/check`は管理者専用・読取り専用で、固定21運用table、
+epoch、dedup系統を照合します。policy、永続model予約/結果、意味的job identity、
+job状態を含みます。referenceにはtenant-keyed fingerprintを使い、payloadや秘密は
+出力しません。不完全・過大・別系統の入力を拒否し、不一致なら非0で終了します。
+一致しても`restore_authorized=false`です。
+
+実PostgreSQLでunknown、既知失敗、成功のcall予約とpolicy予算変更を扱います。
+v3 backup drillは復元baselineの一致を確認する一方、限定replay後の運用履歴再生成は
+35 canonical tableが一致しても不一致として検出します。これは照合の保証であり、
+**最新状態のimportやworker起動の自動fenceの実装ではありません**。
+運用identityの保持/明示照合、現行policyとmodel会計の適用はM2-Bに残ります。
+新migrationやmodel品質gateは追加しません。[手順と制限](operations/README-jp.md#processing-state-recovery-check)を参照してください。
+
+## v0.0.28 / schema 14: 保存した削除復旧証跡
+
+記録したcomponentは**service 0.0.28 / API v1 / schema 14**を要求します。
 migration 014でreceiptと全対象の対応、遅延した件数/tombstone検証、
 同一transaction内の記録、一意で上限付きのordinalを追加しました。
 旧receiptは`target_manifest_version=0`とし、対応関係を推測しません。

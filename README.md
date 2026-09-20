@@ -6,7 +6,15 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.28 / schema 14
+## Current development contract: v0.0.29 / schema 14
+
+The admin-only `processing-recovery export/check` command now compares a
+consistent processing-state snapshot: current policies, ACLs, call reservations,
+semantic job identities, job state and related operational metadata. A mismatch
+exits nonzero. It writes no database state and **never authorizes restart**;
+applying latest recovery state remains unfinished. See
+[processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
+Schema remains 14; use matching v0.0.29 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new
@@ -18,7 +26,7 @@ The export is deletion metadata only: **not a restore command or permission to
 restart API/model workers**. Full latest-ACL/policy/model-call/quota reconciliation
 and resource qualification remain M2 work. Native `forget` still permits
 `preview`/`purge` only; the stored `suppress` mode is not enabled as a public API.
-Use matching 0.0.28 / API v1 / schema 14 components and migration 014; see
+Use matching 0.0.29 / API v1 / schema 14 components and migration 014; see
 [current operations](docs/operations/README.md#schema-14-deletion-manifests).
 No model calls or new Native/MCP resources are added.
 

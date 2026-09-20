@@ -92,7 +92,7 @@ def evidence():
     }
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
-        "format": "pgag-isolated-purge-drill-v2",
+        "format": "pgag-isolated-purge-drill-v3",
         "schema_version": 14,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
@@ -353,8 +353,9 @@ def test_purge_suffix_does_not_require_an_unrelated_acl_change():
     assert len(receipts) == 1 and events == []
 
 
-def test_old_single_receipt_artifacts_are_not_reinterpreted_as_v2():
+@pytest.mark.parametrize("version", [1, 2])
+def test_old_receipt_artifacts_are_not_reinterpreted_as_v3(version):
     before, latest = evidence()
-    before["format"] = "pgag-isolated-purge-drill-v1"
+    before["format"] = f"pgag-isolated-purge-drill-v{version}"
     with pytest.raises(drill.DrillError, match="unknown evidence format"):
         drill.validate_evidence(before, latest)
