@@ -131,6 +131,62 @@ legacy gaps and oversized bundles remain explicit unsupported cases; general
 audit history/sequences and production HA/PITR are not certified. `m2_qualified=false`
 and manual deployment approval remain in force.
 
+### Frozen S resource measurements and recall correction (2026-09-20)
+
+Instrumentation checkpoint `1d898c999379422f84d89043b0ae83ace734976e` passed
+[native CI 35508695585](https://github.com/rioriost/pg_agmemory/actions/runs/35508695585):
+1,871 tests / 8 optional skips on each architecture. Its immutable full-data
+30-second preflight failed the unchanged 150/500 ms transaction targets:
+observe p95 1146.85 ms, recall 1453.98 ms. All 225 controlled jobs and response
+contracts were intact. Keep that failure separate from the earlier reduced
+development runs and the corrected runs.
+
+Runtime-role plans isolated duplicate candidate scans for ranking/coverage and
+per-row visibility SQL. `9c7db01289a07ea6ce7f7ded37c485d4110e95d1` shares candidate
+materialization and applies schema-16 equivalent set-based read policies.
+The 240 focused cases included 10,000 actual Native denials (20 actors × 100
+protected sources × five operations), positive controls, the original scalar
+authorization oracle and prepared-context cases. Two initial test-fixture setup
+errors (migration transaction boundary and fixture tenant indexing) were corrected;
+authorization conditions and provider contracts were not relaxed.
+[Native CI 35513420525](https://github.com/rioriost/pg_agmemory/actions/runs/35513420525)
+passed **1,916 tests / 8 optional skips** on amd64 (1033.34s) and arm64 (1265.09s),
+including all production and exact operational-state recovery smokes.
+The 10,000 requests are assertions within one test, not 10,000 additional pytest cases.
+
+The optimized full-data preflight passed all steady gates (observe p95 37.92 ms,
+recall 79.03 ms). The subsequent **full 1,800-second S run** used an immutable
+archive of the same exact commit and the unchanged profile digest
+`0252ea68cc89276b0e6bf4f51ec402f062b1006c4296a2c829a3c85e333a6b48`.
+Host: Apple M4 Max, 128 GiB, shared/non-exclusive. Guest allocation:
+database 6 vCPU/24 GiB, application plus two workers 2 vCPU/8 GiB, separate client.
+Fixed corpus: 10 tenants, 100k 512-byte episodes/chunks, 10k assertions, 110k
+768-dimensional dense projections. The controlled provider sleeps 10 ms and
+returns valid empty extraction; it measures no model quality or actual billing.
+
+| Full S steady metric | Result |
+|---|---|
+| Duration / requests | 1,800 s; 36,000 recall + 9,000 observe |
+| Observe transaction / E2E p95 | 40.83 / 47.38 ms |
+| Recall transaction / E2E p95 | 76.98 / 82.10 ms |
+| Worst recall mode/selectivity transaction p95 | 102.40 ms, hybrid at 100%; every stratum ≤500 ms |
+| Invalid responses / missing committed timings / scheduled drops | 0 / 0 / 0; all 45,000 steady request IDs independently matched |
+| Warmup+steady worker outcomes | 9,300 succeeded; no pending jobs at drain |
+| Worker queue / processing p95 | 379.14 / 84.98 ms, warmup+steady+drain period |
+| DB before / after | 926,553,791 / 994,694,847 bytes |
+| Index bytes / WAL growth / logical backup | 185,622,528 / 520,918,936 / 467,449,236 |
+| Guest sampled nonavailable-memory peak: DB / application | 1,844,879,360 / 420,028,416 bytes; not process RSS |
+| Guest CPU accounting: DB / application | 2417.07 / 1493.31 busy seconds over their full sampled intervals, not host overhead |
+
+All 12 recall strata (three modes × four selectivities within a tenant) had
+3,000 steady samples. Request/server joins, input hashes and container allocations
+are retained in private artifacts; credentials and owned containers were removed.
+Hardware counters, physical cold cache and exclusive-host capacity are not claimed.
+**Only the steady-load part is measured/passing.** Small-forget barrier, 10k-object
+purge and concurrent limit/failure probes remain open, as do the one-reference
+memory benchmark and broader declared recovery/deployment coverage.
+Reports correctly retain `resource_qualified=false` and `m2_qualified=false`.
+
 ### Historical schema-13 evidence
 
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
@@ -1001,12 +1057,12 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Recorded above. `2118770` native 1,861/8 per architecture is current bounded implementation evidence, not a blanket release decision |
+| M2-A contract/evidence inventory | Recorded above. `9c7db01` native 1,916/8 per architecture is current bounded implementation evidence, not a blanket release decision |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
 | M2-B deletion/ACL/policy/call-accounting restore | Bounded exact-state application now preserves IDs/policy/job/call accounting, with rollback and runtime isolation. **Open:** broader content/derivative/history profiles and deployment qualification. Missing canonical content is not reconstructed; no automatic activation or blanket restore claim |
-| M2-C resource qualification | **Open:** frozen full-data S preflight at `1d898c9` failed latency, with intact response/job contracts. Shared candidate scans and equivalent set-based RLS address the measured bottleneck; new full-duration S, deletion/limit and cold-cache coverage still required |
+| M2-C resource qualification | **Partially measured:** full 30-minute frozen S steady run passes at `9c7db01`; failed `1d898c9` preflight retained. Small-forget/large-purge, concurrent limit/failure probes and cold-cache coverage remain open; no blanket resource pass |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
 

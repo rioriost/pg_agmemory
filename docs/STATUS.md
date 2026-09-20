@@ -18,7 +18,25 @@ diagnostics reduced vector SQL from roughly 394+368 ms to 52 ms; those plans are
 not a replacement for mixed-load qualification. Oracle/prepared-context,
 cross-tenant/scope, retained-payload tombstone and Native denial regressions
 cover the intended boundary. Full-duration S and remaining resource probes
-are still open; M2 is not complete.
+were initially open; the completed steady run below does not finish all M2 gates.
+
+Exact code **`9c7db01289a07ea6ce7f7ded37c485d4110e95d1`** passed
+[native CI 35513420525](https://github.com/rioriost/pg_agmemory/actions/runs/35513420525)
+on both architectures: **1,916 tests / 8 optional skips**, including the 10,000
+actual Native denial checks and all production/recovery smokes. The new
+original-predicate oracle matrix, prepared context/expiry/revoke checks and
+single-materialization coverage cases passed; recovery still preserves exact
+operational state and unknown/quota fences.
+
+The unchanged `S-fixed-v1` recipe then completed **1,800 steady seconds** on the
+same frozen commit: **36,000 recalls / 9,000 observes**, no invalid responses,
+missing timings or scheduled drops, and all **9,300 warmup+steady jobs succeeded**.
+Observe/recall transaction p95 was **40.83 / 76.98 ms**; every recall mode/selectivity
+stratum met 500 ms (worst p95 **102.40 ms**). These are real HTTP/database/worker
+measurements with fixed vectors and a 10 ms controlled provider, not live-model
+quality or exclusive-host production capacity. Small-forget/large-purge,
+concurrent limit probes and physical cold-cache coverage remain unmeasured;
+`resource_qualified=false` and `m2_qualified=false` remain explicit.
 
 ## v0.0.31 / schema 15: retained instrumentation and initial resource diagnostics
 

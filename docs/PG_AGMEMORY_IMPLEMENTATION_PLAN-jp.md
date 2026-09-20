@@ -753,7 +753,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
 | M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | schema 15の認証付き原子的適用で、本文一致済み隔離復元先の運用ID/policy/job/call会計を保持。**広い派生物/本文/履歴profileと配置認定が残る**。任意本文復旧や自動起動はしない |
-| M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | S recipe/harnessと縮小開発診断まで実施。S全量/全時間と残るprobeは未認定 |
+| M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | `9c7db01`で固定S全量・30分steadyを達成。削除、並行limit/failure、cold-cacheは未認定 |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 
 M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、

@@ -113,6 +113,57 @@ synthetic provider呼出しは3回、**外部model requestは0回**で、model�
 本文不一致、job集合変更、旧履歴欠落、過大bundleは未対応として明示拒否します。
 一般audit履歴/sequence、本番HA/PITRは認定せず、`m2_qualified=false`と手動の配置判断を維持します。
 
+### 固定S資源測定とrecall修正（2026-09-20）
+
+計測checkpoint `1d898c999379422f84d89043b0ae83ace734976e` は
+[native CI 35508695585](https://github.com/rioriost/pg_agmemory/actions/runs/35508695585)
+の両architectureで1,871 passed / optional 8 skipsでした。
+しかし固定全量データの30秒preflightは150/500 msを満たさず、
+observe p95 1146.85 ms、recall 1453.98 msでした。225 controlled jobと応答契約は正常です。
+この失敗は、先行の縮小開発runや修正後のrunと分離して保存します。
+
+runtime roleのplanから、順位/coverageの候補二重走査と行ごとの可視性SQLを特定しました。
+`9c7db01289a07ea6ce7f7ded37c485d4110e95d1`で候補materializationを共有し、
+schema 16の同等な集合read policyを適用しました。対象240件には、
+20 actor ×100 protected source ×5操作の実Native拒否10,000件、positive control、
+元のscalar認可式との比較、prepared contextを含みます。
+初期のfixture設定誤り2件（migration transaction境界、tenant index）は修正しましたが、
+認可条件やprovider契約は緩めていません。
+[Native CI 35513420525](https://github.com/rioriost/pg_agmemory/actions/runs/35513420525)
+はamd64（1033.34秒）、arm64（1265.09秒）で**1,916 passed / optional 8 skips**、
+全production/運用状態復旧smokeが成功しています。
+10,000 requestは一つのtest内の検査で、pytest件数へ10,000を加算しません。
+
+修正後preflightは全steady gateを満たし（observe p95 37.92 ms、recall 79.03 ms）、
+続いて同じ完全一致commitのimmutable archiveで**S 1,800秒本測定**を行いました。
+profile digestは変更せず
+`0252ea68cc89276b0e6bf4f51ec402f062b1006c4296a2c829a3c85e333a6b48`です。
+hostは共有・非専有のApple M4 Max/128 GiB、guestはDB 6 vCPU/24 GiB、
+API+worker 2本が2 vCPU/8 GiB、clientは別です。
+10 tenant、512-byte episode/chunk 100k、assertion 10k、768次元dense projection 110kを使用しました。
+providerは10 ms待機して妥当な空抽出を返す制御fixtureで、model品質や実課金の測定ではありません。
+
+| S steady指標 | 結果 |
+|---|---|
+| 時間 / request | 1,800秒、recall 36,000 + observe 9,000 |
+| observe transaction / E2E p95 | 40.83 / 47.38 ms |
+| recall transaction / E2E p95 | 76.98 / 82.10 ms |
+| 最遅mode/選択率のtransaction p95 | 100% hybridの102.40 ms。全層別が500 ms以内 |
+| 不正応答 / commit timing欠落 / schedule drop | 0 / 0 / 0。steady 45,000 request IDを独立照合 |
+| warmup+steady worker | 9,300成功、drain後pendingなし |
+| worker queue / 処理p95 | 379.14 / 84.98 ms。warmup+steady+drain期間 |
+| DB前 / 後 | 926,553,791 / 994,694,847 bytes |
+| index / WAL増分 / logical backup | 185,622,528 / 520,918,936 / 467,449,236 bytes |
+| guest非available memory標本peak: DB / API側 | 1,844,879,360 / 420,028,416 bytes。process RSSではない |
+| guest CPU会計: DB / API側 | 各採取期間全体で2417.07 / 1493.31 busy秒。host overheadではない |
+
+3 mode × tenant内4選択率の12層別は、それぞれsteady 3,000 sampleです。
+request/server照合、入力hash、container割当を非公開artifactへ保存し、
+credentialと所有containerは片付けました。hardware counter、物理cold cache、専有host容量は主張しません。
+**測定・達成したのはsteady負荷部分だけ**です。small-forget barrier、10k-object purge、
+並行limit/failure probe、参照記憶benchmark、広い復旧/配置範囲は残っています。
+reportは`resource_qualified=false`、`m2_qualified=false`を維持します。
+
 ### 過去のschema 13証跡
 
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
@@ -914,12 +965,12 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 上記へ記録済み。`2118770`のnative各1,861/8が現行の限定した実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 上記へ記録済み。`9c7db01`のnative各1,916/8が現行の限定した実装証跡であり、包括release判定ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
 | M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
-| M2-C 資源認定 | **未完:** 固定`1d898c9`のS全量preflightは応答/job契約を保ったが遅延に失敗。候補共有と同等の集合RLSで実測した原因に対応し、新しいS全時間、削除/limit、cold-cache確認が必要 |
+| M2-C 資源認定 | **一部測定済み:** `9c7db01`の固定S・30分steadyは達成。失敗した`1d898c9`も保持。small-forget/large-purge、並行limit/failure、cold-cacheは未完で、資源全体の合格ではない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 

@@ -15,7 +15,23 @@ membership/可視ID集合へ変更します。強制RLS、期限/tombstone、wri
 使い捨てcloneのvector SQL診断は約394+368 msから52 msへ短縮しましたが、
 混合負荷の認定に読み替えません。元の判定式との比較、prepared context、
 tenant/scope越境、本文を残したtombstone、Native拒否の回帰を対象にしています。
-S全時間と残る資源probeは未完で、M2完了ではありません。
+当初はS全時間も未測定でしたが、下記のsteady完了だけでM2全gateが完了するわけではありません。
+
+完全一致code **`9c7db01289a07ea6ce7f7ded37c485d4110e95d1`** は
+[native CI 35513420525](https://github.com/rioriost/pg_agmemory/actions/runs/35513420525)
+の両architectureで**1,916 passed / optional 8 skips**、実Native拒否10,000件、
+全production/復旧smokeが成功しました。元の判定式との比較、prepared context/期限/失効、
+候補materialization共有のcoverageも確認し、復旧の運用状態一致とunknown/quota保護も維持しています。
+
+同じ固定commit・変更しない`S-fixed-v1`で**steady 1,800秒**を完了しました。
+**recall 36,000件 / observe 9,000件**で不正応答・timing欠落・schedule dropはなく、
+warmup込み**job 9,300件がすべて成功**しました。
+observe/recall transaction p95は**40.83 / 76.98 ms**、
+全mode/選択率層別が500 ms以内（最遅p95 **102.40 ms**）です。
+固定vectorと10 ms controlled providerによる実HTTP/DB/worker測定であり、
+live model品質や専用hostの本番容量ではありません。small-forget/large-purge、
+並行limit、物理cold-cacheは未測定で、`resource_qualified=false`、
+`m2_qualified=false`を維持します。
 
 ## v0.0.31 / schema 15: 保存した計測実装と初期資源診断
 
