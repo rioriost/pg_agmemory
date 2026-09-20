@@ -54,12 +54,43 @@ operational metadata and preserve them in an independent authorized lineage.
 **This is not a general restore tool.** `restore_authorized=false` and
 `includes_acl_policy_and_call_accounting=false` are deliberate. Complete
 deletion history alone does not authorize exposing a restored database or
-restarting workers. Latest ACL/policy/call reservation/unknown/quota reconciliation,
-multi-receipt replay and all supported derivative recovery remain unfinished.
+restarting workers. Full ACL/policy/call reservation/unknown/quota reconciliation
+and all supported derivative recovery remain unfinished.
 Native/SDK/MCP `forget` still rejects `suppress`; that mode is retained only in
 the storage/export contract for explicitly recorded histories. The existing
-disposable single-purge drill now checks the schema-14 receipt/target binding,
-but has not become a multi-history or model-accounting recovery drill.
+disposable drill now exercises a bounded multi-receipt history, described below;
+it is still not a model-accounting recovery tool.
+
+### Bounded multi-receipt recovery drill (2026-09-20)
+
+Run `bash scripts/test-recovery-containers.sh container` (or `docker` in CI).
+It creates its own disposable clusters, never starts an API/worker, and never
+accepts an existing database DSN. The v2 evidence format pins object anchors and
+complete receipt/target history; old v1 artifacts are rejected, not reinterpreted.
+
+The fixture has one completed purge before the old backup, then two additional
+purges and two ACL events (permission reduction followed by revocation).
+After removing the source cluster, restore the old `pg_dump` into a fresh cluster,
+validate the exact baseline, and apply the ACL suffix before using an unchanged,
+still-authorized operator for each purge. The planner derives only the new
+receipt suffix from immutable prefix matching; it does not repurge old tombstones.
+Verify six tombstoned targets, the live control, current epochs, receipt/target
+semantics and 35 canonical table fingerprints against independent latest evidence.
+
+Only purge histories with disjoint targets, unchanged principals/object anchors,
+and at most 100 expanded targets per replayed receipt are supported by this drill.
+ACL changes must be contiguous reductions/revocations of existing non-expiring
+memberships. Grants, expiry changes, missing/reordered history, changed deletion
+operators, new anchors, capture/synthesis policies or model-call state stop the
+drill. Do not split oversized receipts or invent roots to bypass the API limit.
+The source-level `purge_replay_suffix` helper is a planner, not restore authority.
+
+Existing baseline receipt IDs are preserved. Replaying through `forget` creates
+new receipt IDs for the suffix; the report records original-to-replayed IDs and
+checks normalized receipt/target semantics separately from canonical fingerprints.
+This is not a claim of byte-identical audit/idempotency history or a resumable
+production restore. Incomplete or partially replayed baselines are not blindly
+retried. Latest model accounting and policy reconciliation remain the next M2-B work.
 
 ## Schema 13 background processing
 

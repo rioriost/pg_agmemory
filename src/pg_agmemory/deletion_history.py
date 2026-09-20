@@ -75,6 +75,31 @@ class DeletionHistory(HistoryContract):
         return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
 
 
+def purge_replay_suffix(
+    before: DeletionHistory, latest: DeletionHistory,
+) -> tuple[DeletionRecord, ...]:
+    """Plan only bounded public-API purges; never authorize a database restart."""
+    before = DeletionHistory.model_validate_json(before.model_dump_json())
+    latest = DeletionHistory.model_validate_json(latest.model_dump_json())
+    if (
+        before.tenant_id != latest.tenant_id
+        or latest.access_epoch < before.access_epoch
+        or latest.deletion_epoch < before.deletion_epoch
+        or latest.records[:len(before.records)] != before.records
+    ):
+        raise AdminError("recovery_history_mismatch")
+    seen: set[UUID] = set()
+    for record in latest.records:
+        targets = {target.object_id for target in record.targets}
+        if record.mode != "purge" or seen.intersection(targets):
+            raise AdminError("recovery_history_unsupported")
+        seen.update(targets)
+    suffix = latest.records[len(before.records):]
+    if any(record.object_count > 100 for record in suffix):
+        raise AdminError("recovery_target_limit")
+    return suffix
+
+
 def export_deletions(url: str, tenant_id: UUID) -> DeletionHistory:
     if SCHEMA_VERSION != 14:
         raise AdminError("schema_version_mismatch")

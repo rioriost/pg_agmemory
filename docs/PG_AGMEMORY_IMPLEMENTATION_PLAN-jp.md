@@ -752,7 +752,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 | 順序 | 作業と完了証跡 | 現状 |
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
-| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | migration 014と削除専用exportは実装済み。**実際の複数receipt/model状態照合が次**。現drillはpurge 1件/失効1件のみ |
+| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | migration 014/export、削除済みbaseline後の限定multi-purge/順序付きACL replayを実装。**policy/model会計と一般の派生物照合が次**。本番restore認定ではない |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | 未認定。unitのmemory検査はこの負荷の代用ではない |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 

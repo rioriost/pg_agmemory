@@ -6,6 +6,7 @@ import json
 import subprocess
 from copy import deepcopy
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -91,17 +92,19 @@ def evidence():
     }
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
-        "format": "pgag-isolated-purge-drill-v1",
+        "format": "pgag-isolated-purge-drill-v2",
         "schema_version": 14,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
+        "objects": [{"tenant_id": "tenant", "id": "object", "scope_id": "scope",
+                     "kind": "episode"}],
         "memberships": [member, revoked_member],
         "tombstones": [],
         "deletions": [],
         "deletion_targets": [],
         "access_events": [],
         "canonical": {table: {"count": 0} for table in (
-            "memory.scope_synthesis_policy", "memory_ops.model_call",
+            "memory.scope_synthesis_policy", "memory.scope_capture_policy", "memory_ops.model_call",
             "memory.working_snapshot", "memory_ops.extraction_candidate",
         )},
     }
@@ -126,15 +129,25 @@ def evidence():
             "previous_expires_at": None, "permissions": None, "expires_at": None,
         }],
     })
-    return before, latest
+    def identifiers(value):
+        if isinstance(value, dict):
+            return {
+                k: str(uuid5(NAMESPACE_URL, v))
+                if k in ("id", "tenant_id", "scope_id", "principal_id", "object_id", "deletion_id")
+                else identifiers(v) for k, v in value.items()
+            }
+        if isinstance(value, list):
+            return [identifiers(v) for v in value]
+        return value
+    return identifiers(before), identifiers(latest)
 
 
 def test_single_purge_uses_server_tombstones_and_receipt_actor():
     before, latest = evidence()
-    receipt, event, actor = drill.validate_evidence(before, latest)
-    assert receipt is latest["deletions"][0]
-    assert event is latest["access_events"][0]
-    assert actor is latest["principals"][0]
+    receipts, events, actors = drill.validate_evidence(before, latest)
+    assert str(receipts[0].deletion_id) == latest["deletions"][0]["id"]
+    assert events[0] is latest["access_events"][0]
+    assert actors[str(receipts[0].principal_id)] is latest["principals"][0]
     assert before["tombstones"] == []
 
 
@@ -173,13 +186,13 @@ def test_duplicate_or_multiple_history_is_not_guessed(field):
 def test_old_tombstones_are_not_repurged_through_rls():
     before, latest = evidence()
     before["tombstones"] = deepcopy(latest["tombstones"])
-    with pytest.raises(drill.DrillError, match="nonempty deletion baseline"):
+    with pytest.raises(drill.DrillError, match="deletion target manifest"):
         drill.validate_evidence(before, latest)
 
 
 @pytest.mark.parametrize("stage", [0, 1])
 @pytest.mark.parametrize("table", [
-    "memory.scope_synthesis_policy", "memory_ops.model_call",
+    "memory.scope_synthesis_policy", "memory.scope_capture_policy", "memory_ops.model_call",
     "memory.working_snapshot", "memory_ops.extraction_candidate",
 ])
 def test_stale_enabled_processing_or_accounting_requires_a_separate_gate(stage, table):
@@ -206,7 +219,7 @@ def test_revocation_must_reconcile_with_latest_and_previous_state(field, value):
 
 def test_revoked_actor_cannot_be_used_as_a_recovery_operator():
     before, latest = evidence()
-    latest["deletions"][0]["principal_id"] = "reader"
+    latest["deletions"][0]["principal_id"] = latest["principals"][1]["id"]
     with pytest.raises(drill.DrillError, match="no longer authorized"):
         drill.validate_evidence(before, latest)
 
@@ -229,5 +242,119 @@ def test_acl_history_prefix_cannot_be_replaced():
 def test_recovery_targets_must_bind_the_exact_receipt(field):
     before, latest = evidence()
     latest["deletion_targets"][0][field] = "different"
-    with pytest.raises(drill.DrillError, match="manifest mismatch"):
+    with pytest.raises(drill.DrillError, match="deletion"):
+        drill.validate_evidence(before, latest)
+
+
+def multiple_evidence():
+    before, latest = evidence()
+    for key in ("deletions", "deletion_targets", "tombstones"):
+        before[key] = deepcopy(latest[key])
+    before["tenant"][0]["deletion_epoch"] = 2
+    second = str(uuid5(NAMESPACE_URL, "second-object"))
+    receipt = str(uuid5(NAMESPACE_URL, "second-receipt"))
+    anchor = before["objects"][0] | {"id": second}
+    before["objects"].append(anchor)
+    latest["objects"].append(deepcopy(anchor))
+    latest["tenant"][0]["deletion_epoch"] = 3
+    latest["deletions"].append(latest["deletions"][0] | {"id": receipt, "deletion_epoch": 3})
+    latest["deletion_targets"].append(
+        latest["deletion_targets"][0] | {"deletion_id": receipt, "object_id": second}
+    )
+    latest["tombstones"].append(latest["tombstones"][0] | {"object_id": second})
+    return before, latest
+
+
+def test_nonempty_baseline_is_preserved_and_only_suffix_is_replayed():
+    before, latest = multiple_evidence()
+    receipts, events, _ = drill.validate_evidence(before, latest)
+    assert len(receipts) == len(events) == 1
+    assert str(receipts[0].deletion_id) == latest["deletions"][1]["id"]
+    assert str(receipts[0].targets[0].object_id) == latest["objects"][1]["id"]
+    assert drill.validate_evidence(latest, latest)[:2] == ((), [])
+
+
+@pytest.mark.parametrize("field", ["id", "principal_id", "object_count", "deletion_epoch"])
+def test_deletion_history_prefix_cannot_be_replaced(field):
+    before, latest = multiple_evidence()
+    latest["deletions"][0][field] = (
+        42 if field in ("object_count", "deletion_epoch") else str(uuid5(NAMESPACE_URL, "other"))
+    )
+    with pytest.raises(drill.DrillError):
+        drill.validate_evidence(before, latest)
+
+
+def test_ordered_permission_reduction_then_revoke():
+    before, latest = evidence()
+    before["memberships"][1]["permissions"] = ["read", "write"]
+    revoke = latest["access_events"][0]
+    reduction = revoke | {
+        "operation": "set", "previous_permissions": ["read", "write"],
+        "permissions": ["read"],
+    }
+    latest["access_events"] = [reduction, revoke | {"access_epoch": 5}]
+    latest["tenant"][0]["access_epoch"] = 5
+    assert len(drill.validate_evidence(before, latest)[1]) == 2
+    latest["access_events"].reverse()
+    with pytest.raises(drill.DrillError):
+        drill.validate_evidence(before, latest)
+
+
+@pytest.mark.parametrize("case", ["grant", "expiry", "new_object", "missing_anchor", "regression"])
+def test_unsupported_state_transitions_stop_before_replay(case):
+    before, latest = multiple_evidence()
+    if case == "grant":
+        latest["access_events"][0].update(operation="set", permissions=["read", "admin"])
+    elif case == "expiry":
+        before["memberships"][1]["expires_at"] = "2030-01-01T00:00:00Z"
+        latest["access_events"][0]["previous_expires_at"] = "2030-01-01T00:00:00Z"
+    elif case == "new_object":
+        latest["objects"].append(latest["objects"][0] | {"id": str(uuid5(NAMESPACE_URL, "new"))})
+    elif case == "missing_anchor":
+        before["objects"] = latest["objects"] = []
+    else:
+        before, latest = latest, before
+    with pytest.raises(drill.DrillError):
+        drill.validate_evidence(before, latest)
+
+
+def test_public_api_target_limit_is_not_silently_split_into_new_receipts():
+    before, latest = evidence()
+    targets = [
+        latest["deletion_targets"][0] | {"object_id": str(uuid5(NAMESPACE_URL, str(n)))}
+        for n in range(101)
+    ]
+    latest["deletion_targets"] = targets
+    latest["tombstones"] = [{k: t[k] for k in ("tenant_id", "object_id", "scope_id")}
+                            for t in targets]
+    latest["deletions"][0]["object_count"] = 101
+    with pytest.raises(drill.DrillError, match="recovery_target_limit"):
+        drill.validate_evidence(before, latest)
+
+
+@pytest.mark.parametrize("case", ["overlap", "suppress"])
+def test_valid_but_unsupported_receipt_sequences_are_rejected(case):
+    before, latest = multiple_evidence()
+    if case == "overlap":
+        latest["deletion_targets"][1]["object_id"] = latest["deletion_targets"][0]["object_id"]
+        latest["tombstones"].pop()
+    else:
+        latest["deletions"][1].update(mode="suppress", state="blocked_for_reads")
+    with pytest.raises(drill.DrillError, match="recovery_history_unsupported"):
+        drill.validate_evidence(before, latest)
+
+
+def test_purge_suffix_does_not_require_an_unrelated_acl_change():
+    before, latest = multiple_evidence()
+    latest["memberships"] = deepcopy(before["memberships"])
+    latest["access_events"] = []
+    latest["tenant"][0]["access_epoch"] = before["tenant"][0]["access_epoch"]
+    receipts, events, _ = drill.validate_evidence(before, latest)
+    assert len(receipts) == 1 and events == []
+
+
+def test_old_single_receipt_artifacts_are_not_reinterpreted_as_v2():
+    before, latest = evidence()
+    before["format"] = "pgag-isolated-purge-drill-v1"
+    with pytest.raises(drill.DrillError, match="unknown evidence format"):
         drill.validate_evidence(before, latest)

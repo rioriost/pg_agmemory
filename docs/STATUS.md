@@ -24,9 +24,12 @@ not general logical restore or M2 completion; later documentation commits do not
 inherit the tested SHA.
 
 M2-A's core contract inventory is now in [EVALUATION](EVALUATION.md). The next
-part of M2-B is actual multi-receipt restore and latest ACL/policy/model
-reservation/quota reconciliation; only the existing single-purge drill has
-been exercised so far. Resource qualification and one reference memory benchmark
+part of M2-B is latest policy/model reservation/quota reconciliation.
+The [bounded multi-receipt drill](operations/README.md#bounded-multi-receipt-recovery-drill-2026-09-20)
+now restores a nonempty deletion baseline, two later purges and two ordered ACL
+changes, checking six tombstones and a live control. It still rejects model/policy
+state, grants, changed identities and arbitrary histories; it is not a production
+restore tool. Resource qualification and one reference memory benchmark
 remain M2-C/D. No model calls, human labels, new API resources or relaxed
 provider permissions are introduced here. See [schema-14 operations](operations/README.md#schema-14-deletion-manifests).
 

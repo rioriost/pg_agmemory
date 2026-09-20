@@ -855,7 +855,7 @@ supersession とみなしたりしてはいけない。
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 実際の複数履歴/派生物replay、独立した最新台帳/会計。schema 14の対応/exportは実装済みだが旧対応は推測せず、単一purge drillはmodel状態を拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
+| M2-B 削除/ACL/policy/call会計の復旧 | **未完:** 最新policy/会計と一般の派生物照合。schema 14の対応/export、限定複数receipt/順序付きACL replayを実装したが、model状態と未対応履歴は拒否する。証跡不足時はAPI/worker停止、unknown callと消費quotaの巻戻し禁止 |
 | M2-C 資源認定 | **未完:** 固定S profileの混在load/server/queue/footprintと上限強制。model時間/費用は別記し、既存call数やunit memory検査を負荷認定に流用しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |

@@ -1,8 +1,8 @@
 """Disposable schema-14 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
-Only one purge after an empty deletion baseline and one later ACL revoke are
-qualified. Model processing stays disabled; model-call reconciliation is not tested.
+Replays bounded purge suffixes after an existing deletion baseline and ordered
+ACL changes. Model processing stays disabled; call reconciliation is not tested.
 """
 
 import asyncio
@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from pg_agmemory.admin import AdminError
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.database import SCHEMA_VERSION, RuntimeValidationError, migrate, validate_runtime
+from pg_agmemory.deletion_history import DeletionHistory, purge_replay_suffix
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.models import (
     CheckpointState,
@@ -46,6 +47,8 @@ OPERATOR = "synthetic-recovery-operator"
 REVOKED = "synthetic-recovery-revoked"
 CONTROL = "synthetic-recovery-control"
 TARGET = "synthetic-recovery-target"
+SECOND = "synthetic-recovery-second"
+BASELINE = "synthetic-recovery-baseline"
 
 
 class DrillError(RuntimeError):
@@ -120,11 +123,13 @@ def snapshot(url):
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         return {
-            "format": "pgag-isolated-purge-drill-v1",
+            "format": "pgag-isolated-purge-drill-v2",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
             "principals": rows(conn, "SELECT * FROM memory.principal ORDER BY id"),
+            "objects": rows(conn, """SELECT tenant_id,id,scope_id,kind
+                                    FROM memory.object ORDER BY id"""),
             "memberships": rows(conn, "SELECT * FROM memory.scope_member ORDER BY principal_id"),
             "tombstones": rows(conn, """SELECT tenant_id,object_id,scope_id
                                         FROM memory_ops.object_tombstone ORDER BY object_id"""),
@@ -144,66 +149,117 @@ def snapshot(url):
         }
 
 
+def deletion_history(evidence):
+    tenant = evidence["tenant"][0]
+    receipts = evidence["deletions"]
+    by_receipt = {r["id"]: [] for r in receipts}
+    require(len(by_receipt) == len(receipts), "duplicate deletion receipt")
+    for target in evidence["deletion_targets"]:
+        require(target["tenant_id"] == tenant["id"] and target["deletion_id"] in by_receipt,
+                "deletion target manifest mismatch")
+        by_receipt[target["deletion_id"]].append(
+            {key: target[key] for key in ("object_id", "scope_id")}
+        )
+    require(all(r["tenant_id"] == tenant["id"] for r in receipts),
+            "deletion tenant mismatch")
+    try:
+        history = DeletionHistory.model_validate_json(json.dumps({
+            "tenant_id": tenant["id"], "access_epoch": tenant["access_epoch"],
+            "deletion_epoch": tenant["deletion_epoch"],
+            "records": [{
+                "deletion_id": r["id"],
+                **{k: r[k] for k in ("principal_id", "mode", "state", "object_count",
+                                    "deletion_epoch", "target_manifest_version")},
+                "targets": sorted(by_receipt[r["id"]], key=lambda t: t["object_id"]),
+            } for r in receipts],
+        }))
+    except ValidationError:
+        raise DrillError("invalid or incomplete deletion history") from None
+    tombstones = evidence["tombstones"]
+    pairs = {(r["object_id"], r["scope_id"]) for r in tombstones}
+    require(len(pairs) == len(tombstones)
+            and all(t["tenant_id"] == tenant["id"] for t in tombstones)
+            and pairs == {(str(t.object_id), str(t.scope_id))
+                          for r in history.records for t in r.targets},
+            "deletion target manifest mismatch")
+    return history
+
+
 def validate_evidence(before, latest):
-    """Fail closed outside this bounded fixture; no inferred receipt/target mapping."""
+    """No model/policy recovery, new objects, inferred mappings or operator regrant."""
+    histories = []
     for evidence in (before, latest):
-        require(evidence["format"] == "pgag-isolated-purge-drill-v1", "unknown evidence format")
+        require(evidence["format"] == "pgag-isolated-purge-drill-v2", "unknown evidence format")
         require(evidence["schema_version"] == 14, "schema14 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
-        for table in ("memory.scope_synthesis_policy", "memory_ops.model_call",
+        for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
+                      "memory_ops.model_call",
                       "memory.working_snapshot", "memory_ops.extraction_candidate"):
             require(evidence["canonical"][table]["count"] == 0,
                     "model processing must remain disabled")
+        histories.append(deletion_history(evidence))
     old, new = before["tenant"][0], latest["tenant"][0]
     require(old["id"] == new["id"], "tenant lineage mismatch")
-    require(not before["tombstones"] and not before["deletions"] and not before["deletion_targets"]
-            and old["deletion_epoch"] == 1, "nonempty deletion baseline unsupported")
-    require(len(latest["deletions"]) == 1, "exactly one authoritative purge receipt required")
-    receipt = latest["deletions"][0]
-    require(receipt["tenant_id"] == new["id"] and receipt["mode"] == "purge"
-            and receipt["state"] == "active_store_purged"
-            and receipt["target_manifest_version"] == 1
-            and receipt["deletion_epoch"] == new["deletion_epoch"] == 2,
-            "incomplete or unsupported deletion history")
-    targets = latest["tombstones"]
-    require(0 < len(targets) <= 100 and len(targets) == receipt["object_count"],
-            "purge receipt and complete tombstone set must agree")
-    require(len({r["object_id"] for r in targets}) == len(targets)
-            and all(r["tenant_id"] == new["id"] for r in targets), "invalid tombstone set")
-    mapped = latest["deletion_targets"]
-    require(len(mapped) == len(targets)
-            and all(r["tenant_id"] == new["id"] and r["deletion_id"] == receipt["id"]
-                    for r in mapped)
-            and {(r["object_id"], r["scope_id"]) for r in mapped}
-            == {(r["object_id"], r["scope_id"]) for r in targets},
-            "deletion target manifest mismatch")
+    try:
+        suffix_receipts = purge_replay_suffix(*histories)
+    except AdminError as exc:
+        raise DrillError(exc.code) from None
     require(before["principals"] == latest["principals"], "principal changes unsupported")
+    require(before["objects"] == latest["objects"], "object anchor changes unsupported")
+    anchors = {r["id"]: r for r in before["objects"]}
+    require(len(anchors) == len(before["objects"])
+            and all(t["object_id"] in anchors
+                    and anchors[t["object_id"]]["scope_id"] == t["scope_id"]
+                    and anchors[t["object_id"]]["tenant_id"] == t["tenant_id"]
+                    for t in latest["tombstones"]), "deletion anchor mismatch")
     events = latest["access_events"]
     require(events[:len(before["access_events"])] == before["access_events"],
             "ACL history prefix mismatch")
     suffix = events[len(before["access_events"]):]
-    require(len(suffix) == 1, "exactly one later ACL event required")
-    event = suffix[0]
-    require(event["operation"] == "revoke" and event["permissions"] is None
-            and event["expires_at"] is None
-            and event["tenant_id"] == new["id"]
-            and event["access_epoch"] == new["access_epoch"] == old["access_epoch"] + 1,
-            "incomplete or unsupported ACL history")
-    matching = [m for m in before["memberships"]
-                if all(m[k] == event[k] for k in ("tenant_id", "scope_id", "principal_id"))]
-    require(len(matching) == 1 and matching[0]["permissions"] == event["previous_permissions"]
-            and matching[0]["expires_at"] == event["previous_expires_at"],
-            "ACL previous state mismatch")
-    require(latest["memberships"] == [m for m in before["memberships"] if m not in matching],
+    members = {(m["scope_id"], m["principal_id"]): m for m in before["memberships"]}
+    require(len(members) == len(before["memberships"]), "duplicate baseline membership")
+    principals = {p["id"]: p for p in latest["principals"]}
+    require(len(principals) == len(latest["principals"])
+            and all(p["tenant_id"] == new["id"] for p in principals.values()),
+            "invalid principal identities")
+    scopes = {r["scope_id"] for r in before["objects"]}
+    for epoch, event in enumerate(suffix, old["access_epoch"] + 1):
+        require(event["tenant_id"] == new["id"] and event["access_epoch"] == epoch
+                and event["principal_id"] in principals and event["scope_id"] in scopes,
+                "incomplete or unsupported ACL history")
+        key = event["scope_id"], event["principal_id"]
+        previous = members.get(key)
+        require(previous is not None
+                and previous["permissions"] == event["previous_permissions"]
+                and previous["expires_at"] is None and event["previous_expires_at"] is None,
+                "ACL previous state mismatch")
+        if event["operation"] == "revoke":
+            require(event["permissions"] is None and event["expires_at"] is None,
+                    "invalid revocation")
+            del members[key]
+        else:
+            require(event["operation"] == "set" and event["permissions"]
+                    and len(set(event["permissions"])) == len(event["permissions"])
+                    and set(event["permissions"]) < set(previous["permissions"])
+                    and event["expires_at"] == previous["expires_at"],
+                    "only permission reductions without expiry changes are supported")
+            members[key] = {**previous, "permissions": event["permissions"]}
+    require(new["access_epoch"] == old["access_epoch"] + len(suffix),
+            "incomplete ACL epoch sequence")
+    require(sorted(latest["memberships"], key=canonical)
+            == sorted(members.values(), key=canonical),
             "latest membership state disagrees with revocation history")
-    actor = next((p for p in latest["principals"] if p["id"] == receipt["principal_id"]), None)
-    require(actor is not None, "deletion actor unavailable")
-    for target in targets:
-        require(any(m["principal_id"] == actor["id"] and m["tenant_id"] == target["tenant_id"]
-                    and m["scope_id"] == target["scope_id"] and m["permissions"] == ["admin"]
-                    and m["expires_at"] is None for m in latest["memberships"]),
-                "trusted deletion actor no longer authorized; replay unsupported")
-    return receipt, event, actor
+    for receipt in suffix_receipts:
+        actor = principals.get(str(receipt.principal_id))
+        require(actor is not None, "deletion actor unavailable")
+        for target in receipt.targets:
+            for evidence in (before, latest):
+                require(any(m["principal_id"] == actor["id"] and m["tenant_id"] == new["id"]
+                            and m["scope_id"] == str(target.scope_id)
+                            and m["permissions"] == ["admin"] and m["expires_at"] is None
+                            for m in evidence["memberships"]),
+                        "trusted deletion actor no longer authorized; replay unsupported")
+    return suffix_receipts, suffix, principals
 
 
 def runtime_url(admin_url, *, create=False):
@@ -239,14 +295,14 @@ async def seed(admin_url):
             conn.execute("""INSERT INTO memory.principal(tenant_id,id,external_subject)
                             VALUES (%s,%s,%s)""", (tenant, principal, subject))
     epoch = 1
-    for principal, permissions in ((operator, ("admin",)), (reader, ("read",))):
+    for principal, permissions in ((operator, ("admin",)), (reader, ("read", "write"))):
         with scope_access(admin_url, ScopeAccessRequest(
             operation="set", tenant_id=tenant, scope_id=scope, principal_id=principal,
             expected_access_epoch=epoch, permissions=permissions, no_expiry=True,
         )) as result:
             epoch = result.access_epoch
     async with service(url) as memory:
-        for namespace in (TARGET, CONTROL):
+        for namespace in (TARGET, SECOND, BASELINE, CONTROL):
             await memory.observe(Observe(
                 scope_id=scope, source_namespace=namespace, source_event_id="1",
                 occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
@@ -271,9 +327,17 @@ async def seed(admin_url):
             state=CheckpointState(goal="Synthetic checkpoint contains the deleted preference"),
             memory_refs=[MemoryReference(memory_id=UUID(assertion["memory_id"]))],
         ), "recovery-checkpoint")
+    async with service(url) as memory:
+        source = await (await memory.conn.execute(
+            "SELECT id FROM memory.episode WHERE source_namespace=%s", (BASELINE,)
+        )).fetchone()
+        baseline = await memory.forget(Forget(
+            memory_ids=[source["id"]], reason="Pre-backup synthetic deletion",
+        ), "baseline-forget")
+        require(baseline["object_count"] == 1, "baseline purge target mismatch")
     async with service(url, REVOKED) as memory:
         sources = await (await memory.conn.execute("SELECT id FROM memory.episode")).fetchall()
-        require(len(sources) == 2, "reader must initially see both sources")
+        require(len(sources) == 3, "reader must initially see three surviving sources")
         for source in sources:
             await memory.explain(Explain(memory_id=source["id"]))
 
@@ -288,6 +352,14 @@ async def later(admin_url):
             memory_ids=[source["id"]], reason="Approved disposable synthetic purge",
         ), "source-forget")
         require(receipt["object_count"] == 4, "source/assertion/checkpoint/job closure required")
+    async with service(url) as memory:
+        source = await (await memory.conn.execute(
+            "SELECT id FROM memory.episode WHERE source_namespace=%s", (SECOND,)
+        )).fetchone()
+        receipt = await memory.forget(Forget(
+            memory_ids=[source["id"]], reason="Second post-backup synthetic deletion",
+        ), "second-forget")
+        require(receipt["object_count"] == 1, "second purge target mismatch")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
         row = conn.execute(
             """SELECT p.tenant_id,p.id AS principal_id,s.scope_id,t.access_epoch
@@ -297,8 +369,15 @@ async def later(admin_url):
             (REVOKED,),
         ).fetchone()
     with scope_access(admin_url, ScopeAccessRequest(
-        operation="revoke", tenant_id=row["tenant_id"], scope_id=row["scope_id"],
+        operation="set", tenant_id=row["tenant_id"], scope_id=row["scope_id"],
         principal_id=row["principal_id"], expected_access_epoch=row["access_epoch"],
+        permissions=("read",), no_expiry=True,
+    )) as result:
+        require(result.changed, "permission reduction must change access epoch")
+        epoch = result.access_epoch
+    with scope_access(admin_url, ScopeAccessRequest(
+        operation="revoke", tenant_id=row["tenant_id"], scope_id=row["scope_id"],
+        principal_id=row["principal_id"], expected_access_epoch=epoch,
     )) as result:
         require(result.changed, "source revocation must change permissions")
 
@@ -315,28 +394,51 @@ async def denied(operation):
 async def recover(admin_url, directory):
     before = json.loads((directory / "before.json").read_text())
     latest = json.loads((directory / "latest.json").read_text())
-    receipt, event, actor = validate_evidence(before, latest)
+    receipts, events, principals = validate_evidence(before, latest)
     restored = snapshot(admin_url)
     require(restored == before, "old pg_dump/pg_restore canonical or metadata mismatch")
     url = runtime_url(admin_url, create=True)
     await validate_runtime(url)
     targets = [UUID(row["object_id"]) for row in latest["tombstones"]]
-    # Only metadata read from the independent latest artifact supplies replay targets.
-    async with service(url, actor["external_subject"]) as memory:
-        result = await memory.forget(Forget(
-            memory_ids=targets, mode=receipt["mode"], reason="Isolated latest-ledger replay",
-        ), f"recovery-{receipt['id']}")
-        require(result["object_count"] == receipt["object_count"], "replayed closure mismatch")
-    with scope_access(admin_url, ScopeAccessRequest(
-        operation=event["operation"], tenant_id=UUID(event["tenant_id"]),
-        scope_id=UUID(event["scope_id"]), principal_id=UUID(event["principal_id"]),
-        expected_access_epoch=before["tenant"][0]["access_epoch"],
-    )) as result:
-        require(result.changed and not result.membership_exists, "revocation replay failed")
+    for event in events:
+        request = {
+            "operation": event["operation"], "tenant_id": event["tenant_id"],
+            "scope_id": event["scope_id"], "principal_id": event["principal_id"],
+            "expected_access_epoch": event["access_epoch"] - 1,
+        }
+        if event["operation"] == "set":
+            request.update(permissions=event["permissions"], no_expiry=True)
+        with scope_access(admin_url, ScopeAccessRequest.model_validate_json(
+            json.dumps(request)
+        )) as result:
+            require(result.changed and result.access_epoch == event["access_epoch"],
+                    "ACL replay failed")
+    bindings = []
+    for receipt in receipts:
+        actor = principals[str(receipt.principal_id)]
+        async with service(url, actor["external_subject"]) as memory:
+            result = await memory.forget(Forget(
+                memory_ids=[t.object_id for t in receipt.targets], mode="purge",
+                reason="Isolated latest-ledger replay",
+            ), f"recovery-{receipt.deletion_id}")
+            require(result["object_count"] == receipt.object_count
+                    and result["deletion_epoch"] == receipt.deletion_epoch,
+                    "replayed closure or epoch mismatch")
+            bindings.append({
+                "original_receipt": str(receipt.deletion_id),
+                "replayed_receipt": result["deletion_id"],
+                "deletion_epoch": receipt.deletion_epoch,
+            })
     final = snapshot(admin_url)
     validate_evidence(before, final)
     for key in ("tenant", "principals", "memberships", "tombstones", "access_events", "canonical"):
         require(final[key] == latest[key], f"latest {key} reconciliation mismatch")
+    def normalized(evidence):
+        return [r.model_dump(mode="json", exclude={"deletion_id"})
+                for r in deletion_history(evidence).records]
+    require(normalized(final) == normalized(latest), "receipt-target replay mismatch")
+    require(final["deletions"][:len(before["deletions"])] == before["deletions"],
+            "baseline receipt identity changed")
     with psycopg.connect(admin_url, row_factory=dict_row) as conn:
         control = conn.execute(
             "SELECT id FROM memory.episode WHERE source_namespace=%s", (CONTROL,)
@@ -344,8 +446,8 @@ async def recover(admin_url, directory):
         target_kinds = conn.execute(
             "SELECT id,kind FROM memory.object WHERE id=ANY(%s) ORDER BY id", (targets,)
         ).fetchall()
-    require(control is not None and len(target_kinds) == 4, "fixture/control count mismatch")
-    async with service(url, actor["external_subject"]) as memory:
+    require(control is not None and len(target_kinds) == 6, "fixture/control count mismatch")
+    async with service(url) as memory:
         for target in target_kinds:
             await denied(memory.object(target["id"]))
             if target["kind"] == "checkpoint":
@@ -358,8 +460,7 @@ async def recover(admin_url, directory):
             else:
                 await denied(memory.explain(Explain(memory_id=target["id"])))
         await memory.explain(Explain(memory_id=control["id"]))
-    revoked = next(p for p in latest["principals"] if p["id"] == event["principal_id"])
-    async with service(url, revoked["external_subject"]) as memory:
+    async with service(url, REVOKED) as memory:
         await denied(memory.object(control["id"]))
         await denied(memory.explain(Explain(memory_id=control["id"])))
     require(snapshot(admin_url)["canonical"] == latest["canonical"],
@@ -367,7 +468,7 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema14-single-purge-single-revocation-synthetic-logical-backup",
+        "scope": "schema14-multiple-purge-nonempty-baseline-ordered-acl-logical-backup",
         "schema_version": 14,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
@@ -376,6 +477,9 @@ async def recover(admin_url, directory):
         "retained_object_anchors": final["canonical"]["memory.object"]["count"],
         "tombstones": len(final["tombstones"]),
         "deletion_manifest_targets": len(final["deletion_targets"]),
+        "baseline_receipts": len(before["deletions"]),
+        "replayed_receipts": bindings,
+        "replayed_acl_events": len(events),
         "epochs": {
             "before": {k: before["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
             "restored": {k: final["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
@@ -396,7 +500,8 @@ async def recover(admin_url, directory):
         "model_processing_enabled": False,
         "model_call_reconciliation": "unqualified-no-model-calls-or-worker",
         "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "mixed-deletion-modes",
-                        "multi-receipt-history", "inferred-extraction", "working-compaction",
+                        "unbounded-or-arbitrary-history", "inferred-extraction",
+                        "working-compaction",
                         "graph-derivatives", "tool-effects", "vector-embeddings"],
     }
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")

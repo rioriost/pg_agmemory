@@ -48,11 +48,37 @@ ID/scope/actor/mode/state/epoch/全対象だけを出力し、原文、理由、
 **一般restore toolではありません。** `restore_authorized=false`、
 `includes_acl_policy_and_call_accounting=false`は意図した境界です。
 削除履歴が完全でも復元DBの公開やworker再開は許可されません。
-最新ACL/policy/call予約/unknown/quotaの照合、複数receipt replay、全対応派生物の
+最新ACL/policy/call予約/unknown/quotaの全体照合、全対応派生物の
 復旧は未完です。Native/SDK/MCPの`forget`は`suppress`を引き続き拒否し、
 明示記録された履歴の保存/export形式としてだけ扱います。
-既存の隔離単一purge drillはschema 14のreceipt/target対応を検証しますが、
-複数履歴やmodel会計の復旧drillへ一般化したものではありません。
+隔離drillは下記の限定した複数receipt履歴を扱いますが、
+model会計の復旧toolではありません。
+
+### 限定した複数receipt復旧drill（2026-09-20）
+
+`bash scripts/test-recovery-containers.sh container`で実行します（CIは`docker`）。
+自分で使い捨てclusterを作り、API/workerを起動せず、既存DBのDSNも受け取りません。
+証跡v2はobject anchorと全receipt/target履歴を固定し、旧v1 artifactを読み替えず拒否します。
+
+fixtureは旧backup前に完了purge 1件、その後に追加purge 2件とACL変更2件
+（権限縮小、その後の失効）を持ちます。元clusterを削除し、別の新clusterへ旧`pg_dump`を
+復元します。baseline完全一致を確認し、先にACL差分を適用してから、変わらず権限を持つ
+operatorで各purgeを再適用します。plannerは不変な履歴prefixの一致から追加receiptだけを
+選び、旧tombstoneを再purgeしません。削除対象6件、可視なcontrol、最新epoch、
+receipt/targetの意味、35 canonical table fingerprintを独立した最新証跡と照合します。
+
+対応範囲は、対象が重ならないpurge履歴、変更のないprincipal/object anchor、
+再適用receiptごとの展開済みtarget 100件以内です。ACLは連続したepochで、
+既存の無期限membershipの縮小/失効だけを扱います。grant、期限変更、履歴欠落/並べ替え、
+削除operator変更、新anchor、capture/synthesis policy、model call状態は拒否します。
+上限回避のためのreceipt分割やrootの捏造はしません。
+source内の`purge_replay_suffix`はplannerであって復元許可ではありません。
+
+baselineのreceipt IDは維持します。差分は`forget`経由で新receipt IDが作られるため、
+reportへ元IDとの対応を残し、正規化したreceipt/targetの意味をcanonical fingerprintとは
+別に照合します。audit/idempotency履歴の完全なbyte一致や、本番restoreの再開可能性を
+主張しません。不完全・途中まで再適用したbaselineをblind retryしません。
+最新model会計とpolicyの照合はM2-Bの次の残作業です。
 
 ## Schema 13 background processing
 

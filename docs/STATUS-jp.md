@@ -22,8 +22,11 @@ manifest target 4件を照合し、model呼出しは0回です。この限定し
 一般logical restoreやM2完了ではありません。後の文書commitへ検証SHAを付け替えません。
 
 M2-Aの本体契約一覧は[EVALUATION](EVALUATION-jp.md)へ整理しました。
-M2-Bの次の作業は、実際の複数receipt復旧と最新ACL/policy/model予約/quotaの照合です。
-現時点の復旧実験は既存の単一purge drillに限ります。資源認定と一つの参考記憶benchmarkは
+M2-Bの次の作業は最新policy/model予約/quotaの照合です。
+[限定した複数receipt drill](operations/README-jp.md)は削除履歴のあるbaselineと、
+追加purge 2件、順序付きACL変更2件を復旧し、tombstone 6件と可視なcontrolを確認します。
+model/policy状態、grant、identity変更、任意の履歴は拒否し、本番restore toolとはしません。
+資源認定と一つの参考記憶benchmarkは
 M2-C/Dとして残ります。model呼出し、人手label、新API resource、provider許可の緩和は
 追加していません。[schema 14運用](operations/README-jp.md#schema-14-deletion-manifests)を参照してください。
 
