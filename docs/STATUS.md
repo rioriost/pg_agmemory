@@ -2,7 +2,25 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## v0.0.30 / schema 15: atomic operational-state application, M2 incomplete
+## v0.0.31 / schema 15: resource instrumentation and frozen S recipe
+
+Opt-in Native request timing preserves the ordinary response and authorization
+path. It separates connection/barrier, handler, commit and total transaction
+time without body/query/actor labels; missing phases stay missing. The frozen
+S recipe and Linux Apple Container harness use actual HTTP, two real job handlers
+and a controlled loopback provider, with private per-request and guest-resource
+artifacts. See [resource operations](operations/README.md#resource-measurements).
+
+Development diagnostics used 2,000 episodes/200 assertions, not the complete S
+dataset. The first attempt correctly retained 175 unknown failed reservations
+because the synthetic provider fixture omitted required wire fields. The fixture,
+not the production parser, was corrected. The next dirty-worktree development
+run had 600 steady recalls/150 observes and 175 successful warmup+steady jobs;
+observe/recall transaction p95 was 27.77/112.20 ms. These are preparatory
+diagnostics, not exact-commit S or M2 qualification. Thirty-minute S measurements,
+deletion/limit probes and cold-cache coverage remain open.
+
+## v0.0.30 / schema 15: retained operational-state application evidence
 
 `recovery-apply export/apply` now applies exact latest operational rows to an
 isolated target whose retained canonical content already matches. Original

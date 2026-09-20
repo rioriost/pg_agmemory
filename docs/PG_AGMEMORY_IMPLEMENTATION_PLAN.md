@@ -4,7 +4,7 @@ English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 - Document version: 0.2 / memory-system responsibility realignment, 2026-09-19
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Core paths, deletion manifests and bounded atomic operational-state application are implemented at service 0.0.30 / schema 15; M2 acceptance remains incomplete. Exact implementation evidence and qualification boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Core paths and bounded recovery are implemented; resource instrumentation/S recipe added at service 0.0.31 / schema 15. M2 acceptance remains incomplete. Exact evidence and qualification boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -763,7 +763,7 @@ This is evidence for tested paths, not completion of the following work.
 |---|---|---|
 | M2-A | Map supported API/SDK/MCP/hook contracts to invariants/tests and retain truthful legacy diagnostics rather than model-quality release gates | Inventory and report-boundary review recorded in EVALUATION; exact qualification remains per implementation |
 | M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Schema 15 authenticated atomic application preserves operational IDs/policy/jobs/call accounting for content-matching isolated restores. **Broader derivative/content/history profiles and deployment qualification remain**; no arbitrary-content recovery or automatic activation |
-| M2-C | Freeze and run the S resource profile in section 18.4, including mixed API/worker load, budget rejection, queue/DB bounds and failure behavior; report DB/index/WAL/backup footprint separately from reference-provider latency/cost | Not qualified; unit memory checks are not this workload |
+| M2-C | Freeze and run the S resource profile in section 18.4, including mixed API/worker load, budget rejection, queue/DB bounds and failure behavior; report DB/index/WAL/backup footprint separately from reference-provider latency/cost | S recipe/harness and reduced development diagnostics implemented; full S and remaining probes unqualified |
 | M2-D | Package the existing single reference model configuration into a reproducible Native/API memory lifecycle benchmark; report typed-state/ID/coverage retention, retrieval results, failures and resource use; document installation, upgrade and restore limits and rerun exact-commit distribution checks | Existing retrieval and three-call lifecycle runs are reusable evidence; consolidated benchmark/release handoff remains |
 
 M2-B must preserve multiple/mixed suppress/purge histories, source-to-derivative
@@ -899,6 +899,16 @@ disabling ANN requires a qualified exact path and an explicit capability change.
 This checks the index/search implementation, not an embedding model's semantics.
 
 ### 18.4 Performance Measurement Profiles
+
+The executable initial S recipe is frozen in `examples/resource-profile-s.json`.
+It uses one whole-episode chunk/vector per episode plus assertion projections
+(110k vectors total), 512-byte synthetic ASCII documents, and per-request-tenant
+selectivity to preserve strict tenant isolation. Server gates conservatively
+time the whole DB-connection/barrier-through-commit interval, retaining the
+150/500 ms thresholds. Development and full-data preflight runs are explicitly
+short diagnostics; only a complete 30-minute S run can satisfy the steady-load
+duration requirement. Deletion, concurrent-limit and cold-cache probes remain
+separate required coverage, not automatically passed by that run.
 
 The reference environment is 8 vCPU, 32 GiB RAM, SSD, clients in the same region, and 768-dimensional vectors. Record CPU type, DB settings, extension versions, index size, and cache conditions. This is a comparison profile before business SLOs are finalized.
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import perf_counter_ns
 from typing import Annotated, Any, get_args
 from uuid import UUID, uuid4
 
@@ -28,6 +29,7 @@ from pg_agmemory.database import (
 from pg_agmemory.effects import ToolEffects
 from pg_agmemory.embeddings import Embeddings
 from pg_agmemory.graphs import SqlGraph
+from pg_agmemory.http_metrics import RequestClock, TimingSink
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable
 from pg_agmemory.models import (
@@ -104,9 +106,12 @@ IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, ma
 
 
 class TransactionBoundary:
-    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+    def __init__(
+        self, app: ASGIApp, settings: Settings, timing_sink: TimingSink | None = None,
+    ) -> None:
         self.app = app
         self.settings = settings
+        self.timing_sink = timing_sink
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or not scope["path"].startswith("/v1/"):
@@ -114,6 +119,24 @@ class TransactionBoundary:
             return
         request_id = str(uuid4())
         scope.setdefault("state", {})["request_id"] = request_id
+        if self.timing_sink is None:
+            await self._request(scope, receive, send, request_id, None)
+            return
+        clock = RequestClock(request_id)
+
+        async def measured_send(message: Message) -> None:
+            await send(message)
+            clock.sent(message)
+
+        try:
+            await self._request(scope, receive, measured_send, request_id, clock)
+        finally:
+            self.timing_sink(clock.finish(scope))
+
+    async def _request(
+        self, scope: Scope, receive: Receive, send: Send, request_id: str,
+        clock: RequestClock | None,
+    ) -> None:
         sent = False
         try:
             headers = dict(scope["headers"])
@@ -164,14 +187,24 @@ class TransactionBoundary:
                     ]
                 messages.append(message)
 
+            if clock is not None:
+                clock.connection_started = perf_counter_ns()
             async with principal_connection(self.settings.database_url, subject) as (
                 conn,
                 identity,
             ):
+                if clock is not None:
+                    clock.connection_acquired = perf_counter_ns()
                 async with conn.transaction():
                     await bind_identity(conn, subject, identity)
                     scope["state"]["service"] = MemoryService(conn, identity)
+                    if clock is not None:
+                        clock.handler_started = perf_counter_ns()
                     await self.app(scope, buffered_receive, buffered_send)
+                    if clock is not None:
+                        clock.handler_finished = perf_counter_ns()
+                if clock is not None:
+                    clock.committed = perf_counter_ns()
                 async with asyncio.timeout(10):
                     for message in messages:
                         sent = True
@@ -215,7 +248,9 @@ def service(request: Request) -> MemoryService:
     return value
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, timing_sink: TimingSink | None = None,
+) -> FastAPI:
     configured = settings or Settings.from_env()
     readiness_lock = asyncio.Lock()
 
@@ -237,7 +272,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status: {"model": ErrorBody} for status in (400, 401, 403, 404, 409, 413, 422, 503)
         },
     )
-    app.add_middleware(TransactionBoundary, settings=configured)
+    app.add_middleware(TransactionBoundary, settings=configured, timing_sink=timing_sink)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

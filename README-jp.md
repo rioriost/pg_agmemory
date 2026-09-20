@@ -7,7 +7,13 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.30 / schema 15
+## 現在の開発契約: v0.0.31 / schema 15
+
+任意指定の`create_app(..., timing_sink=...)`で、本文・query・actor labelを記録せずに
+commit済みのserver timingを測定できます。既定は無効で、HTTP endpoint/headerは増やしません。
+固定したS資源recipeと、実HTTP・worker 2本の負荷harnessを追加しました。
+[資源測定](docs/operations/README-jp.md#resource-measurements)を参照してください。
+development/preflight測定をS認定やM2完了とは扱いません。
 
 `recovery-apply export/apply`で、隔離され、保持する本文が一致する復元先へ、
 元のreceipt/idempotency、現行ACL/policy、job状態、呼出し会計を適用できます。
@@ -24,7 +30,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.0.30 / API v1 / schema 15に揃えます。照合はmodelを呼びません。
+componentはv0.0.31 / API v1 / schema 15に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの

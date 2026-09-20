@@ -2,7 +2,22 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## v0.0.30 / schema 15: 運用状態の原子的適用、M2未完了
+## v0.0.31 / schema 15: 資源測定と固定S recipe
+
+任意指定のNative timingは通常の応答・認可経路を保ち、本文/query/actor labelを記録せず
+接続/barrier、handler、commit、transaction時間を分けます。未到達phaseは未測定のままです。
+固定S recipeとLinux Apple Container harnessは実HTTP、job handler 2本、
+controlled loopback providerを使い、request/guest資源の生artifactを非公開で保存します。
+[資源運用](operations/README-jp.md#resource-measurements)を参照してください。
+
+開発診断は2,000 episode/200 assertionで、S全量ではありません。
+初回はsynthetic providerの必須wire field不足により、175件をunknown失敗予約として正しく保持しました。
+本体parserを緩めずfixtureを修正し、次のdirty-worktree開発runではsteady recall 600件、
+observe 150件、warmup+steady job 175件が成功しました。
+observe/recall transaction p95は27.77/112.20 msですが、準備診断であって
+完全一致commitのS/M2認定ではありません。30分S測定、削除/limit probe、cold-cache確認は残ります。
+
+## v0.0.30 / schema 15: 保存した運用状態適用証跡
 
 `recovery-apply export/apply`で、保持するcanonical本文が一致済みの隔離復元先へ、
 最新運用rowを適用できます。元receipt、idempotency、ACL/policy、job状態、呼出し予約を

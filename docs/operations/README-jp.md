@@ -9,7 +9,7 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## Schema 15 operational-state application
 
-**現行はservice 0.0.30 / API v1 / schema 15**です。API/worker/自動再起動を停止・drainして
+**現行はservice 0.0.31 / API v1 / schema 15**です。API/worker/自動再起動を停止・drainして
 migration 015を適用し、対応componentとmigration履歴1–15を確認します。
 直後に新backupを取得してください。015はtenant別の専用復旧鍵を追加し、RLSを強制し、
 runtime policy/権限を与えません。新tenantにもtriggerで生成します。
@@ -64,6 +64,48 @@ ACL/policy、21運用fingerprintと35 canonical fingerprintが一致します。
 synthetic予約3件（unknown/失敗/成功）を保持し、意味的job IDの維持、unknown retry拒否、
 消費済みquotaでの新call拒否を確認します。probeはrollbackし、
 外部model requestや常駐API/worker processは起動しません。
+
+## Resource measurements
+
+任意のtiming sinkへ、失敗/disconnectも含めNative requestごとに不変の`RequestTiming`を返します。
+method、登録route template、status、server生成request IDだけを使い、
+本文、query string、actor、token、path parameter値はlabelにしません。
+応答bytes、接続/tenant barrier、handler、commit、transaction、server全体の時間を記録し、
+未到達phaseは0でなく`None`です。transaction区間はDB接続/barrier前からcommit完了までなので
+待機も含み、SQL/packerだけの時間より厳しい測定です。handlerにはrouting/validation/
+serializationも含め、E2Eは別測定します。sinkの失敗は明示し、既に応答したcommitを巻き戻しません。
+軽量で信頼できるsinkを使い、公開route追加とは扱いません。
+
+`examples/resource-profile-s.json`で本測定前にS条件を固定します。
+10 tenant、100k episode/whole-episode chunk、10k assertion、固定768次元projection 110k、
+512-byte synthetic ASCII文書、20 recall/s、5 auto-extract observe/s、controlled-provider worker 2本です。
+warmup 60秒後に30分間測定し、DBを6 vCPU/24 GiB、API+workerを2 vCPU/8 GiBへ制限します。
+clientは別です。選択率100/10/1/0.1%の分母は**request tenant内**で、
+tenant横断の認可を許しません。lexical/vector/hybridと全tenant/選択率を組み合わせます。
+bulk fixtureにはNative相当のsource/projection/idempotency/audit metadataも作りますが、
+fixture準備時間をingest latencyとは扱いません。
+
+```bash
+# Apple Container、Linuxのみ。出力先は未作成のprivate directory。
+bash scripts/measure-resources.sh /absolute/private/path/development --development
+bash scripts/measure-resources.sh /absolute/private/path/S-preflight --preflight
+bash scripts/measure-resources.sh /absolute/private/path/S
+```
+
+developmentは2 tenant/2,000 episode/200 assertion・steady 30秒、
+preflightはS全量データ・steady 30秒です。どちらもS認定ではありません。
+development以外はclean commitから`git archive`し、読取り専用code mount、完全一致SHA、
+入力hashを記録します。open-loopでdrop、遅延、transport/契約違反を残し、遅いrequestを
+速いsampleへ置き換えません。server/client照合、recall層別、worker結果/queue lag、
+1 Hz guest CPU/memory、DB/index/WAL/logical-backup bytesを出力します。
+hardware `perf` counterは採らず、host kernel設定も変更しません。
+guest会計はhost仮想化overheadや専用host容量の測定ではありません。
+
+controlled providerは10 ms後に契約準拠の空抽出を返し、課金/cloud/live model呼出しや品質主張はしません。
+timing recordに本文/vectorは含めません。生artifact、backup、request相関IDは非公開で保管します。
+helperは自分のcontainerとcredential fileだけを片付け、測定証跡を残します。
+**現行reportは`resource_qualified=false`**です。small-forget/large-purge、並行limit probe、
+物理cold-cacheの測定は未完で、steady時間gateだけではM2受入れになりません。
 
 ## Schema 14 deletion manifests
 

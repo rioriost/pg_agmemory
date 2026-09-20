@@ -4,7 +4,7 @@
 
 - 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: service 0.0.30 / schema 15のcore経路・削除manifest・限定した運用状態の原子的適用は実装済み、M2受入れは未完了。完全一致の実装証跡と認定範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: core経路と限定復旧は実装済み。service 0.0.31 / schema 15で資源測定とS recipeを追加したが、M2受入れは未完了。完全一致の証跡と認定範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -753,7 +753,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
 | M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | schema 15の認証付き原子的適用で、本文一致済み隔離復元先の運用ID/policy/job/call会計を保持。**広い派生物/本文/履歴profileと配置認定が残る**。任意本文復旧や自動起動はしない |
-| M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | 未認定。unitのmemory検査はこの負荷の代用ではない |
+| M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | S recipe/harnessと縮小開発診断まで実施。S全量/全時間と残るprobeは未認定 |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 
 M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、
@@ -878,6 +878,13 @@ ANN経路を有効化する場合は、vector、認可済みexact top-K、同順
 embedding modelの意味理解の採点ではない。
 
 ### 18.4 性能測定profile
+
+実行用の初期S recipeを`examples/resource-profile-s.json`へ固定する。
+episodeごとのwhole-episode chunk/vectorにassertion projectionを加え、vectorは合計110kとする。
+文書は512-byte synthetic ASCII、選択率の分母はrequest tenant内としてtenant隔離を維持する。
+server gateはDB接続/barrier前からcommit完了までを保守的に測り、150/500 msを維持する。
+developmentとS全量preflightは短時間診断であり、30分steadyの条件を満たさない。
+削除・並行limit・cold-cacheは別の必須範囲で、steady runだけで合格にしない。
 
 基準環境は8 vCPU、32 GiB RAM、SSD、同一region内のclient、768次元vectorとする。CPU型・DB設定・拡張版・index size・cache条件を記録する。業務SLO確定前の比較用profileである。
 

@@ -10,7 +10,7 @@ databases or real user histories.
 
 ## Schema 15 operational-state application
 
-**Current: service 0.0.30 / API v1 / schema 15.** Stop/drain API, workers and
+**Current: service 0.0.31 / API v1 / schema 15.** Stop/drain API, workers and
 automatic restarts before migration 015. Use matching components and verify
 migration history 1–15. Immediately take a new backup: migration 015 creates a
 separate per-tenant recovery key, with forced RLS, no runtime policies/grants,
@@ -82,6 +82,58 @@ idempotency records, ACL/policy and 21 operational fingerprints now match, as do
 succeeded) survive; duplicate semantic jobs retain their IDs, unknown retries
 are refused and a new call is denied at the consumed quota. Probes roll back.
 No external model requests or long-running API/worker processes are started.
+
+## Resource measurements
+
+The optional timing sink receives one immutable `RequestTiming` per Native
+request, including failures/disconnects. Labels contain only the HTTP method,
+registered route template, status and server-generated request ID; never body,
+query string, actor, token or path-parameter values. It records response bytes,
+connection/tenant-barrier time, handler time, commit time, transaction time and
+total server time. Unreached phases remain `None`, not zero. The transaction span
+starts before the DB connection/barrier and ends after successful commit, so it
+includes queueing and is stricter than timing only the SQL or packer. Handler
+time includes routing/validation/serialization; E2E is measured separately.
+Sink failures are explicit and cannot roll back an already delivered commit.
+Use a lightweight trusted sink; this is a tracing hook, not a new public route.
+
+`examples/resource-profile-s.json` freezes the initial S recipe before the
+formal run: 10 tenants, 100k episodes/whole-episode chunks, 10k assertions and
+110k fixed 768-dimensional projections, 512-byte synthetic ASCII documents,
+20 recall/s, 5 auto-extract observe/s and two controlled-provider workers.
+The 30-minute steady window follows a 60-second warmup. The database is bounded
+to 6 vCPU/24 GiB and the application plus workers to 2 vCPU/8 GiB; the client is
+separate. Selectivity is 100/10/1/0.1% **within a request tenant**, not a
+cross-tenant authorization escape. Lexical/vector/hybrid cohorts are crossed
+with every tenant/selectivity. Bulk fixtures include native-equivalent source,
+projection, idempotency and audit metadata; fixture loading is not ingest latency.
+
+```bash
+# Apple Container, Linux-only; output directory must be new and private.
+bash scripts/measure-resources.sh /absolute/private/path/development --development
+bash scripts/measure-resources.sh /absolute/private/path/S-preflight --preflight
+bash scripts/measure-resources.sh /absolute/private/path/S
+```
+
+Development uses 2 tenants/2,000 episodes/200 assertions and a 30-second steady
+window. Preflight uses the complete S dataset but only 30 seconds. Neither is S
+qualification. Non-development runs require a clean committed tree and use a
+`git archive`, read-only code mounts, exact commit identity and input hashes.
+Open-loop scheduling records drops, lateness and transport/contract failures;
+it does not replace slow requests with faster samples. Reports include matched
+server/client timings, recall strata, worker outcomes/queue lag, 1 Hz guest
+CPU/memory samples and DB/index/WAL/logical-backup bytes. Hardware `perf` counters
+are not collected and host kernel settings are not changed. Guest accounting
+does not measure host virtualization overhead or exclusive-host capacity.
+
+The controlled provider returns a contract-valid empty extraction after 10 ms:
+no paid/cloud/live-model calls or model-quality claims. Bodies/vectors never
+appear in timing records. Raw artifacts, backup contents and per-request
+correlation IDs remain private. The helper removes only its own containers and
+credential files, not measurement evidence. **Current reports remain
+`resource_qualified=false`**: small-forget/large-purge, concurrent limit probes
+and physical cold-cache coverage are not yet complete. Steady timing gates
+alone do not establish M2 acceptance.
 
 ## Schema 14 deletion manifests
 

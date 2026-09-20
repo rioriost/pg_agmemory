@@ -6,7 +6,14 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.30 / schema 15
+## Current development contract: v0.0.31 / schema 15
+
+Optional `create_app(..., timing_sink=...)` instrumentation now records committed
+server timing without request bodies, query strings or actor labels. It is off
+by default and does not add an HTTP endpoint/header. A frozen S resource recipe
+and real HTTP/two-worker load harness are available; see
+[resource measurements](docs/operations/README.md#resource-measurements).
+Development/preflight measurements are not S qualification or M2 completion.
 
 `recovery-apply export/apply` can now restore exact operational state on an
 isolated, content-matching database: original receipts/idempotency, current
@@ -25,7 +32,7 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.0.30 / API v1 / schema 15 components. No model calls are made by the check.
+Use matching v0.0.31 / API v1 / schema 15 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new
