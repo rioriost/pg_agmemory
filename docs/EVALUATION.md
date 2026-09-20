@@ -58,6 +58,26 @@ used to block core engineering or flipped to claim a measurement. A release
 decision instead requires evidence for the revised M2-B/C/D obligations below.
 No new model-quality scorer or human-review campaign is needed.
 
+### Bounded multi-receipt recovery (2026-09-20)
+
+Exact code `84871e085131aa673543ac9455386874d9eadf77` passed 64 local offline
+recovery contracts and an actual old-backup restore after source-cluster removal.
+[Native CI 35479478777](https://github.com/rioriost/pg_agmemory/actions/runs/35479478777)
+passed **1,802 tests / 8 optional live skips** on both amd64 (1012.79s) and arm64
+(975.62s), including all production smokes and the same multi-receipt drill.
+The 64 cases overlap the full suite and are not added to its total.
+
+Local/amd64/arm64 recovery reports each set `exact_commit_inputs=true`: one
+pre-backup receipt retained, two subsequent purge receipts replayed, two ordered
+ACL changes applied, six tombstones checked, 35 latest/restored canonical
+fingerprints equal, revoked reader denied and live control retained.
+Original-to-replayed suffix receipt IDs are recorded rather than falsely
+claiming full audit/idempotency identity. No API/worker or model call is started.
+V2 metadata and complete prefix/target validation reject unsupported histories;
+the limits in [operations](operations/README.md#bounded-multi-receipt-recovery-drill-2026-09-20)
+apply. Policy/model-accounting, arbitrary histories, full derivative coverage,
+HA/PITR and M2 as a whole are still unqualified.
+
 ### Historical schema-13 evidence
 
 Evidence date: **2026-09-18**. Each experiment is bound to its own implementation
@@ -928,7 +948,7 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Recorded above. `99e71bd` native 1,784/8 per architecture is current bounded implementation evidence, not a blanket release decision |
+| M2-A contract/evidence inventory | Recorded above. `84871e0` native 1,802/8 per architecture is current bounded implementation evidence, not a blanket release decision |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |

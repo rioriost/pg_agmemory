@@ -30,6 +30,14 @@ model/policy状態、grant、identity変更、任意の履歴は拒否し、本�
 M2-C/Dとして残ります。model呼出し、人手label、新API resource、provider許可の緩和は
 追加していません。[schema 14運用](operations/README-jp.md#schema-14-deletion-manifests)を参照してください。
 
+後続の複数receipt実装**`84871e085131aa673543ac9455386874d9eadf77`**は、
+完全一致codeのlocal復旧drillと
+[native CI 35479478777](https://github.com/rioriost/pg_agmemory/actions/runs/35479478777)
+で成功しました。両architectureで**1,802 passed / optional 8 skips**と全packaged smokeが
+成功しています。3つの復旧reportとも完全一致commitを記録し、baseline receipt 1件、
+再適用2件、ACL変更2件、tombstone 6件、35 canonical table fingerprint一致を確認しました。
+model呼出しは0回、`m2_qualified=false`のままです。
+
 ## v0.0.27 / schema 13: 保存した実装証跡
 
 以下の版・測定runは過去の記録です。変更していない処理契約は維持しますが、

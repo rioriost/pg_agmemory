@@ -33,6 +33,14 @@ restore tool. Resource qualification and one reference memory benchmark
 remain M2-C/D. No model calls, human labels, new API resources or relaxed
 provider permissions are introduced here. See [schema-14 operations](operations/README.md#schema-14-deletion-manifests).
 
+The subsequent multi-receipt implementation **`84871e085131aa673543ac9455386874d9eadf77`**
+passed the exact local restore drill and
+[native CI 35479478777](https://github.com/rioriost/pg_agmemory/actions/runs/35479478777).
+Both architectures passed **1,802 tests / 8 optional skips** and all packaged
+smokes. All three recovery reports identify exact commit inputs, one baseline
+receipt, two replayed receipts, two ACL changes, six tombstones and 35 matching
+canonical table fingerprints. Model calls remain zero and `m2_qualified=false`.
+
 ## v0.0.27 / schema 13: retained implementation evidence
 
 The version labels and measured runs in this section are historical. The

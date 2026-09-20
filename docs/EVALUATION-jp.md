@@ -50,6 +50,24 @@ statusに関するtest側の誤った想定を修正した。suppress有効化�
 測定したようにtrueへ変えたりしない。release判定は改訂M2-B/C/Dの証跡による。
 新しいmodel品質scorerや人手評価作業は不要である。
 
+### 限定した複数receipt復旧（2026-09-20）
+
+完全一致code `84871e085131aa673543ac9455386874d9eadf77`でlocal offline復旧契約64件と、
+元cluster削除後の実旧backup復元が成功しました。
+[Native CI 35479478777](https://github.com/rioriost/pg_agmemory/actions/runs/35479478777)
+もamd64（1012.79秒）、arm64（975.62秒）の両方で**1,802 passed / optional live 8 skips**、
+全production smokeと同じ複数receipt drillが成功しています。
+64件はfull suiteの内数で、合算しません。
+
+local/amd64/arm64の各復旧reportは`exact_commit_inputs=true`で、
+backup前receipt 1件を保持、追加purge 2件と順序付きACL変更2件を再適用し、
+tombstone 6件、35 latest/restored canonical fingerprint一致、失効readerの拒否、
+可視なcontrolの保持を確認しました。差分receiptは元IDとの対応を記録し、
+audit/idempotencyまで完全同一とは主張しません。API/worker/model callは起動しません。
+metadata v2とprefix/target完全性検証で未対応履歴を拒否し、
+[運用手順](operations/README-jp.md)の上限を適用します。
+policy/model会計、任意履歴、全派生物、HA/PITR、M2全体は引き続き未認定です。
+
 ### 過去のschema 13証跡
 
 証跡日: **2026-09-18**。実験ごとに実装SHAを固定する。ソフトウェア検査の成功は
@@ -851,7 +869,7 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 上記へ記録済み。`99e71bd`のnative各1,784/8が現行の限定した実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 上記へ記録済み。`84871e0`のnative各1,802/8が現行の限定した実装証跡であり、包括release判定ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
