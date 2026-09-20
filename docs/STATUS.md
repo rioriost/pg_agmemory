@@ -2,7 +2,25 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## v0.0.31 / schema 15: resource instrumentation and frozen S recipe
+## v0.0.32 / schema 16: reducing recall scans without relaxing authorization
+
+The frozen `1d898c9` full-data S preflight failed the unchanged latency gates:
+observe transaction p95 **1146.85 ms**, recall **1453.98 ms**. All responses and
+225 controlled jobs succeeded; this was a latency failure, not qualification.
+The profile used 100k episodes, 10k assertions and 110k vectors, but only 30
+steady seconds. Its immutable archive/artifacts are retained.
+
+Runtime-role plans showed two candidate scans for vector/hybrid and per-row
+visibility SQL. Ranking/coverage now share one materialization; migration 016
+uses equivalent statement-local membership/visible-ID sets while retaining
+forced RLS, expiry/tombstones and all write/barrier behavior. Disposable-clone
+diagnostics reduced vector SQL from roughly 394+368 ms to 52 ms; those plans are
+not a replacement for mixed-load qualification. Oracle/prepared-context,
+cross-tenant/scope, retained-payload tombstone and Native denial regressions
+cover the intended boundary. Full-duration S and remaining resource probes
+are still open; M2 is not complete.
+
+## v0.0.31 / schema 15: retained instrumentation and initial resource diagnostics
 
 Opt-in Native request timing preserves the ordinary response and authorization
 path. It separates connection/barrier, handler, commit and total transaction

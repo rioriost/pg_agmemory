@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.31 / schema 15、M2受入れは未完了
+## 現在の状態: v0.0.32 / schema 16、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -919,7 +919,7 @@ supersession とみなしたりしてはいけない。
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
 | M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
-| M2-C 資源認定 | **未完:** S recipeと任意HTTP/worker/guest測定harnessは実装し、縮小開発診断まで実施。S全時間、削除/limit probe、cold-cacheは残る。controlled provider時間はlive model費用ではない |
+| M2-C 資源認定 | **未完:** 固定`1d898c9`のS全量preflightは応答/job契約を保ったが遅延に失敗。候補共有と同等の集合RLSで実測した原因に対応し、新しいS全時間、削除/limit、cold-cache確認が必要 |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 

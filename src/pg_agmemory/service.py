@@ -571,7 +571,7 @@ class MemoryService:
                        AND NOT (id = ANY(%(required_ids)s::uuid[]))
                      ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s"""
         if data.vector_query is not None:
-            ranking = """, lexical AS (
+            ranking = """WITH lexical AS (
                          SELECT id,revision,row_number() OVER (
                              ORDER BY ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
                                       DESC,created_at DESC,id) AS lexical_rank
@@ -610,29 +610,40 @@ class MemoryService:
             required = [
                 by_reference[(ref.memory_id, ref.revision)] for ref in data.required_memory_refs
             ]
-        ranked = await (await self.conn.execute(candidates + ranking, parameters)).fetchall()
-        rows = required + ranked
         lexical_incomplete = vector_incomplete = False
         if data.search_profile == JAPANESE_PROFILE or data.vector_query is not None:
-            coverage = await (
+            ordering = (
+                "ranked.fusion_score DESC,ranked.id"
+                if data.vector_query is not None
+                else "ranked.rank DESC NULLS LAST,ranked.created_at DESC,ranked.id"
+            )
+            combined = await (
                 await self.conn.execute(
-                    candidates
-                    + """SELECT EXISTS(SELECT 1 FROM candidates WHERE search_text IS NULL)
+                    candidates + ", ranked AS MATERIALIZED (" + ranking + """)
+                         SELECT ranked.*,coverage.lexical_incomplete,coverage.vector_incomplete
+                         FROM (SELECT EXISTS(SELECT 1 FROM candidates WHERE search_text IS NULL)
                          AS lexical_incomplete,
                          EXISTS(SELECT 1 FROM candidates WHERE embedding IS NULL)
-                         AS vector_incomplete""",
+                         AS vector_incomplete) coverage
+                         LEFT JOIN ranked ON true ORDER BY """ + ordering,
                     parameters,
                 )
-            ).fetchone()
+            ).fetchall()
+            if not combined:
+                raise MemoryError("database_error", 503)
+            coverage = combined[0]
+            ranked = [row for row in combined if row["id"] is not None]
             lexical_incomplete = bool(
                 data.retrieval_mode != "vector"
                 and data.search_profile == JAPANESE_PROFILE
-                and coverage
                 and coverage["lexical_incomplete"]
             )
             vector_incomplete = bool(
-                data.vector_query is not None and coverage and coverage["vector_incomplete"]
+                data.vector_query is not None and coverage["vector_incomplete"]
             )
+        else:
+            ranked = await (await self.conn.execute(candidates + ranking, parameters)).fetchall()
+        rows = required + ranked
         incomplete = lexical_incomplete or vector_incomplete
         items = []
         for row in rows[: data.max_items]:

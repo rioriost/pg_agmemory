@@ -8,9 +8,28 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 16 read visibility
+
+Current components are **service 0.0.32 / API v1 / schema 16**. Stop/drain
+API/workers for migration 016 and verify the full migration ledger before
+restarting matching components. No canonical data or recovery key is rewritten.
+Create current-schema recovery snapshots/bundles from the authoritative source;
+do not edit version fields or signatures in older artifacts.
+
+The object read policy replaces repeated scalar membership queries with the
+same statement-local read/admin/expiry membership set. Episode/assertion,
+revision, lexical and vector read policies use visible object IDs selected
+under the object's forced RLS, rather than repeated scalar visibility calls.
+There is no definer bypass, public cache, cross-request authorization cache or
+write-policy change. Prepared executions re-evaluate context and membership.
+Recall reuses one materialized candidate set for ranking and incomplete-index
+coverage, including the no-ranked-row case. Existing ordering, RRF, temporal
+filters, mandatory references and deletion/revocation response barriers remain.
+
 ## Schema 15 operational-state application
 
-**Current: service 0.0.31 / API v1 / schema 15.** Stop/drain API, workers and
+**Introduced at service 0.0.30 / API v1 / schema 15; current schema is 16.**
+Stop/drain API, workers and
 automatic restarts before migration 015. Use matching components and verify
 migration history 1–15. Immediately take a new backup: migration 015 creates a
 separate per-tenant recovery key, with forced RLS, no runtime policies/grants,

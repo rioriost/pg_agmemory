@@ -389,6 +389,27 @@ def database():
         assert admin.execute(
             "SELECT max(version) FROM public.pgag_schema_migration"
         ).fetchone()[0] == 14
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:15])
+        migrate(url)
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_visibility_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (16,):
+                raise RuntimeError("simulated visibility migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_visibility_ledger)
+        with pytest.raises(RuntimeError, match="simulated visibility migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 15
+        expression = admin.execute(
+            """SELECT pg_get_expr(polqual,polrelid) FROM pg_policy
+               WHERE polrelid='memory.object'::regclass AND polname='object_read'"""
+        ).fetchone()[0]
+        assert "memory.permitted" in expression
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

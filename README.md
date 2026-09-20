@@ -6,7 +6,13 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.31 / schema 15
+## Current development contract: v0.0.32 / schema 16
+
+Migration 016 makes read visibility set-based while preserving tenant, scope,
+expiry and tombstone predicates under forced RLS. Recall now shares candidate
+materialization between ranking and coverage checks. It does not disable RLS,
+change rank rules, weaken barriers or enable ANN. Use matching components and
+current-schema recovery artifacts; schema-15 data/recovery keys are preserved.
 
 Optional `create_app(..., timing_sink=...)` instrumentation now records committed
 server timing without request bodies, query strings or actor labels. It is off
@@ -32,7 +38,7 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.0.31 / API v1 / schema 15 components. No model calls are made by the check.
+Use matching v0.0.32 / API v1 / schema 16 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new

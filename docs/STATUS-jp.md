@@ -2,7 +2,22 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## v0.0.31 / schema 15: 資源測定と固定S recipe
+## v0.0.32 / schema 16: 認可を緩めずrecall走査を削減
+
+固定`1d898c9`のS全量preflightは閾値を満たさず、observe transaction p95 **1146.85 ms**、
+recall **1453.98 ms**でした。応答とcontrolled job 225件は成功しましたが、遅延は失敗です。
+100k episode、10k assertion、110k vectorを使ったsteady 30秒の結果で、
+immutable archive/artifactを保持します。
+
+runtime roleのplanで、vector/hybridの候補二重走査と行ごとの可視性SQLを確認しました。
+順位/coverageのmaterializationを共有し、migration 016で同等のstatement-local
+membership/可視ID集合へ変更します。強制RLS、期限/tombstone、write/barrier動作は維持します。
+使い捨てcloneのvector SQL診断は約394+368 msから52 msへ短縮しましたが、
+混合負荷の認定に読み替えません。元の判定式との比較、prepared context、
+tenant/scope越境、本文を残したtombstone、Native拒否の回帰を対象にしています。
+S全時間と残る資源probeは未完で、M2完了ではありません。
+
+## v0.0.31 / schema 15: 保存した計測実装と初期資源診断
 
 任意指定のNative timingは通常の応答・認可経路を保ち、本文/query/actor labelを記録せず
 接続/barrier、handler、commit、transaction時間を分けます。未到達phaseは未測定のままです。

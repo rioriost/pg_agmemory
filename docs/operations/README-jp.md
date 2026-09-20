@@ -7,9 +7,25 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 16 read visibility
+
+現行componentは**service 0.0.32 / API v1 / schema 16**です。
+migration 016ではAPI/workerを停止・drainし、全migration履歴を確認して対応componentを再開します。
+canonical data/復旧鍵は書き換えません。正本から現行schemaのsnapshot/bundleを取得し、
+古いartifactのversion/signatureを編集して流用しないでください。
+
+object read policyは、行ごとのmembership呼出しを、同じread/admin/期限条件の
+statement-local集合へ置換します。episode/assertion、revision、lexical/vectorのread policyは、
+object自体の強制RLSで可視なID集合を参照します。definer bypass、公開cache、
+requestをまたぐ認可cache、write policy変更はありません。
+prepared実行でもcontext/membershipを再評価します。recallの順位計算とindex欠落判定は
+候補materializationを共有し、順位行が0件でもcoverageを返します。
+既存の順序、RRF、時点filter、必須参照、削除/失効の応答barrierは維持します。
+
 ## Schema 15 operational-state application
 
-**現行はservice 0.0.31 / API v1 / schema 15**です。API/worker/自動再起動を停止・drainして
+**service 0.0.30 / API v1 / schema 15で導入し、現行schemaは16**です。
+API/worker/自動再起動を停止・drainして
 migration 015を適用し、対応componentとmigration履歴1–15を確認します。
 直後に新backupを取得してください。015はtenant別の専用復旧鍵を追加し、RLSを強制し、
 runtime policy/権限を与えません。新tenantにもtriggerで生成します。

@@ -7,7 +7,12 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.31 / schema 15
+## 現在の開発契約: v0.0.32 / schema 16
+
+migration 016で、tenant/scope/期限/tombstone条件と強制RLSを維持したまま、
+read可視性を集合処理にしました。recallは順位計算とcoverageで候補のmaterializationを共有します。
+RLS無効化、順位規則変更、barrier緩和、ANN有効化はしません。
+対応componentと現行schemaの復旧artifactを使い、schema 15のdata/復旧鍵は保持します。
 
 任意指定の`create_app(..., timing_sink=...)`で、本文・query・actor labelを記録せずに
 commit済みのserver timingを測定できます。既定は無効で、HTTP endpoint/headerは増やしません。
@@ -30,7 +35,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.0.31 / API v1 / schema 15に揃えます。照合はmodelを呼びません。
+componentはv0.0.32 / API v1 / schema 16に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
