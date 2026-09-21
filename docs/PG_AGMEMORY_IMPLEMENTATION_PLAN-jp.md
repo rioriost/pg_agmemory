@@ -647,6 +647,13 @@ runtime応答schema、管理generation command、migrationは、任意profileの
 成立してから一緒に接続します。設定できるだけの未実装backendを公開せず、
 extensionの代わりに合成応答を使ってrelease認定を進めません。
 
+固定hopの迂回策を導入しても、native VLEの実装は削除せず別の無効なstrategyとして保存します。
+upstreamの脆弱性調査は別projectで行います。本projectでは同じdata/認可contextで
+迂回策とcanonical SQLを比較し、read latency・statement数とprojection build時間/容量を
+分けて報告します。宣言した許容コスト範囲だけで採用し、高コストならSQLを維持します。
+将来の修正済みAGEも、元の分離gateと同じcanonical conformanceを通過してから、
+迂回策ではない経路へ戻します。version変更だけで認定済みとはしません。
+
 | M3 increment | 成果物 / 受入条件 | 初期状態 |
 |---|---|---|
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | PG18/v1.8.0-rc0のbuild/probe実装済み。native VLEは6確認失敗。固定1-hop候補は40確認成功だがadapter認定ではない |

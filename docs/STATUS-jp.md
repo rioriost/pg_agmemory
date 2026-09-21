@@ -31,6 +31,17 @@ native可変長Cypherは使用しません。
 [再現probeと制限](operations/README-jp.md#m3-age-qualification-profile)、
 [M3境界](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#123-m3実装境界)を参照してください。
 
+次のincrementではcanonicalなneighbor認可・時刻filter・順序・予算判定を共通の内部SQL境界へ
+分離しました。backend側のparameterでtenant、scope、有効時刻、path予算を上書きできません。
+既定SQL探索は維持し、prepared/nested-loopの既存plan確認を含むLinux対象60件が成功しました。
+query記録側もcomposed SQLへ対応し、planのassertionは削除していません。
+
+native VLEの実装と失敗probeは、迂回策で置き換えず保存します。
+修正済みupstreamであっても、同じcanonical契約に合格してからその経路を選択します。
+迂回策の採用には対になるコスト測定も必要で、正しさの確認から性能合格を推測しません。
+未完候補のlive runはagtype整数からJSONへの変換errorで止まり、コスト測定は開始できていません。
+有効runtimeには含めず、採用もしていません。
+
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
 **宣言した限定core MVP profileについてM2を完了しました。**

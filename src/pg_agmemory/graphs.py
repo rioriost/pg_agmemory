@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from psycopg import sql
+
 from pg_agmemory.models import (
     CreateEntity,
     CreateRelation,
@@ -254,10 +256,8 @@ class SqlGraph:
     async def neighbors(
         self, walk: GraphPath, data: ExpandGraph, as_of: datetime, known_at: datetime, limit: int
     ) -> list[dict[str, Any]]:
-        return await (
-            await self.conn.execute(
-                """WITH adjacent AS MATERIALIZED (
-                    SELECT r.id,v.revision,r.source_id,v.target_id,v.target_id AS next_id
+        adjacent = sql.SQL(
+            """SELECT r.id,v.revision,r.source_id,v.target_id,v.target_id AS next_id
                     FROM memory.relation r JOIN memory.relation_revision v
                       ON v.tenant_id = r.tenant_id AND v.assertion_id = r.id
                     WHERE r.tenant_id = %(tenant)s AND r.source_id = %(node)s
@@ -267,8 +267,40 @@ class SqlGraph:
                     FROM memory.relation r JOIN memory.relation_revision v
                       ON v.tenant_id = r.tenant_id AND v.assertion_id = r.id
                     WHERE r.tenant_id = %(tenant)s AND v.target_id = %(node)s
-                      AND %(direction)s IN ('incoming','both')
-                ), assertions AS MATERIALIZED (
+                      AND %(direction)s IN ('incoming','both')"""
+        )
+        return await self._canonical_neighbors(
+            walk, data, as_of, known_at, limit, adjacent, {}
+        )
+
+    async def _canonical_neighbors(
+        self,
+        walk: GraphPath,
+        data: ExpandGraph,
+        as_of: datetime,
+        known_at: datetime,
+        limit: int,
+        adjacent: sql.Composable,
+        extra_params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Apply canonical visibility and budgets to trusted backend adjacency SQL."""
+        parameters: dict[str, Any] = {
+            "tenant": self.tenant,
+            "node": walk.nodes[-1],
+            "direction": data.direction,
+            "scopes": data.scope_ids,
+            "predicates": data.relation_types,
+            "known": known_at,
+            "as_of": as_of,
+            "visited": walk.nodes,
+            "limit": limit,
+        }
+        if parameters.keys() & extra_params.keys():
+            raise MemoryError("graph_invalidated", 409)
+        return await (
+            await self.conn.execute(
+                sql.SQL("""WITH adjacent AS MATERIALIZED ({adjacent}),
+                assertions AS MATERIALIZED (
                     SELECT id,predicate FROM memory.assertion
                     WHERE tenant_id=%(tenant)s AND scope_id=ANY(%(scopes)s)
                       AND predicate=ANY(%(predicates)s)
@@ -295,18 +327,8 @@ class SqlGraph:
                 JOIN revisions v ON v.assertion_id=x.id AND v.revision=x.revision
                 JOIN endpoints s ON s.id=x.source_id JOIN endpoints t ON t.id=x.target_id
                 WHERE NOT x.next_id = ANY(%(visited)s)
-                ORDER BY x.id,x.revision,x.next_id LIMIT %(limit)s""",
-                {
-                    "tenant": self.tenant,
-                    "node": walk.nodes[-1],
-                    "direction": data.direction,
-                    "scopes": data.scope_ids,
-                    "predicates": data.relation_types,
-                    "known": known_at,
-                    "as_of": as_of,
-                    "visited": walk.nodes,
-                    "limit": limit,
-                },
+                ORDER BY x.id,x.revision,x.next_id LIMIT %(limit)s""").format(adjacent=adjacent),
+                parameters | extra_params,
             )
         ).fetchall()
 

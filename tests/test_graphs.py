@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from psycopg import sql
 
 from pg_agmemory.database import connect
 from pg_agmemory.graphs import SqlGraph
@@ -792,8 +793,9 @@ def test_exact_graph_path_seed_and_entity_evidence_limits(env, monkeypatch, plan
 
         async def record_execute(query, params=None, **kwargs):
             nonlocal statement, parameters
-            if isinstance(query, str) and query.startswith("WITH adjacent"):
-                statement, parameters = query, params
+            rendered = query.as_string() if isinstance(query, sql.Composable) else query
+            if isinstance(rendered, str) and rendered.startswith("WITH adjacent"):
+                statement, parameters = rendered, params
             return await execute(query, params, **kwargs)
 
         with monkeypatch.context() as patch:

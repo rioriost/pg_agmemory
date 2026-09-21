@@ -658,6 +658,16 @@ are wired together only after the optional profile has a viable permission path.
 Do not publish a configurable but unimplemented backend or upgrade a release
 claim based on a synthetic substitute for the extension.
 
+Preserve native VLE as a separate, currently disabled strategy rather than
+deleting its implementation when introducing the fixed-hop workaround. Upstream
+vulnerability investigation is a separate project. Here, compare workaround
+reads against canonical SQL on the same data/authorization context, reporting
+latency and statement counts separately from projection build time/storage.
+Adopt only within a declared acceptable cost profile; otherwise retain SQL.
+A future repaired AGE version must pass the original isolation gate and the
+same canonical conformance suite before restoring the non-workaround strategy.
+Do not infer that a version change alone supplies that evidence.
+
 | M3 increment | Deliverable / acceptance | Initial state |
 |---|---|---|
 | M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Build/probe implemented for PG18/v1.8.0-rc0. Native VLE fails six checks; fixed one-hop candidate passes 40 checks but is not an adapter qualification |

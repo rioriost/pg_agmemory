@@ -33,6 +33,21 @@ restore remain to be integrated. Native variable-length Cypher stays excluded.
 See [the reproducible probe and limits](operations/README.md#m3-age-qualification-profile)
 and [the M3 boundary](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#123-m3-implementation-boundary).
 
+The next increment factors canonical neighbor authorization, time filtering,
+ordering and budget enforcement into one shared internal SQL boundary. Backend
+parameters cannot replace the tenant, scopes, effective times or path budget.
+The default SQL traversal is unchanged; 60 focused Linux checks pass, including
+the existing prepared/nested-loop plan checks. Their query recorder now handles
+composed SQL without removing any plan assertions.
+
+The native-VLE implementation and negative probe remain preserved, not replaced
+by the workaround. A future qualified upstream fix must pass the same canonical
+contract before that strategy can be selected. Workaround adoption also requires
+a paired cost measurement; no performance acceptance is inferred from correctness.
+The unfinished candidate's live run encountered an agtype integer-to-JSON
+conversion error, and cost measurements did not start. It is not part of the
+enabled runtime and has not been adopted.
+
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
 **M2 is complete for the declared bounded core-MVP profile.**
