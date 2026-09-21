@@ -8,7 +8,15 @@ The `feat/m3-graph` branch adds an isolated AGE build/probe and an independent
 graph oracle. **The released v0.1.0 runtime, schema 18 and SQL default are
 unchanged; AGE is not enabled in the API.** Packaged Linux checks without source
 mounts pass 82 graph/profile tests; the independent oracle exercises 88 expansions
-across 17 cases. These are not full M3 or native dual-architecture qualification.
+across 17 cases.
+
+Exact **`976d558d89a5aded1088aa99dbd84acddf2071df`** subsequently passed
+[native core CI 35572874356](https://github.com/rioriost/pg_agmemory/actions/runs/35572874356)
+on amd64 and arm64: **1,994 tests / 8 optional live skips each**, all packaged
+smokes and the unchanged v5 isolated-recovery checks. Pytest took
+1093.04/1317.14 s. This CI includes the offline AGE harness contracts but **does
+not run the AGE extension**. It establishes core compatibility, not full M3 or
+dual-architecture AGE qualification; the negative AGE result below remains.
 
 Pinned upstream **`PG18/v1.8.0-rc0`** builds on PostgreSQL 18.6/pgvector 0.8.6.
 The release title/catalog says 1.8.0, but the actual tag is an rc0. The real

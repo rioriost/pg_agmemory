@@ -7,7 +7,15 @@
 `feat/m3-graph`で隔離AGE build/probeと独立graph oracleを追加しました。
 **公開済みv0.1.0 runtime、schema 18、SQL既定は不変で、APIのAGEは有効化していません。**
 source mountなしのLinux packageでgraph/profile 82 testsが成功し、
-独立oracleは17 caseで88回の探索を扱います。M3全体や両nativeの認定ではありません。
+独立oracleは17 caseで88回の探索を扱います。
+
+その後、完全一致**`976d558d89a5aded1088aa99dbd84acddf2071df`**の
+[native core CI 35572874356](https://github.com/rioriost/pg_agmemory/actions/runs/35572874356)が
+amd64/arm64とも**1,994 tests / optional live 8 skips**、
+全packaged smokeと既存v5隔離復元の条件を達成しました。
+pytestは1093.04/1317.14秒です。このCIはAGE harnessのoffline契約を含みますが、
+**AGE extension自体は実行しません**。core互換性の証跡であり、M3全体やAGEの両architecture認定ではなく、
+下記のAGE認定失敗はそのまま保持します。
 
 固定したupstream **`PG18/v1.8.0-rc0`**をPostgreSQL 18.6/pgvector 0.8.6でbuildできました。
 release名/catalogは1.8.0ですが、実tagはrc0です。
