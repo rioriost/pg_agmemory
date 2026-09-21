@@ -1,0 +1,31 @@
+# Opt-in qualification only: a fresh dedicated database/cluster, never the default image.
+# Upstream release title says 1.8.0; the actual PG18 tag is explicitly an rc0 tag.
+FROM docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a AS age-build
+
+WORKDIR /opt/age-build
+RUN set -eu; \
+    version="$(dpkg-query -W -f='${Version}' postgresql-18)"; \
+    apt-get update; \
+    apt-get install --no-install-recommends -y \
+        ca-certificates curl build-essential flex bison \
+        "postgresql-server-dev-18=$version"; \
+    test "$(pg_config --version)" = 'PostgreSQL 18.6 (Debian 18.6-1.pgdg12+2)'; \
+    curl --fail --location --retry 3 --silent --show-error \
+        https://github.com/apache/age/releases/download/PG18/v1.8.0-rc0/apache-age-1.8.0-src.tar.gz \
+        --output age.tar.gz; \
+    echo '555736a31974255223778959ca8bcd9cb710b93a8fab1d846eaf3e84704b9417  age.tar.gz' \
+        | sha256sum --check --strict; \
+    tar --extract --gzip --file age.tar.gz --strip-components=1; \
+    make -j2; \
+    make install DESTDIR=/opt/age-install
+
+FROM docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+LABEL org.opencontainers.image.title="pg_agmemory Apache AGE qualification (not production)" \
+      org.opencontainers.image.source="https://github.com/apache/age" \
+      org.pg-agmemory.age.tag="PG18/v1.8.0-rc0" \
+      org.pg-agmemory.age.commit="e43dc1a12b78fba4acef9835b2b10379b8d243b4" \
+      org.pg-agmemory.age.archive-sha256="555736a31974255223778959ca8bcd9cb710b93a8fab1d846eaf3e84704b9417"
+COPY --from=age-build /opt/age-install/ /
+# Loading the extension in each non-superuser session is not allowed. This profile
+# preloads it; runtime connections still have neither superuser nor BYPASSRLS.
+CMD ["postgres", "-c", "shared_preload_libraries=age"]

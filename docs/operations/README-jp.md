@@ -7,6 +7,55 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M3 AGE qualification profile
+
+**任意の使い捨て開発profile**であり、service backend、application migration、
+本番imageではありません。通常Dockerfileのcore runtimeは不変で、
+test stageだけがAGE probe fixtureを含みます。通常API/workerの起動にAGEを追加しません。
+
+`Dockerfile.age`は既存PostgreSQL 18.6/pgvector 0.8.6 imageと、
+[公式PG18/v1.8.0-rc0 asset](https://github.com/apache/age/releases/tag/PG18/v1.8.0-rc0)を固定します。
+tagのcommitは`e43dc1a12b78fba4acef9835b2b10379b8d243b4`、
+release archive SHA256は`555736a31974255223778959ca8bcd9cb710b93a8fab1d846eaf3e84704b9417`です。
+PostgreSQL server header packageも同じversionを要求します。
+release名/catalogが1.8.0でも、実tagのrc0を安定版と読み替えません。
+
+```bash
+# 所有する新しいcontainerだけを使う。application DBを対象にしない。
+bash scripts/test-age-containers.sh container
+# Docker runnerでは同じhelperのengineをdockerへ変更する。
+```
+
+helperは固定extensionをbuildし、offline契約を確認してから、
+`shared_preload_libraries=age`付きの新規専用DBを起動します。
+このprofileはpreloadを要求し、制限readerへlibrary LOAD・label所有・BYPASSRLS権限を与えません。
+NOINHERIT loginで認証後に制限された`pgag_runtime`へ明示SET ROLEします。
+probe roleは新clusterだけに作り、applicationの既存runtime roleを変更しません。
+base/child labelのすべてへRLSを強制し、値はprepared agtype mapで渡します。
+graph名・label・templateはharnessの固定値です。
+
+**Linux/aarch64の実測は認定失敗（exit 1）です。**
+元の19確認のうちnative可変長Cypherの6件が失敗し、
+`*1..1`、`*1..2`、prepared再利用、edge読取りpolicyなしの探索を含みます。
+label直接SQLと明示固定hopは成功しました。追加の固定1-hop/prepared/context/
+deny-all/host探索40確認の成功は別に記録し、元のVLE失敗と非0終了を維持します。
+合成actor policy contextの変更は、role切替やcanonical membershipの認定ではありません。
+次の候補は固定1-hop templateと上限付きhost探索であり、VLEを使用しません。
+canonical ACL/time、generation、oracleとの統合は未了で、`adapter_qualified=false`です。
+
+exit 0でもこのprobeの限定確認の成功であって本番承認ではなく、
+1は認定失敗、setup/input失敗も非0（Python probeでは2）です。
+この非0結果をbackend有効化へ読み替えたり、漏れたpathを黙って除外したりしません。
+有効なbackendは引き続きcore SQLのみで、model呼出しはありません。
+
+失敗log/reportはgitignore対象の`.review-artifacts/pgag-age-*`へ保持します。
+既存の非公開`PGAG_AGE_EVIDENCE_DIRECTORY`を指定すると、固有名のrun subdirectoryへ保存できます。
+`PGAG_AGE_TEST_IMAGE`はPython test imageの再利用用で、AGE imageは常にbuildし、
+probeではsource fileを明示mountします。reportは入力4 fileのhash、
+archive/image pin、実runtime権限に結び付けます。所有container/imageを削除し、
+artifact削除も所有する列挙fileに限定します。失敗reportを保持してから再実行し、
+credentialやlocal raw artifactはcommitしないでください。
+
 ## M2 core MVP deployment
 
 現行契約は**service 0.1.0 / API v1 / schema 18**、capability stageは`m2-core-mvp`です。

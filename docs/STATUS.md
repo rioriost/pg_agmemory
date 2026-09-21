@@ -2,6 +2,29 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## M3 development: graph qualification foundation
+
+The `feat/m3-graph` branch adds an isolated AGE build/probe and an independent
+graph oracle. **The released v0.1.0 runtime, schema 18 and SQL default are
+unchanged; AGE is not enabled in the API.** Packaged Linux checks without source
+mounts pass 82 graph/profile tests; the independent oracle exercises 88 expansions
+across 17 cases. These are not full M3 or native dual-architecture qualification.
+
+Pinned upstream **`PG18/v1.8.0-rc0`** builds on PostgreSQL 18.6/pgvector 0.8.6.
+The release title/catalog says 1.8.0, but the actual tag is an rc0. The real
+non-owner, non-superuser, NOBYPASSRLS probe forces RLS on base and child labels:
+**six native variable-length traversal checks fail**, including reachability
+through hidden intermediates/edges and after deny-all edge policies.
+The helper deliberately exits 1 and retains `qualified=false`.
+
+A separate fixed-label one-hop/prepared-query and host-expansion candidate
+passes 40 checks, including changed synthetic tenant/actor context and deny-all
+policies. This is a viable next implementation path, **not a qualified adapter**:
+canonical ACL/time joins, generation/watermark, revocation races, rebuild and
+restore remain to be integrated. Native variable-length Cypher stays excluded.
+See [the reproducible probe and limits](operations/README.md#m3-age-qualification-profile)
+and [the M3 boundary](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#123-m3-implementation-boundary).
+
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
 **M2 is complete for the declared bounded core-MVP profile.**

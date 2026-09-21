@@ -8,6 +8,61 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M3 AGE qualification profile
+
+This is an **optional, disposable development profile**, not a service backend,
+application migration or production image. The ordinary Dockerfile still builds
+the same core runtime; only its test stage includes the AGE probe fixtures.
+No AGE library or configuration is added to ordinary API/worker startup.
+
+`Dockerfile.age` pins the existing PostgreSQL 18.6/pgvector 0.8.6 image and the
+[official PG18/v1.8.0-rc0 asset](https://github.com/apache/age/releases/tag/PG18/v1.8.0-rc0).
+The tag resolves to `e43dc1a12b78fba4acef9835b2b10379b8d243b4`; the release archive
+SHA256 is `555736a31974255223778959ca8bcd9cb710b93a8fab1d846eaf3e84704b9417`.
+The exact PostgreSQL server-header package is required. The tag's rc0 suffix is
+not hidden by its 1.8.0 release title or extension catalog version.
+
+```bash
+# Fresh owned containers only; never point this profile at an application database.
+bash scripts/test-age-containers.sh container
+# On a Docker runner, use the same helper with docker instead.
+```
+
+The helper builds the pinned extension, checks its offline harness contracts and
+starts a fresh dedicated database with `shared_preload_libraries=age`. Preloading
+is necessary for this profile; the restricted reader does not receive permission
+to LOAD libraries, own labels or bypass RLS. It authenticates as a NOINHERIT login
+and explicitly SET ROLEs to the restricted `pgag_runtime`. This probe role is
+created only in its fresh cluster, not the application's existing runtime role.
+Base and child labels all have forced RLS. Query values use prepared agtype maps;
+graph names, labels and templates are fixed harness constants.
+
+**Current measured result on Linux/aarch64: qualification fails (exit 1).**
+Six of the original 19 checks fail for bounded native variable-length Cypher,
+including `*1..1`, `*1..2`, prepared reuse and traversal with no edge read policy.
+Direct label SQL and explicit fixed-hop queries pass. The follow-up separates
+40 passing fixed one-hop/prepared/context/deny-all/host-expansion checks, while
+preserving the original VLE failures and the nonzero exit. Synthetic actor policy
+context changes are not role-switch or canonical membership qualification.
+The next candidate uses fixed one-hop templates plus bounded host traversal,
+never VLE. It still requires actual canonical ACL/time, generation and oracle
+integration; `adapter_qualified=false` remains explicit.
+
+Exit 0 means all this probe's bounded checks passed, not production approval;
+1 means qualification failed; setup/input failures exit nonzero (reported as 2
+by the Python probe). Do not turn the observed nonzero result into an enabled
+backend or silently filter the leaked paths. Core SQL remains the only enabled
+backend. No model calls are made.
+
+Failures retain logs/report under ignored `.review-artifacts/pgag-age-*`.
+An existing private `PGAG_AGE_EVIDENCE_DIRECTORY` may instead receive a uniquely
+named run subdirectory. `PGAG_AGE_TEST_IMAGE` may reuse a Python test image;
+the AGE image is always built and source files are mounted explicitly for the
+probe. The report binds its four input file hashes, archive/image pins and actual
+runtime privileges. Owned containers/images are removed; only enumerated owned
+artifacts are deleted. Preserve the failure report before rerunning, and do not
+commit credentials or local raw artifacts.
+
 ## M2 core MVP deployment
 
 The current contract is **service 0.1.0 / API v1 / schema 18**, capability stage

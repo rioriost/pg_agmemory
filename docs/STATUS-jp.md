@@ -2,6 +2,27 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## M3開発: graph認定の基盤
+
+`feat/m3-graph`で隔離AGE build/probeと独立graph oracleを追加しました。
+**公開済みv0.1.0 runtime、schema 18、SQL既定は不変で、APIのAGEは有効化していません。**
+source mountなしのLinux packageでgraph/profile 82 testsが成功し、
+独立oracleは17 caseで88回の探索を扱います。M3全体や両nativeの認定ではありません。
+
+固定したupstream **`PG18/v1.8.0-rc0`**をPostgreSQL 18.6/pgvector 0.8.6でbuildできました。
+release名/catalogは1.8.0ですが、実tagはrc0です。
+非owner・非superuser・NOBYPASSRLSの実probeでbase/child labelへRLSを強制しても、
+**native可変長探索の6確認が失敗**し、非公開中間node/edgeや全edge拒否後にも到達結果が出ました。
+helperは意図的にexit 1と`qualified=false`を保持します。
+
+別に、固定labelの1-hop/prepared queryとhost側探索候補は、
+合成tenant/actor context切替とdeny-all policyを含む40確認が成功しました。
+次の実装候補であり、**adapterの認定ではありません**。
+canonical ACL/time join、generation/watermark、失効競合、再構築・復元の統合が残ります。
+native可変長Cypherは使用しません。
+[再現probeと制限](operations/README-jp.md#m3-age-qualification-profile)、
+[M3境界](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#123-m3実装境界)を参照してください。
+
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
 **宣言した限定core MVP profileについてM2を完了しました。**

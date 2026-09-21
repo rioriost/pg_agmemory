@@ -1,5 +1,6 @@
 *
 !Dockerfile
+!Dockerfile.age
 !pyproject.toml
 !uv.lock
 !README.md

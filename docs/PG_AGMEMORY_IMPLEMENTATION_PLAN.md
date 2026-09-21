@@ -660,9 +660,9 @@ claim based on a synthetic substitute for the extension.
 
 | M3 increment | Deliverable / acceptance | Initial state |
 |---|---|---|
-| M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | In progress |
-| M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Oracle fixtures in progress; AGE comparison pending |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Pending profile qualification; not part of schema 18 |
+| M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Build/probe implemented for PG18/v1.8.0-rc0. Native VLE fails six checks; fixed one-hop candidate passes 40 checks but is not an adapter qualification |
+| M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Independent SQL oracle complete: 17 tests/88 expansions. Canonical integration and AGE comparison pending |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Follow fixed-template canonical integration; no native VLE, no schema-18 change |
 | M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Pending integrated adapter |
 
 ## 13. MCP Adapter
