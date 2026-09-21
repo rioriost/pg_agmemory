@@ -39,8 +39,24 @@ query記録側もcomposed SQLへ対応し、planのassertionは削除してい�
 native VLEの実装と失敗probeは、迂回策で置き換えず保存します。
 修正済みupstreamであっても、同じcanonical契約に合格してからその経路を選択します。
 迂回策の採用には対になるコスト測定も必要で、正しさの確認から性能合格を推測しません。
-未完候補のlive runはagtype整数からJSONへの変換errorで止まり、コスト測定は開始できていません。
-有効runtimeには含めず、採用もしていません。
+初回candidate runはagtype整数からJSONへの変換errorで止まり、コスト測定へ到達しませんでした。
+保存済みの修正はrevisionを直接`agtype::bigint`へ変換し、後続runでは
+独立oracleを含むlive conformance 20件と対になるコスト実験3件が成功しました。
+権限を緩めず、native VLEも実行していません。
+
+**初期迂回策は、実測readコストが高いため採用しません。**
+chain/fanout/multiseedの各3 warmup組＋30実測組で、candidateのrequest中央値は
+543.16/3100.83/428.28 ms、SQLは25.58/49.65/47.04 ms（21.23/62.45/9.11倍）でした。
+candidate p95は602.54/3196.43/447.09 msで、warmup込み198要求に失敗はありません。
+DB/clientをそれぞれ2 vCPU/2 GiBとする、小規模・逐次・計測付きfixtureの結果で、
+本番容量の認定ではありません。projectionのbuild時間/容量は別に扱い、過去fixtureのrowも含みます。
+別の統計だけを変更する診断では、`ANALYZE`後もchain/fanoutのcandidate中央値は
+101.74/422.10 ms、SQLは22.74/62.02 ms（4.47/6.81倍）でした。
+backend/phaseごと3要求の診断で、新しいp95測定ではありません。
+runtime設定や権限を変えずJIT時間は約202–210 msから0になりましたが、
+元の対測定を上書きしたり採用を正当化したりする結果ではありません。
+既定はSQLを維持し、候補と保存したnative strategyのどちらも本番backendとして有効化しません。
+[candidate runner](operations/README-jp.md#fixed-hop-candidate-experiment)を参照してください。
 
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 

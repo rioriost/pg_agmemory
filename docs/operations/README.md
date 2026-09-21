@@ -63,6 +63,63 @@ runtime privileges. Owned containers/images are removed; only enumerated owned
 artifacts are deleted. Preserve the failure report before rerunning, and do not
 commit credentials or local raw artifacts.
 
+### Fixed-hop candidate experiment
+
+`scripts/age_graph_candidate.py` is an explicitly **unactivated laboratory
+candidate**. It keeps fixed one-hop and native-VLE template generation separate;
+the pinned artifact may execute only the fixed strategy. Selecting `native_vle`
+returns `graph_backend_unqualified` before opening a connection. The original
+native-VLE probe and failure record are unchanged for a future separately
+qualified upstream fix; this runner does not repeat that investigation.
+
+The candidate uses canonical tenant/principal/scope, source visibility and
+effective times in its label policies, then shares the SQL oracle's canonical
+neighbor filtering, ordering and path budget. Projection properties contain
+identity/topology only, not canonical labels or source text. Runtime cannot own
+or write labels. Requests use a single read transaction and the existing tenant
+barrier. This is **not** a generation/freshness/rebuild/restore implementation:
+conformance fixtures rebuild a quiesced projection for each request, and cost
+fixtures build it once before paired reads.
+
+```bash
+# Fresh owned clusters only; no Native backend selection or live model calls.
+bash scripts/test-age-graph-containers.sh container
+```
+
+This separate helper uses the same pinned AGE image, enables
+`PGAG_TEST_AGE_GRAPH=1`, runs 20 live conformance cases and, only after they pass,
+runs three cost cases with `PGAG_TEST_AGE_GRAPH_COST=1` on another fresh cluster.
+Without those explicit opt-ins, these 23 cases skip. The ordinary test image
+also includes 40 offline candidate contracts; skipped cases are not AGE passes.
+No application CLI, backend setting or mandatory extension is added.
+
+The initial completed cost run has 30 measured pairs plus three warmup pairs per
+shape, alternating SQL-first and AGE-first. Each result must match the same
+independent graph oracle. Reports retain failures, all sample timings, SQL counts
+and nearest-rank p95. Request time includes connection/identity/serialization;
+explicit transaction spans and summed cursor-execute time are reported separately.
+The 5-second database limit is **per statement**, not a request latency target.
+Build/storage overhead is not hidden inside read latency.
+
+| Shape | Requested nodes/edges | Total projected nodes/revisions | Build ms | Projection bytes |
+|---|---:|---:|---:|---:|
+| Chain | 12/11 | 14/12 | 23.20 | 163,840 |
+| Fanout | 25/24 | 39/36 | 21.00 | 196,608 |
+| Multiseed | 14/40 | 53/76 | 17.28 | 245,760 |
+
+The initial read overhead is 9–62x SQL by median request time, so this candidate
+is **not adopted**. A separate statistics-only diagnostic, with three request
+samples and two EXPLAIN samples per shape/backend/phase, applied `ANALYZE` to
+canonical and projection tables while retaining the same permissions and runtime
+settings. It removed roughly 202–210 ms of JIT work but left chain/fanout request
+medians at 101.74/422.10 ms versus SQL 22.74/62.02 ms (4.47x/6.81x).
+These small diagnostics are not a new paired p95 or a production capacity claim.
+No global planner override or authorization relaxation is accepted to make the
+workaround appear cheap. A successful conformance/cost-run exit means valid measurements, not
+acceptable latency or permission to enable AGE. Private evidence stays in an
+ignored `.review-artifacts/pgag-age-graph-*` directory; the helper cleans only
+its own containers/images. Do not publish raw credentials or local failure logs.
+
 ## M2 core MVP deployment
 
 The current contract is **service 0.1.0 / API v1 / schema 18**, capability stage

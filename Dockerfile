@@ -21,7 +21,8 @@ COPY examples/ ./examples/
 COPY Dockerfile.age ./
 COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/resource-benchmark.py scripts/resource-probes.py \
-    scripts/smoke-age.py scripts/test-age-containers.sh ./scripts/
+    scripts/smoke-age.py scripts/test-age-containers.sh \
+    scripts/age_graph_candidate.py scripts/test-age-graph-containers.sh ./scripts/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps

@@ -44,9 +44,29 @@ The native-VLE implementation and negative probe remain preserved, not replaced
 by the workaround. A future qualified upstream fix must pass the same canonical
 contract before that strategy can be selected. Workaround adoption also requires
 a paired cost measurement; no performance acceptance is inferred from correctness.
-The unfinished candidate's live run encountered an agtype integer-to-JSON
-conversion error, and cost measurements did not start. It is not part of the
-enabled runtime and has not been adopted.
+The first candidate run encountered an agtype integer-to-JSON conversion error
+and never reached cost measurement. The preserved correction uses the direct
+`agtype::bigint` conversion for revisions; a subsequent run passes 20 live
+conformance cases, including the independent oracle, and all three paired-cost
+experiments without weakening permissions or running native VLE.
+
+**The initial workaround is not adopted: its measured read cost is too high.**
+For chain/fanout/multiseed, 30 measured pairs after three warmup pairs show
+candidate request medians of 543.16/3100.83/428.28 ms versus SQL
+25.58/49.65/47.04 ms (21.23x/62.45x/9.11x). Candidate p95 is
+602.54/3196.43/447.09 ms; all 198 warmup/measured requests succeeded.
+These are small sequential, instrumented fixtures on separate 2-vCPU/2-GiB
+database and client guests, not production capacity. Projection build time and
+storage are separate, and the projections include earlier fixture rows.
+An independent statistics-only diagnostic reduced the overhead but did not make
+it low-cost: after `ANALYZE`, chain/fanout candidate request medians were
+101.74/422.10 ms versus SQL 22.74/62.02 ms (4.47x/6.81x).
+It used three requests per backend/phase, not a new p95 measurement. JIT time
+fell from about 202–210 ms to zero without changing runtime settings or
+permissions. This does not overwrite the original paired run or justify adoption.
+The SQL default remains selected; both candidate and preserved native strategy
+remain unavailable as production backends. See the
+[candidate runner](operations/README.md#fixed-hop-candidate-experiment).
 
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 

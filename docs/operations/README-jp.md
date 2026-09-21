@@ -56,6 +56,54 @@ archive/image pin、実runtime権限に結び付けます。所有container/imag
 artifact削除も所有する列挙fileに限定します。失敗reportを保持してから再実行し、
 credentialやlocal raw artifactはcommitしないでください。
 
+### Fixed-hop candidate experiment
+
+`scripts/age_graph_candidate.py`は、明示的に**未有効化の実験候補**です。
+固定1-hopとnative VLEのtemplate生成を分け、現在の固定artifactではfixedだけを実行できます。
+`native_vle`選択は接続前に`graph_backend_unqualified`で拒否します。
+将来の修正済みupstreamを別途認定するため、元のVLE probeと失敗記録は変更せず保存します。
+このrunnerは脆弱性調査を繰り返しません。
+
+candidateはlabel policyでcanonicalなtenant/principal/scope、source可視性、
+有効時刻を参照し、さらにSQL oracleと共通のcanonical neighbor filter・順序・path予算を使います。
+projectionはidentity/topologyだけを持ち、canonical labelや原文は複製しません。
+runtimeにはlabelの所有/書込み権限を与えず、要求は単一read transactionと既存tenant barrierで扱います。
+**generation/freshness/再構築/復元の実装ではありません**。conformance fixtureは
+静止したprojectionを要求ごとに作り直し、cost fixtureは比較readの前に一度だけbuildします。
+
+```bash
+# 所有する新clusterだけを使用。Native backend選択やlive model呼出しは行わない。
+bash scripts/test-age-graph-containers.sh container
+```
+
+別helperは同じ固定AGE imageを使い、`PGAG_TEST_AGE_GRAPH=1`でlive conformance 20件を実行し、
+通過した場合だけ別の新clusterで`PGAG_TEST_AGE_GRAPH_COST=1`のcost 3件を実行します。
+明示opt-inがなければ23件をskipします。通常test imageにはcandidateのoffline契約40件も含み、
+skipをAGE成功とは扱いません。application CLI・backend設定・必須extensionは追加しません。
+
+初回の完走cost runはshapeごとに3 warmup組＋30実測組で、SQL先行とAGE先行を交互にします。
+両方が同じ独立graph oracleに一致する必要があり、失敗、全sample、SQL数とnearest-rank p95を保存します。
+request時間は接続/identity/serializationを含み、明示transaction区間・cursor execute合計は別に出します。
+DBの5秒制限は**statement単位**で、request latency目標ではありません。
+build/容量費用をread latencyへ混ぜません。
+
+| Shape | 対象node/edge | 全projection node/revision | Build ms | Projection bytes |
+|---|---:|---:|---:|---:|
+| Chain | 12/11 | 14/12 | 23.20 | 163,840 |
+| Fanout | 25/24 | 39/36 | 21.00 | 196,608 |
+| Multiseed | 14/40 | 53/76 | 17.28 | 245,760 |
+
+初期のrequest中央値はSQLの9–62倍で、このcandidateは**採用しません**。
+別の統計診断はshape/backend/phaseごと3要求・2 EXPLAINを使い、
+権限とruntime設定を維持してcanonical/projection tableへ`ANALYZE`を適用しました。
+JIT約202–210 msは解消しましたが、chain/fanout中央値はcandidate 101.74/422.10 ms、
+SQL 22.74/62.02 ms（4.47/6.81倍）にとどまりました。
+少数診断を新しい対測定p95や本番容量とせず、global planner overrideや認可緩和で
+安価に見せることもしません。conformance/cost runのexit 0は有効な測定の取得であり、
+latency許容やAGE有効化の承認ではありません。
+非公開証跡はignore対象`.review-artifacts/pgag-age-graph-*`に保持し、
+helperは自身のcontainer/imageだけをcleanupします。credentialやlocal失敗logは公開しないでください。
+
 ## M2 core MVP deployment
 
 現行契約は**service 0.1.0 / API v1 / schema 18**、capability stageは`m2-core-mvp`です。

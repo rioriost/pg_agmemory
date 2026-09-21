@@ -657,8 +657,8 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 | M3 increment | 成果物 / 受入条件 | 初期状態 |
 |---|---|---|
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | PG18/v1.8.0-rc0のbuild/probe実装済み。native VLEは6確認失敗。固定1-hop候補は40確認成功だがadapter認定ではない |
-| M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 独立SQL oracleは17 tests/88探索で完了。canonical統合とAGE比較は未了 |
-| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | 固定templateのcanonical統合後に進む。native VLEは使わず、schema 18は変更しない |
+| M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 固定hop実験候補はcanonical SQL/独立oracleとlive 20件で一致。read中央値がSQLの9–62倍、統計だけの診断後も4.47–6.81倍のため不採用。native経路は保存・無効のまま。本番graphは有効化しない |
+| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | 未了。backend非依存の実装でも高コスト候補や未認定nativeを有効化せず、schema 18は不変 |
 | M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | adapter統合後 |
 
 ## 13. MCP adapter
