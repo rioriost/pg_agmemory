@@ -43,6 +43,7 @@ def sample_report(directory):
     for name, value in {
         "plan.json": plan,
         "build-identity.json": {"exact_commit_inputs": False, "implementation_sha": "a" * 40},
+        "migration.json": {"restored_schema": 16, "probe_schema": 17},
         "limits.json": {"status": "passed"},
         "small-forget.json": {"status": "passed"},
         "large-purge.json": {"status": "passed"},

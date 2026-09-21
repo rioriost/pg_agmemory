@@ -22,7 +22,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 
 from pg_agmemory.api import create_app
-from pg_agmemory.database import SCHEMA_VERSION, Settings
+from pg_agmemory.database import SCHEMA_VERSION, Settings, migrate
 from pg_agmemory.lexical import JAPANESE_PROFILE, segment
 from pg_agmemory.models import RecallResult
 from pg_agmemory.synthesis_policy import SynthesisPolicy, SynthesisPolicyRequest, synthesis_policy
@@ -50,9 +50,14 @@ def prepare(directory, plan_file):
     bench.require(plan["format"] == "pgag-resource-probes-v1", "unknown probe plan")
     with admin() as conn:
         version = conn.execute("SELECT max(version) v FROM pgag_schema_migration").fetchone()["v"]
-        bench.require(version == SCHEMA_VERSION, "restored schema mismatch")
+        bench.require(version in (16, SCHEMA_VERSION), "restored schema mismatch")
         counts = conn.execute("SELECT count(*) n FROM memory.episode").fetchone()["n"]
         bench.require(counts >= 100000, "full S source snapshot required")
+    migrate(os.environ["PGAG_ADMIN_DATABASE_URL"])
+    bench.write_json(
+        directory / "migration.json", {"restored_schema": version, "probe_schema": SCHEMA_VERSION}
+    )
+    with admin() as conn:
         password = secrets.token_urlsafe(32)
         conn.execute(
             sql.SQL("CREATE ROLE pgag_probe_runtime LOGIN PASSWORD {} IN ROLE pgag_runtime").format(
@@ -796,6 +801,7 @@ def report(directory):
     result = {
         "format": "pgag-resource-probes-result-v1",
         "build_identity": read(directory, "build-identity.json"),
+        "migration": read(directory, "migration.json"),
         "plan_digest": bench.digest(plan),
         "limits": limits_result,
         "small_forget": small_result,

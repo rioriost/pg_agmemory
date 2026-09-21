@@ -2,6 +2,21 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.0.33 / schema 17: preserving bounded recall after deletion
+
+The exact `6beb38c` resource probe failed during mixed-load small purges:
+post-deletion recall saturated database connections and the tenant barrier timed
+out. Preserve that failure; the earlier steady-only S pass did not exercise this.
+Runtime-role plans isolated an underestimated embedding join that compared about
+100 million pairs. JIT added overhead but disabling it did not fix the join.
+
+Migration 017 expresses the same tombstone exclusion as a tenant-local set,
+with NOT NULL IDs and existing forced RLS. On an isolated full-S diagnostic copy,
+the post-deletion vector query changed from roughly 2.39 seconds to 55 ms;
+hybrid changed from 2.44 seconds to 53 ms. Those isolated SQL diagnostics are
+not Native latency qualification. Exact resource/distribution qualification is
+still pending; no thresholds, planner settings or model-quality gates changed.
+
 ## v0.0.32 / schema 16: reducing recall scans without relaxing authorization
 
 The frozen `1d898c9` full-data S preflight failed the unchanged latency gates:

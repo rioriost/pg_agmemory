@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.32 / schema 16、M2受入れは未完了
+## 現在の状態: v0.0.33 / schema 17、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。

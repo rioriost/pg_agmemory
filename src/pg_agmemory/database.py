@@ -26,6 +26,7 @@ MIGRATIONS = (
     "014_deletion_manifests.sql",
     "015_recovery_apply.sql",
     "016_set_based_visibility.sql",
+    "017_tombstone_visibility_set.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

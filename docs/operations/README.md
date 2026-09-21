@@ -8,9 +8,23 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 17 tombstone visibility
+
+Current components are **service 0.0.33 / API v1 / schema 17**. Stop/drain
+API/workers before migration 017. Verify the full 1–17 ledger with matching code
+and take current-schema snapshots/bundles from the authoritative lineage; do not
+edit old artifact version fields or MACs. Canonical data and recovery keys are
+unchanged. Rollback uses the protected pre-migration backup and matching code.
+
+The object policy uses a statement-local tenant tombstone anti-set. Object IDs
+and tombstone target IDs are NOT NULL, making it equivalent to the old correlated
+`NOT EXISTS` under the same forced RLS. This avoids a measured misestimated
+embedding nested-loop join after the first deletion. It adds no cross-request
+cache, definer bypass or write-policy change and does not disable JIT globally.
+
 ## Schema 16 read visibility
 
-Current components are **service 0.0.32 / API v1 / schema 16**. Stop/drain
+Introduced at **service 0.0.32 / API v1 / schema 16**. Stop/drain
 API/workers for migration 016 and verify the full migration ledger before
 restarting matching components. No canonical data or recovery key is rewritten.
 Create current-schema recovery snapshots/bundles from the authoritative source;
@@ -28,7 +42,7 @@ filters, mandatory references and deletion/revocation response barriers remain.
 
 ## Schema 15 operational-state application
 
-**Introduced at service 0.0.30 / API v1 / schema 15; current schema is 16.**
+**Introduced at service 0.0.30 / API v1 / schema 15; current schema is 17.**
 Stop/drain API, workers and
 automatic restarts before migration 015. Use matching components and verify
 migration history 1–15. Immediately take a new backup: migration 015 creates a
@@ -163,6 +177,8 @@ bash scripts/measure-resource-probes.sh /private/S/final.dump /private/S-probes
 This Apple Container helper restores the synthetic full-S dump into a new
 disposable cluster; it never connects to the source database. Keep the dump
 private: it contains administrator recovery keys, not just synthetic text.
+The helper accepts the original schema-16 S snapshot or current schema, runs
+ordinary migrations on the isolated copy and records both schema versions.
 `examples/resource-probes-plan.json` freezes 100 small Native purges, concurrent
 admission/failure probes and one 10,000-object derived closure. Small purges run
 within a separate 30-second 20 recall/s + 5 observe/s window with two workers;

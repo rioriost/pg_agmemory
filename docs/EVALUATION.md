@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: v0.0.32 / schema 16, M2 acceptance incomplete
+## Current status: v0.0.33 / schema 17, M2 acceptance incomplete
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 now governs acceptance. pg_agmemory is memory infrastructure, not a judgment

@@ -2,6 +2,19 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.0.33 / schema 17: 削除後のrecall遅延への対応
+
+完全一致`6beb38c`の資源probeは、小規模purgeの混合負荷中に失敗しました。
+削除後のrecall遅延でDB接続が飽和し、tenant barrierがtimeoutしました。
+失敗証跡を保持します。以前のsteady-only S合格では、この条件を測定していません。
+runtime roleのplanではembedding joinの行数見積りが劣化し、約1億組を比較していました。
+JITにも費用はありましたが、無効化だけではjoinの遅延は解消しませんでした。
+
+migration 017はNOT NULL IDと強制RLSを維持し、同じtombstone除外をtenant内の集合として
+評価します。隔離したS全量copyのSQL診断では、削除後vectorは約2.39秒から55 ms、
+hybridは2.44秒から53 msへ短縮しました。これはNative遅延認定ではありません。
+exact資源測定・distribution認定は未完で、閾値、planner設定、model品質gateは変更していません。
+
 ## v0.0.32 / schema 16: 認可を緩めずrecall走査を削減
 
 固定`1d898c9`のS全量preflightは閾値を満たさず、observe transaction p95 **1146.85 ms**、

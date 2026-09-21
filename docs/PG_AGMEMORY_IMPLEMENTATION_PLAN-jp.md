@@ -4,7 +4,7 @@
 
 - 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: core経路と限定復旧は実装済み。service 0.0.32 / schema 16で、認可/閾値を緩めずS preflightの実測recall費用へ対応したが、M2受入れは未完了。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: core経路と限定復旧は実装済み。service 0.0.33 / schema 17で、認可/閾値を緩めず削除後に実測したrecall計画の劣化へ対応したが、M2受入れは未完了。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 

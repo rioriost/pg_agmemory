@@ -7,9 +7,21 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 17 tombstone visibility
+
+現行componentは**service 0.0.33 / API v1 / schema 17**です。migration 017前にAPI/workerを
+停止/drainし、対応codeでledger 1–17を確認してください。信頼する最新lineageから現行schemaの
+snapshot/bundleを取得し、古いartifactのversionやMACを書き換えないでください。
+canonical dataと復旧鍵は変更しません。rollbackには保護した旧backupと対応codeを使います。
+
+object policyのtombstone判定をstatement内・tenant内の除外集合へ変更します。
+object IDとtombstone対象IDはNOT NULLのため、同じ強制RLS下で旧`NOT EXISTS`と同等です。
+削除後に実測したembedding joinの行数見積り劣化とnested loopを避けます。
+要求をまたぐcache、definer bypass、write policy変更、JITの全体無効化は行いません。
+
 ## Schema 16 read visibility
 
-現行componentは**service 0.0.32 / API v1 / schema 16**です。
+**service 0.0.32 / API v1 / schema 16**で導入しました。
 migration 016ではAPI/workerを停止・drainし、全migration履歴を確認して対応componentを再開します。
 canonical data/復旧鍵は書き換えません。正本から現行schemaのsnapshot/bundleを取得し、
 古いartifactのversion/signatureを編集して流用しないでください。
@@ -24,7 +36,7 @@ prepared実行でもcontext/membershipを再評価します。recallの順位計
 
 ## Schema 15 operational-state application
 
-**service 0.0.30 / API v1 / schema 15で導入し、現行schemaは16**です。
+**service 0.0.30 / API v1 / schema 15で導入し、現行schemaは17**です。
 API/worker/自動再起動を停止・drainして
 migration 015を適用し、対応componentとmigration履歴1–15を確認します。
 直後に新backupを取得してください。015はtenant別の専用復旧鍵を追加し、RLSを強制し、
@@ -131,6 +143,8 @@ bash scripts/measure-resource-probes.sh /private/S/final.dump /private/S-probes
 
 Apple Container上の新規使い捨てclusterへ合成S全量dumpを復元します。元DBへは
 接続しません。dumpには合成本文だけでなく管理者recovery keyも含まれるため、
+旧schema 16のS snapshotまたは現行schemaを受け付け、隔離copyへ通常のmigrationを適用し、
+前後のschema番号を記録します。
 非公開で保管してください。`examples/resource-probes-plan.json`は小規模Native
 purge 100件、並行admission/障害probe、10,000 objectの派生closure 1件を固定します。
 小規模purgeは別の30秒間の20 recall/s・5 observe/s・2 worker負荷中に実行します。

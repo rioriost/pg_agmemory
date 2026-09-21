@@ -4,7 +4,7 @@ English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
 - Document version: 0.2 / memory-system responsibility realignment, 2026-09-19
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Core paths and bounded recovery are implemented. Service 0.0.32 / schema 16 addresses measured S-preflight recall costs without relaxing authorization or thresholds. M2 acceptance remains incomplete; evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Core paths and bounded recovery are implemented. Service 0.0.33 / schema 17 addresses measured recall plan regressions after deletion without relaxing authorization or thresholds. M2 acceptance remains incomplete; evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 

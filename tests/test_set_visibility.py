@@ -143,6 +143,32 @@ def test_prepared_membership_set_refreshes_after_revoke_and_regrant(env):
         assert conn.execute(query, prepare=True).fetchall() == [(source,)]
 
 
+@pytest.mark.parametrize("plan_mode", ["force_custom_plan", "force_generic_plan"])
+def test_tombstone_set_refreshes_without_hiding_same_id_in_other_tenant(env, plan_mode):
+    source = UUID(env.observe().json()["memory_id"])
+    with psycopg.connect(env.admin_url) as admin:
+        admin.execute(
+            "INSERT INTO memory.object(tenant_id,id,scope_id,kind) VALUES (%s,%s,%s,'episode')",
+            (env.tenants[1], source, env.scopes[1]),
+        )
+    with psycopg.connect(env.settings.database_url, autocommit=True) as conn:
+        conn.execute(sql.SQL("SET plan_cache_mode={}").format(sql.Literal(plan_mode)))
+        query = "SELECT id FROM memory.object WHERE id=%s"
+        bind(conn, env, 0)
+        assert conn.execute(query, (source,), prepare=True).fetchall() == [(source,)]
+        result = env.client.post(
+            "/v1/forget",
+            headers=env.headers(),
+            json={"memory_ids": [str(source)], "mode": "purge", "reason": "prepared visibility"},
+        )
+        assert result.status_code == 202
+        assert conn.execute(query, (source,), prepare=True).fetchall() == []
+        bind(conn, env, 1)
+        assert conn.execute(query, (source,), prepare=True).fetchall() == [(source,)]
+        bind(conn, env, 0)
+        assert conn.execute(query, (source,), prepare=True).fetchall() == []
+
+
 def test_10000_native_denials_with_positive_controls(env):
     targets = []
     for number in range(100):

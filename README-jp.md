@@ -7,7 +7,11 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.32 / schema 16
+## 現在の開発契約: v0.0.33 / schema 17
+
+migration 017は削除可視性をtenant内・statement内のtombstone集合として評価します。
+RLSやPostgreSQL planner設定を緩めず、削除後に実測した実行計画の劣化へ対応します。
+migration前に停止/drainし、現行schemaの復旧artifactを再生成してください。M2認定は未完です。
 
 migration 016で、tenant/scope/期限/tombstone条件と強制RLSを維持したまま、
 read可視性を集合処理にしました。recallは順位計算とcoverageで候補のmaterializationを共有します。
@@ -35,7 +39,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.0.32 / API v1 / schema 16に揃えます。照合はmodelを呼びません。
+componentはv0.0.33 / API v1 / schema 17に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
