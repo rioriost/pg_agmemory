@@ -439,6 +439,35 @@ async def limits(directory, base):
     bench.write_json(directory / "limits.json", {"status": "passed", "results": results})
 
 
+def background_outcomes(rows, expected):
+    bench.require(len(rows) == expected, "mixed-load job count mismatch")
+    succeeded = stale = 0
+    for row in rows:
+        if row["state"] == "succeeded":
+            bench.require(
+                row["error_code"] is None
+                and row["call_outcome"] == "succeeded"
+                and row["billing_unknown"] is False,
+                "successful background job lacks settled call",
+            )
+            succeeded += 1
+        else:
+            bench.require(
+                row["state"] == "failed"
+                and row["error_code"] == "stale_context"
+                and row["deletion_epoch_stale"]
+                and row["result_id"] is None
+                and not row["has_candidates"]
+                and (
+                    row["call_outcome"] is None
+                    or (row["call_outcome"] == "failed" and row["billing_unknown"] is False)
+                ),
+                "unexpected or unsafe background failure",
+            )
+            stale += 1
+    return {"succeeded_jobs": succeeded, "stale_context_rejections": stale}
+
+
 async def small(directory, base):
     plan, actors = read(directory, "plan.json"), read(directory, "clients.json")
     results = []
@@ -449,12 +478,18 @@ async def small(directory, base):
     def background_jobs():
         with admin() as conn:
             return conn.execute(
-                "SELECT state,count(*) n FROM memory_ops.job WHERE scope_id=ANY(%s::uuid[]) "
-                "GROUP BY state",
+                """SELECT j.id::text,j.state,j.error_code,j.result_id::text,
+                j.captured_deletion_epoch<t.deletion_epoch AS deletion_epoch_stale,
+                c.outcome AS call_outcome,c.billing_unknown,
+                EXISTS(SELECT 1 FROM memory_ops.extraction_candidate x
+                       WHERE x.tenant_id=j.tenant_id AND x.job_id=j.id) AS has_candidates
+                FROM memory_ops.job j JOIN memory.tenant t ON t.id=j.tenant_id
+                LEFT JOIN memory_ops.model_call c ON c.tenant_id=j.tenant_id AND c.job_id=j.id
+                WHERE j.scope_id=ANY(%s::uuid[])""",
                 (scopes,),
             ).fetchall()
 
-    before_jobs = {r["state"]: r["n"] for r in background_jobs()}
+    before_jobs = {r["id"] for r in background_jobs()}
     started = time.perf_counter()
     async with httpx.AsyncClient(base_url=base, timeout=30, trust_env=False) as client:
 
@@ -500,17 +535,13 @@ async def small(directory, base):
             *[one(i) for i in range(plan["small_forget_samples"])],
         )
     for _ in range(1000):
-        after_jobs = {r["state"]: r["n"] for r in background_jobs()}
-        if after_jobs.get("pending", 0) + after_jobs.get("running", 0) == 0:
+        after_jobs = [r for r in background_jobs() if r["id"] not in before_jobs]
+        if all(r["state"] not in ("pending", "running") for r in after_jobs):
             break
         await asyncio.sleep(0.05)
     expected_jobs = plan["mixed_load_seconds"] * 5
-    bench.require(
-        after_jobs.get("succeeded", 0) - before_jobs.get("succeeded", 0) == expected_jobs
-        and all(after_jobs.get(s, 0) == before_jobs.get(s, 0) for s in ("failed", "cancelled"))
-        and after_jobs.get("pending", 0) + after_jobs.get("running", 0) == 0,
-        "mixed-load worker outcomes incomplete",
-    )
+    bench.write_json(directory / "mixed-job-outcomes.json", after_jobs)
+    outcomes = background_outcomes(after_jobs, expected_jobs)
     await pause(directory, True)
     background = [
         json.loads(line) for line in (directory / "client.jsonl").read_text().splitlines()
@@ -553,7 +584,7 @@ async def small(directory, base):
                 "seconds": plan["mixed_load_seconds"],
                 "recall": 4 * expected_jobs,
                 "observe": expected_jobs,
-                "succeeded_jobs": expected_jobs,
+                **outcomes,
                 "workers": 2,
             },
         },

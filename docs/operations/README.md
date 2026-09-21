@@ -185,6 +185,11 @@ within a separate 30-second 20 recall/s + 5 observe/s window with two workers;
 this short probe does **not** replace the 30-minute S qualification. The large
 closure is bulk-seeded, while preview/purge/replay use the actual Native API.
 The existing 1-second small-purge p95 and 900-second large-purge limits are unchanged.
+Concurrent purges can invalidate an in-flight model job's captured deletion
+epoch. Report those `stale_context` rejections separately, never as successful
+jobs. Require a genuinely older epoch, no published result/candidate and either
+no call or a settled failed call; unknown accounting or any other failure fails
+the probe. Keep the earlier all-success harness failure as evidence.
 
 Run `ANALYZE` explicitly after logical restore and again after deletion, retaining
 before/after table statistics. A logical dump is not evidence of usable planner

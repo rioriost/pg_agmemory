@@ -151,6 +151,10 @@ purge 100件、並行admission/障害probe、10,000 objectの派生closure 1件�
 この短時間probeを30分S認定の代用にはしません。大規模closureはbulk投入しますが、
 preview/purge/replayは実Native APIを使用します。小規模p95 1秒未満、大規模900秒未満
 という閾値は変更していません。
+並行purgeは実行中model jobの保存済みdeletion epochを無効化し得ます。
+`stale_context`拒否は成功jobに数えず別記し、epochが実際に古いこと、result/candidate未公開、
+call未予約または既知のfailed会計を要求します。unknown会計や他の失敗はprobe失敗です。
+全job成功を要求して失敗した旧harnessの証跡も残します。
 
 論理restore直後と削除probe後に明示的な`ANALYZE`を実行し、前後のtable統計を保存します。
 論理dumpだけでは利用可能なplanner統計があることを証明できません。その後DB guestと

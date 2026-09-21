@@ -7,6 +7,7 @@
   "mixed_load_seconds": 30,
   "small_forget_start_seconds": 5,
   "small_forget_window_seconds": 20,
+  "mixed_worker_outcomes": "succeeded or verified deletion-epoch stale_context rejection; never count rejection as success",
   "large_purge_objects": 10000,
   "large_purge_deadline_seconds": 900,
   "concurrent_requests": 20,

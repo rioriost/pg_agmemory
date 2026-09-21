@@ -142,3 +142,32 @@ def test_rebind_changes_only_host_and_preserves_private_mode(tmp_path, monkeypat
     assert updated == {k: v for k, v in settings.items() if k != "database_url"}
     assert path.stat().st_mode & 0o777 == 0o600
     assert not (tmp_path / "runtime-rebind.json").exists()
+
+
+def stale_job():
+    return {
+        "state": "failed", "error_code": "stale_context", "deletion_epoch_stale": True,
+        "result_id": None, "has_candidates": False, "call_outcome": "failed",
+        "billing_unknown": False,
+    }
+
+
+@pytest.mark.parametrize("reserved", [True, False])
+def test_mixed_deletion_counts_safe_rejection_separately(reserved):
+    row = stale_job()
+    if not reserved:
+        row.update(call_outcome=None, billing_unknown=None)
+    assert probes.background_outcomes([row], 1) == {
+        "succeeded_jobs": 0, "stale_context_rejections": 1,
+    }
+
+
+@pytest.mark.parametrize("change", [
+    {"state": "pending"}, {"error_code": "dependency_unavailable"},
+    {"deletion_epoch_stale": False}, {"result_id": "published"},
+    {"has_candidates": True}, {"call_outcome": "unknown"},
+    {"call_outcome": "succeeded"}, {"billing_unknown": True},
+])
+def test_mixed_deletion_rejects_unproven_or_unsafe_failure(change):
+    with pytest.raises(probes.bench.ResourceError):
+        probes.background_outcomes([stale_job() | change], 1)
