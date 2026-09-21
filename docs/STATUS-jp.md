@@ -15,6 +15,11 @@ migration 017はNOT NULL IDと強制RLSを維持し、同じtombstone除外をte
 hybridは2.44秒から53 msへ短縮しました。これはNative遅延認定ではありません。
 exact資源測定・distribution認定は未完で、閾値、planner設定、model品質gateは変更していません。
 
+大量tombstone後の低選択率で、候補ごとにmodel projection全体を再走査するjoinも残ったため、
+embeddingをunique keyによるscalar lookupにしました。tenant/object/revision/model-space条件と
+強制RLSは維持し、projection欠落はNULLのままcoverage不足として報告します。
+lexical fallbackやrank fusion、tombstone権限は変更せず、ANNも有効化しません。
+
 ## v0.0.32 / schema 16: 認可を緩めずrecall走査を削減
 
 固定`1d898c9`のS全量preflightは閾値を満たさず、observe transaction p95 **1146.85 ms**、

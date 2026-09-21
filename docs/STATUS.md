@@ -17,6 +17,13 @@ hybrid changed from 2.44 seconds to 53 ms. Those isolated SQL diagnostics are
 not Native latency qualification. Exact resource/distribution qualification is
 still pending; no thresholds, planner settings or model-quality gates changed.
 
+Recall also uses unique-key scalar embedding lookups rather than optional vector
+joins. After a large tombstone set, low-selectivity joins could still rescan the
+whole model projection set per candidate. Each lookup retains tenant, object,
+revision and model-space keys plus forced RLS; absent projections remain NULL
+and continue to mark incomplete coverage. Lexical fallbacks and rank fusion are
+unchanged. This does not weaken tombstone permissions or enable ANN.
+
 ## v0.0.32 / schema 16: reducing recall scans without relaxing authorization
 
 The frozen `1d898c9` full-data S preflight failed the unchanged latency gates:

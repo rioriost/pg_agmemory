@@ -494,21 +494,22 @@ class MemoryService:
         if clock is None:
             raise MemoryError("database_error", 503)
         # Scope IDs only narrow access; invisible scopes never contribute candidates.
+        # Unique-key vector lookups avoid cross scans when RLS estimates sparse candidates.
         candidates = """WITH candidates AS MATERIALIZED (
                     SELECT o.id, o.kind, o.created_at, 1 AS revision, e.content, e.occurred_at,
                            NULL::timestamptz AS valid_from, NULL::timestamptz AS valid_to,
                            NULL::uuid AS source_entity, NULL::uuid AS target_entity,
                            'reported'::text AS epistemic_status,
                            CASE WHEN %(profile)s = 'simple-v1' THEN e.search_text
-                                ELSE lex.search_text END AS search_text, vec.embedding
+                                ELSE lex.search_text END AS search_text,
+                            (SELECT vec.embedding FROM memory.episode_embedding vec
+                             WHERE vec.tenant_id=e.tenant_id AND vec.episode_id=e.id
+                               AND vec.model_name=%(model_name)s
+                               AND vec.model_revision=%(model_revision)s) AS embedding
                     FROM memory.object o JOIN memory.episode e USING (tenant_id, id)
                     LEFT JOIN memory.episode_lexical lex
                       ON lex.tenant_id = e.tenant_id AND lex.episode_id = e.id
                      AND lex.profile = %(profile)s
-                    LEFT JOIN memory.episode_embedding vec
-                      ON vec.tenant_id = e.tenant_id AND vec.episode_id = e.id
-                     AND vec.model_name = %(model_name)s
-                     AND vec.model_revision = %(model_revision)s
                     WHERE o.tenant_id = %(tenant)s AND o.scope_id = ANY(%(scopes)s)
                       AND (%(kind)s::text IS NULL OR %(kind)s = 'episode')
                       AND %(subject)s::text IS NULL AND %(predicate)s::text IS NULL
@@ -521,17 +522,16 @@ class MemoryService:
                            link.source_id, endpoint.target_id,r.epistemic_status,
                            CASE WHEN %(profile)s = 'simple-v1'
                                 THEN a.search_text || r.search_text ELSE lex.search_text END,
-                           vec.embedding
+                           (SELECT vec.embedding FROM memory.assertion_embedding vec
+                            WHERE vec.tenant_id=r.tenant_id AND vec.assertion_id=r.assertion_id
+                              AND vec.revision=r.revision AND vec.model_name=%(model_name)s
+                              AND vec.model_revision=%(model_revision)s)
                     FROM memory.object o JOIN memory.assertion a USING (tenant_id, id)
                     JOIN memory.assertion_revision r
                       ON r.tenant_id = a.tenant_id AND r.assertion_id = a.id
                     LEFT JOIN memory.assertion_lexical lex
                       ON lex.tenant_id = r.tenant_id AND lex.assertion_id = r.assertion_id
                      AND lex.revision = r.revision AND lex.profile = %(profile)s
-                    LEFT JOIN memory.assertion_embedding vec
-                      ON vec.tenant_id = r.tenant_id AND vec.assertion_id = r.assertion_id
-                     AND vec.revision = r.revision AND vec.model_name = %(model_name)s
-                     AND vec.model_revision = %(model_revision)s
                     LEFT JOIN memory.relation link
                       ON link.tenant_id = a.tenant_id AND link.id = a.id
                     LEFT JOIN memory.relation_revision endpoint ON endpoint.tenant_id = r.tenant_id

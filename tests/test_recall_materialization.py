@@ -52,3 +52,26 @@ def test_empty_scope_still_returns_complete_coverage(env):
     value = response.json()
     assert value["items"] == [] and value["empty_reason"] == "not_found"
     assert value["coverage"]["retrieval_complete"]
+
+
+@pytest.mark.parametrize("mode", ["vector", "hybrid"])
+def test_projection_lookups_keep_coverage_after_unrelated_deletion(env, mode):
+    source = env.observe("Gold shared").json()["memory_id"]
+    assertion = env.remember(source).json()["memory_id"]
+    for memory_id in (source, assertion):
+        upload(env, memory_id)
+    missing = env.observe("Gold shared without vector").json()["memory_id"]
+    deleted = env.observe(index=2).json()["memory_id"]
+    assert env.client.post(
+        "/v1/forget", headers=env.headers(index=2),
+        json={"memory_ids": [deleted], "mode": "purge", "reason": "other scope"},
+    ).status_code == 202
+    result = env.recall(
+        query="" if mode == "vector" else "shared",
+        retrieval_mode=mode, vector_query=request(),
+    )
+    assert result.status_code == 200
+    value = result.json()
+    ids = {item["memory_id"] for item in value["items"]}
+    assert ids == {source, assertion} | ({missing} if mode == "hybrid" else set())
+    assert value["coverage"]["vector_incomplete"]
