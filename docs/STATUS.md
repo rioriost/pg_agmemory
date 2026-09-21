@@ -2,6 +2,31 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.0.35 / schema 18: derived-memory recovery coverage
+
+The v5 disposable backup drill includes inferred and explicitly adopted assertions,
+quarantined candidates, source/assertion embeddings, typed working snapshots with
+uncompacted tails, SQL graph derivatives and unknown tool effects. Each has both
+retained and purged fixtures. An unchanged mixed suppress/purge baseline is
+preserved without replaying it; new suppress, overlapping targets, changed
+prefixes and purge suffixes above 100 expanded targets remain refused.
+
+The Linux development drill restores the old dump after destroying the source,
+replays three purges, applies the authenticated latest operational bundle and
+matches all 35 canonical and 21 operational fingerprints. All 20 tombstoned
+anchors remain unreadable; 11 synthetic reservations survive without refund.
+Retained vectors/provenance/graph remain readable. Typed checkpoint restoration
+preserves pending approvals and the unknown-effect fence; stale working snapshots
+explicitly refuse read/resume after epoch changes instead of silently reviving.
+No external model calls, migration or automatic service activation are added.
+
+The initial expanded run exposed a harness-only ordering ambiguity for one
+principal in several scopes; snapshots now order memberships by the full key.
+Exact-commit/native qualification is pending. Missing/newer canonical content,
+arbitrary histories, HA/PITR and provider-side reconciliation remain outside
+this bounded application. **M2 is not complete**; the single reference benchmark
+and release handoff remain.
+
 ## v0.0.34 / schema 18: bounding large-tombstone read checks
 
 Exact schema-17 probes at `cacb47b` passed small/large deletion and limit checks,

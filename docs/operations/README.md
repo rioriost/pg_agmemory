@@ -10,7 +10,9 @@ databases or real user histories.
 
 ## Schema 18 tombstone read permissions
 
-Current components are **service 0.0.34 / API v1 / schema 18**. Stop/drain
+Current components are **service 0.0.35 / API v1 / schema 18**. Version 0.0.35
+adds no migration; deploy matching components with API/workers drained.
+Stop/drain
 API/workers before migration 018 and verify ledger 1–18. Generate fresh
 current-schema recovery artifacts with matching code; the data and keys remain
 unchanged. Do not rewrite or resign older evidence to claim it was qualified.
@@ -117,14 +119,25 @@ HA/PITR, arbitrary histories, missing content and external provider state remain
 outside the qualification. `restore_authorized=false` remains explicit; the
 command does not automatically start services or waive remaining deployment gates.
 
-The current **v4 drill** restores an old dump to a fresh cluster after deleting
-the source cluster, replays two purges after a nonempty baseline, then applies
+The current **v5 drill** restores an old dump to a fresh cluster after deleting
+the source cluster, preserves a two-receipt mixed suppress/purge baseline,
+replays three subsequent purges, then applies
 the authenticated latest bundle through the CLI. All original receipt IDs,
 idempotency records, ACL/policy and 21 operational fingerprints now match, as do
-35 canonical fingerprints. Three synthetic reservations (unknown, failed and
+35 canonical fingerprints. Eleven synthetic reservations (including unknown, failed and
 succeeded) survive; duplicate semantic jobs retain their IDs, unknown retries
 are refused and a new call is denied at the consumed quota. Probes roll back.
 No external model requests or long-running API/worker processes are started.
+
+Both purged and retained fixtures cover extraction/adoption/quarantined candidates,
+episode/assertion vectors, working snapshots/tails, SQL graph and tool-effect
+history. Retained provenance and vector/graph reads are checked. Typed checkpoint
+restoration preserves exact state and unknown-effect blocking; epoch-stale working
+snapshots reject read/resume explicitly. A suppressed original remains physically
+stored but unreadable. The mixed prefix must be unchanged and disjoint; new
+post-backup suppress, overlapping targets, altered history or purge receipts over
+100 expanded targets fail closed. This does not enable Native suppress or
+restore missing newer content. Keep services isolated after the drill/application.
 
 ## Resource measurements
 

@@ -274,6 +274,35 @@ def test_nonempty_baseline_is_preserved_and_only_suffix_is_replayed():
     assert drill.validate_evidence(latest, latest)[:2] == ((), [])
 
 
+@pytest.mark.parametrize("application", [False, True])
+def test_existing_suppress_prefix_is_preserved_without_replaying_it(application):
+    before, latest = multiple_evidence()
+    for value in (before, latest):
+        value["deletions"][0].update(mode="suppress", state="blocked_for_reads")
+        if application:
+            value["format"] = "pgag-isolated-purge-drill-v5"
+    validate = drill.validate_application_evidence if application else drill.validate_evidence
+    receipts = validate(before, latest)[0]
+    assert len(receipts) == 1 and receipts[0].mode == "purge"
+    assert str(receipts[0].deletion_id) == latest["deletions"][1]["id"]
+    assert validate(latest, latest)[0] == ()
+    latest["deletions"][0].update(mode="purge", state="active_store_purged")
+    with pytest.raises(drill.DrillError, match="history_mismatch"):
+        validate(before, latest)
+
+
+def test_application_rejects_new_suppress_and_old_recipe():
+    before, latest = multiple_evidence()
+    for value in (before, latest):
+        value["format"] = "pgag-isolated-purge-drill-v5"
+    latest["deletions"][1].update(mode="suppress", state="blocked_for_reads")
+    with pytest.raises(drill.DrillError, match="history_unsupported"):
+        drill.validate_application_evidence(before, latest)
+    before["format"] = "pgag-isolated-purge-drill-v4"
+    with pytest.raises(drill.DrillError, match="v5 required"):
+        drill.validate_application_evidence(before, latest)
+
+
 @pytest.mark.parametrize("field", ["id", "principal_id", "object_count", "deletion_epoch"])
 def test_deletion_history_prefix_cannot_be_replaced(field):
     before, latest = multiple_evidence()

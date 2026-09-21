@@ -7,7 +7,12 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.34 / schema 18
+## 現在の開発契約: v0.0.35 / schema 18
+
+限定復元drillは、抽出・採用・vector・working snapshot/tail・SQL graph・tool-effectの
+保持対象とpurge対象を含みます。backup内の変更されていないsuppress/purge混在prefixは
+保持しますが、新しいsuppressのreplayは未対応です。migrationや公開APIは追加しません。
+[復旧運用](docs/operations/README-jp.md#schema-15-operational-state-application)を参照してください。
 
 migration 018ではtombstone metadataのread権限も集合処理にします。
 大規模な削除履歴でもtenant/scope/期限の認可条件は変更しません。
@@ -42,7 +47,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.0.34 / API v1 / schema 18に揃えます。照合はmodelを呼びません。
+componentはv0.0.35 / API v1 / schema 18に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
@@ -50,7 +55,7 @@ schema 14で**transactionに結び付いた削除対象manifest**と管理者専
 schema 13以前のreceiptは対応不明と明示し、推測でbackfillしません。
 
 exportは削除metadataのみで、**復元commandでもAPI/model worker再開許可でもありません**。
-最新ACL/policy/model call/quotaの全体照合と資源認定はM2の残作業です。
+最新ACL/policy/model call/quotaの全体照合は必須であり、このexportだけでは満たせません。
 Native `forget`は引き続き`preview`/`purge`のみで、保存形式の`suppress`を
 公開APIとして有効化しません。migration 014でmanifest、015で復旧対応を追加しました。
 [manifest運用](docs/operations/README-jp.md#schema-14-deletion-manifests)も参照してください。

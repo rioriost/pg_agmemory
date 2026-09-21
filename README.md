@@ -6,7 +6,13 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.34 / schema 18
+## Current development contract: v0.0.35 / schema 18
+
+The bounded recovery drill now covers both retained and purged extraction,
+adoption, vectors, working snapshots/tails, SQL graph and tool-effect records.
+An unchanged mixed suppress/purge prefix already in the backup is preserved;
+new suppress replay remains unsupported. No migration or public API is added.
+See [recovery operations](docs/operations/README.md#schema-15-operational-state-application).
 
 Migration 018 also makes tombstone metadata read permissions set-based. The
 tenant/scope/expiry rules are unchanged, including for large deletion ledgers.
@@ -46,7 +52,7 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.0.34 / API v1 / schema 18 components. No model calls are made by the check.
+Use matching v0.0.35 / API v1 / schema 18 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new
@@ -56,7 +62,7 @@ explicit unknown mapping, not an invented backfill.
 
 The export is deletion metadata only: **not a restore command or permission to
 restart API/model workers**. Full latest-ACL/policy/model-call/quota reconciliation
-and resource qualification remain M2 work. Native `forget` still permits
+remain mandatory; the export alone supplies none of them. Native `forget` still permits
 `preview`/`purge` only; the stored `suppress` mode is not enabled as a public API.
 Migration 014 introduced those manifests; migration 015 adds recovery support. See
 [current operations](docs/operations/README.md#schema-14-deletion-manifests).

@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: v0.0.34 / schema 18, M2 acceptance incomplete
+## Current status: v0.0.35 / schema 18, M2 acceptance incomplete
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
@@ -1136,7 +1136,7 @@ automatic publication or treat adoption as supersession of another assertion.
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | Bounded exact-state application now preserves IDs/policy/job/call accounting, with rollback and runtime isolation. **Open:** broader content/derivative/history profiles and deployment qualification. Missing canonical content is not reconstructed; no automatic activation or blanket restore claim |
+| M2-B deletion/ACL/policy/call-accounting restore | v5 Linux development drill preserves an unchanged mixed baseline, 35 canonical/21 operational fingerprints, retained/purged derivatives and 11 reservations; 20 tombstoned anchors stay unreadable. **Open:** exact-commit/native qualification. Missing/newer content and unsupported histories are refused; no automatic activation or blanket restore claim |
 | M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Both native distributions complete at runtime-identical `7a2fd88`. Physical host/device cold and exclusive production capacity are not claimed |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |

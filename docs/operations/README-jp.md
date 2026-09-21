@@ -9,7 +9,8 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## Schema 18 tombstone read permissions
 
-現行componentは**service 0.0.34 / API v1 / schema 18**です。migration 018前にAPI/workerを
+現行componentは**service 0.0.35 / API v1 / schema 18**です。0.0.35はmigration追加なしで、
+API/workerをdrainして対応componentを配置します。migration 018前にAPI/workerを
 停止/drainし、ledger 1–18を確認します。対応codeで現行schemaの復旧artifactを新規取得し、
 過去の証跡を書換え・再署名して認定済みとしないでください。dataと鍵は変更しません。
 tombstone metadataのtenant、read/admin membership、statement時点の期限判定は同じです。
@@ -94,12 +95,21 @@ FK/check/一意/遅延完全性制約は維持し、適用後に21運用fingerpr
 一般audit-event履歴/sequenceは置換せず保持し、HA/PITR、任意履歴、欠落本文、
 provider側状態は認定外です。`restore_authorized=false`を明示し、自動起動や残る配置gateの免除はしません。
 
-現行**v4 drill**は元cluster削除後に旧dumpを新clusterへ復元し、削除済みbaseline後のpurge 2件を
+現行**v5 drill**は元cluster削除後に旧dumpを新clusterへ復元し、suppress/purge混在baseline 2件を保持、
+その後のpurge 3件を
 再適用してから、認証済み最新bundleをCLIで適用します。元receipt ID、idempotency、
 ACL/policy、21運用fingerprintと35 canonical fingerprintが一致します。
-synthetic予約3件（unknown/失敗/成功）を保持し、意味的job IDの維持、unknown retry拒否、
+synthetic予約11件（unknown/失敗/成功を含む）を保持し、意味的job IDの維持、unknown retry拒否、
 消費済みquotaでの新call拒否を確認します。probeはrollbackし、
 外部model requestや常駐API/worker processは起動しません。
+
+抽出/採用/隔離candidate、原文/assertion vector、working snapshot/tail、SQL graph、
+tool-effect履歴の保持対象とpurge対象を含み、生存provenanceとvector/graph検索を確認します。
+typed checkpointは正確なstateとunknown effectによる停止を保持し、
+epochが古いworking snapshotはread/resumeを明示拒否します。
+suppress原文は物理的に保持しても読めません。混在prefixは不変・対象重複なしを要求し、
+backup後の新しいsuppress、対象重複、履歴改変、展開100対象超のpurgeは拒否します。
+Native suppressの有効化や新しい欠落本文の復元ではなく、適用後もserviceの隔離を維持します。
 
 ## Resource measurements
 

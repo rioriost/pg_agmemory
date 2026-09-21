@@ -2,6 +2,25 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.0.35 / schema 18: 派生記憶の復元範囲を拡張
+
+使い捨てbackup drill v5は、推論/明示採用assertion、隔離candidate、原文/assertion embedding、
+typed working snapshotと未圧縮tail、SQL graph派生物、unknown tool effectについて、
+保持対象とpurge対象の両方を扱います。backup内の変更されていないsuppress/purge混在baselineは
+再実行せず保持します。新しいsuppress、対象の重複、prefix改変、展開対象100件超のpurge suffixは拒否します。
+
+Linux開発drillでは元clusterを削除してから旧dumpを復元し、purge 3件と認証済み最新運用bundleを適用、
+35 canonical/21運用fingerprintが一致しました。tombstone対象20件は読めず、
+synthetic予約11件を返還なしで保持します。生存vector/provenance/graphは読めます。
+typed checkpointの復元でも保留承認とunknown effectの再実行禁止を保ち、
+epochが古いworking snapshotはread/resumeを明示拒否します。
+外部model呼出し、migration、自動service起動は追加しません。
+
+初回の拡張runでは複数scopeに所属する同一principalの比較順序が曖昧なharness不具合を検出し、
+membership snapshotを完全なkey順へ修正しました。完全一致commit/両nativeの認定は未了です。
+欠落/新しいcanonical本文、任意履歴、HA/PITR、provider側照合は限定適用の対象外です。
+**M2は未完了**で、一つの参考benchmarkとrelease引き継ぎが残ります。
+
 ## v0.0.34 / schema 18: 大量tombstoneのread確認を改善
 
 schema 17のexact probe `cacb47b`では小/大規模削除と上限確認は成功しましたが、

@@ -4,7 +4,7 @@
 
 - 文書版: 0.2 / 記憶システムの責務に沿った軌道修正、2026-09-19
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: core経路と限定復旧は実装済み。service 0.0.34 / schema 18で、認可/閾値を緩めず削除後に実測したrecall計画と権限確認の費用へ対応したが、M2受入れは未完了。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: core経路と限定復旧は実装済み。service 0.0.35 / schema 18で、本文一致と再開禁止を維持し、保持/purge対象の派生物と不変の混在削除prefixへ隔離復旧範囲を拡張したが、M2受入れは未完了。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -752,7 +752,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 | 順序 | 作業と完了証跡 | 現状 |
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
-| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | schema 15の認証付き原子的適用で、本文一致済み隔離復元先の運用ID/policy/job/call会計を保持。**広い派生物/本文/履歴profileと配置認定が残る**。任意本文復旧や自動起動はしない |
+| M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | 認証付き適用とv5 drillで、保持/purge対象の抽出・採用・vector・working state/tail・SQL graph・effectと不変の混在prefixを扱う。**完全一致commit/両nativeの認定が残る**。欠落/新本文や未対応履歴は拒否し、自動起動しない |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | exact `51293b4`でS全量・30分steady、混合小規模削除、10k purge、limit/failure、宣言したguest-coldを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host cold/専用本番容量は主張しない |
 | M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
 

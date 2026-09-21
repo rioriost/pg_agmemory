@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.34 / schema 18、M2受入れは未完了
+## 現在の状態: v0.0.35 / schema 18、M2受入れは未完了
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -1035,7 +1035,7 @@ supersession とみなしたりしてはいけない。
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
+| M2-B 削除/ACL/policy/call会計の復旧 | v5 Linux開発drillで不変の混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持。tombstone対象20件は読めない。**未完:** 完全一致commit/両nativeの認定。欠落/新本文と未対応履歴は拒否し、自動起動や包括restore認定はしない |
 | M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host/device coldや専用本番容量は主張しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |

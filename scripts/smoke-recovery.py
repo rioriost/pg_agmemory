@@ -3,6 +3,7 @@
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
 three synthetic call outcomes, unknown-call fences and consumed quota.
+The v5 fixture includes retained and purged processing/working/graph/effect derivatives.
 """
 
 import asyncio
@@ -28,21 +29,36 @@ from pydantic import ValidationError
 from pg_agmemory.admin import AdminError
 from pg_agmemory.capture_policy import CapturePolicy, CapturePolicyRequest, capture_policy
 from pg_agmemory.checkpoints import Checkpoints
+from pg_agmemory.compaction import Working
 from pg_agmemory.database import SCHEMA_VERSION, RuntimeValidationError, migrate, validate_runtime
 from pg_agmemory.deletion_history import DeletionHistory, purge_replay_suffix
+from pg_agmemory.effects import ToolEffects
+from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.models import (
+    AdoptCandidate,
+    AppendWorkingEvent,
     CheckpointState,
+    CompactWorking,
     CreateCheckpoint,
+    CreateEntity,
+    CreateRelation,
     EnqueueJob,
     Evidence,
+    ExpandGraph,
     Explain,
     Forget,
     MemoryReference,
     Observe,
+    PendingEffect,
+    PlanToolEffect,
     ProcessMemory,
+    QueryWorkingEvents,
+    Recall,
     Remember,
     RestoreCheckpoint,
+    TransitionToolEffect,
+    VectorQuery,
 )
 from pg_agmemory.processing import Processing
 from pg_agmemory.processing_recovery import (
@@ -50,7 +66,14 @@ from pg_agmemory.processing_recovery import (
     capture_processing_state,
     compare_processing_state,
 )
-from pg_agmemory.providers import ExtractionResult, ProviderFailure, ProviderSettings
+from pg_agmemory.providers import (
+    ExtractionCandidate,
+    ExtractionResult,
+    GeneratedEmbedding,
+    ProviderFailure,
+    ProviderSettings,
+    SummaryResult,
+)
 from pg_agmemory.recovery_apply import RecoveryBundle, export_bundle
 from pg_agmemory.scope_access import ScopeAccessRequest, scope_access
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
@@ -66,6 +89,19 @@ SECOND = "synthetic-recovery-second"
 BASELINE = "synthetic-recovery-baseline"
 MODEL_PREFIX = "synthetic-recovery-model-"
 BUDGET = "synthetic-recovery-budget"
+SUPPRESSED = "synthetic-recovery-suppressed"
+DERIVED_PURGED = "synthetic-recovery-derived-purged"
+DERIVED_RETAINED = "synthetic-recovery-derived-retained"
+DERIVATIVE_NAMES = (DERIVED_PURGED, DERIVED_RETAINED)
+DERIVATIVE_TEXT = "RecoveryUser / preferred_editor: Vim"
+DERIVATIVE_SUMMARY = "Untrusted synthetic context; approval is still pending."
+DERIVATIVE_TABLES = (
+    "memory.assertion_derivation", "memory_ops.extraction_candidate",
+    "memory.episode_embedding", "memory.assertion_embedding",
+    "memory.working_snapshot", "memory.working_event",
+    "memory.entity", "memory.entity_evidence", "memory.relation", "memory.relation_revision",
+    "memory.tool_effect", "memory.tool_effect_revision", "memory.tool_effect_reference",
+)
 
 
 def processing_profile():
@@ -149,14 +185,15 @@ def snapshot(url):
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         result = {
-            "format": "pgag-isolated-purge-drill-v4",
+            "format": "pgag-isolated-purge-drill-v5",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
             "principals": rows(conn, "SELECT * FROM memory.principal ORDER BY id"),
             "objects": rows(conn, """SELECT tenant_id,id,scope_id,kind
                                     FROM memory.object ORDER BY id"""),
-            "memberships": rows(conn, "SELECT * FROM memory.scope_member ORDER BY principal_id"),
+            "memberships": rows(conn, """SELECT * FROM memory.scope_member
+                                        ORDER BY tenant_id,scope_id,principal_id"""),
             "tombstones": rows(conn, """SELECT tenant_id,object_id,scope_id
                                         FROM memory_ops.object_tombstone ORDER BY object_id"""),
             "deletions": rows(conn, """SELECT tenant_id,id,principal_id,mode,state,object_count,
@@ -293,8 +330,8 @@ def validate_evidence(before, latest):
 
 
 def validate_application_evidence(before, latest):
-    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v4",
-            "application evidence v4 required")
+    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v5",
+            "application evidence v5 required")
     require(before["schema_version"] == latest["schema_version"] == 18, "schema18 required")
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
@@ -335,6 +372,160 @@ async def service(url, subject=OPERATOR):
             yield MemoryService(conn, identity)
 
 
+async def seed_derivatives(admin_url, url, tenant, operator):
+    profile = processing_profile()
+    scopes = []
+    for _ in DERIVATIVE_NAMES:
+        scope = uuid4()
+        with psycopg.connect(admin_url) as conn:
+            conn.execute("INSERT INTO memory.scope(tenant_id,id) VALUES (%s,%s)", (tenant, scope))
+            epoch = conn.execute(
+                "SELECT access_epoch FROM memory.tenant WHERE id=%s", (tenant,),
+            ).fetchone()[0]
+        with scope_access(admin_url, ScopeAccessRequest(
+            operation="set", tenant_id=tenant, scope_id=scope, principal_id=operator,
+            expected_access_epoch=epoch, permissions=("admin",), no_expiry=True,
+        )) as result:
+            epoch = result.access_epoch
+        with synthesis_policy(admin_url, SynthesisPolicyRequest(
+            operation="set", tenant_id=tenant, scope_id=scope, expected_access_epoch=epoch,
+            policy=SynthesisPolicy(
+                enabled=True, profile_digest=profile.digest, kinds=["extract", "embed", "compact"],
+                publish_predicates=["preferred_editor"],
+                consent_references=["disposable-recovery-drill-only"],
+                max_calls=4, max_output_tokens=128,
+            ),
+        )):
+            pass
+        scopes.append(scope)
+    calls = []
+
+    async def extract(data):
+        calls.append("extract")
+        require(data.text == DERIVATIVE_TEXT, "unexpected derivative source")
+        return ExtractionResult(
+            model=profile.settings.text_model, input_digest=data.digest(),
+            candidates=[ExtractionCandidate(
+                subject="RecoveryUser", predicate=predicate, value="Vim",
+                evidence_quote=data.text, start=0, end=len(data.text),
+            ) for predicate in ("preferred_editor", "editor_choice", "other_editor")],
+        )
+
+    async def embed(data):
+        calls.append("embed")
+        return GeneratedEmbedding(
+            model=profile.settings.embedding_model, input_digest=data.digest(),
+            values=[1.0] + [0.0] * 767,
+        )
+
+    async def summarize(data):
+        calls.append("compact")
+        return SummaryResult(
+            model=profile.settings.text_model, input_digest=data.digest(),
+            summary=DERIVATIVE_SUMMARY,
+        )
+
+    profile.provider.extract, profile.provider.embed, profile.provider.summarize = (
+        extract, embed, summarize,
+    )
+    for namespace, scope in zip(DERIVATIVE_NAMES, scopes, strict=True):
+        async with service(url) as memory:
+            observed = await memory.observe(Observe(
+                scope_id=scope, source_namespace=namespace, source_event_id="1",
+                occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content=DERIVATIVE_TEXT,
+                consent_reference="disposable-recovery-drill-only",
+            ), namespace)
+            source = UUID(observed["memory_id"])
+            queued = await Processing(memory).enqueue(ProcessMemory(
+                scope_id=scope, kind="extract", source=MemoryReference(memory_id=source),
+            ), namespace + "-extract")
+        result = await run_once(url, OPERATOR, profile=profile)
+        require(result["outcome"] == "succeeded"
+                and result["result"]["counts"] == {
+                    "published": 1, "duplicate": 0, "quarantined": 2,
+                }, "derivative extraction did not publish/quarantine exact candidates")
+        inferred = UUID(result["result"]["assertions"][0]["memory_id"])
+        async with service(url) as memory:
+            review = await Processing(memory).candidates(UUID(queued["job_id"]))
+            adopted = await Processing(memory).adopt(UUID(queued["job_id"]), 1, AdoptCandidate(
+                explicit_intent=True, expected_input_digest=review["derivation"]["input_digest"],
+                reason="Synthetic explicit adoption, not a human evaluation",
+            ), namespace + "-adopt")
+            require(adopted["epistemic_status"] == "reported", "adoption status changed")
+        for target in (source, inferred):
+            async with service(url) as memory:
+                await Processing(memory).enqueue(ProcessMemory(
+                    scope_id=scope, kind="embed", source=MemoryReference(memory_id=target),
+                ), namespace + "-embed-" + str(target))
+            require((await run_once(url, OPERATOR, profile=profile))["outcome"] == "succeeded",
+                    "derivative embedding failed")
+        run_id, branch_id, operation_id = uuid4(), uuid4(), uuid4()
+        branch = {"scope_id": scope, "run_id": run_id, "branch_id": branch_id}
+        state = CheckpointState(
+            goal="Preserve exact recovery state", constraints=["No approval inference"],
+            pending_approvals=["Reviewer approval required"], important_ids=["TASK-RESTORE-1"],
+            versions=["1.2"], paths=["src/main.py"], failed_actions=["Never blindly retry"],
+            unresolved_questions=["Who approves?"], next_actions=["Ask reviewer"],
+            pending_effects=[PendingEffect(
+                operation_id=operation_id, description="Synthetic effect", status="unknown",
+            )],
+        )
+        async with service(url) as memory:
+            head = await Checkpoints(memory).create(CreateCheckpoint(
+                **branch, expected_head=None, harness_id="synthetic-recovery-derivatives",
+                harness_version="1", event_watermark=99, state=state,
+                memory_refs=[MemoryReference(memory_id=source)],
+            ), namespace + "-checkpoint")
+            effect = await ToolEffects(memory).plan(PlanToolEffect(
+                scope_id=scope, run_id=run_id, operation_id=operation_id,
+                tool_name="synthetic.no-egress", action_hash="a" * 64,
+                memory_refs=[MemoryReference(memory_id=source)],
+            ), namespace + "-effect")
+            for revision, status in ((1, "dispatched"), (2, "unknown")):
+                await ToolEffects(memory).transition(
+                    UUID(effect["memory_id"]), TransitionToolEffect(
+                        expected_revision=revision, status=status, reason="Synthetic fixture",
+                    ), namespace + "-" + status,
+                )
+            entities = [await SqlGraph(memory).create_entity(CreateEntity(
+                scope_id=scope, entity_type="component", canonical_label=label,
+                evidence=[Evidence(memory_id=source, quote=quote)], explicit_intent=True,
+            ), namespace + "-" + label)
+                for label, quote in (("User", "RecoveryUser"), ("Editor", "Vim"))]
+            await SqlGraph(memory).create_relation(CreateRelation(
+                scope_id=scope, source_entity=UUID(entities[0]["memory_id"]),
+                target_entity=UUID(entities[1]["memory_id"]), predicate="depends_on",
+                evidence=[Evidence(memory_id=source, quote=DERIVATIVE_TEXT)], explicit_intent=True,
+            ), namespace + "-relation")
+            await Working(memory).append(AppendWorkingEvent(
+                **branch, source=MemoryReference(memory_id=source),
+            ), namespace + "-event")
+            await Working(memory).enqueue(CompactWorking(
+                **branch, expected_head=UUID(head["checkpoint_id"]), through_sequence=1,
+            ), namespace + "-compact")
+        compacted = await run_once(url, OPERATOR, profile=profile)
+        require(compacted["outcome"] == "succeeded", "derivative compaction failed")
+        async with service(url) as memory:
+            tail = await memory.observe(Observe(
+                scope_id=scope, source_namespace=namespace + "-tail", source_event_id="1",
+                occurred_at=datetime(2026, 9, 1, tzinfo=UTC), content="Keep uncompacted tail.",
+                consent_reference="disposable-recovery-drill-only",
+            ), namespace + "-tail")
+            await Working(memory).append(AppendWorkingEvent(
+                **branch, source=MemoryReference(memory_id=UUID(tail["memory_id"])),
+            ), namespace + "-tail-event")
+            saved = await Working(memory).get(UUID(compacted["result"]["checkpoint_id"]))
+            require(saved["checkpoint"]["state"] == state.model_dump(mode="json")
+                    and saved["summary"] == DERIVATIVE_SUMMARY
+                    and saved["coverage_start"] == saved["coverage_end"] == 1
+                    and [r["sequence"] for r in saved["tail"]["events"]] == [2]
+                    and saved["checkpoint"]["automatic_reexecution"] is False
+                    and saved["checkpoint"]["resume_allowed"] is False,
+                    "typed state, summary, coverage, tail or effect safety changed")
+    require(calls == ["extract", "embed", "embed", "compact"] * 2,
+            "exactly eight synthetic derivative calls required")
+
+
 async def seed(admin_url):
     migrate(admin_url)
     url = runtime_url(admin_url, create=True)
@@ -371,9 +562,6 @@ async def seed(admin_url):
             evidence=[Evidence(memory_id=source["id"], quote="Vim")],
         )
         assertion = await memory.remember(intent, "recovery-assertion")
-        await Jobs(memory).enqueue(
-            EnqueueJob(kind="structured_remember", memory=intent), "recovery-pending-job"
-        )
         await Checkpoints(memory).create(CreateCheckpoint(
             scope_id=scope, run_id=uuid4(), branch_id=uuid4(), expected_head=None,
             harness_id="synthetic-recovery-drill", harness_version="1", event_watermark=1,
@@ -404,6 +592,40 @@ async def seed(admin_url):
     )):
         pass
     async with service(url) as memory:
+        source = await memory.observe(Observe(
+            scope_id=scope, source_namespace=SUPPRESSED, source_event_id="1",
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+            content="Suppressed payload stays stored but must never be visible.",
+            consent_reference="disposable-recovery-drill-only",
+        ), SUPPRESSED)
+    # Suppress is an existing stored-ledger mode, not a public API operation.
+    with psycopg.connect(admin_url) as conn:
+        receipt = uuid4()
+        deletion_epoch = conn.execute(
+            "UPDATE memory.tenant SET deletion_epoch=deletion_epoch+1 WHERE id=%s "
+            "RETURNING deletion_epoch", (tenant,),
+        ).fetchone()[0]
+        conn.execute(
+            """INSERT INTO memory_ops.deletion_request
+            (tenant_id,id,principal_id,mode,state,object_count,deletion_epoch)
+            VALUES (%s,%s,%s,'suppress','blocked_for_reads',1,%s)""",
+            (tenant, receipt, operator, deletion_epoch),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.deletion_target
+            (tenant_id,deletion_id,object_id,scope_id,ordinal) VALUES (%s,%s,%s,%s,1)""",
+            (tenant, receipt, source["memory_id"], scope),
+        )
+        conn.execute(
+            "INSERT INTO memory_ops.object_tombstone(tenant_id,object_id,scope_id) "
+            "VALUES (%s,%s,%s)",
+            (tenant, source["memory_id"], scope),
+        )
+    await seed_derivatives(admin_url, url, tenant, operator)
+    async with service(url) as memory:
+        await Jobs(memory).enqueue(
+            EnqueueJob(kind="structured_remember", memory=intent), "recovery-pending-job"
+        )
         for outcome in ("unknown", "failed", "succeeded", "budget"):
             source = await memory.observe(Observe(
                 scope_id=scope,
@@ -437,6 +659,14 @@ async def later(admin_url):
             memory_ids=[source["id"]], reason="Second post-backup synthetic deletion",
         ), "second-forget")
         require(receipt["object_count"] == 1, "second purge target mismatch")
+    async with service(url) as memory:
+        source = await (await memory.conn.execute(
+            "SELECT id FROM memory.episode WHERE source_namespace=%s", (DERIVED_PURGED,),
+        )).fetchone()
+        receipt = await memory.forget(Forget(
+            memory_ids=[source["id"]], reason="Purge the complete derivative recovery fixture",
+        ), "derived-forget")
+        require(receipt["object_count"] == 13, "full derivative closure must contain 13 anchors")
     profile = processing_profile()
     calls = []
     async def extract(data):
@@ -483,13 +713,102 @@ async def later(admin_url):
         require(result.changed, "latest capture policy must differ from backup")
 
 
-async def denied(operation):
+async def denied(operation, *, code="not_found", status=404):
     try:
         await operation
     except MemoryError as exc:
-        require(exc.code == "not_found" and exc.status == 404, "unexpected denial")
+        require(exc.code == code and exc.status == status, "unexpected denial")
     else:
-        raise RuntimeError("deleted or revoked content is still visible")
+        raise RuntimeError("operation unexpectedly succeeded")
+
+
+async def probe_derivatives(admin_url, url, before, latest):
+    for table in DERIVATIVE_TABLES:
+        require(before["canonical"][table]["count"] > latest["canonical"][table]["count"] > 0,
+                f"both purged and retained {table} fixtures required")
+    with psycopg.connect(admin_url, row_factory=dict_row) as conn:
+        source = conn.execute(
+            "SELECT id,scope_id FROM memory.episode WHERE source_namespace=%s",
+            (DERIVED_RETAINED,),
+        ).fetchone()
+        suppressed = conn.execute(
+            "SELECT id,content FROM memory.episode WHERE source_namespace=%s", (SUPPRESSED,),
+        ).fetchone()
+        require(suppressed is not None and suppressed["content"],
+                "suppressed payload must remain physically present")
+        snapshot_row = conn.execute(
+            """SELECT s.checkpoint_id,c.parent_id,c.state,c.run_id,c.branch_id
+               FROM memory.working_snapshot s JOIN memory.checkpoint c
+               ON c.tenant_id=s.tenant_id AND c.id=s.checkpoint_id WHERE s.scope_id=%s""",
+            (source["scope_id"],),
+        ).fetchone()
+        effect = conn.execute(
+            "SELECT id,external_idempotency_key FROM memory.tool_effect WHERE scope_id=%s",
+            (source["scope_id"],),
+        ).fetchone()
+        entities = conn.execute(
+            "SELECT id FROM memory.entity WHERE scope_id=%s ORDER BY canonical_label",
+            (source["scope_id"],),
+        ).fetchall()
+        extraction = conn.execute(
+            "SELECT id FROM memory_ops.job WHERE scope_id=%s AND kind='extract'",
+            (source["scope_id"],),
+        ).fetchone()
+    async with service(url) as memory:
+        await denied(memory.explain(Explain(memory_id=suppressed["id"])))
+        review = await Processing(memory).candidates(extraction["id"])
+        require([r["disposition"] for r in review["candidates"]]
+                == ["published", "quarantined", "quarantined"], "candidate dispositions changed")
+        inferred = review["candidates"][0]["assertion_id"]
+        adopted = review["candidates"][1]["adopted_assertion_id"]
+        require(adopted is not None and review["candidates"][2]["adopted_assertion_id"] is None,
+                "quarantine/adoption identity changed")
+        for target, epistemic, source_class in (
+            (inferred, "inferred", "model_inference"),
+            (adopted, "reported", "caller_explicit_adoption"),
+        ):
+            explained = await memory.explain(Explain(memory_id=target))
+            require(explained["epistemic_status"] == epistemic
+                    and explained["derivation"]["source_class"] == source_class
+                    and explained["derivation"]["status"] == "untrusted",
+                    "derivation provenance or trust classification changed")
+        recalled = await memory.recall(Recall(
+            scope_ids=[source["scope_id"]], purpose="isolated recovery verification",
+            query="", retrieval_mode="vector",
+            vector_query=VectorQuery(model=processing_profile().settings.embedding_model,
+                                     values=[1.0] + [0.0] * 767),
+        ))
+        require({str(r["memory_id"]) for r in recalled["items"]}
+                == {str(source["id"]), str(inferred)}, "recovered vector identities changed")
+        graph = await SqlGraph(memory).expand(ExpandGraph(
+            scope_ids=[source["scope_id"]], seeds=[entities[0]["id"]],
+            relation_types=["depends_on"], direction="both", purpose="isolated recovery",
+        ))
+        require(len(graph["nodes"]) == 2 and len(graph["edges"]) == 1,
+                "recovered graph derivative missing")
+        saved_effect = await ToolEffects(memory).get(effect["id"])
+        require(saved_effect["status"] == "unknown" and saved_effect["revision"] == 3
+                and saved_effect["external_idempotency_key"] == effect["external_idempotency_key"],
+                "effect identity or unknown fence changed")
+        await denied(Working(memory).get(snapshot_row["checkpoint_id"]),
+                     code="checkpoint_invalidated", status=409)
+        await denied(Working(memory).events(QueryWorkingEvents(
+            scope_id=source["scope_id"], run_id=snapshot_row["run_id"],
+            branch_id=snapshot_row["branch_id"],
+        )), code="checkpoint_invalidated", status=409)
+        await denied(Checkpoints(memory).restore(RestoreCheckpoint(
+            checkpoint_id=snapshot_row["checkpoint_id"], target_branch_id=uuid4(),
+            harness_id="synthetic-recovery-derivatives", harness_version="1",
+        ), "stale-snapshot-restore"), code="checkpoint_invalidated", status=409)
+        restored = await Checkpoints(memory).restore(RestoreCheckpoint(
+            checkpoint_id=snapshot_row["parent_id"], target_branch_id=uuid4(),
+            harness_id="synthetic-recovery-derivatives", harness_version="1",
+        ), "retained-typed-state-restore")
+        require(restored["state"] == snapshot_row["state"]
+                and restored["automatic_reexecution"] is False
+                and restored["resume_allowed"] is False,
+                "typed state or unknown effect fence changed on restore")
+        raise psycopg.Rollback
 
 
 async def probe_model_fences(url):
@@ -606,7 +925,7 @@ async def recover(admin_url, directory):
         target_kinds = conn.execute(
             "SELECT id,kind FROM memory.object WHERE id=ANY(%s) ORDER BY id", (targets,)
         ).fetchall()
-    require(control is not None and len(target_kinds) == 6, "fixture/control count mismatch")
+    require(control is not None and len(target_kinds) == 20, "fixture/control count mismatch")
     async with service(url) as memory:
         for target in target_kinds:
             await denied(memory.object(target["id"]))
@@ -624,6 +943,7 @@ async def recover(admin_url, directory):
         await denied(memory.object(control["id"]))
         await denied(memory.explain(Explain(memory_id=control["id"])))
     await probe_model_fences(url)
+    await probe_derivatives(admin_url, url, before, latest)
     require(snapshot(admin_url)["canonical"] == latest["canonical"],
             "verification unexpectedly modified canonical state")
     require(capture_processing_state(admin_url, bundle.reference.tenant_id) == bundle.reference,
@@ -631,7 +951,7 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema18-exact-operational-state-application",
+        "scope": "schema18-derived-memory-operational-state-application-v5",
         "schema_version": 18,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
@@ -649,7 +969,16 @@ async def recover(admin_url, directory):
             "restored": {k: final["tenant"][0][k] for k in ("access_epoch", "deletion_epoch")},
         },
         "revoked_actors_denied": 1,
-        "positive_controls_intact": 1,
+        "positive_controls_intact": 2,
+        "mixed_baseline_modes_preserved": ["purge", "suppress"],
+        "new_suppress_replay_supported": False,
+        "derivative_tables": {table: {
+            "before": before["canonical"][table]["count"],
+            "retained": final["canonical"][table]["count"],
+        } for table in DERIVATIVE_TABLES},
+        "retained_snapshot_epoch_fence": "explicitly-invalidated",
+        "typed_checkpoint_restore": "exact-state-with-unknown-effect-fence",
+        "quarantine_adoption_and_vector_ids_preserved": True,
         "baseline": before["canonical"],
         "latest": latest["canonical"],
         "restored": final["canonical"],
@@ -662,7 +991,7 @@ async def recover(admin_url, directory):
         },
         "model_calls": 0,
         "model_call_definition": "external model requests",
-        "synthetic_provider_calls": 3,
+        "synthetic_provider_calls": 11,
         "model_call_reservations": final["canonical"]["memory_ops.model_call"]["count"],
         "model_processing_enabled": True,
         "model_call_reconciliation": "exact-unknown-failed-succeeded-reservations",
@@ -671,10 +1000,9 @@ async def recover(admin_url, directory):
         "semantic_job_identity_preserved": True,
         "processing_baseline_matches": baseline_check.processing_state_matches,
         "latest_processing_check": processing_check.model_dump(mode="json"),
-        "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "mixed-deletion-modes",
-                        "unbounded-or-arbitrary-history", "inferred-extraction",
-                        "working-compaction",
-                        "graph-derivatives", "tool-effects", "vector-embeddings"],
+        "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "new-suppress-replay",
+                        "unbounded-or-arbitrary-history", "new-or-missing-canonical-content",
+                        "automatic-service-activation"],
     }
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, sort_keys=True), flush=True)

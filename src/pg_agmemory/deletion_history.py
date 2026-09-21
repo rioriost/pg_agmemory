@@ -89,9 +89,12 @@ def purge_replay_suffix(
     ):
         raise AdminError("recovery_history_mismatch")
     seen: set[UUID] = set()
-    for record in latest.records:
+    for index, record in enumerate(latest.records):
         targets = {target.object_id for target in record.targets}
-        if record.mode != "purge" or seen.intersection(targets):
+        if (
+            (index >= len(before.records) and record.mode != "purge")
+            or seen.intersection(targets)
+        ):
             raise AdminError("recovery_history_unsupported")
         seen.update(targets)
     suffix = latest.records[len(before.records):]
