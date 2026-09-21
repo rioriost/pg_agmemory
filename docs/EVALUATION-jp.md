@@ -2,22 +2,24 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: M2 engineering認定済み、v0.1.0 / schema 18公開待ち
+## 現在の状態: M2 core MVP v0.1.0 / schema 18完了
 
-最終実装**`6d967c4`**の
-[native CI 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)は、
+固定release実装**`af878fc51fa50cefecca69de2df22edfef2a321b`**の
+[native CI 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016)は、
 amd64/arm64とも**1,945 passed / optional live 8 skips**、全production smoke、
 完全一致v5 backup/適用reportが成功しました。各reportは35 canonical/21運用fingerprint、
 元receipt 5件、予約11件を保持し、tombstone対象20件を拒否します。
-release候補のversion/stage metadataを0.1.0/`m2-core-mvp`へ更新しましたが、
-公開には固定candidate自身のdistribution認定が必要です。
+service 0.1.0/`m2-core-mvp`自身のrunで、pytestはamd64 1397.44秒、arm64 1263.10秒です。
+派生物13 tableすべてに保持/purge双方のcaseがあり、unknown retry拒否と消費quotaを保持します。
+`v0.1.0`公開checkpointは認定文書だけを追加し、全build入力は検査済みcommitと同一です。
+先行`6d967c4`は別の証跡として保持し、最終release runの代用にはしません。
 [現行の配置制限](operations/README-jp.md#m2-core-mvp-deployment)を参照してください。
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
 人手の意味的スコアや実agent task 20件の成功をrelease gateにせず、
 model比較や新しい人手label収集も計画しない。一つの固定した参考記憶benchmarkは
-利用例として残すが、model品質の合格点は設けない。末尾に現在のengineering残作業を示す。
+利用例として残すが、model品質の合格点は設けない。末尾に受入結果と後続milestoneを示す。
 
 後述の過去の証跡節の実験結果・スコア閾値・harness recipeは**2026-09-18までの診断**であり、
 改訂後のrelease方針ではない。旧gateのための全baseline再実行や評価票記入は不要。
@@ -1115,14 +1117,14 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 宣言core profileについて完了。`6d967c4`のnative各1,945/8と全packaged smoke。万能な認可/意味保証ではない |
+| M2-A 契約/証跡一覧 | 宣言core profileについて完了。`af878fc`のnative各1,945/8と全packaged smoke。万能な認可/意味保証ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | 本文一致を要求する宣言v5 profileで完了。local `593087f`、両native `6d967c4`で混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持し、tombstone対象20件を拒否。欠落/新本文や未対応履歴は引き続き拒否し、自動起動しない |
+| M2-B 削除/ACL/policy/call会計の復旧 | 本文一致を要求する宣言v5 profileで完了。local `593087f`、最終native `af878fc`で混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持し、tombstone対象20件を拒否。欠落/新本文や未対応履歴は引き続き拒否し、自動起動しない |
 | M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host/device coldや専用本番容量は主張しない |
-| M2-D 一つの参考記憶benchmark | 上記へ固定profile、当時の正確なsource/JUnit対応、typed state/coverage/tail、時間/量と失敗履歴を公開。新規live model実行や意味的閾値なし。最終release引き継ぎが残る |
-| M2 release packaging | 現行upgrade/restore制限と0.1.0 metadataを準備済み。固定release candidateのnative distribution結果と公開が残る。過去の資源/参考観測は元SHAを保持 |
+| M2-D 一つの参考記憶benchmark | 完了。固定profile、当時の正確なsource/JUnit対応、typed state/coverage/tail、時間/量、失敗履歴と現行配置引き継ぎを公開。新規live model実行や意味的閾値なし |
+| M2 release packaging | 完了。固定0.1.0 buildを`af878fc`で両native認定し、`v0.1.0`では公開文書だけを追加。upgrade/restore制限を明示し、過去の資源/参考観測は元SHAを保持 |
 
 旧人手precision/fidelity、自然言語更新、根拠なし回答、実task成功の目標は、
 **プロジェクト受入れから除外**したのであって合格ではない。
@@ -1136,7 +1138,7 @@ supersession とみなしたりしてはいけない。
 provider側の保持はoperatorの外部依存であり、PostgreSQL serviceが暗黙に消去を
 保証できるものではない。
 
-固定v0.1.0のdistribution/公開引き継ぎ後は、**M3 graph連携**が次の実装milestoneです。
+M2のv0.1.0引き継ぎを完了し、**M3 graph連携**が次の実装milestoneです。
 SQL oracleとの一致、世代/再構築、認可/削除barrierを扱います。
 認定したM2復元/資源の制限を明示し、任意履歴や本番保証へ拡大解釈しません。
 一般HA/PITRとRPO/RTOはM5のままです。

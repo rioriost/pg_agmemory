@@ -4,18 +4,20 @@
 
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
-**宣言した限定profileについてM2のengineering認定を完了しました。**
-**`6d967c47c39f195d5267fb40e4d909d16b34df5c`**の
-[native run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)は
+**宣言した限定core MVP profileについてM2を完了しました。**
+**`af878fc51fa50cefecca69de2df22edfef2a321b`**の
+[native run 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016)は
 amd64/arm64の両方で**1,945 tests / optional live 8 skips**、
 packaged API/worker/SDK/MCP/hook全smokeとv5実backup/適用drillが成功しました。
-pytestは1323.62/1249.42秒です。両復元reportは完全一致入力に結び付き、
+pytestは1397.44/1263.10秒です。両復元reportは完全一致入力に結び付き、
 35 canonical/21運用fingerprint、元receipt 5件、予約11件を保持し、
 tombstone対象20件を拒否します。live modelのskipを合格とは扱いません。
 
-v0.1.0候補はservice versionとcapability stage（`m2-core-mvp`）、
-対応する契約assertion/文書だけを更新します。公開は固定candidateのnative distribution待ちであり、
-旧versionの結果から新versionの合格を推測しません。
+release **`v0.1.0`**はこの認定済みbuild入力を使い、service 0.1.0 / API v1 /
+schema 18 / capability stage `m2-core-mvp`です。
+公開checkpointは検査済みcommitへ日英の認定文書だけを追加し、
+runtime、root README/package metadata、lock、Dockerfile、script、test、exampleは不変です。
+旧0.0.35の結果からの推測ではなく、0.1.0自身の認定です。新migrationやmodel呼出しはありません。
 local候補runでは既存policy/lease復旧testが固定5.1秒sleep後に`idle`を返したため、
 chaos testの上限付きDB時刻での期限切れ確認を再利用してから復旧をassertします。
 本体のlease動作とstale-context/2回目attemptのassertionは変更しません。
@@ -49,7 +51,9 @@ epochが古いworking snapshotはread/resumeを明示拒否します。
 
 初回の拡張runでは複数scopeに所属する同一principalの比較順序が曖昧なharness不具合を検出し、
 membership snapshotを完全なkey順へ修正しました。local reportは`exact_commit_inputs=true`で、
-両nativeは上記`6d967c4`のrunで完了しました。
+両nativeは`6d967c4`の
+[run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)で完了し、
+最終v0.1.0のrunは上記に記録しました。
 欠落/新しいcanonical本文、任意履歴、HA/PITR、provider側照合は限定適用の対象外です。
 [単一の参考benchmark](EVALUATION-jp.md#単一の参考記憶benchmark)は、当時のsource/JUnit対応、
 固定profile、state/coverage/tail・時間/量、失敗履歴を保持して公開しました。新しいmodel実行ではありません。

@@ -4,19 +4,21 @@
 
 ## M2 core MVP / v0.1.0 / API v1 / schema 18
 
-**M2 engineering qualification is complete for the declared bounded profile.**
-[Native run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)
-at **`6d967c47c39f195d5267fb40e4d909d16b34df5c`** passed on amd64 and arm64:
+**M2 is complete for the declared bounded core-MVP profile.**
+[Native run 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016)
+at **`af878fc51fa50cefecca69de2df22edfef2a321b`** passed on amd64 and arm64:
 **1,945 tests / 8 optional live skips each**, all packaged API/worker/SDK/MCP/hook
-smokes and the v5 actual backup/application drill. Pytest took 1323.62/1249.42 s.
+smokes and the v5 actual backup/application drill. Pytest took 1397.44/1263.10 s.
 Both recovery reports bind exact inputs, preserve all 35 canonical and 21
 operational fingerprints, five original receipts and 11 reservations, and deny
 all 20 tombstoned targets. Live-model skips are explicit, not model passes.
 
-The v0.1.0 release candidate changes only the service version and capability
-stage (`m2-core-mvp`) plus their contract assertions/documentation. Release
-publication is pending the frozen candidate's native distribution run; it is
-not inferred from the preceding version's result.
+Release **`v0.1.0`** uses those qualified build inputs: service 0.1.0,
+API v1, schema 18, capability stage `m2-core-mvp`. The publication checkpoint
+adds only bilingual qualification documentation to the tested commit; runtime,
+root README/package metadata, lock, Dockerfile, scripts, tests and examples are
+unchanged. The release's qualification is not inferred from the preceding
+0.0.35 run. No new migration or model call was needed.
 One existing policy/lease recovery test returned `idle` after a fixed 5.1-second
 sleep in the local candidate run. It now reuses the chaos tests' bounded
 database-clock expiry check before asserting recovery; production lease behavior
@@ -57,7 +59,9 @@ No external model calls, migration or automatic service activation are added.
 The initial expanded run exposed a harness-only ordering ambiguity for one
 principal in several scopes; snapshots now order memberships by the full key.
 The exact local report records `exact_commit_inputs=true`; native qualification
-is complete at `6d967c4` in the native run above.
+is complete at `6d967c4` in
+[run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773),
+with the final v0.1.0 run recorded above.
 Missing/newer canonical content,
 arbitrary histories, HA/PITR and provider-side reconciliation remain outside
 this bounded application. The [single reference benchmark](EVALUATION.md#one-reference-memory-benchmark)

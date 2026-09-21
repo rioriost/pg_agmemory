@@ -2,16 +2,20 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: M2 engineering qualified; v0.1.0 / schema 18 publication pending
+## Current status: M2 core MVP v0.1.0 / schema 18 complete
 
-The final pre-release implementation **`6d967c4`** passed
-[native CI 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773):
+The frozen release implementation **`af878fc51fa50cefecca69de2df22edfef2a321b`** passed
+[native CI 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016):
 **1,945 passes / 8 optional live skips** on both amd64 and arm64, all production
 smokes and exact v5 backup/application reports. Each report has 35 equal
 latest/restored canonical fingerprints, 21 matching operational fingerprints,
 five original receipts, 11 reservations and 20 unreadable tombstoned targets.
-The release candidate's version/stage metadata is now 0.1.0/`m2-core-mvp`;
-its own frozen distribution run remains required before publication.
+This run tests service 0.1.0/`m2-core-mvp` itself: pytest took 1397.44 s on amd64
+and 1263.10 s on arm64. All 13 derivative-table cohorts retain both purged and
+surviving cases. Unknown retries remain refused and consumed quotas are preserved.
+The `v0.1.0` publication checkpoint adds only qualification documents; all build
+inputs remain identical to the tested commit. The preceding `6d967c4` run remains
+separate evidence, not a substitute for this final release run.
 See [the normative deployment limits](operations/README.md#m2-core-mvp-deployment).
 
 **Scope revision, 2026-09-19:** the [implementation plan, sections 1.3 and 17–18](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
@@ -19,7 +23,7 @@ now governs acceptance. pg_agmemory is memory infrastructure, not a judgment
 system. Human semantic scores and 20 successful agent tasks are not release
 gates; neither model comparison nor a new human-label campaign is planned.
 One pinned reference memory benchmark remains required as an example, without
-a model-quality pass score. The final section lists current engineering gaps.
+a model-quality pass score. The final section records acceptance and later milestones.
 
 The experiment results, score thresholds and harness recipes in the historical section below
 are **historical diagnostics through 2026-09-18**, not the revised release policy.
@@ -1229,14 +1233,14 @@ automatic publication or treat adoption as supersession of another assertion.
 
 | Core obligation | Current evidence / remaining requirement |
 | --- | --- |
-| M2-A contract/evidence inventory | Complete for the declared core profile; `6d967c4` native 1,945/8 per architecture and all packaged smokes. No universal authorization or semantic guarantee |
+| M2-A contract/evidence inventory | Complete for the declared core profile; `af878fc` native 1,945/8 per architecture and all packaged smokes. No universal authorization or semantic guarantee |
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | Complete for the declared content-matching v5 profile: local `593087f`, both native at `6d967c4`; mixed baseline, 35 canonical/21 operational fingerprints, retained/purged derivatives and 11 reservations; 20 tombstoned anchors unreadable. Missing/newer content and unsupported histories remain refused, with no automatic activation |
+| M2-B deletion/ACL/policy/call-accounting restore | Complete for the declared content-matching v5 profile: local `593087f`, final native at `af878fc`; mixed baseline, 35 canonical/21 operational fingerprints, retained/purged derivatives and 11 reservations; 20 tombstoned anchors unreadable. Missing/newer content and unsupported histories remain refused, with no automatic activation |
 | M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Both native distributions complete at runtime-identical `7a2fd88`. Physical host/device cold and exclusive production capacity are not claimed |
-| M2-D one reference memory benchmark | Published above with pinned profile, exact historical source/JUnit binding, typed state/coverage/tail results, observed latency/footprint and retained failures. No new live-model run or semantic threshold; final release handoff remains |
-| M2 release packaging | Current upgrade/restore limits and 0.1.0 metadata are prepared. The frozen release candidate's native distribution result and publication remain; historical resource/reference observations keep their original SHA bindings |
+| M2-D one reference memory benchmark | Complete: pinned profile, exact historical source/JUnit binding, typed state/coverage/tail results, observed latency/footprint and retained failures, with current deployment handoff. No new live-model run or semantic threshold |
+| M2 release packaging | Complete: `af878fc` qualifies the frozen 0.1.0 build on both native architectures; `v0.1.0` adds only publication documents. Upgrade/restore limits are explicit; historical resource/reference observations keep their original SHA bindings |
 
 The old human precision/fidelity, natural-language update, unsupported-answer
 and real-task-success targets are **removed from project acceptance**, not passed.
@@ -1250,8 +1254,8 @@ controls. Controlled provider responses can establish boundary correctness;
 only real calls are live benchmark evidence. Provider retention is an operator
 dependency, not erasure that the PostgreSQL service can silently guarantee.
 
-After the frozen v0.1.0 distribution/publication handoff, the next implementation
-milestone is **M3 graph integration**, with SQL-oracle agreement, generation/rebuild
+With M2's v0.1.0 handoff complete, the next implementation milestone is
+**M3 graph integration**, with SQL-oracle agreement, generation/rebuild
 and authorization/deletion barriers. Keep the qualified M2 restore/resource
 limits explicit rather than promoting them to arbitrary-history or production
 assurance. General HA/PITR and RPO/RTO remain M5.

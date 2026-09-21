@@ -4,7 +4,7 @@
 
 - 文書版: 0.3 / M2 core認定とrelease引き継ぎ、2026-09-21
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 宣言した限定profileのM2 engineering gateは`6d967c4`で完了。service 0.1.0 / schema 18のrelease metadataと配置制限を準備済みで、公開前に固定candidateのnative distribution認定を要求する。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: 宣言した限定profileでM2 core MVP v0.1.0 / schema 18を完了。固定build `af878fc`は両native distributionに合格し、公開checkpointはbuild入力を変えず認定文書だけを追加する。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -736,7 +736,7 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 |---|---|---|---|
 | M0 / 設計固定 | ADR、API/schema、脅威モデル、fixture、version matrix、AGE/SQL/PGQ小規模spike | 二時点・scope・削除契約のgolden例が合意され、対応artifactを取得・起動できる | 1〜2週 |
 | M1 / walking skeleton | PostgreSQL schema/RLS、observe、structured remember、basic recall/explain/forget、idempotency、typed checkpoint、SQL graph oracle | 2 tenantsのE2Eで保存→検索→説明→訂正→復旧→削除が成功。漏洩・再出現0 | 3〜4週 |
-| M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | engineering完了、公開は下記 |
+| M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の制限内でv0.1.0として完了 |
 | M3 / graph MVP v0.2 | AGE優先または実用可能なSQL/PGQ adapter一つ、上限付き時間付き探索、projection世代/再構築 | SQL oracleとのID/path/time/ACL一致、失効/削除barrier、古い/再構築中projectionの挙動、query資源上限 | M2後 |
 | M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | core/graphの依存完了後 |
 | M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
@@ -745,18 +745,18 @@ M2はgraph要件を満たす最終版ではない。早期利用可能なcore MV
 
 ### M2受入れとrelease状態（2026-09-21）
 
-最終実装`6d967c47c39f195d5267fb40e4d909d16b34df5c`は、
+固定release実装`af878fc51fa50cefecca69de2df22edfef2a321b`は、
 native amd64/arm64のpackaged検査で各1,945 passed / optional 8 skips、
 全integration smokeと完全一致v5 backup/適用drillが成功した。
-資源/参考測定は元sourceとの対応を維持する。以下の宣言engineering範囲は完了し、
-v0.1.0公開にはさらに固定release candidateのdistribution検査を要求する。
+資源/参考測定は元sourceとの対応を維持する。以下の宣言engineering範囲と
+v0.1.0 distributionは完了し、公開checkpointはbuild入力を変えず認定文書だけを追加する。
 
 | 順序 | 作業と完了証跡 | 現状 |
 |---|---|---|
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
 | M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | 完全一致local/両native v5 drillで完了。保持/purge対象の抽出・採用・vector・working state/tail・SQL graph・effectと不変・対象重複なしの混在prefixを扱う。欠落/新本文や未対応履歴は拒否し、自動起動しない |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | exact `51293b4`でS全量・30分steady、混合小規模削除、10k purge、limit/failure、宣言したguest-coldを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host cold/専用本番容量は主張しない |
-| M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 参考profile/結果と再現手順を当時のsource対応・未測定値・失敗とともに公開し、現行upgrade/restore引き継ぎを文書化。固定v0.1.0 distributionと公開が残る |
+| M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 完了。参考profile/結果と再現手順を当時のsource対応・未測定値・失敗とともに公開し、現行upgrade/restore引き継ぎと固定v0.1.0 native distributionを記録 |
 
 M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、
 snapshot/candidate/embeddingと、読み続けられるpositive controlを対象とする。
@@ -956,6 +956,6 @@ graph/model機能を使うかはユーザーが選び、各段階をmodel品質�
 | 公開GitHub repository・日英ドキュメント・実装前のGit初期化 | 16、17.2 / Git初期化・原案commit済み、公開・二言語化を整備 |
 
 完全一致SHAの証跡と制限はSTATUS/EVALUATIONへ保持する。
-v0.1.0のdistribution/公開引き継ぎ後は、M3のgraph adapterとoracle/再構築認定が
+v0.1.0の引き継ぎを完了し、M3のgraph adapterとoracle/再構築認定が
 次の実装milestoneであり、人手評価作業ではない。
 M4連携とM5本番/HA/PITRには別途実装・認定が必要で、M2 core受入れから完了を推測しない。
