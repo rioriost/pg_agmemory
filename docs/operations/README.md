@@ -8,11 +8,64 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M2 core MVP deployment
+
+The current contract is **service 0.1.0 / API v1 / schema 18**, capability stage
+`m2-core-mvp`. Use matching API, worker, SDK, MCP and hook components; no rolling
+or mixed-version compatibility is promised. The supported distribution profile
+is native Linux amd64/arm64, Python 3.12.14, PostgreSQL 18.6 and pgvector 0.8.6,
+with the immutable image/dependency pins in `Dockerfile`, `uv.lock` and the
+container helper. No PyPI package, hosted service or registry image is implied:
+build from the qualified source/tag and retain its identity.
+
+```bash
+# Run from the intended source checkout, not from an untracked local modification.
+docker build --target runtime --tag pg-agmemory:0.1.0 .
+# Optional full destructive qualification: owns disposable clusters; no live models.
+bash scripts/test-containers.sh docker
+```
+
+Apple Container users may substitute `container` for these engine commands.
+The runtime runs as UID/GID 10001. Use the existing administrator provisioning
+commands with a private `PGAG_ADMIN_DATABASE_URL`; the API/worker use a separate
+non-owner, non-superuser, NOBYPASSRLS login inheriting `pgag_runtime`, never the
+administrator URL. Provision tenant/principal/scope memberships and the trusted
+RS256 issuer/audience/public key before admitting requests. `/healthz` is liveness,
+`/readyz` verifies runtime prerequisites, and authenticated `/v1/capabilities`
+must report the matching version/schema/stage. TLS, perimeter policy and
+credential storage remain operator responsibilities.
+
+For upgrades, stop/drain API, workers and automatic restarts first. Retain a
+protected pre-upgrade logical backup, original ACL/deletion/call evidence and
+matching old code. Run `pg-agmemory migrate` as administrator with the new
+components and verify the entire migration ledger **1–18**. A 0.0.35/schema-18
+upgrade adds no DDL; older schemas need their ordinary migrations, including
+the admin-only recovery key at 015. Take a fresh protected backup afterward.
+Never edit ledger versions, invent old target mappings or recreate lost recovery
+keys to bypass a refusal. Source rollback alone is not a database downgrade;
+restore a matching backup/code pair in isolation and reconcile newer history.
+
+Generation/embedding jobs remain disabled until an administrator explicitly
+binds the allowed local worker profile, egress consent and budgets using
+`scope-synthesis`. Capture permission is not model-call permission. Start only
+matching workers with the intended fixed principal/profile; uncertain calls
+keep their durable reservations and must not be blindly retried.
+
+Restored databases remain isolated with API/model workers stopped. The bounded
+`recovery-apply` procedure below requires matching canonical content/anchors/jobs,
+the preserved admin key lineage and an independently retained authoritative
+latest bundle. It does not import missing/newer content, replay new suppress
+operations, exceed 100 expanded replay targets per receipt, accept overlapping
+targets, or start services. Mutable bundle tables are capped at 10,000 rows each
+and bundles at 16 MiB. Reopening needs separate operator approval after latest
+deletion/ACL/policy/accounting checks; a passing CI run or `--isolated` flag is
+not approval. Production capacity, HA/PITR, RPO/RTO and retention deadlines are M5.
+The [evidence](../EVALUATION.md) keeps the S allocation and reference-model
+observations separate, with no semantic-quality guarantee.
+
 ## Schema 18 tombstone read permissions
 
-Current components are **service 0.0.35 / API v1 / schema 18**. Version 0.0.35
-adds no migration; deploy matching components with API/workers drained.
-Stop/drain
+Introduced at **service 0.0.34 / API v1 / schema 18**. Stop/drain
 API/workers before migration 018 and verify ledger 1–18. Generate fresh
 current-schema recovery artifacts with matching code; the data and keys remain
 unchanged. Do not rewrite or resign older evidence to claim it was qualified.

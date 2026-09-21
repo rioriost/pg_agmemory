@@ -322,7 +322,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-background-processing",
+            "stage": "m2-core-mvp",
             "features": [
                 "observe",
                 "episode_query",

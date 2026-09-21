@@ -3,7 +3,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from uuid import uuid4
@@ -11,6 +10,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 from pydantic import ValidationError
+from test_processing_chaos import wait_for_real_expiry
 
 from pg_agmemory.admin import MAX_EPOCH, AdminError
 from pg_agmemory.api import TransactionBoundary
@@ -398,7 +398,7 @@ def test_policy_fences_running_job_but_does_not_purge_or_cancel_explicit_work(en
         asyncio.run(publish())
     assert env.client.post("/v1/remember", json=body, headers=env.headers()).status_code == 201
     assert len(env.recall().json()["items"]) == 2
-    time.sleep(5.1)
+    wait_for_real_expiry(env, receipt["job_id"], timeout_seconds=6)
     recovered = asyncio.run(run_once(env.settings.database_url, env.subjects[0]))
     assert recovered["outcome"] == "succeeded" and recovered["job_id"] == receipt["job_id"]
     detail = env.client.get("/v1/jobs/" + receipt["job_id"], headers=env.headers()).json()
@@ -623,7 +623,7 @@ def test_migration_preserves_legacy_capture_and_caps_are_explicit(env, database)
                 (name,),
             ).fetchone() == (True, True)
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["schema_version"] == 18 and caps["stage"] == "m2-background-processing"
+    assert caps["schema_version"] == 18 and caps["stage"] == "m2-core-mvp"
     assert caps["capture_policy"]["replay_revalidated"]
     assert not caps["capture_policy"]["secret_pii_detection"]
     assert not caps["capture_policy"]["provider_egress_control"]

@@ -6,7 +6,23 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.35 / schema 18
+## Current contract: M2 core MVP v0.1.0 / schema 18
+
+**Memory infrastructure for agents and LLMs, not a judgment system.** M2's
+declared engineering gates are complete: scoped storage/retrieval/updates,
+non-destructive compaction, bounded isolated restore, durable model-call
+accounting, resource limits and one reference benchmark. Version 0.1.0 changes
+release metadata and the capability stage to `m2-core-mvp`; it adds no migration.
+The frozen release build must pass native qualification before publication.
+
+This is a **core MVP for controlled deployments**, not production/HA/PITR
+certification or a guarantee of model judgment. Native API v1/SDK expose 38
+memory resources; MCP remains four tools and hooks are read-only. Generation
+and embedding processing stay default-deny and require an administrator-pinned
+local profile. SQL graph is supported; AGE/SQL-PGQ integration is M3.
+Start with the [current deployment/upgrade contract](docs/operations/README.md#m2-core-mvp-deployment)
+and [qualification evidence and limits](docs/STATUS.md). Historical sections
+below retain their original measurements and must not override this contract.
 
 The bounded recovery drill now covers both retained and purged extraction,
 adoption, vectors, working snapshots/tails, SQL graph and tool-effect records.
@@ -26,7 +42,7 @@ tenant/scope/expiry rules are unchanged, including for large deletion ledgers.
 Migration 017 keeps deletion visibility as a tenant-local, statement-local
 tombstone set. It fixes a measured post-deletion query-plan regression without
 weakening RLS or changing PostgreSQL planner settings. Stop/drain before migration
-and regenerate current-schema recovery artifacts. M2 qualification remains open.
+and regenerate current-schema recovery artifacts.
 
 Migration 016 makes read visibility set-based while preserving tenant, scope,
 expiry and tombstone predicates under forced RLS. Recall now shares candidate
@@ -58,7 +74,7 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.0.35 / API v1 / schema 18 components. No model calls are made by the check.
+Use matching v0.1.0 / API v1 / schema 18 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new
@@ -100,7 +116,7 @@ All other candidates remain untrusted. Model calls run outside memory
 transactions; durable reservations, lease/epoch checks and purge dependencies
 prevent blind retries and stale publication.
 
-**M2 is not complete and this is not a production release.** Measured evidence
+**At the historical v0.0.27 checkpoint M2 was incomplete.** Measured evidence
 includes 600 held-out synthetic questions across 50 groups (hybrid Recall@20
 99.818%, equal to vector-only), 10,000 actual unauthorized Native requests with
 zero unexpected outcomes, real worker SIGKILL recovery, and a three-call local

@@ -2,6 +2,40 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## M2 core MVP / v0.1.0 / API v1 / schema 18
+
+**M2 engineering qualification is complete for the declared bounded profile.**
+[Native run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)
+at **`6d967c47c39f195d5267fb40e4d909d16b34df5c`** passed on amd64 and arm64:
+**1,945 tests / 8 optional live skips each**, all packaged API/worker/SDK/MCP/hook
+smokes and the v5 actual backup/application drill. Pytest took 1323.62/1249.42 s.
+Both recovery reports bind exact inputs, preserve all 35 canonical and 21
+operational fingerprints, five original receipts and 11 reservations, and deny
+all 20 tombstoned targets. Live-model skips are explicit, not model passes.
+
+The v0.1.0 release candidate changes only the service version and capability
+stage (`m2-core-mvp`) plus their contract assertions/documentation. Release
+publication is pending the frozen candidate's native distribution run; it is
+not inferred from the preceding version's result.
+One existing policy/lease recovery test returned `idle` after a fixed 5.1-second
+sleep in the local candidate run. It now reuses the chaos tests' bounded
+database-clock expiry check before asserting recovery; production lease behavior
+and the stale-context/second-attempt assertions are unchanged.
+
+| Qualified M2 boundary | Limits that remain |
+|---|---|
+| Atomic scoped memory, revisions/provenance, SQL/vector/hybrid recall, typed checkpoint/compaction | No guaranteed semantic truth, approvals or model-selected answers; no ANN or AGE/SQL-PGQ adapter |
+| Durable generation/embedding jobs, adoption, budgets and epoch/lease fencing | Administrator-pinned local profiles only; no unknown-call retry or billing exactly-once guarantee |
+| Isolated logical restore and latest ACL/policy/accounting application | Matching canonical content/anchors/jobs and key lineage; disjoint unchanged mixed prefix, purge suffix at most 100 expanded targets per receipt; 10k rows/table and 16 MiB bundle |
+| S resources, deletion/limit probes and reference example | Original SHAs and allocations remain binding; guest-cold is not physical-host cold, controlled responses are not live inference cost, the reference is not semantic qualification |
+
+Use the [current deployment contract](operations/README.md#m2-core-mvp-deployment).
+There is no automatic activation after restore, arbitrary-content recovery,
+production HA/PITR/RPO/RTO or backup-retention certification. M3 graph integration,
+M4 harness pilot and M5 production qualification remain separate. Historical
+entries below retain the status at their own checkpoints; legacy
+`m2_qualified=false`/human-quality fields are not rewritten.
+
 ## v0.0.35 / schema 18: derived-memory recovery coverage
 
 The v5 disposable backup drill includes inferred and explicitly adopted assertions,
@@ -23,13 +57,13 @@ No external model calls, migration or automatic service activation are added.
 The initial expanded run exposed a harness-only ordering ambiguity for one
 principal in several scopes; snapshots now order memberships by the full key.
 The exact local report records `exact_commit_inputs=true`; native qualification
-is pending in [run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317).
+is complete at `6d967c4` in the native run above.
 Missing/newer canonical content,
 arbitrary histories, HA/PITR and provider-side reconciliation remain outside
 this bounded application. The [single reference benchmark](EVALUATION.md#one-reference-memory-benchmark)
 is now packaged with its original source/JUnit binding, pinned profile, observed
 state/coverage/tail/timing/size and preserved failures; it is not a new model run.
-**M2 is not complete**; final distribution qualification and release handoff remain.
+This implementation's engineering gates are complete; v0.1.0 publication is tracked above.
 
 ## v0.0.34 / schema 18: bounding large-tombstone read checks
 

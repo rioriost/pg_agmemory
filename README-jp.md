@@ -7,7 +7,21 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発契約: v0.0.35 / schema 18
+## 現在の契約: M2 core MVP v0.1.0 / schema 18
+
+**エージェントとLLMの記憶基盤であり、判断システムではありません。**
+scope付き保存/検索/更新、非破壊圧縮、限定隔離復元、model呼出し会計、資源上限、
+単一参考benchmarkについて、M2で宣言したengineering gateを達成しました。
+0.1.0ではrelease metadataとcapability stageを`m2-core-mvp`へ更新し、migrationは追加しません。
+公開前に固定したrelease buildの両native認定を要求します。
+
+**管理された配置向けのcore MVP**であり、本番/HA/PITR認定やmodelの判断保証ではありません。
+Native API v1/SDKは38 memory resource、MCPは4 tool、hookはread-onlyです。
+generation/embedding処理は既定拒否で、管理者が固定したlocal profileを必要とします。
+SQL graphは対応し、AGE/SQL-PGQ連携はM3です。
+[現行の配置/upgrade契約](docs/operations/README-jp.md#m2-core-mvp-deployment)と
+[適格性の証跡・制限](docs/STATUS-jp.md)を先に確認してください。
+以下の過去の記述・実測値は保存した履歴であり、この現行契約を上書きしません。
 
 限定復元drillは、抽出・採用・vector・working snapshot/tail・SQL graph・tool-effectの
 保持対象とpurge対象を含みます。backup内の変更されていないsuppress/purge混在prefixは
@@ -23,7 +37,7 @@ migration 018ではtombstone metadataのread権限も集合処理にします。
 
 migration 017は削除可視性をtenant内・statement内のtombstone集合として評価します。
 RLSやPostgreSQL planner設定を緩めず、削除後に実測した実行計画の劣化へ対応します。
-migration前に停止/drainし、現行schemaの復旧artifactを再生成してください。M2認定は未完です。
+migration前に停止/drainし、現行schemaの復旧artifactを再生成してください。
 
 migration 016で、tenant/scope/期限/tombstone条件と強制RLSを維持したまま、
 read可視性を集合処理にしました。recallは順位計算とcoverageで候補のmaterializationを共有します。
@@ -51,7 +65,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.0.35 / API v1 / schema 18に揃えます。照合はmodelを呼びません。
+componentはv0.1.0 / API v1 / schema 18に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの
@@ -89,7 +103,7 @@ Unicode spanを導出します。自動公開はpolicyで許可したliteral pre
 model待機中はmemory transactionを保持せず、永続予約、lease/epoch検査、
 purge依存関係でblind retryと古い結果の公開を防ぎます。
 
-**M2は未完了で、本番releaseではありません。** 50 group・600 held-out synthetic問で
+**過去のv0.0.27時点ではM2は未完了でした。** 50 group・600 held-out synthetic問で
 hybrid Recall@20は99.818%（vector-onlyと同値）、実Native APIの不正認可10,000件で
 予期しない結果0件、実workerのSIGKILL復旧、local modelを3回呼び出す
 抽出・embedding・圧縮・復元を確認しました。本体の残作業は、対応履歴全体のlogical

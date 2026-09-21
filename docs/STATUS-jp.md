@@ -2,6 +2,36 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## M2 core MVP / v0.1.0 / API v1 / schema 18
+
+**宣言した限定profileについてM2のengineering認定を完了しました。**
+**`6d967c47c39f195d5267fb40e4d909d16b34df5c`**の
+[native run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)は
+amd64/arm64の両方で**1,945 tests / optional live 8 skips**、
+packaged API/worker/SDK/MCP/hook全smokeとv5実backup/適用drillが成功しました。
+pytestは1323.62/1249.42秒です。両復元reportは完全一致入力に結び付き、
+35 canonical/21運用fingerprint、元receipt 5件、予約11件を保持し、
+tombstone対象20件を拒否します。live modelのskipを合格とは扱いません。
+
+v0.1.0候補はservice versionとcapability stage（`m2-core-mvp`）、
+対応する契約assertion/文書だけを更新します。公開は固定candidateのnative distribution待ちであり、
+旧versionの結果から新versionの合格を推測しません。
+local候補runでは既存policy/lease復旧testが固定5.1秒sleep後に`idle`を返したため、
+chaos testの上限付きDB時刻での期限切れ確認を再利用してから復旧をassertします。
+本体のlease動作とstale-context/2回目attemptのassertionは変更しません。
+
+| M2で認定した境界 | 維持する制限 |
+|---|---|
+| 原子的scope付き記憶、revision/provenance、SQL/vector/hybrid検索、typed checkpoint/圧縮 | 意味的真実・承認・model回答の保証なし。ANNやAGE/SQL-PGQ adapterなし |
+| 永続generation/embedding job、採用、予算、epoch/lease検査 | 管理者が固定したlocal profileのみ。unknown retryや課金exactly-once保証なし |
+| 隔離logical restoreと最新ACL/policy/会計適用 | canonical本文/anchor/jobと鍵系統の一致、不変かつ対象重複なしの混在prefix、receiptごと展開100対象以内のpurge suffix。table 10k rows、bundle 16 MiB以内 |
+| S資源、削除/limit probeと参考例 | 元SHAと割当を保持。guest-coldは物理host coldでなく、制御応答は実推論費用でなく、参考例は意味品質の認定ではない |
+
+[現行配置契約](operations/README-jp.md#m2-core-mvp-deployment)を使用してください。
+復元後の自動起動、任意本文復旧、本番HA/PITR/RPO/RTO、backup保持期限は認定しません。
+M3 graph連携、M4 harness pilot、M5本番認定は別です。
+以下の過去の節は各checkpoint時点の状態であり、旧`m2_qualified=false`や人手品質fieldを書き換えません。
+
 ## v0.0.35 / schema 18: 派生記憶の復元範囲を拡張
 
 使い捨てbackup drill v5は、推論/明示採用assertion、隔離candidate、原文/assertion embedding、
@@ -19,11 +49,11 @@ epochが古いworking snapshotはread/resumeを明示拒否します。
 
 初回の拡張runでは複数scopeに所属する同一principalの比較順序が曖昧なharness不具合を検出し、
 membership snapshotを完全なkey順へ修正しました。local reportは`exact_commit_inputs=true`で、
-両nativeは[run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317)で進行中です。
+両nativeは上記`6d967c4`のrunで完了しました。
 欠落/新しいcanonical本文、任意履歴、HA/PITR、provider側照合は限定適用の対象外です。
 [単一の参考benchmark](EVALUATION-jp.md#単一の参考記憶benchmark)は、当時のsource/JUnit対応、
 固定profile、state/coverage/tail・時間/量、失敗履歴を保持して公開しました。新しいmodel実行ではありません。
-**M2は未完了**で、最終distribution認定とrelease引き継ぎが残ります。
+この実装のengineering gateは完了し、v0.1.0公開は上記で追跡します。
 
 ## v0.0.34 / schema 18: 大量tombstoneのread確認を改善
 

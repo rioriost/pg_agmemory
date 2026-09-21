@@ -2,7 +2,16 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: v0.0.35 / schema 18、M2受入れは未完了
+## 現在の状態: M2 engineering認定済み、v0.1.0 / schema 18公開待ち
+
+最終実装**`6d967c4`**の
+[native CI 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)は、
+amd64/arm64とも**1,945 passed / optional live 8 skips**、全production smoke、
+完全一致v5 backup/適用reportが成功しました。各reportは35 canonical/21運用fingerprint、
+元receipt 5件、予約11件を保持し、tombstone対象20件を拒否します。
+release候補のversion/stage metadataを0.1.0/`m2-core-mvp`へ更新しましたが、
+公開には固定candidate自身のdistribution認定が必要です。
+[現行の配置制限](operations/README-jp.md#m2-core-mvp-deployment)を参照してください。
 
 **2026-09-19の範囲改訂:** 受入れは[実装計画1.3節・17–18章](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 に従う。pg_agmemoryは判断システムでなく記憶基盤である。
@@ -181,7 +190,9 @@ epochが古いsnapshotのread/resumeは明示errorとし、suppress本文は物�
 関連Linux suiteはdrill契約68件を含む149件が成功し、lint/typeも通過しました。件数は重複します。
 初回開発drillでは同一principalの複数scope membershipの比較順が曖昧な点を検出し、
 完全なkey順へ修正しました。一致条件は緩めていません。失敗/成功開発logと完全一致reportを保持します。
-両nativeは[run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317)で進行中です。
+両nativeは`6d967c4`の
+[run 35563611773](https://github.com/rioriost/pg_agmemory/actions/runs/35563611773)で、
+各1,945/8と同じ宣言report条件の照合を完了しました。
 新しいsuppress replay、対象重複、prefix改変、過大suffix、欠落/新canonical本文、
 任意履歴、HA/PITRは認定しません。
 
@@ -1087,7 +1098,7 @@ artifact への参照だけとする。
 mock response、収集件数、scorer 成功から品質を推測しない。
 Capture policy だけでは provider egress を許可しない。
 
-## 現在の受入れ証跡とengineering backlog（2026-09-19）
+## 現在の受入れ証跡とrelease引き継ぎ（2026-09-21）
 
 自動生成された inferred assertion、隔離 proposal、caller が採用した reported
 assertion は別々の評価 cohort とする。実装済みの
@@ -1104,14 +1115,14 @@ supersession とみなしたりしてはいけない。
 
 | 本体の義務 | 現在の証跡 / 残る要件 |
 | --- | --- |
-| M2-A 契約/証跡一覧 | 上記へ記録済み。`9c7db01`のnative各1,916/8が現行の限定した実装証跡であり、包括release判定ではない |
+| M2-A 契約/証跡一覧 | 宣言core profileについて完了。`6d967c4`のnative各1,945/8と全packaged smoke。万能な認可/意味保証ではない |
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | 完全一致`593087f`のv5 Linux drillで不変の混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持。tombstone対象20件は読めない。**未完:** 両nativeの認定。欠落/新本文と未対応履歴は拒否し、自動起動や包括restore認定はしない |
+| M2-B 削除/ACL/policy/call会計の復旧 | 本文一致を要求する宣言v5 profileで完了。local `593087f`、両native `6d967c4`で混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持し、tombstone対象20件を拒否。欠落/新本文や未対応履歴は引き続き拒否し、自動起動しない |
 | M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host/device coldや専用本番容量は主張しない |
 | M2-D 一つの参考記憶benchmark | 上記へ固定profile、当時の正確なsource/JUnit対応、typed state/coverage/tail、時間/量と失敗履歴を公開。新規live model実行や意味的閾値なし。最終release引き継ぎが残る |
-| M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
+| M2 release packaging | 現行upgrade/restore制限と0.1.0 metadataを準備済み。固定release candidateのnative distribution結果と公開が残る。過去の資源/参考観測は元SHAを保持 |
 
 旧人手precision/fidelity、自然言語更新、根拠なし回答、実task成功の目標は、
 **プロジェクト受入れから除外**したのであって合格ではない。
@@ -1125,8 +1136,7 @@ supersession とみなしたりしてはいけない。
 provider側の保持はoperatorの外部依存であり、PostgreSQL serviceが暗黙に消去を
 保証できるものではない。
 
-次の実装優先項目はM2-Aの受入一覧に続く**M2-B**であり、
-version付き復旧metadata、migration/upgrade、最新削除/ACL/policy/予約/quotaの
-隔離照合を実装する。unknownを保持し、schema 13の欠落receipt/mode履歴を推測しない。
-本番HA/PITRとRPO/RTOはM5、安全な対応履歴のlogical restoreはM2のままである。
-範囲修正後も本体の復旧/資源の未完項目は残る。
+固定v0.1.0のdistribution/公開引き継ぎ後は、**M3 graph連携**が次の実装milestoneです。
+SQL oracleとの一致、世代/再構築、認可/削除barrierを扱います。
+認定したM2復元/資源の制限を明示し、任意履歴や本番保証へ拡大解釈しません。
+一般HA/PITRとRPO/RTOはM5のままです。

@@ -182,8 +182,8 @@ def admin_connection(env):
     )
 
 
-def wait_for_real_expiry(env, job_id):
-    deadline = time.monotonic() + LEASE_SECONDS + 1
+def wait_for_real_expiry(env, job_id, *, timeout_seconds=LEASE_SECONDS + 1):
+    deadline = time.monotonic() + timeout_seconds
     with admin_connection(env) as conn:
         while time.monotonic() < deadline:
             row = conn.execute(

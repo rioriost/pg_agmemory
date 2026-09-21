@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.2 / memory-system responsibility realignment, 2026-09-19
+- Document version: 0.3 / M2 core qualification and release handoff, 2026-09-21
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Core paths and bounded recovery are implemented. Service 0.0.35 / schema 18 extends isolated recovery to retained/purged derivatives and unchanged mixed deletion prefixes without relaxing content equality or activation fences. M2 acceptance remains incomplete; evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M2 engineering gates are complete for the declared bounded profile at `6d967c4`. Service 0.1.0 / schema 18 release metadata and deployment limits are prepared; the frozen release candidate still requires native distribution qualification before publication. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -746,25 +746,28 @@ good model benchmark to bypass failed safety gates.
 |---|---|---|---|
 | M0 / design freeze | ADRs, API/schema, threat model, fixtures, version matrix, small AGE/SQL/PGQ spikes | Agreement on golden examples for bitemporal, scope, and deletion contracts; compatible artifacts can be obtained and started | 1–2 weeks |
 | M1 / walking skeleton | PostgreSQL schema/RLS, observe, structured remember, basic recall/explain/forget, idempotency, typed checkpoints, SQL graph oracle | Store → retrieve → explain → correct → recover → delete succeeds in a two-tenant E2E test. Zero leakage or resurrection | 3–4 weeks |
-| M2 / core MVP v0.1 | Reliable core API/SDK/MCP/hook, declared generation/embedding interfaces, hybrid retrieval, non-destructive compaction, isolated logical restore | Section 18 core contract/resource gates; complete supported-history restore and call-accounting reconciliation; one reference benchmark with no semantic pass score | Remaining work below |
+| M2 / core MVP v0.1 | Reliable core API/SDK/MCP/hook, declared generation/embedding interfaces, hybrid retrieval, non-destructive compaction, isolated logical restore | Section 18 core contract/resource gates; complete supported-history restore and call-accounting reconciliation; one reference benchmark with no semantic pass score | Engineering complete; release publication below |
 | M3 / graph MVP v0.2 | One AGE-first or viable SQL/PGQ adapter, bounded temporal traversal, projection generations/rebuild | SQL-oracle IDs/paths/time/ACL agreement, revocation/deletion barriers, stale/rebuilding projection behavior, bounded query resources | After M2 |
 | M4 / integration pilot v0.3 | One agent/harness integration, optional postgresem adapter, external-source revocation/freshness; optional rerank adapter only for a declared integration need | Versioned schemas, delegated identity, explicit restore/refresh, source deletion and partial-failure propagation; no unconditional side-effect replay | After core/graph dependencies |
 | M5 / production candidate | Capacity/HA/PITR, operational monitoring, upgrades, embedding-space migration and backup retention | Declared load/RPO/RTO/retention verified, compatibility and rollback/roll-forward contracts; model migration preserves identity/isolation, not a model-quality competition | After pilot |
 
 M2 is not the final version satisfying the graph requirement. Clearly distinguish the early usable core MVP from the M3 graph MVP containing the requested AGE/SQL/PGQ functionality. Stable SQL/PGQ adoption depends on PostgreSQL's public release status and measurements; it must not delay completion of M3's AGE path.
 
-### Current M2 Completion Backlog (2026-09-19)
+### M2 Acceptance and Release Status (2026-09-21)
 
-The schema-13 implementation at `1ea3f6c55b1c72fe6262731ca5d4bf49c76ccfe6`
-passed native amd64/arm64 packaged checks (1,754 tests / 8 optional skips each).
-This is evidence for tested paths, not completion of the following work.
+The final pre-release implementation at `6d967c47c39f195d5267fb40e4d909d16b34df5c`
+passed native amd64/arm64 packaged checks (1,945 tests / 8 optional skips each),
+all integration smokes and the exact v5 backup/application drill. Original
+resource/reference measurements retain their own source bindings. The following
+declared engineering scopes are complete; v0.1.0 publication additionally requires
+the frozen release candidate's distribution checks.
 
 | Order | Work and completion evidence | Current state |
 |---|---|---|
 | M2-A | Map supported API/SDK/MCP/hook contracts to invariants/tests and retain truthful legacy diagnostics rather than model-quality release gates | Inventory and report-boundary review recorded in EVALUATION; exact qualification remains per implementation |
-| M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Authenticated application and v5 drill cover retained/purged extraction, adoption, vectors, working state/tail, SQL graph, effects and an unchanged mixed prefix. **Exact-commit/native qualification remains**; missing/newer content and unsupported histories fail closed, with no automatic activation |
+| M2-B | Implement versioned recovery metadata and isolated restore for supported histories/derivatives; reconcile latest ACL, processing policy, call reservations, unknowns and quotas before serving | Complete in exact local and both native v5 drills: retained/purged extraction, adoption, vectors, working state/tail, SQL graph, effects and an unchanged disjoint mixed prefix. Missing/newer content and unsupported histories fail closed, with no automatic activation |
 | M2-C | Freeze and run the S resource profile in section 18.4, including mixed API/worker load, budget rejection, queue/DB bounds and failure behavior; report DB/index/WAL/backup footprint separately from reference-provider latency/cost | Exact `51293b4` passes full 30-minute S, mixed small deletion, 10k purge, limit/failure and declared guest-cold checks; runtime-identical `7a2fd88` passes both native distributions. Physical-host cold/exclusive production capacity are not claimed |
-| M2-D | Package the existing single reference model configuration into a reproducible Native/API memory lifecycle benchmark; report typed-state/ID/coverage retention, retrieval results, failures and resource use; document installation, upgrade and restore limits and rerun exact-commit distribution checks | Reference profile/result and reproduction procedure are published in EVALUATION, explicitly bound to the historical run with unmeasured fields and failures preserved. Final exact-commit distribution/release handoff remains |
+| M2-D | Package the existing single reference model configuration into a reproducible Native/API memory lifecycle benchmark; report typed-state/ID/coverage retention, retrieval results, failures and resource use; document installation, upgrade and restore limits and rerun exact-commit distribution checks | Reference profile/result and reproduction procedure are published with historical source binding, unmeasured fields and failures preserved; current upgrade/restore handoff is documented. Frozen v0.1.0 distribution and publication remain |
 
 M2-B must preserve multiple/mixed suppress/purge histories, source-to-derivative
 closure, snapshots/candidates/embeddings, and a positive readable control. Schema
@@ -799,7 +802,7 @@ Original design checklist, retained for traceability rather than a new M2 queue:
 
 ### 17.2 Initial Implementation Backlog
 
-Original implementation sequence; use the current M2 backlog above to resume.
+Original implementation sequence; use the current acceptance/release status above to resume.
 
 1. Pre-implementation Git initialization and the original-draft commit are complete. Maintain Japanese and English versions of this plan in `docs/`, prepare the MIT license, bilingual READMEs, and usage instructions, and develop in a public GitHub repository. Add ADRs at M0.
 2. Create golden fixtures containing two tenants, identically named entities, distinct scopes, retroactive corrections, and deletion targets.
@@ -980,8 +983,8 @@ to use graph/model features; no model-quality contest gates these phases.
 | Docker in GitHub Actions, linux/amd64 and linux/arm64 | 16, 18 / CI setup at M0–M1; validation at each subsequent phase |
 | Public GitHub repository, Japanese/English documentation, Git initialization before implementation | 16, 17.2 / Git initialized and original draft committed; publication and bilingual documentation being prepared |
 
-Distinguish this revised plan from implementation or release completion. Keep
-existing exact-SHA evidence and limitations in STATUS/EVALUATION. Resume with
-M2-A's acceptance inventory and M2-B's recovery metadata/procedure, not a new
-human-review campaign. Later features require their own implementation and
-qualification; this documentation does not declare M2 or production ready.
+Keep exact-SHA evidence and limitations in STATUS/EVALUATION. After the v0.1.0
+distribution/publication handoff, the next implementation milestone is M3's
+graph adapter and oracle/rebuild qualification, not a human-review campaign.
+M4 integration and M5 production/HA/PITR require their own implementation and
+qualification; M2 core acceptance does not declare them complete.

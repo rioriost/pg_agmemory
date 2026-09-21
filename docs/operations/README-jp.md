@@ -7,10 +7,55 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M2 core MVP deployment
+
+現行契約は**service 0.1.0 / API v1 / schema 18**、capability stageは`m2-core-mvp`です。
+API/worker/SDK/MCP/hookを同じversionに揃え、rolling/mixed-version互換は主張しません。
+対応distributionはnative Linux amd64/arm64、Python 3.12.14、PostgreSQL 18.6、
+pgvector 0.8.6で、`Dockerfile`、`uv.lock`、container helperの不変pinを使います。
+PyPI package・hosted service・registry imageを公開済みとは意味しません。
+認定したsource/tagからbuildし、そのidentityを保持してください。
+
+```bash
+# 意図したsource checkoutで実行し、未記録のlocal変更を混ぜない。
+docker build --target runtime --tag pg-agmemory:0.1.0 .
+# 任意の全体認定: 所有する使い捨てclusterのみ破壊し、live modelは呼ばない。
+bash scripts/test-containers.sh docker
+```
+
+Apple Containerではengine指定を`container`へ置き換えられます。runtimeはUID/GID 10001です。
+既存の管理者provisioning commandには非公開の`PGAG_ADMIN_DATABASE_URL`を使います。
+API/workerにはowner/superuser/BYPASSRLSでない、`pgag_runtime`を継承した別loginを使い、
+管理URLは渡しません。tenant/principal/scope membershipと、信頼するRS256の
+issuer/audience/public keyを要求受付前に設定してください。`/healthz`はliveness、
+`/readyz`はruntime前提条件を確認し、認証付き`/v1/capabilities`でversion/schema/stageを照合します。
+TLS、perimeter policy、credential保管はoperatorの責務です。
+
+upgrade前にAPI/worker/自動再起動を停止・drainし、保護した旧logical backup、
+元ACL/削除/call証跡、対応旧codeを保持します。新componentの管理者権限で
+`pg-agmemory migrate`を実行し、migration ledger **1–18全体**を確認します。
+0.0.35/schema 18からはDDL追加なしです。旧schemaからは通常migrationを適用し、
+015で追加する管理者専用復旧鍵を含む新しい保護backupを直後に取得します。
+拒否回避のためのledger改変、過去target対応の捏造、失った復旧鍵の再作成は禁止です。
+source rollbackだけではDBは戻りません。対応backup/codeを隔離復元し、新しい履歴を照合します。
+
+generation/embedding jobは、管理者が`scope-synthesis`で許可local profile・
+送信同意・予算を明示固定するまで無効です。capture権限はmodel呼出し許可ではありません。
+対応workerだけを意図した固定principal/profileで開始し、
+成否不明callの永続予約を保持してblind retryしません。
+
+復元DBはAPI/model workerを停止し、隔離を維持します。下記の限定`recovery-apply`は
+canonical本文/anchor/jobの一致、保全した管理鍵系統、独立した最新正本bundleを要求します。
+欠落/新本文の取込み、新しいsuppress replay、receiptごと展開100対象を超えるreplay、
+対象重複、service自動起動には対応しません。可変tableは各10,000 rows、
+bundleは16 MiBまでです。公開には最新の削除/ACL/policy/会計照合後に別途operator承認が必要で、
+CI成功や`--isolated` flagを承認と見なしません。
+本番容量、HA/PITR、RPO/RTO、保持期限はM5です。
+[証跡](../EVALUATION-jp.md)ではS割当と参考model観測を分離し、意味品質を保証しません。
+
 ## Schema 18 tombstone read permissions
 
-現行componentは**service 0.0.35 / API v1 / schema 18**です。0.0.35はmigration追加なしで、
-API/workerをdrainして対応componentを配置します。migration 018前にAPI/workerを
+**service 0.0.34 / API v1 / schema 18**で導入しました。migration 018前にAPI/workerを
 停止/drainし、ledger 1–18を確認します。対応codeで現行schemaの復旧artifactを新規取得し、
 過去の証跡を書換え・再署名して認定済みとしないでください。dataと鍵は変更しません。
 tombstone metadataのtenant、read/admin membership、statement時点の期限判定は同じです。
