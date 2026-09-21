@@ -140,8 +140,9 @@ guest会計はhost仮想化overheadや専用host容量の測定ではありま�
 controlled providerは10 ms後に契約準拠の空抽出を返し、課金/cloud/live model呼出しや品質主張はしません。
 timing recordに本文/vectorは含めません。生artifact、backup、request相関IDは非公開で保管します。
 helperは自分のcontainerとcredential fileだけを片付け、測定証跡を残します。
-**現行reportは`resource_qualified=false`**です。small-forget/large-purge、並行limit probe、
-物理cold-cacheの測定は未完で、steady時間gateだけではM2受入れになりません。
+**現行reportは`resource_qualified=false`**です。削除/上限とguest-cold probeの結果は
+[EVALUATION](../EVALUATION-jp.md)に別記し、物理host cold-cacheや専用本番容量を保証しません。
+steady時間gateだけではM2受入れになりません。
 
 ### 隔離した資源probe
 
@@ -150,10 +151,10 @@ bash scripts/measure-resource-probes.sh /private/S/final.dump /private/S-probes
 ```
 
 Apple Container上の新規使い捨てclusterへ合成S全量dumpを復元します。元DBへは
-接続しません。dumpには合成本文だけでなく管理者recovery keyも含まれるため、
+接続しません。dumpには合成本文だけでなく管理者recovery keyも含まれるため、非公開で保管してください。
 旧schema 16のS snapshotまたは現行schemaを受け付け、隔離copyへ通常のmigrationを適用し、
 前後のschema番号を記録します。
-非公開で保管してください。`examples/resource-probes-plan.json`は小規模Native
+`examples/resource-probes-plan.json`は小規模Native
 purge 100件、並行admission/障害probe、10,000 objectの派生closure 1件を固定します。
 小規模purgeは別の30秒間の20 recall/s・5 observe/s・2 worker負荷中に実行します。
 この短時間probeを30分S認定の代用にはしません。大規模closureはbulk投入しますが、

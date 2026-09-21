@@ -113,6 +113,67 @@ synthetic provider呼出しは3回、**外部model requestは0回**で、model�
 本文不一致、job集合変更、旧履歴欠落、過大bundleは未対応として明示拒否します。
 一般audit履歴/sequence、本番HA/PITRは認定せず、`m2_qualified=false`と手動の配置判断を維持します。
 
+### Native削除/上限とguest-cold probe（2026-09-21）
+
+完全一致実装 **`51293b4bc743c97130e45d70d2f9350a079178d0`**
+（service 0.0.34/schema 18）で、保存したS全量schema 16 snapshotを隔離clusterへrestoreし、
+通常migrationを適用しました。probe前とcold再起動前の`ANALYZE`を記録します。
+同じ共有M4 Max host、DB 6 vCPU/24 GiB、API+2 worker 2 vCPU/8 GiB、別clientと
+制御local providerを使用し、実model呼出しや課金は測定しません。
+probe plan digest:
+`f50ec1733095062ffa3b4726ccdfb5497fa705c028fce0855caf98315270e4b2`。
+
+| Probe | 完全一致実測 |
+|---|---|
+| 小規模Native purge | 100件、並行上限5。transaction p95 **125.22 ms**、E2E p95 **127.80 ms**。変更しない1,000 ms未満 |
+| 混合background window | 30秒、recall 600件+observe 150件、2 worker。今回は150 job成功、stale-context拒否0 |
+| Read barrier / replay | purge後の拒否100件、同じreceiptを返す冪等replay 100件 |
+| 大規模closure | source 1件+派生assertion 9,999件。preview **1.08秒**、purge **4.43秒**で900秒未満。tombstone/manifest各10k、元source/assertion本文は残存なし |
+| Input / body上限 | 過大processing input 20件を永続変更なしで拒否。過大bodyはHTTP 413 |
+| Queue / call上限 | 並行20要求中2件受付・18件拒否、pause中callなし。call quota 1で10 jobから予約は正確に1件 |
+| Output / context上限 | 128-token policyに対する256-token profileを予約/送信前に拒否。512-byte recall pack 20件を上限内に収め、過大implicit budgetを拒否 |
+| 結果不明会計 | 不正な制御応答のcallをunknownのまま保持し、明示retryはHTTP 409 |
+| DB待機上限 | lock待機4要求が**5.03秒**で明示HTTP 503。lock解除後はrecall成功 |
+| Guest-cold検索 | 異なるguest/postmaster起動12回、3 mode×4選択率。初回transaction **122.10–242.90 ms**、後続60 sampleは**147.01 ms以下** |
+
+cold測定は大規模purge後です。Linux guest/PostgreSQLの新規起動を示しますが、
+物理host/device cacheの排除は保証しません。各層の初回1件は**cold p95ではなく**、
+30秒の削除windowも30分steady gateの代用ではありません。
+同じexact 51293b4で変更しない**1,800秒S steady**も完了しました。recall 36,000件、
+observe 9,000件で不正応答/timing欠落/dropは0、warmup込み9,300 jobが成功しました。
+observe transaction/E2E p95は**37.08/42.63 ms**、recallは**106.24/110.47 ms**です。
+12層すべて3,000 sample、最遅transaction p95はvector・100%の**124.03 ms**で、
+全steady gateを満たしました。
+
+unique-key projection計画は、tombstoneのない旧steady baseline（9c7db01のrecall p95
+76.98 ms）より全条件で速いわけではありません。500 ms gateを維持しつつ、
+削除に左右される遅延を抑える変更です。
+DBは926,176,959 → 993,900,223 bytes、indexは184,778,752 bytes、
+WAL増加552,113,776 bytes、論理backup 467,449,947 bytesでした。
+worker queue/processing p95は399.84/84.56 ms。guestのsampled nonavailable memory peakは
+DB 1,785,622,528 bytes、application 408,043,520 bytesで、process RSSではありません。
+全sample期間のCPU busy secondsは2604.91/1514.26です。
+
+[Native run 35558748669](https://github.com/rioriost/pg_agmemory/actions/runs/35558748669)
+は両architectureで**1,940 passed / optional 8 skips**でした。arm64は全distribution/
+production/復旧smokeも完了しました。amd64は後続smoke中に旧CI上限25分へ達したため、
+run全体は**cancelledでありpassではありません**。増えたsuiteとpackaging/復旧を収めるため、
+workflow上限を40分に変更します。製品遅延、DB timeout、S時間の閾値は変更しません。
+両architectureの最終distribution完了は未確認です。
+reportの`resource_qualified=false`/`m2_qualified=false`を維持し、
+より広い復旧/deployment/参照benchmark作業の完了も主張しません。
+
+失敗と途中結果も保持します。`6beb38c`はtombstone追加後のprojection joinが約1億組を比較し、
+DB接続が飽和して混合削除probeに失敗しました。JIT無効化だけでは解消しませんでした。
+schema 17で同等のtenant内tombstone集合に変更し、unique-key embedding lookupで
+低選択率のprojection交差走査も避けました。最初のlookup run（`00f7854`）は
+`stale_context`拒否2件で停止しました。並行purgeが保存済みdeletion epochを変える条件で
+全worker成功を要求したharnessの誤りでした。改訂planはepoch失効・未公開・既知の会計を
+確認した拒否を成功とは別に数えます。`cacb47b`は149件成功+その拒否1件を記録しましたが、
+大規模purge後のwarm sampleには500 ms超過が残りました。schema 18は
+read/admin/期限規則を変えず、残るscalar tombstone membership確認を集合処理にします。
+旧失敗/中間artifactを最終runと混同しません。
+
 ### 固定S資源測定とrecall修正（2026-09-20）
 
 計測checkpoint `1d898c999379422f84d89043b0ae83ace734976e` は
@@ -970,7 +1031,7 @@ supersession とみなしたりしてはいけない。
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
 | M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
-| M2-C 資源認定 | **一部測定済み:** `9c7db01`の固定S・30分steadyは達成。失敗した`1d898c9`も保持。small-forget/large-purge、並行limit/failure、cold-cacheは未完で、資源全体の合格ではない |
+| M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。物理host/device coldや専用本番容量は主張せず、両architectureの最終distribution完了は未確認 |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 

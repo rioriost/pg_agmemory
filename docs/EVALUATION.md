@@ -131,6 +131,74 @@ legacy gaps and oversized bundles remain explicit unsupported cases; general
 audit history/sequences and production HA/PITR are not certified. `m2_qualified=false`
 and manual deployment approval remain in force.
 
+### Native deletion/limit and guest-cold probes (2026-09-21)
+
+Exact implementation **`51293b4bc743c97130e45d70d2f9350a079178d0`**
+(service 0.0.34/schema 18) restores the retained full-S schema-16 snapshot into
+an isolated cluster, applies ordinary migrations, and records `ANALYZE` before
+the probes and before the cold restarts. It uses the same shared M4 Max host and
+6-vCPU/24-GiB DB plus 2-vCPU/8-GiB API/two-worker allocation, with a separate
+client and controlled local provider. No real model calls or billing are measured.
+Probe plan digest:
+`f50ec1733095062ffa3b4726ccdfb5497fa705c028fce0855caf98315270e4b2`.
+
+| Probe | Exact result |
+|---|---|
+| Small Native purge | 100 samples, concurrency ceiling 5; transaction p95 **125.22 ms**, E2E p95 **127.80 ms**, below unchanged 1,000 ms |
+| Concurrent background window | 30 s, 600 recall + 150 observe, two workers; 150 succeeded jobs, zero stale-context rejections in this run |
+| Read barrier / replay | 100 post-purge denials; 100 identical idempotent receipt replays |
+| Large closure | One source plus 9,999 derived assertions: preview **1.08 s**, purge **4.43 s**, below unchanged 900 s; 10k tombstones/manifest targets and no canonical source/assertion payloads left |
+| Input / body bounds | 20 oversized processing inputs rejected with no durable changes; HTTP 413 for oversized body |
+| Queue / calls | 20 concurrent admissions: two accepted, 18 rejected, no calls while paused; ten jobs under call quota one produced exactly one reservation |
+| Output / context bounds | 256-token profile rejected against 128-token policy before reservation/egress; 20 bounded 512-byte recall packs; oversized implicit budget rejected |
+| Unknown accounting | Malformed controlled response retains unknown call; explicit retry refused with HTTP 409 |
+| Database wait bound | Four blocked requests fail explicitly with HTTP 503 in **5.03 s**; recall succeeds after lock release |
+| Guest-cold retrieval | 12 distinct guest/postmaster starts, three modes × four selectivities; first transaction **122.10–242.90 ms**; 60 subsequent samples **≤147.01 ms** |
+
+Cold sampling happens after the large purge. It proves distinct Linux guest and
+PostgreSQL startup state, not physical host/device-cache eviction. One first
+sample per stratum is **not a cold p95**, and this 30-second deletion window is
+not the 30-minute steady gate. The exact 51293b4 full steady run also completed
+the unchanged **1,800-second S window**: 36,000 recall and 9,000 observe requests,
+zero invalid responses/missing timings/drops, and all 9,300 warmup+steady jobs
+succeeded. Observe transaction/E2E p95 was **37.08/42.63 ms**; recall
+**106.24/110.47 ms**. All 12 strata had 3,000 samples; worst transaction p95
+was **124.03 ms**, vector at 100%. Every steady gate passed.
+
+The safer unique-key projection plan is not uniformly faster than the old
+empty-tombstone steady baseline (recall p95 was 76.98 ms at 9c7db01); it bounds
+the measured deletion-sensitive cases while retaining the 500-ms gate.
+DB size was 926,176,959 → 993,900,223 bytes, indexes 184,778,752 bytes,
+WAL growth 552,113,776 bytes and logical backup 467,449,947 bytes.
+Worker queue/processing p95 was 399.84/84.56 ms. Sampled guest nonavailable-memory
+peaks were 1,785,622,528 bytes (DB) and 408,043,520 bytes (application), not process
+RSS; full sampled-interval CPU busy seconds were 2604.91/1514.26.
+
+[Native run 35558748669](https://github.com/rioriost/pg_agmemory/actions/runs/35558748669)
+passed **1,940 tests / 8 optional skips on each architecture**. Arm64 also
+completed all distribution/production/recovery smokes. Amd64 reached the old
+25-minute CI ceiling during the subsequent smokes, so the overall run is
+**cancelled, not passed**. The workflow ceiling is now 40 minutes to cover the
+expanded suite plus packaging/recovery; product latency, DB timeout and S
+duration limits are unchanged. Final dual-architecture distribution completion
+remains pending.
+Reports retain `resource_qualified=false`/`m2_qualified=false`; broader recovery,
+deployment and reference-benchmark work is not certified by these probes.
+
+Preserved non-passing evidence matters:
+`6beb38c` failed mixed-load deletion because a post-tombstone projection join
+compared about 100 million pairs, saturating DB connections. Disabling JIT alone
+did not fix it. Schema 17 changed the equivalent tenant-local tombstone set;
+unique-key embedding lookups then removed low-selectivity projection cross scans.
+The first lookup run (`00f7854`) stopped on two `stale_context` worker rejections:
+the harness incorrectly demanded all workers succeed while concurrent purges
+changed their captured deletion epoch. The revised plan counts verified
+epoch-fenced, unpublished, known-accounting rejections separately, not as
+success. `cacb47b` recorded 149 successes plus one such rejection, but still
+had post-large-purge warm samples above 500 ms. Schema 18 removes the remaining
+scalar tombstone membership calls without changing read/admin/expiry rules.
+All old failed/intermediate artifacts remain separate from the final run.
+
 ### Frozen S resource measurements and recall correction (2026-09-20)
 
 Instrumentation checkpoint `1d898c999379422f84d89043b0ae83ace734976e` passed
@@ -1062,7 +1130,7 @@ automatic publication or treat adoption as supersession of another assertion.
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
 | M2-B deletion/ACL/policy/call-accounting restore | Bounded exact-state application now preserves IDs/policy/job/call accounting, with rollback and runtime isolation. **Open:** broader content/derivative/history profiles and deployment qualification. Missing canonical content is not reconstructed; no automatic activation or blanket restore claim |
-| M2-C resource qualification | **Partially measured:** full 30-minute frozen S steady run passes at `9c7db01`; failed `1d898c9` preflight retained. Small-forget/large-purge, concurrent limit/failure probes and cold-cache coverage remain open; no blanket resource pass |
+| M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Physical host/device cold and exclusive production capacity are not claimed; final dual-architecture distribution completion remains pending |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
 

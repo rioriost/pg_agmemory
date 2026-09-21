@@ -9,7 +9,21 @@ but some post-10k-purge warm samples exceeded 500 ms. These are not a cold/stead
 latency pass. Scalar tombstone membership checks remained costly even after
 fixing projection joins. Migration 018 applies the original membership/expiry
 predicate as a statement-local set under forced RLS. An isolated 10k-tombstone
-diagnostic changed from 429 ms to 58 ms; final Native qualification is pending.
+diagnostic changed from 429 ms to 58 ms.
+
+Exact **`51293b4`** now completes the full 30-minute S window and deletion/limit
+probes: observe/recall transaction p95 **37.08/106.24 ms**, mixed small-purge p95
+**125.22 ms**, 10k-object purge **4.43 s**. All 45,000 steady requests and 9,300
+warmup+steady jobs succeeded. Twelve fresh-guest first queries were
+**122.10–242.90 ms**, not a physical-cold p95. See [EVALUATION](EVALUATION.md)
+for limits, failure history, footprint and the projection-plan tradeoff.
+
+Native amd64/arm64 each passed **1,940 tests / 8 optional skips**; arm64 completed
+all packaged/recovery smokes. Amd64 hit the old 25-minute workflow deadline
+after pytest, so dual-architecture distribution completion remains pending.
+CI now allows 40 minutes without changing product timing gates.
+**M2 remains incomplete:** broader declared restore/deployment coverage and the
+single reference memory benchmark/release handoff still remain.
 
 ## v0.0.33 / schema 17: preserving bounded recall after deletion
 

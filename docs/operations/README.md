@@ -174,9 +174,10 @@ no paid/cloud/live-model calls or model-quality claims. Bodies/vectors never
 appear in timing records. Raw artifacts, backup contents and per-request
 correlation IDs remain private. The helper removes only its own containers and
 credential files, not measurement evidence. **Current reports remain
-`resource_qualified=false`**: small-forget/large-purge, concurrent limit probes
-and physical cold-cache coverage are not yet complete. Steady timing gates
-alone do not establish M2 acceptance.
+`resource_qualified=false`**: deletion/limit and guest-cold probe results are
+published separately in [EVALUATION](../EVALUATION.md); physical-host cold-cache
+and exclusive production capacity are not claimed. Steady timing gates alone
+do not establish M2 acceptance.
 
 ### Isolated resource probes
 

@@ -8,7 +8,19 @@ schema 17のexact probe `cacb47b`では小/大規模削除と上限確認は成�
 10k purge後のwarm sampleに500 ms超過があり、cold/steady遅延の合格とはしません。
 projection join改善後もtombstoneのscalar権限確認が残っていました。
 migration 018は同じmembership/期限条件を強制RLS内のstatement内集合として評価します。
-10k tombstoneを用いた隔離診断は429 msから58 msへ短縮しました。最終Native認定は未完です。
+10k tombstoneを用いた隔離診断は429 msから58 msへ短縮しました。
+
+exact **`51293b4`**で30分S全量と削除/上限probeを完了しました。
+observe/recall transaction p95 **37.08/106.24 ms**、混合負荷中の小規模purge p95
+**125.22 ms**、10k-object purge **4.43秒**です。
+steady 45,000要求、warmup込み9,300 jobが成功しました。
+新規guestでの初回12要求は**122.10–242.90 ms**で、物理cold p95ではありません。
+上限確認、失敗履歴、footprint、projection計画のtradeoffは[EVALUATION](EVALUATION-jp.md)に記録します。
+
+Native amd64/arm64は各**1,940 passed / optional 8 skips**、arm64は全packaged/復旧smokeも
+完了しました。amd64はpytest後に旧workflow上限25分へ達したため、両architectureの
+distribution完了は未確認です。製品の時間gateを変えず、CI上限を40分へ延長します。
+**M2は未完**で、より広い宣言済み復旧/deployment範囲、単一の参照記憶benchmarkとrelease引渡しが残ります。
 
 ## v0.0.33 / schema 17: 削除後のrecall遅延への対応
 
