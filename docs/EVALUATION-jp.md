@@ -16,6 +16,54 @@ model比較や新しい人手label収集も計画しない。一つの固定し�
 `m2_qualified=false`は事実のまま保持し、version付きの本体受入一覧の代わりにしない。
 意味的な測定結果を捏造しない。
 
+### 単一の参考記憶benchmark
+
+再現用sampleは、既存の**実3 call記憶lifecycle**です。構成は一つに固定し、新しいmodel比較や
+意味採点は行いません。[結果JSON](../examples/reference-memory-result.json)は、実測した
+**`e4f5d76` / service 0.0.27 / schema 13**、変更していない
+[test recipe](../tests/test_processing_live.py)、worker profile digest、
+保存JUnitのchecksumに結び付けています。[provider profile](../examples/reference-memory-profile.json)に
+含むのはmodel pinであり、credentialではありません。既存証跡の集約で、
+**schema 18上の新しい実行とは扱いません**。
+
+| この1 caseで観測した項目 | 記録結果 |
+|---|---|
+| 実local model処理 | 抽出・768次元embedding・圧縮を各1回。commit済み予約3件 |
+| 受理した抽出 | inferred preference 1件、重複/隔離0件。真実の検証ではない |
+| 圧縮後の保持 | typed checkpoint JSONの完全一致、原文/revision参照、coverage 1–1、未圧縮tail 1件 |
+| Restore/hook | typed stateと受理した未信頼summaryを保持。必須tail 1件。保留承認/unknown effectを実行許可へ昇格しない |
+| 再送/削除 | 意味的job IDを保持して追加callなし。削除snapshot/candidateは404、予約3件を保持 |
+| 保存/転送量の観測 | working snapshot JSONは2,405 bytes。hook予算2,404 bytesなら明示拒否 |
+| 時間 | fixtureとlocal推論を含むpytest case全体1標本で**9.621秒**。request単位のlatencyやp95ではない |
+| 未測定 | 意味的主張の保持率、人手/task成功、DB増分、process RSS、実課金 |
+
+成功case以前の失敗した抽出/診断call 4件は別に保持し、下記の履歴と結果JSONのpipeline JUnit
+checksumから区別できます。無料retryや、なかったことにした試行ではありません。
+別のheld-out検索600問は同じmodel構成でhybrid Recall@20 **0.9981818182**でしたが、
+この実3 call caseに含めません。S資源測定は制御した応答を使い、これらmodelの資源測定ではありません。
+
+**再現手順:** 当時の実装を再現する場合は記録SHAの隔離checkoutを使い、現行codeでの実行は
+新しい証跡と明示します。固定modelと認証付きloopback relayをrunnerのnetwork namespace内へ
+準備してください。この手順はmodel download、remote/有料backend、全interface待受、
+自動retryを許可するものではありません。repositoryのLinux test環境へ、
+**新規の使い捨てPostgreSQL cluster**（fixtureはmemory schemaを削除し、cluster-wide roleを作る）、
+owner専用profile copy、指定環境変数経由のrelay credentialを渡します。
+
+```bash
+# PGAG_TEST_DATABASE_URL: 新規の使い捨てclusterだけを指す管理URL。
+# PGAG_M2_RELAY_TOKEN: 非公開で渡し、JSONやcommitには含めない。
+export PGAG_LIVE_PROVIDER_CONFIG=/absolute/private/reference-memory-profile.json
+PGAG_M2_LIVE_PROCESSING=1 pytest -q -o junit_family=legacy \
+  --junitxml=/absolute/private/new-run/processing.xml tests/test_processing_live.py
+```
+
+試行ごとに新しい非公開出力directoryを使い、非0終了・不正出力・途中の会計も保持します。
+testは合成model応答へ差し替えず、失敗callをretryしません。生成summary、時間、JSON byte数は
+変動するため、古い数値へ合わせるのではなく記録した契約を維持します。
+実測SHA、実際の設定、install済みmodel digest、全JUnit、失敗logを一緒に保存してください。
+credentialや使い捨てDB/model processのcleanupはoperatorの責務です。
+意味的な合格点は設けず、本番認定とも扱いません。
+
 ### M2-A 本体契約一覧（2026-09-19）
 
 | 境界 / 実際のsurface | 決定的な責務 | 回帰証跡 |
@@ -112,6 +160,30 @@ probeはrollbackして認証済み参照状態を変えません。復元旧base
 synthetic provider呼出しは3回、**外部model requestは0回**で、model品質や実課金の結果ではありません。
 本文不一致、job集合変更、旧履歴欠落、過大bundleは未対応として明示拒否します。
 一般audit履歴/sequence、本番HA/PITRは認定せず、`m2_qualified=false`と手動の配置判断を維持します。
+
+### 派生記憶のbackup復元（2026-09-21）
+
+完全一致**`593087f51b87ecec8edb942c637bb7dd8af0e497`**、service 0.0.35/schema 18の
+Linux v5実backup drillが`exact_commit_inputs=true`で成功しました。
+元clusterを削除してから旧dumpを復元し、混在baseline receipt 2件を保持、
+その後のpurge 3件をreplayします。packaged認証付き適用で元receipt 5件、
+35 canonical/21運用fingerprintが一致し、tombstone対象20件は読めません。
+metadata-only anchor 43件は残り、byte消去とは主張しません。
+unknown/失敗/成功を含むsynthetic予約11件も、quota返還なしで保持します。
+
+抽出derivation/candidate、原文/assertion embedding、working snapshot/event、
+entity/evidence/relation/revision、tool-effect/revision/referenceの13 tableに
+保持/purge双方の非空caseがあります。生存provenance/vector/graphは読め、
+typed restoreは保留承認とunknown effectを保持します。
+epochが古いsnapshotのread/resumeは明示errorとし、suppress本文は物理的に残っても読めません。
+検証による変更はrollbackし、最終fingerprintは不変です。外部model requestや自動起動はありません。
+
+関連Linux suiteはdrill契約68件を含む149件が成功し、lint/typeも通過しました。件数は重複します。
+初回開発drillでは同一principalの複数scope membershipの比較順が曖昧な点を検出し、
+完全なkey順へ修正しました。一致条件は緩めていません。失敗/成功開発logと完全一致reportを保持します。
+両nativeは[run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317)で進行中です。
+新しいsuppress replay、対象重複、prefix改変、過大suffix、欠落/新canonical本文、
+任意履歴、HA/PITRは認定しません。
 
 ### Native削除/上限とguest-cold probe（2026-09-21）
 
@@ -411,7 +483,8 @@ commit済み予約、typed checkpointの完全保持、tail保持、明示復元
 snapshot予算2,405 byte、必須tail 1 item、replay、purgeを検査した。
 worker profile digestは
 `739b306984c93b892df0b4ac2c00556d865d4864a48ce20ee7f74ee0cb010ed5`。
-synthetic lifecycle一つの検査であり、人手precision率や必須の実task 20件の一件とはしない。
+synthetic lifecycle一つの検査であり、人手precision率や実task成功の結果ではありません。
+旧20-task gateは現在のproject要件ではありません。
 
 ### 限定した論理backup復旧実験
 
@@ -1035,9 +1108,9 @@ supersession とみなしたりしてはいけない。
 | State、provenance、明示更新 | typed値、revision/span/coverage参照、model空間分離、CAS、時点oracleの一致。要約/回答の意味品質を構造上の正しさと混同しない |
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
-| M2-B 削除/ACL/policy/call会計の復旧 | v5 Linux開発drillで不変の混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持。tombstone対象20件は読めない。**未完:** 完全一致commit/両nativeの認定。欠落/新本文と未対応履歴は拒否し、自動起動や包括restore認定はしない |
+| M2-B 削除/ACL/policy/call会計の復旧 | 完全一致`593087f`のv5 Linux drillで不変の混在baseline、35 canonical/21運用fingerprint、保持/purge対象派生物、予約11件を保持。tombstone対象20件は読めない。**未完:** 両nativeの認定。欠落/新本文と未対応履歴は拒否し、自動起動や包括restore認定はしない |
 | M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host/device coldや専用本番容量は主張しない |
-| M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
+| M2-D 一つの参考記憶benchmark | 上記へ固定profile、当時の正確なsource/JUnit対応、typed state/coverage/tail、時間/量と失敗履歴を公開。新規live model実行や意味的閾値なし。最終release引き継ぎが残る |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 
 旧人手precision/fidelity、自然言語更新、根拠なし回答、実task成功の目標は、

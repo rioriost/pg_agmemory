@@ -1,0 +1,91 @@
+{
+  "format": "pgag-reference-memory-v1",
+  "status": "recorded",
+  "purpose": "One reference memory lifecycle, not model comparison or semantic qualification",
+  "implementation": {
+    "git_sha": "e4f5d76ad2a4919349054165ce531b92fa650818",
+    "service_version": "0.0.27",
+    "schema_version": 13,
+    "measured_at": "2026-09-18T07:49:03.680400+00:00",
+    "current_release_rerun": false
+  },
+  "recipe": {
+    "path": "tests/test_processing_live.py",
+    "sha256": "1b705fa4ac9801be463049884cdce6009f38536af46cb594ab3521428efd91b9",
+    "profile_path": "examples/reference-memory-profile.json",
+    "profile_digest": "739b306984c93b892df0b4ac2c00556d865d4864a48ce20ee7f74ee0cb010ed5",
+    "model_identity": "Operator revision pins checked against local artifacts; not automatic weight attestation",
+    "model_server": "Ollama 0.34.1",
+    "external_model_calls_limit": 3,
+    "automatic_retries": 0,
+    "automatic_downloads": false
+  },
+  "evidence": {
+    "junit_file": "m2-processing-e4f5d76.xml",
+    "junit_sha256": "fcb060a428449a8be6c8b23d0dcc4a54ecf25ebc25223d88e2a1b85531479204",
+    "raw_artifact_distribution": "Operator-retained; not bundled or a public download link",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "observations": {
+    "model_calls": [
+      {"kind": "extract", "outcome": "succeeded", "input_bytes": 29, "max_output_tokens": 512},
+      {"kind": "embed", "outcome": "succeeded", "input_bytes": 29, "max_output_tokens": null},
+      {"kind": "compact", "outcome": "succeeded", "input_bytes": 149, "max_output_tokens": 512}
+    ],
+    "extraction": {"published": 1, "duplicate": 0, "quarantined": 0},
+    "typed_state_exact": true,
+    "accepted_summary_preserved_as_untrusted": true,
+    "coverage_start": 1,
+    "coverage_end": 1,
+    "uncompacted_tail_events": 1,
+    "hook_required_tail_items": 1,
+    "embedding_dimensions": 768,
+    "embedding_normalization": "l2-f32-v1",
+    "semantic_job_ids_preserved_on_replay": true,
+    "originals_retained_until_explicit_purge": true,
+    "explicit_restore_preserves_pending_approvals": true,
+    "automatic_side_effect_reexecution": false,
+    "purged_snapshot_and_candidates_http_status": 404,
+    "reservations_retained_after_purge": 3,
+    "billing_unknown": false
+  },
+  "latency": {
+    "measurement": "Whole pytest case including fixture, local inference and lifecycle operations",
+    "samples": 1,
+    "seconds": 9.621,
+    "p95_seconds": null,
+    "per_request_seconds": null
+  },
+  "footprint": {
+    "snapshot_json_bytes": 2405,
+    "one_byte_smaller_hook_budget": "budget_exhausted",
+    "database_bytes": null,
+    "process_rss_bytes": null,
+    "actual_billing": null
+  },
+  "prior_failures": {
+    "extraction_pipeline_attempts": 2,
+    "separately_authorized_diagnostics": 2,
+    "total_model_calls": 4,
+    "included_in_successful_case": false,
+    "retained_pipeline_junit": [
+      {
+        "file": "m2-processing-101993a.xml",
+        "sha256": "f7edb507e672cccfa7cf25fd9cffafac1fc9d2a51e6b272929ddb40e433519b3"
+      },
+      {
+        "file": "m2-processing-2288fdc.xml",
+        "sha256": "babcb9455ecb9c83c3f7b1bb97fb723c73857f5849aab85e358cbbc4192f992f"
+      }
+    ]
+  },
+  "not_measured": [
+    "Semantic summary fidelity or claim-retention rate",
+    "Human precision or successful real agent tasks",
+    "Live-model latency distribution or production capacity",
+    "Reference-lifecycle database growth, process RSS or actual model billing"
+  ]
+}

@@ -14,6 +14,12 @@ An unchanged mixed suppress/purge prefix already in the backup is preserved;
 new suppress replay remains unsupported. No migration or public API is added.
 See [recovery operations](docs/operations/README.md#schema-15-operational-state-application).
 
+The [single reference memory benchmark](docs/EVALUATION.md#one-reference-memory-benchmark)
+now has a pinned example profile and machine-readable results: exact typed state,
+coverage/tail and call-accounting preservation, with one-case timing/size and
+prior failures. These are retained measurements, not a new model comparison,
+semantic-quality pass or schema-18 live-model rerun.
+
 Migration 018 also makes tombstone metadata read permissions set-based. The
 tenant/scope/expiry rules are unchanged, including for large deletion ledgers.
 

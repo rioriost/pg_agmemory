@@ -11,7 +11,7 @@ retained and purged fixtures. An unchanged mixed suppress/purge baseline is
 preserved without replaying it; new suppress, overlapping targets, changed
 prefixes and purge suffixes above 100 expanded targets remain refused.
 
-The Linux development drill restores the old dump after destroying the source,
+The exact **`593087f`** Linux drill restores the old dump after destroying the source,
 replays three purges, applies the authenticated latest operational bundle and
 matches all 35 canonical and 21 operational fingerprints. All 20 tombstoned
 anchors remain unreadable; 11 synthetic reservations survive without refund.
@@ -22,10 +22,14 @@ No external model calls, migration or automatic service activation are added.
 
 The initial expanded run exposed a harness-only ordering ambiguity for one
 principal in several scopes; snapshots now order memberships by the full key.
-Exact-commit/native qualification is pending. Missing/newer canonical content,
+The exact local report records `exact_commit_inputs=true`; native qualification
+is pending in [run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317).
+Missing/newer canonical content,
 arbitrary histories, HA/PITR and provider-side reconciliation remain outside
-this bounded application. **M2 is not complete**; the single reference benchmark
-and release handoff remain.
+this bounded application. The [single reference benchmark](EVALUATION.md#one-reference-memory-benchmark)
+is now packaged with its original source/JUnit binding, pinned profile, observed
+state/coverage/tail/timing/size and preserved failures; it is not a new model run.
+**M2 is not complete**; final distribution qualification and release handoff remain.
 
 ## v0.0.34 / schema 18: bounding large-tombstone read checks
 

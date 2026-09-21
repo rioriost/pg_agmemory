@@ -14,6 +14,10 @@
 保持しますが、新しいsuppressのreplayは未対応です。migrationや公開APIは追加しません。
 [復旧運用](docs/operations/README-jp.md#schema-15-operational-state-application)を参照してください。
 
+[単一の参考記憶benchmark](docs/EVALUATION-jp.md#単一の参考記憶benchmark)に固定profileと結果JSONを
+まとめました。typed state・coverage/tail・呼出し会計の保持、1 caseの時間/量と失敗履歴を示します。
+既存の実測証跡であり、新しいmodel比較・意味的合格判定・schema 18上のlive model再実行ではありません。
+
 migration 018ではtombstone metadataのread権限も集合処理にします。
 大規模な削除履歴でもtenant/scope/期限の認可条件は変更しません。
 

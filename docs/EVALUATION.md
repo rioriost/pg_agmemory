@@ -18,6 +18,62 @@ Existing `NOT_MEASURED`, `human_review_verified=false`, `human_quality_qualified
 and `m2_qualified=false` fields remain truthful and unchanged; they do not replace
 the versioned core acceptance inventory. No semantic measurement is invented.
 
+### One reference memory benchmark
+
+The reproducible sample is the existing **three-call memory lifecycle**, using
+one fixed configuration, not a new model comparison or semantic-scoring campaign.
+Its machine-readable [result](../examples/reference-memory-result.json) binds
+the measured **`e4f5d76` / service 0.0.27 / schema 13** implementation, unchanged
+[test recipe](../tests/test_processing_live.py), worker-profile digest and retained
+JUnit checksum. The [provider profile](../examples/reference-memory-profile.json)
+contains model pins, not a credential. This consolidates recorded evidence;
+**it is not a new run on schema 18**.
+
+| Observation from the single case | Recorded result |
+|---|---|
+| Actual local model operations | One extraction, one 768-dimensional embedding, one compaction; three committed reservations |
+| Accepted extraction | One inferred preference, no duplicate or quarantined candidates; not verified truth |
+| Compaction retention | Exact typed checkpoint JSON, source/revision links, coverage 1–1 and one uncompacted tail event |
+| Restore/hook | Exact typed state and accepted untrusted summary; one required tail item; pending approvals/unknown effect do not become permission to execute |
+| Replay/deletion | Stable semantic job IDs, no extra calls; purged snapshot/candidates return 404; all three reservations remain |
+| Serialized footprint | 2,405-byte working snapshot; a 2,404-byte hook allowance is explicitly refused |
+| Timing | **9.621 s** for one whole pytest case, including fixtures and local inference; not per-request latency or p95 |
+| Unmeasured | Semantic claim-retention rate, human/task success, DB growth, process RSS and actual billing |
+
+Four earlier failed extraction/diagnostic calls remain separate from the successful
+case; their history is retained below and the two pipeline JUnit checksums are in
+the result. They are not zero-cost retries or silently discarded observations.
+The separate 600-question held-out retrieval experiment below used the same
+model configuration and recorded hybrid Recall@20 **0.9981818182**. It is not part
+of this three-call case. S resource results use controlled responses, not these
+models, and must not be presented as live-model resource measurements.
+
+**Reproduction:** use an isolated checkout at the recorded SHA to reproduce that
+implementation, or clearly label a run on current code as new evidence. Prepare
+the pinned models and an authenticated loopback relay inside the runner's network
+namespace; no model download, remote/paid backend, wildcard listener or automatic
+retry is authorized by these instructions. In the repository's Linux test
+environment, provide a **fresh disposable PostgreSQL cluster** (the fixtures
+drop memory schemas and provision cluster-wide roles), an owner-private copy of
+the profile and the relay credential via its named environment variable:
+
+```bash
+# PGAG_TEST_DATABASE_URL: administrator URL for the fresh disposable cluster only.
+# PGAG_M2_RELAY_TOKEN: supplied privately; never place it in the JSON or commit it.
+export PGAG_LIVE_PROVIDER_CONFIG=/absolute/private/reference-memory-profile.json
+PGAG_M2_LIVE_PROCESSING=1 pytest -q -o junit_family=legacy \
+  --junitxml=/absolute/private/new-run/processing.xml tests/test_processing_live.py
+```
+
+Use a new private output directory per attempt; retain nonzero exits, invalid
+outputs and partial accounting. The test never substitutes synthetic model
+responses or retries a failed provider call. Generated summaries, timing and
+serialized byte counts may differ; reproduction must preserve the recorded
+contracts, not force the old numbers. Keep the measured SHA, actual configuration,
+installed model digests, full JUnit and failure logs together. Credentials and
+disposable database/model processes are the operator's cleanup responsibility.
+There is no semantic pass score, and this example does not certify production.
+
 ### M2-A core contract inventory (2026-09-19)
 
 | Boundary / actual surface | Deterministic obligation | Regression evidence |
@@ -130,6 +186,36 @@ provider-billing observation is implied. Content mismatch, changed job sets,
 legacy gaps and oversized bundles remain explicit unsupported cases; general
 audit history/sequences and production HA/PITR are not certified. `m2_qualified=false`
 and manual deployment approval remain in force.
+
+### Derived-memory backup recovery (2026-09-21)
+
+Exact **`593087f51b87ecec8edb942c637bb7dd8af0e497`**, service 0.0.35/schema 18,
+passed the Linux v5 actual backup drill with `exact_commit_inputs=true`.
+It destroys the source cluster before restoring the old dump, preserves two
+mixed baseline receipts and replays three subsequent purges. The packaged
+authenticated apply restores all five original receipts, 35 canonical and 21
+operational fingerprints; 20 tombstoned anchors remain unreadable. Forty-three
+metadata-only anchors remain, not erased bytes. Eleven synthetic call reservations,
+including unknown/failed/succeeded outcomes, survive without quota refund.
+
+Thirteen derivative tables have nonempty purged and retained cases: extraction
+derivation/candidates, episode/assertion embeddings, working snapshots/events,
+entity/evidence/relation/revision and tool-effect/revision/reference records.
+Retained provenance/vector/graph reads succeed; typed restore preserves pending
+approvals and unknown effects, while epoch-stale snapshot reads/resume return
+explicit errors. A suppressed payload stays physically present but invisible.
+Verification mutations roll back and final fingerprints remain unchanged.
+No external model request or automatic service activation occurs.
+
+The focused Linux suite passed 149 cases including 68 drill contracts, with
+lint/type checks clean; these counts overlap, not additive. The first expanded
+development drill detected ambiguous membership ordering for a principal in
+several scopes. Ordering by the full membership key fixed the comparator, not
+the equality requirement. Both development logs and the exact report are retained.
+Native qualification is pending in
+[run 35563083317](https://github.com/rioriost/pg_agmemory/actions/runs/35563083317).
+New suppress replay, overlapping targets, altered prefixes, oversized suffixes,
+missing/newer canonical content, arbitrary histories and HA/PITR are not qualified.
 
 ### Native deletion/limit and guest-cold probes (2026-09-21)
 
@@ -455,8 +541,8 @@ It verified committed reservations, exact typed checkpoint state, preserved tail
 explicit restoration, 2,405-byte snapshot budget, one required tail item, replay
 and purge. Worker profile digest:
 `739b306984c93b892df0b4ac2c00556d865d4864a48ce20ee7f74ee0cb010ed5`.
-This is one synthetic lifecycle, **not** a measured human precision rate or one
-of the required 20 real task replays.
+This is one synthetic lifecycle, **not** a measured human precision rate or real
+task-success result. The former 20-task gate is no longer a project requirement.
 
 ### Bounded logical-backup recovery drill
 
@@ -1136,9 +1222,9 @@ automatic publication or treat adoption as supersession of another assertion.
 | State, provenance and explicit updates | Exact typed values, revision/span/coverage links, model-space isolation, CAS and temporal oracles; do not count semantic summary/answer quality as structural conformance |
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
-| M2-B deletion/ACL/policy/call-accounting restore | v5 Linux development drill preserves an unchanged mixed baseline, 35 canonical/21 operational fingerprints, retained/purged derivatives and 11 reservations; 20 tombstoned anchors stay unreadable. **Open:** exact-commit/native qualification. Missing/newer content and unsupported histories are refused; no automatic activation or blanket restore claim |
+| M2-B deletion/ACL/policy/call-accounting restore | Exact `593087f` v5 Linux drill preserves an unchanged mixed baseline, 35 canonical/21 operational fingerprints, retained/purged derivatives and 11 reservations; 20 tombstoned anchors stay unreadable. **Open:** native qualification. Missing/newer content and unsupported histories are refused; no automatic activation or blanket restore claim |
 | M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Both native distributions complete at runtime-identical `7a2fd88`. Physical host/device cold and exclusive production capacity are not claimed |
-| M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
+| M2-D one reference memory benchmark | Published above with pinned profile, exact historical source/JUnit binding, typed state/coverage/tail results, observed latency/footprint and retained failures. No new live-model run or semantic threshold; final release handoff remains |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
 
 The old human precision/fidelity, natural-language update, unsupported-answer

@@ -754,7 +754,7 @@ native amd64/arm64のpackaged検査で各1,754 passed / optional 8 skips。
 | M2-A | 対応API/SDK/MCP/hookと不変条件/検査を対応付け、旧診断は事実のまま保持してmodel品質release gateにしない | 一覧とreport境界の見直しをEVALUATIONへ記録。完全一致の認定は実装ごと |
 | M2-B | 対応履歴/派生物のversion付き復旧metadataと隔離restore。公開前に最新ACL、処理policy、call予約、unknown、quotaを照合 | 認証付き適用とv5 drillで、保持/purge対象の抽出・採用・vector・working state/tail・SQL graph・effectと不変の混在prefixを扱う。**完全一致commit/両nativeの認定が残る**。欠落/新本文や未対応履歴は拒否し、自動起動しない |
 | M2-C | 18.4節のS資源profileを固定して実行。API/worker混在load、予算拒否、queue/DB上限、障害動作を確認。DB/index/WAL/backup量と参照providerの時間/費用を分離 | exact `51293b4`でS全量・30分steady、混合小規模削除、10k purge、limit/failure、宣言したguest-coldを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host cold/専用本番容量は主張しない |
-| M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 既存の検索・実3 call lifecycle証跡は再利用可。統合benchmark/release引き継ぎが残る |
+| M2-D | 既存の単一参照model構成でNative/API経由の記憶lifecycle benchmarkを再現可能にまとめる。typed state/ID/coverage保持、検索結果、失敗、資源量を報告。install/upgrade/restore制限を文書化し、完全一致commitでdistribution検査 | 参考profile/結果と再現手順をEVALUATIONへ公開し、当時のrunとの対応、未測定値、失敗を保持。最終完全一致distribution/release引き継ぎが残る |
 
 M2-Bは複数/混在するsuppress/purge履歴、sourceから派生物へのclosure、
 snapshot/candidate/embeddingと、読み続けられるpositive controlを対象とする。
