@@ -154,6 +154,38 @@ credential files, not measurement evidence. **Current reports remain
 and physical cold-cache coverage are not yet complete. Steady timing gates
 alone do not establish M2 acceptance.
 
+### Isolated resource probes
+
+```bash
+bash scripts/measure-resource-probes.sh /private/S/final.dump /private/S-probes
+```
+
+This Apple Container helper restores the synthetic full-S dump into a new
+disposable cluster; it never connects to the source database. Keep the dump
+private: it contains administrator recovery keys, not just synthetic text.
+`examples/resource-probes-plan.json` freezes 100 small Native purges, concurrent
+admission/failure probes and one 10,000-object derived closure. Small purges run
+within a separate 30-second 20 recall/s + 5 observe/s window with two workers;
+this short probe does **not** replace the 30-minute S qualification. The large
+closure is bulk-seeded, while preview/purge/replay use the actual Native API.
+The existing 1-second small-purge p95 and 900-second large-purge limits are unchanged.
+
+Run `ANALYZE` explicitly after logical restore and again after deletion, retaining
+before/after table statistics. A logical dump is not evidence of usable planner
+statistics. Twelve database-guest/postmaster restarts then measure the first query
+and five subsequent queries for each mode/selectivity pair. Distinct guest boot
+IDs, postmaster starts, request IDs and committed timings are required. This is
+**guest-cold**, not physical-host/device-cold; one first sample per stratum does
+not establish a cold p95 or a 500-ms cold latency pass.
+
+The helper records input/output/context/queue/call-bound rejection, unknown-call
+retry refusal and explicit DB timeout/recovery. It uses only the controlled
+loopback provider; reservation accounting is not actual provider billing.
+Failures retain their evidence and return nonzero. Exact runs require a clean
+tree and archive the commit; `--development` is explicitly non-exact. Raw
+timings, logs, database dumps and credentials must not be committed. Owned guests
+and credentials are removed on exit; evidence remains private.
+
 ## Schema 14 deletion manifests
 
 **Historical contract: service 0.0.29 / API v1 / schema 14.** Current schema-15

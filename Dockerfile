@@ -18,7 +18,8 @@ RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra pr
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 COPY examples/ ./examples/
-COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh scripts/resource-benchmark.py ./scripts/
+COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
+    scripts/resource-benchmark.py scripts/resource-probes.py ./scripts/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps

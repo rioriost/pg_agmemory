@@ -123,6 +123,34 @@ helperは自分のcontainerとcredential fileだけを片付け、測定証跡�
 **現行reportは`resource_qualified=false`**です。small-forget/large-purge、並行limit probe、
 物理cold-cacheの測定は未完で、steady時間gateだけではM2受入れになりません。
 
+### 隔離した資源probe
+
+```bash
+bash scripts/measure-resource-probes.sh /private/S/final.dump /private/S-probes
+```
+
+Apple Container上の新規使い捨てclusterへ合成S全量dumpを復元します。元DBへは
+接続しません。dumpには合成本文だけでなく管理者recovery keyも含まれるため、
+非公開で保管してください。`examples/resource-probes-plan.json`は小規模Native
+purge 100件、並行admission/障害probe、10,000 objectの派生closure 1件を固定します。
+小規模purgeは別の30秒間の20 recall/s・5 observe/s・2 worker負荷中に実行します。
+この短時間probeを30分S認定の代用にはしません。大規模closureはbulk投入しますが、
+preview/purge/replayは実Native APIを使用します。小規模p95 1秒未満、大規模900秒未満
+という閾値は変更していません。
+
+論理restore直後と削除probe後に明示的な`ANALYZE`を実行し、前後のtable統計を保存します。
+論理dumpだけでは利用可能なplanner統計があることを証明できません。その後DB guestと
+postmasterを12回再起動し、mode/selectivityごとに最初の1要求と後続5要求を測定します。
+異なるboot ID・postmaster起動時刻・request IDとcommit済みtimingを必須とします。
+これは**guest-cold**であり物理host/device-coldではありません。各層の初回1件だけで
+cold p95やcold時500ms達成を主張しません。
+
+input/output/context/queue/call上限、結果不明callのretry拒否、DB timeoutと回復を記録します。
+制御loopback providerのみを使い、予約会計を実provider課金と混同しません。
+失敗時は証跡を保持して非zero終了します。正式実行はclean treeとcommit archiveを要求し、
+`--development`は非exactと明記します。raw timing・log・dump・認証情報はcommitしません。
+終了時に所有guestと認証情報を除去し、証跡は非公開のまま保持します。
+
 ## Schema 14 deletion manifests
 
 **過去の契約はservice 0.0.29 / API v1 / schema 14**です。現行15の手順は上記を使います。

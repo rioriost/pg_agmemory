@@ -585,6 +585,13 @@ def worker(directory, number, stop):
     async def loop():
         index = number
         while not stop.is_set():
+            paused = directory / f"worker-{number}.paused"
+            if (directory / "workers.pause").exists():
+                if not paused.exists():
+                    paused.touch(mode=0o600)
+                await asyncio.sleep(0.02)
+                continue
+            paused.unlink(missing_ok=True)
             subject = identities[index % len(identities)]["subject"]
             index += 1
             async with job_transaction(settings.database_url, subject) as jobs:
@@ -640,7 +647,10 @@ def serve(directory):
                 self.send_error(400)
                 return
             time.sleep(spec["controlled_provider_delay_ms"] / 1000)
-            encoded = json.dumps(provider_response()).encode()
+            fault = directory / "provider.malformed"
+            encoded = json.dumps(
+                {"choices": []} if fault.exists() else provider_response()
+            ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))
@@ -778,7 +788,7 @@ async def load(directory, base):
                 body = {
                     "scope_id": actor["scopes"][4],
                     "source_namespace": "resource-load",
-                    "source_event_id": f"{phase}-{index}",
+                    "source_event_id": f"{spec.get('event_prefix', '')}{phase}-{index}",
                     "occurred_at": AT.isoformat(),
                     "content": text_for(index % 256, spec["episode_bytes"]),
                     "consent_reference": CONSENT,
