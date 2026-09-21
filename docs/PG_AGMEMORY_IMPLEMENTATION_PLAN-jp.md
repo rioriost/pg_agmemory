@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.3 / M2 core認定とrelease引き継ぎ、2026-09-21
+- 文書版: 0.4 / M3 graph認定境界、2026-09-21
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 宣言した限定profileでM2 core MVP v0.1.0 / schema 18を完了。固定build `af878fc`は両native distributionに合格し、公開checkpointはbuild入力を変えず認定文書だけを追加する。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: 宣言した限定profileでM2 core MVP v0.1.0 / schema 18を完了。M3は隔離AGE profileと独立した上限付きgraph oracleから開始し、backend認定までcoreのSQL既定を維持する。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -623,6 +623,36 @@ M3完了条件はAGEまたはSQL/PGQの少なくとも一つで、上限付きqu
 明示入力されたentity/relationと固定path oracleを使い、LLMのentity抽出や回答品質を
 gateにしない。上限付きpath/query費用の例を公開する。
 両backend、agent成功率の改善、model比較は必須にしない。
+
+### 12.3 M3実装境界
+
+不変のM2 `v0.1.0` checkpointから開始します。最初のincrementは任意の使い捨てAGE profileと
+独立した期待graph結果を整備し、Native APIでのAGE有効化、必須extension化、
+core schema変更は行いません。管理者でextensionをloadできてもruntime backendの認定ではありません。
+実際の非owner・非superuser・NOBYPASSRLS経路で、label直接読取りと
+非公開の中間vertexを通るpathも確認します。
+
+| 境界 | 必須の不変条件 |
+|---|---|
+| 正本の所有 | PostgreSQLのentity/relation/assertion rowを正本とする。AGEはtopology、canonical ID、revisionと必要な時刻metadataのみを持ち、label/evidenceは現在認可されたcanonical rowから取得する |
+| 上限付きqueryの一致 | M2の方向、seed順、幅優先simple path、revision別endpoint、半開時区間、全prefixを数えるpath予算を保持。各frontierの拡張前・結果予算を消費する前に認可/時刻filterを適用する |
+| generationの寿命 | active世代を変更せず別世代をbuild。canonical入力watermarkと現行access/deletion状態の一致後にCASで公開し、read全体で一つの世代と有効時刻組を固定する |
+| 変更watermark | 関連canonical変更をtransactionに結び付けて追跡。wall-clock timestampだけをcommit順序のwatermarkにせず、後続追加/訂正が欠けたprojectionを完全・最新と表示しない |
+| 失効/削除 | 旧世代や過去時点queryでも現行canonical認可、source可視性、既存response barrierを優先。探索後の出力filterだけでは不十分 |
+| 利用不能/古いprojection | 選択したcanonical fallbackまたはprojection不完全性を明示。AGEを使ったと偽らず、世代を混ぜず、DB障害を空の成功にせず、投影row欠落を隠さない |
+| 再構築/復元 | 原子的な切替まで旧世代identityを保持。復元graphは最新canonical/削除/ACL照合と再構築または世代検証まで無効にし、metadata取込みを起動許可にしない |
+| extension profile | PG18対応source commit/archive checksumとDB imageを固定。実version/権限と失敗probeを記録し、core SQL動作に任意AGE libraryを必須としない |
+
+runtime応答schema、管理generation command、migrationは、任意profileの安全な権限経路が
+成立してから一緒に接続します。設定できるだけの未実装backendを公開せず、
+extensionの代わりに合成応答を使ってrelease認定を進めません。
+
+| M3 increment | 成果物 / 受入条件 | 初期状態 |
+|---|---|---|
+| M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | 実装中 |
+| M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | oracle fixture実装中、AGE比較は未了 |
+| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | profile認定待ち。schema 18には含めない |
+| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | adapter統合後 |
 
 ## 13. MCP adapter
 

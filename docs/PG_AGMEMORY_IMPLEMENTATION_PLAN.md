@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.3 / M2 core qualification and release handoff, 2026-09-21
+- Document version: 0.4 / M3 graph qualification boundary, 2026-09-21
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: M2 core MVP v0.1.0 / schema 18 is complete for the declared bounded profile. Frozen build `af878fc` passed both native distributions; the publication checkpoint adds only qualification documents with unchanged build inputs. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M2 core MVP v0.1.0 / schema 18 is complete for the declared bounded profile. M3 begins with an isolated AGE profile and an independent bounded-graph oracle; the core SQL default remains unchanged until backend qualification. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -632,6 +632,38 @@ of AGE or SQL/PGQ. Use explicitly supplied entities/relations and fixed path
 oracles, not an LLM's entity extraction or answer quality as the gate. Publish a
 bounded path/query-cost example. Both backends, an agent-success improvement,
 and a model comparison are not required.
+
+### 12.3 M3 implementation boundary
+
+Start from the immutable M2 `v0.1.0` checkpoint. The first increment establishes
+an opt-in disposable AGE profile and independent expected graph results; it does
+not enable AGE in the Native API, introduce a mandatory extension or change the
+core schema. An extension that loads as administrator is not a qualified runtime
+backend. Qualify the actual non-owner, non-superuser, NOBYPASSRLS execution path,
+including direct label reads and paths through hidden intermediate vertices.
+
+| Boundary | Required invariant |
+|---|---|
+| Canonical ownership | PostgreSQL entity/relation/assertion rows remain authoritative. AGE stores only the topology, canonical IDs, revisions and necessary time metadata; hydrate labels/evidence from currently authorized canonical rows |
+| Bounded query equivalence | Preserve M2 direction, seed ordering, breadth-first simple paths, revision-specific endpoints, half-open time filters and the global prefix-counted path budget. Filter permissions/time before extending each frontier and before charging the result budget |
+| Generation lifetime | Build a separate generation without changing the active one. Publish with CAS only after its canonical input watermark and current access/deletion state match; pin one generation and one effective time pair for the entire read |
+| Mutation watermark | Track relevant canonical mutations transactionally; a wall-clock timestamp alone is not a commit-order watermark. Later additions/corrections must not be presented as a complete fresh projection |
+| Revocation/deletion | Current canonical permissions, source visibility and the existing response barrier remain authoritative even for an older generation or historical query. Post-traversal output filtering alone is insufficient |
+| Unavailable/stale projection | Explicitly report the selected canonical fallback or projection incompleteness. Do not silently claim AGE, mix generations, return empty success on database failure or hide missing projection rows |
+| Rebuild/restore | Retain prior generation identity until an atomic switch. A restored graph stays disabled until latest canonical/deletion/ACL state is reconciled and the generation is rebuilt or verified; importing metadata is not activation authority |
+| Extension profile | Pin the PG18-compatible source commit/archive checksum and database image. Record actual version/privileges and failed probes. Core SQL operation must not require the optional AGE library |
+
+The runtime response schema, administrative generation commands and migration
+are wired together only after the optional profile has a viable permission path.
+Do not publish a configurable but unimplemented backend or upgrade a release
+claim based on a synthetic substitute for the extension.
+
+| M3 increment | Deliverable / acceptance | Initial state |
+|---|---|---|
+| M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | In progress |
+| M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Oracle fixtures in progress; AGE comparison pending |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Pending profile qualification; not part of schema 18 |
+| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Pending integrated adapter |
 
 ## 13. MCP Adapter
 
