@@ -7,9 +7,17 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Schema 18 tombstone read permissions
+
+現行componentは**service 0.0.34 / API v1 / schema 18**です。migration 018前にAPI/workerを
+停止/drainし、ledger 1–18を確認します。対応codeで現行schemaの復旧artifactを新規取得し、
+過去の証跡を書換え・再署名して認定済みとしないでください。dataと鍵は変更しません。
+tombstone metadataのtenant、read/admin membership、statement時点の期限判定は同じです。
+削除対象ごとのscalar SQLを集合処理にし、write/delete policyとruntime権限は維持します。
+
 ## Schema 17 tombstone visibility
 
-現行componentは**service 0.0.33 / API v1 / schema 17**です。migration 017前にAPI/workerを
+**service 0.0.33 / API v1 / schema 17**で導入しました。migration 017前にAPI/workerを
 停止/drainし、対応codeでledger 1–17を確認してください。信頼する最新lineageから現行schemaの
 snapshot/bundleを取得し、古いartifactのversionやMACを書き換えないでください。
 canonical dataと復旧鍵は変更しません。rollbackには保護した旧backupと対応codeを使います。
@@ -36,7 +44,7 @@ prepared実行でもcontext/membershipを再評価します。recallの順位計
 
 ## Schema 15 operational-state application
 
-**service 0.0.30 / API v1 / schema 15で導入し、現行schemaは17**です。
+**service 0.0.30 / API v1 / schema 15で導入し、現行schemaは18**です。
 API/worker/自動再起動を停止・drainして
 migration 015を適用し、対応componentとmigration履歴1–15を確認します。
 直後に新backupを取得してください。015はtenant別の専用復旧鍵を追加し、RLSを強制し、

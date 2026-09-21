@@ -8,9 +8,19 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Schema 18 tombstone read permissions
+
+Current components are **service 0.0.34 / API v1 / schema 18**. Stop/drain
+API/workers before migration 018 and verify ledger 1–18. Generate fresh
+current-schema recovery artifacts with matching code; the data and keys remain
+unchanged. Do not rewrite or resign older evidence to claim it was qualified.
+Tombstone metadata retains the same tenant, read/admin membership and
+statement-time expiry rules, now evaluated as a set rather than scalar SQL for
+each deleted target. Write/delete policies and runtime privileges are unchanged.
+
 ## Schema 17 tombstone visibility
 
-Current components are **service 0.0.33 / API v1 / schema 17**. Stop/drain
+Introduced at **service 0.0.33 / API v1 / schema 17**. Stop/drain
 API/workers before migration 017. Verify the full 1–17 ledger with matching code
 and take current-schema snapshots/bundles from the authoritative lineage; do not
 edit old artifact version fields or MACs. Canonical data and recovery keys are
@@ -42,7 +52,7 @@ filters, mandatory references and deletion/revocation response barriers remain.
 
 ## Schema 15 operational-state application
 
-**Introduced at service 0.0.30 / API v1 / schema 15; current schema is 17.**
+**Introduced at service 0.0.30 / API v1 / schema 15; current schema is 18.**
 Stop/drain API, workers and
 automatic restarts before migration 015. Use matching components and verify
 migration history 1–15. Immediately take a new backup: migration 015 creates a

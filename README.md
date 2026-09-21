@@ -6,7 +6,10 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development contract: v0.0.33 / schema 17
+## Current development contract: v0.0.34 / schema 18
+
+Migration 018 also makes tombstone metadata read permissions set-based. The
+tenant/scope/expiry rules are unchanged, including for large deletion ledgers.
 
 Migration 017 keeps deletion visibility as a tenant-local, statement-local
 tombstone set. It fixes a measured post-deletion query-plan regression without
@@ -43,7 +46,7 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.0.33 / API v1 / schema 17 components. No model calls are made by the check.
+Use matching v0.0.34 / API v1 / schema 18 components. No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new

@@ -1,4 +1,4 @@
-"""Disposable schema-17 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-18 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
@@ -134,7 +134,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 18)], "schema17 required")
+        require(versions == [{"version": n} for n in range(1, 19)], "schema18 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -220,7 +220,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 17, "schema17 required")
+        require(evidence["schema_version"] == 18, "schema18 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -295,7 +295,7 @@ def validate_evidence(before, latest):
 def validate_application_evidence(before, latest):
     require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v4",
             "application evidence v4 required")
-    require(before["schema_version"] == latest["schema_version"] == 17, "schema17 required")
+    require(before["schema_version"] == latest["schema_version"] == 18, "schema18 required")
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
             "changed identities or anchors unsupported")
@@ -631,8 +631,8 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema17-exact-operational-state-application",
-        "schema_version": 17,
+        "scope": "schema18-exact-operational-state-application",
+        "schema_version": 18,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
@@ -682,7 +682,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 17, "this bounded smoke is pinned to schema17")
+    require(SCHEMA_VERSION == 18, "this bounded smoke is pinned to schema18")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

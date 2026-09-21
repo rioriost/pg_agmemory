@@ -2,6 +2,14 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.0.34 / schema 18: 大量tombstoneのread確認を改善
+
+schema 17のexact probe `cacb47b`では小/大規模削除と上限確認は成功しましたが、
+10k purge後のwarm sampleに500 ms超過があり、cold/steady遅延の合格とはしません。
+projection join改善後もtombstoneのscalar権限確認が残っていました。
+migration 018は同じmembership/期限条件を強制RLS内のstatement内集合として評価します。
+10k tombstoneを用いた隔離診断は429 msから58 msへ短縮しました。最終Native認定は未完です。
+
 ## v0.0.33 / schema 17: 削除後のrecall遅延への対応
 
 完全一致`6beb38c`の資源probeは、小規模purgeの混合負荷中に失敗しました。

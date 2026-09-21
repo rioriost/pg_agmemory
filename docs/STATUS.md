@@ -2,6 +2,15 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.0.34 / schema 18: bounding large-tombstone read checks
+
+Exact schema-17 probes at `cacb47b` passed small/large deletion and limit checks,
+but some post-10k-purge warm samples exceeded 500 ms. These are not a cold/steady
+latency pass. Scalar tombstone membership checks remained costly even after
+fixing projection joins. Migration 018 applies the original membership/expiry
+predicate as a statement-local set under forced RLS. An isolated 10k-tombstone
+diagnostic changed from 429 ms to 58 ms; final Native qualification is pending.
+
 ## v0.0.33 / schema 17: preserving bounded recall after deletion
 
 The exact `6beb38c` resource probe failed during mixed-load small purges:

@@ -435,6 +435,27 @@ def database():
             """SELECT pg_get_expr(polqual,polrelid) FROM pg_policy
                WHERE polrelid='memory.object'::regclass AND polname='object_read'"""
         ).fetchone()[0] == expression
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:17])
+        migrate(url)
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_tombstone_read_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (18,):
+                raise RuntimeError("simulated tombstone read migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_tombstone_read_ledger)
+        with pytest.raises(RuntimeError, match="simulated tombstone read migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 17
+        assert "memory.permitted" in admin.execute(
+            """SELECT pg_get_expr(polqual,polrelid) FROM pg_policy
+               WHERE polrelid='memory_ops.object_tombstone'::regclass
+                 AND polname='tombstone_read'"""
+        ).fetchone()[0]
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

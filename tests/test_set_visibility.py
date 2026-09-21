@@ -106,6 +106,21 @@ def test_prepared_set_policies_match_original_scalar_oracle(env, permissions, ex
                     prepare=True,
                 ).fetchall()
                 assert actual == expected, (index, table)
+            expected_tombstones = conn.execute(
+                """SELECT id FROM jsonb_to_recordset(%s) AS x
+                   (tenant_id uuid,id uuid,scope_id uuid,kind text,tombstoned boolean)
+                   WHERE tenant_id=memory.current_tenant()
+                     AND memory.permitted(scope_id,'read') AND tombstoned ORDER BY id""",
+                (Jsonb(rows),),
+                prepare=True,
+            ).fetchall()
+            actual_tombstones = conn.execute(
+                "SELECT object_id AS id FROM memory_ops.object_tombstone "
+                "WHERE object_id=ANY(%s) ORDER BY id",
+                (identifiers,),
+                prepare=True,
+            ).fetchall()
+            assert actual_tombstones == expected_tombstones
 
 
 def test_prepared_membership_set_refreshes_after_revoke_and_regrant(env):
