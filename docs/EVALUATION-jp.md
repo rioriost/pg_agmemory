@@ -159,7 +159,12 @@ DB 1,785,622,528 bytes、application 408,043,520 bytesで、process RSSではあ
 production/復旧smokeも完了しました。amd64は後続smoke中に旧CI上限25分へ達したため、
 run全体は**cancelledでありpassではありません**。増えたsuiteとpackaging/復旧を収めるため、
 workflow上限を40分に変更します。製品遅延、DB timeout、S時間の閾値は変更しません。
-両architectureの最終distribution完了は未確認です。
+後続の証跡/workflow commit **`7a2fd88587755aab030496082054121bb4897cde`** は51293b4と
+runtime/migration/package/test/script/example入力が同一です。
+[Native run 35560939791](https://github.com/rioriost/pg_agmemory/actions/runs/35560939791)
+は両architectureで全production/schema 18運用状態復旧smokeまで成功し、
+各**1,940 passed / optional 8 skips**でした（pytest: amd64 1344.87秒、arm64 1246.19秒）。
+先行runの時間切れを成功に書き換えず、そのまま記録します。
 reportの`resource_qualified=false`/`m2_qualified=false`を維持し、
 より広い復旧/deployment/参照benchmark作業の完了も主張しません。
 
@@ -1031,7 +1036,7 @@ supersession とみなしたりしてはいけない。
 | 10,000 件の実敵対的 ACL case | `101993a6d40679c73899ee2454f6b2ad0dadafff` の**記録済み生成 HTTP matrix は PASS**。範囲を限定した証跡で、網羅的な認可や M2 の証明ではない |
 | Worker chaos | `e4f5d76`で実SIGKILL/復旧/purgeの4 case合格。決定的lease/cancel/失効/policy回帰とは別で、網羅的分散障害保証ではない |
 | M2-B 削除/ACL/policy/call会計の復旧 | 限定した完全一致状態適用でID/policy/job/call会計を保持し、rollbackとruntime隔離も実装。**未完:** 広い本文/派生物/履歴profileと配置認定。欠けたcanonical本文を再構成せず、自動起動や包括restore認定はしない |
-| M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。物理host/device coldや専用本番容量は主張せず、両architectureの最終distribution完了は未確認 |
+| M2-C 資源認定 | **`51293b4`で測定:** S・30分steady、混合小規模削除、10k purge、並行limit/failure、宣言したguest-cold sampleが各checkを達成。runtime同一の`7a2fd88`で両native distributionも完了。物理host/device coldや専用本番容量は主張しない |
 | M2-D 一つの参考記憶benchmark | 固定qwen2.5:7b / qwen3-embedding:0.6bによる検索・実3 call lifecycle証跡を再利用し、記憶経路の再現例とrelease引き継ぎをまとめる。error/skipを保持し、model比較表・意味的合格点なし |
 | M2 release packaging | 残る変更後に完全一致commitのnative distribution検査、upgrade/restore文書、対応上限を確定。本計画変更は新しいruntime認定を供給しない |
 

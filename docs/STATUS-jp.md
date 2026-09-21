@@ -18,8 +18,10 @@ steady 45,000要求、warmup込み9,300 jobが成功しました。
 上限確認、失敗履歴、footprint、projection計画のtradeoffは[EVALUATION](EVALUATION-jp.md)に記録します。
 
 Native amd64/arm64は各**1,940 passed / optional 8 skips**、arm64は全packaged/復旧smokeも
-完了しました。amd64はpytest後に旧workflow上限25分へ達したため、両architectureの
-distribution完了は未確認です。製品の時間gateを変えず、CI上限を40分へ延長します。
+完了しました。amd64はpytest後に旧workflow上限25分へ達したため、
+製品の時間gateを変えず、CI上限を40分へ延長しました。
+runtime同一の**`7a2fd88`**での後続[run 35560939791](https://github.com/rioriost/pg_agmemory/actions/runs/35560939791)
+は両architectureで全production/復旧smokeまで成功し、各**1,940 passed / optional 8 skips**です。
 **M2は未完**で、より広い宣言済み復旧/deployment範囲、単一の参照記憶benchmarkとrelease引渡しが残ります。
 
 ## v0.0.33 / schema 17: 削除後のrecall遅延への対応

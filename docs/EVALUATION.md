@@ -180,8 +180,15 @@ completed all distribution/production/recovery smokes. Amd64 reached the old
 25-minute CI ceiling during the subsequent smokes, so the overall run is
 **cancelled, not passed**. The workflow ceiling is now 40 minutes to cover the
 expanded suite plus packaging/recovery; product latency, DB timeout and S
-duration limits are unchanged. Final dual-architecture distribution completion
-remains pending.
+duration limits are unchanged.
+
+The subsequent evidence/workflow commit **`7a2fd88587755aab030496082054121bb4897cde`**
+has identical runtime, migration, package, test, script and example inputs to
+51293b4. [Native run 35560939791](https://github.com/rioriost/pg_agmemory/actions/runs/35560939791)
+completed successfully on both architectures, including all production and
+schema-18 operational-state recovery smokes: **1,940 tests / 8 optional skips**
+each (amd64 pytest 1344.87 s; arm64 1246.19 s). The earlier deadline failure
+remains recorded rather than relabeled as success.
 Reports retain `resource_qualified=false`/`m2_qualified=false`; broader recovery,
 deployment and reference-benchmark work is not certified by these probes.
 
@@ -1130,7 +1137,7 @@ automatic publication or treat adoption as supersession of another assertion.
 | 10,000 actual adversarial ACL cases | **PASS for the recorded generated HTTP matrix** at `101993a6d40679c73899ee2454f6b2ad0dadafff`; bounded evidence, not exhaustive authorization or M2 proof |
 | Worker chaos | Four actual SIGKILL/recovery/purge cases passed at `e4f5d76`; deterministic lease/cancel/revocation/policy regression coverage is separate, not an exhaustive distributed-fault guarantee |
 | M2-B deletion/ACL/policy/call-accounting restore | Bounded exact-state application now preserves IDs/policy/job/call accounting, with rollback and runtime isolation. **Open:** broader content/derivative/history profiles and deployment qualification. Missing canonical content is not reconstructed; no automatic activation or blanket restore claim |
-| M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Physical host/device cold and exclusive production capacity are not claimed; final dual-architecture distribution completion remains pending |
+| M2-C resource qualification | **Measured at `51293b4`:** full 30-minute S, mixed small deletion, 10k purge, concurrent limit/failure probes and declared guest-cold samples pass their checks. Both native distributions complete at runtime-identical `7a2fd88`. Physical host/device cold and exclusive production capacity are not claimed |
 | M2-D one reference memory benchmark | Reuse pinned qwen2.5:7b / qwen3-embedding:0.6b retrieval and three-call lifecycle evidence; complete a reproducible memory-path example and release handoff. Retain errors and skips; no model matrix or semantic success threshold |
 | M2 release packaging | Exact-commit native distribution checks, upgrade/restore documentation and explicit supported limits after the remaining changes; this plan revision supplies no new runtime qualification |
 

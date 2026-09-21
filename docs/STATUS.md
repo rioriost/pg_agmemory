@@ -20,8 +20,10 @@ for limits, failure history, footprint and the projection-plan tradeoff.
 
 Native amd64/arm64 each passed **1,940 tests / 8 optional skips**; arm64 completed
 all packaged/recovery smokes. Amd64 hit the old 25-minute workflow deadline
-after pytest, so dual-architecture distribution completion remains pending.
-CI now allows 40 minutes without changing product timing gates.
+after pytest. CI now allows 40 minutes without changing product timing gates.
+The replacement [run 35560939791](https://github.com/rioriost/pg_agmemory/actions/runs/35560939791)
+at runtime-identical **`7a2fd88`** completed on both architectures, including all
+production/recovery smokes and **1,940 tests / 8 optional skips** each.
 **M2 remains incomplete:** broader declared restore/deployment coverage and the
 single reference memory benchmark/release handoff still remain.
 
