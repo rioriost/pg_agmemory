@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.8 / M3 AGE隔離復元境界、2026-09-22
+- 文書版: 0.9 / M3上限付きnative graph資源認定、2026-09-22
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。v0.1.2/schema20修正AGEのnative配布全4 jobが成功。開発版v0.1.3は変更のないenabled baselineへの明示的な隔離復元＋無効化を追加し、新世代取込みやservice起動は行わない。SQLは既定/明示切戻し、旧rc0と高コスト固定hopは未選択を維持。資源/拡張復元/配布gateは別管理し、証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -637,7 +637,7 @@ core schema変更は行いません。管理者でextensionをloadできてもru
 | 正本の所有 | PostgreSQLのentity/relation/assertion rowを正本とする。AGEはtopology、canonical ID、revisionと必要な時刻metadataのみを持ち、label/evidenceは現在認可されたcanonical rowから取得する |
 | 上限付きqueryの一致 | M2の方向、seed順、幅優先simple path、revision別endpoint、半開時区間、全prefixを数えるpath予算を保持。各frontierの拡張前・結果予算を消費する前に認可/時刻filterを適用する |
 | generationの寿命 | active世代を変更せず別世代をbuild。canonical入力watermarkと現行access/deletion状態の一致後にCASで公開し、read全体で一つの世代と有効時刻組を固定する |
-| 変更watermark | 関連canonical変更をtransactionに結び付けて追跡。wall-clock timestampだけをcommit順序のwatermarkにせず、後続追加/訂正が欠けたprojectionを完全・最新と表示しない |
+| 変更の鮮度 | 限定M3ではidentityを束縛したread transactionとtenant barrier内で、取得時ACL/deletion epochと必須canonical/物理完全性照合により対象追加/訂正を検出する。世代UUIDはcommit順cursorではない。完全照合を維持し、将来の定数時間counterには全transactional経路のcoverageと別認定を要求する |
 | 失効/削除 | 旧世代や過去時点queryでも現行canonical認可、source可視性、既存response barrierを優先。探索後の出力filterだけでは不十分 |
 | 利用不能/古いprojection | 選択したcanonical fallbackまたはprojection不完全性を明示。AGEを使ったと偽らず、世代を混ぜず、DB障害を空の成功にせず、投影row欠落を隠さない |
 | 再構築/復元 | 原子的な切替まで旧世代identityを保持。復元graphは最新canonical/削除/ACL照合と再構築または世代検証まで無効にし、metadata取込みを起動許可にしない |
@@ -659,8 +659,8 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 |---|---|---|
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | 別固定72707aa source treeでnative/direct 19件・固定40件が全成功。旧rc0の6失敗と固定hop費用証跡は改名せず保持 |
 | M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 実修正VLE adapterが独立17件oracle、制約/鮮度確認、実HTTP SQL一致を通過。任意AGE profileでhost側固定hop BFS迂回策は使わない |
-| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 20 registryが検証済みgraphを原子的公開/置換し、epochと上限付き可視topology完全性で拒否。v0.1.3は変更のないenabled receiptへ検証済み復元＋原子的無効化を追加し、後続再構築/publishは別操作。定数時間追跡と変更済み世代の拡張復元は未了 |
-| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/修正AGE/canonical-only復元は5a21728で両architecture成功。graph資源profile、鮮度確認費用の判断、release引継ぎは未了 |
+| M3-C | 世代CAS、現行source鮮度、stale/rebuild処理、隔離復元 | schema 20の限定lifecycle認定済み。原子的公開、epoch/全可視topology照合、拒否型read、変更のないenabled baselineのcanonical-only復元/無効化/明示再構築。M3は完全照合を維持し、速度だけのcounter追加はしない。変更済み世代取込みと全AGE catalog復元は黙って許容せず範囲外とする |
+| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/AGE/canonical-only復元は5a21728で両architecture成功。exact d1b894dのgraph専用六層は製品query変更なしで厳密なp95 1500ms未満を通過。拡大/全量同居/同時/cold graph負荷は未認定で、v0.2 release引継ぎは未了 |
 
 世代metadataの入力captureは上限付きrepeatable-readのcanonical fingerprintであり、
 timestamp cursorや実装済みの定数時間変更counterではありません。
@@ -676,6 +676,14 @@ source完全性の走査を定数時間変更追跡とは呼ばず、既定復�
 v0.1.3では変更のない認証済みenabled receiptを、明示選択で復元後に同一transactionで無効化できます。
 local遷移前の一致を確認し、遷移後の差分も報告します。自動再起動を目的とはせず、
 別途canonical照合・再構築/publish・operator承認済み起動を正規の復元境界とします。
+
+測定に基づき、宣言した可視node 12/64のwarm profileでは要求ごとの完全照合を維持します。
+AGE最悪p95は1,292.52 msで、権限/planner緩和はありません。
+当初の変更watermark実装方針を絞る判断で、鮮度の不変条件を緩めるものではありません。
+identityを束縛したread transactionとtenant barrierの下で、ACL/deletion epochと
+canonical/物理投影の完全性から対象の追加/修正を検出し、世代UUIDをcommit順cursorとは呼びません。
+将来の定数時間counterには全mutation経路のtransactional coverageと別認定を要求し、
+全量S同居graphの性能やSQLに対する高速化も主張しません。
 
 canonical artifactは非公開・全scopeの管理者build入力であり、principal認可済みviewではありません。
 署名付きtopologyを現行canonical dataへ照合したfileだけに`artifact_verified=true`を返せますが、

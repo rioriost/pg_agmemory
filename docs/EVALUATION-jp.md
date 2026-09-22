@@ -16,8 +16,46 @@ warm・静止状態のservice callであり、HTTP、全量S、同時負荷、mo
 stage時間の合計比であり、percentile同士の比やhardware-counter profileではありません。
 planner/権限の緩和や製品変更は不要でした。
 mutation counterへ黙って置換せず上限付き完全照合を維持し、
-拡大配置には別途宣言したprofileを要求します。commit固定のexact測定は引き続き必要です。
+拡大配置には別途宣言したprofileを要求します。commit固定のexact測定は以下のとおりです。
 [runnerと範囲](operations/README-jp.md#native-graph-resource-profile)を参照してください。
+
+### Exact warm graph run: d1b894d
+
+clean archive **`d1b894dd4b5faa67c2e251604d1d9e9012cf7ba7`**のrunは、
+宣言profileで**396 samples・意味契約probe 36件・error 0**となり、
+`resource_qualified:true`、`m3_qualified:false`です。
+後続の厳格なraw probe/digest再判定も成功し、別記録として保持します。
+元reportを上書きしたり、新しい時間sampleを作ったりしません。
+
+| Shape / 可視node | SQL p95 ms | AGE p95 ms | 投影node / revision | 公開 ms | 投影 bytes |
+|---|---:|---:|---:|---:|---:|
+| Chain / 12 | 22.30 | 111.89 | 24 / 24 | 599.98 | 163,840 |
+| Fanout / 12 | 39.14 | 146.37 | 24 / 66 | 580.63 | 172,032 |
+| Multiseed / 12 | 73.80 | 148.62 | 24 / 50 | 1,052.32 | 172,032 |
+| Chain / 64 | 24.58 | 242.73 | 128 / 128 | 633.82 | 245,760 |
+| Fanout / 64 | 73.37 | 1,292.52 | 128 / 482 | 662.30 | 417,792 |
+| Multiseed / 64 | 68.63 | 705.78 | 128 / 258 | 652.75 | 294,912 |
+
+このshapeではAGEはSQLより遅く、絶対上限の達成を**高速化とは主張しません**。
+完全照合はAGE wall timeの24.2–42.3%、native path queryは54.5–62.9%で、
+AGEの各readは19 statementsです。完全照合は有効なままにします。
+公開時間はCLI起動/artifact照合/物理構築/policy導入/ANALYZE/commitを含み、単なるgraph挿入ではありません。
+artifactは13,910–197,749 bytes、投影総量は1,466,368 bytes
+（heap 507,904、index 540,672と補助storage）です。
+DBは12,244,671→23,172,799 bytes、生成WALは15,808,832 bytesでした。
+
+環境は共有Apple Container host上のnative Linux/aarch64、PostgreSQL18.6、pgvector0.8.6、
+修正AGE72707aa固定image
+`sha256:5edc81da67cf0a6f5620119dda3077de5d5b972d4ef214faeff89dfedd160a79`です。
+設定したworkload割当はDB6/application2 CPUs、24/8 GiBですが、
+Apple Containerは別に**VMごと1 overhead CPU**を記録し、applicationからは3 CPUsが見えます。
+占有8-core hostの容量測定ではありません。
+JITは既定threshold100000で有効、shared_buffers128 MiB、work_mem4 MiB、
+statement/lock上限5秒を維持し、hardware perf counterは取得していません。
+runtimeはUID10001・非owner/NOSUPERUSER/NOBYPASSRLSでlabel RLSも強制します。
+build identity、raw timings、割当inspect、入力hash、cleanup結果は
+`.review-artifacts/graph-resource-d1b894d/`へ非公開で保持します。
+同時writer、物理host cold、全量S corpus同居、artifact上限規模への認定には拡張しません。
 
 ## 現在の開発版: v0.1.3 / schema 20 AGE隔離復元
 

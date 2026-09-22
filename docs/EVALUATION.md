@@ -19,7 +19,47 @@ summed stage shares, not ratios of percentiles or a hardware-counter profile.
 No planner/permission overrides or product changes were needed. Retain the
 bounded proof rather than silently substituting a mutation counter; larger
 deployments need a separate declared profile. Exact committed measurements
-remain required. See [runner and limits](operations/README.md#native-graph-resource-profile).
+were obtained below. See [runner and limits](operations/README.md#native-graph-resource-profile).
+
+### Exact warm graph run: d1b894d
+
+The clean archived run at **`d1b894dd4b5faa67c2e251604d1d9e9012cf7ba7`**
+passes this declared profile: **396 samples, 36 semantic probes, zero errors**.
+It reports `resource_qualified:true`, `m3_qualified:false`. Subsequent stricter
+raw-probe/digest reclassification also passes; its separate record does not
+rewrite the original report or create new timing samples.
+
+| Shape / visible nodes | SQL p95 ms | AGE p95 ms | Projected nodes / revisions | Publication ms | Projection bytes |
+|---|---:|---:|---:|---:|---:|
+| Chain / 12 | 22.30 | 111.89 | 24 / 24 | 599.98 | 163,840 |
+| Fanout / 12 | 39.14 | 146.37 | 24 / 66 | 580.63 | 172,032 |
+| Multiseed / 12 | 73.80 | 148.62 | 24 / 50 | 1,052.32 | 172,032 |
+| Chain / 64 | 24.58 | 242.73 | 128 / 128 | 633.82 | 245,760 |
+| Fanout / 64 | 73.37 | 1,292.52 | 128 / 482 | 662.30 | 417,792 |
+| Multiseed / 64 | 68.63 | 705.78 | 128 / 258 | 652.75 | 294,912 |
+
+AGE is slower than SQL on these shapes; passing an absolute bound is **not an
+acceleration claim**. The full proof accounts for 24.2–42.3% of measured AGE wall
+time, native path queries 54.5–62.9%; all AGE reads execute 19 statements.
+The proof remains enabled. Publication includes CLI startup/artifact checks/
+physical build/policy installation/ANALYZE/commit, not just graph insertion.
+Artifact sizes are 13,910–197,749 bytes. Total projection storage is 1,466,368
+bytes (507,904 heap, 540,672 index, plus auxiliary storage); database size grows
+12,244,671→23,172,799 bytes and generated WAL is 15,808,832 bytes.
+
+Environment: native Linux/aarch64 on the shared Apple-container host, PostgreSQL
+18.6, pgvector0.8.6 and the fixed patched AGE72707aa image
+`sha256:5edc81da67cf0a6f5620119dda3077de5d5b972d4ef214faeff89dfedd160a79`.
+Configured workload allocations are DB6/application2 CPUs, 24/8 GiB. Apple
+Container separately records **one overhead CPU per VM**; the application sees
+three CPUs. This is not an exclusive eight-core-host capacity measurement.
+JIT stays on at its default threshold100000, shared_buffers128 MiB and work_mem4 MiB;
+statement/lock limits stay5 seconds. No hardware perf counters were collected.
+Runtime is UID10001, non-owner/NOSUPERUSER/NOBYPASSRLS, with forced label RLS.
+Build identity, raw timings, allocation inspection, input hashes and cleanup
+results are retained privately in `.review-artifacts/graph-resource-d1b894d/`.
+No concurrent writer, physical-host cold, co-resident full-S corpus, or artifact-
+maximum scale claim follows from this run.
 
 ## Current development: v0.1.3 / schema 20 isolated AGE recovery
 

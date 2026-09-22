@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.8 / M3 isolated AGE recovery boundary, 2026-09-22
+- Document version: 0.9 / M3 bounded native graph resource qualification, 2026-09-22
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. Native distribution of v0.1.2/schema20 patched AGE passed all four jobs. Development v0.1.3 adds explicit isolated recovery-and-disable for unchanged enabled baselines, without importing newer generations or activating services. SQL remains default/explicit rollback; old rc0 and costly fixed-hop paths stay unselected. Resource/expanded recovery and distribution gates remain separate. Evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
@@ -647,7 +647,7 @@ including direct label reads and paths through hidden intermediate vertices.
 | Canonical ownership | PostgreSQL entity/relation/assertion rows remain authoritative. AGE stores only the topology, canonical IDs, revisions and necessary time metadata; hydrate labels/evidence from currently authorized canonical rows |
 | Bounded query equivalence | Preserve M2 direction, seed ordering, breadth-first simple paths, revision-specific endpoints, half-open time filters and the global prefix-counted path budget. Filter permissions/time before extending each frontier and before charging the result budget |
 | Generation lifetime | Build a separate generation without changing the active one. Publish with CAS only after its canonical input watermark and current access/deletion state match; pin one generation and one effective time pair for the entire read |
-| Mutation watermark | Track relevant canonical mutations transactionally; a wall-clock timestamp alone is not a commit-order watermark. Later additions/corrections must not be presented as a complete fresh projection |
+| Mutation freshness | In bounded M3, captured ACL/deletion epochs plus a mandatory current canonical/physical completeness proof inside the identity-bound read transaction and tenant barrier detect eligible additions/corrections. A generation UUID is not a commit-order cursor. Retain the proof; a future constant-time mutation counter needs complete transactional coverage and separate qualification |
 | Revocation/deletion | Current canonical permissions, source visibility and the existing response barrier remain authoritative even for an older generation or historical query. Post-traversal output filtering alone is insufficient |
 | Unavailable/stale projection | Explicitly report the selected canonical fallback or projection incompleteness. Do not silently claim AGE, mix generations, return empty success on database failure or hide missing projection rows |
 | Rebuild/restore | Retain prior generation identity until an atomic switch. A restored graph stays disabled until latest canonical/deletion/ACL state is reconciled and the generation is rebuilt or verified; importing metadata is not activation authority |
@@ -674,8 +674,8 @@ Do not infer that a version change alone supplies that evidence.
 |---|---|---|
 | M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Separate patched72707aa source tree passes all19 native/direct and40 fixed checks. Old rc0 six failures and rejected fixed-hop cost evidence are retained, not relabeled |
 | M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Actual patched VLE adapter passes independent17-case oracle, restriction/freshness tests and real HTTP SQL equality. Optional AGE profile uses no host fixed-hop BFS workaround |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema20 registry publishes/replaces verified graphs atomically; epochs and bounded visible-topology completeness fail closed. v0.1.3 adds explicit, verified recovery followed by atomic disabling for an unchanged enabled receipt; later rebuild/publication stays separate. Constant-time tracking and broader changed-generation restore remain pending |
-| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Core, patched AGE and canonical-only recovery passed both architectures at5a21728. Graph resource profile, freshness cost decision and release handoff remain pending |
+| M3-C | Generation CAS, current-source freshness, stale/rebuild handling and isolated restore | Qualified bounded schema20 lifecycle: atomic publication, epochs/full visible-topology proof, fail-closed reads, unchanged enabled-baseline canonical-only recovery/disable/explicit rebuild. Keep the complete proof for M3; do not add a counter merely for speed. Changed-generation imports and full AGE catalog recovery are excluded rather than silently accepted |
+| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Core/AGE/canonical-only recovery passed both architectures at5a21728. Exact d1b894d graph-only six-stratum profile passes the strict1500ms p95 with no production query change. Larger/co-resident/concurrent/cold graph loads are not qualified; v0.2 release handoff remains pending |
 
 Generation metadata capture uses a bounded repeatable-read canonical fingerprint,
 not a timestamp cursor or an already implemented constant-time mutation counter.
@@ -696,6 +696,12 @@ receipt in one transaction. It verifies equality before the local transition and
 reports the resulting difference. Automatic reactivation is not a goal: separate
 canonical verification, rebuild/publication and operator-approved startup remain
 the intended recovery boundary.
+
+The measured decision is to retain the query-specific proof in the declared
+12/64-visible-node warm profile: worst AGE p95 is 1,292.52 ms, with no permission
+or planner relaxation. This narrows the original mutation-watermark implementation
+plan, not the freshness invariant. Do not claim a global mutation cursor,
+constant-time proof, full-S co-resident graph performance or a speedup over SQL.
 
 The canonical artifact is a private, all-scope administrator build input, not a
 principal-authorized view. Verifying signed topology against current canonical

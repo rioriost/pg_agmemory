@@ -13,13 +13,19 @@
 後続の厳格な再判定は元のraw reportと分けて保持します。
 
 benchmarkにはprofile/sample/順序/oracle整合性、非公開error、
-runtime identity、中断処理、所有resource cleanupのoffline 28契約があります。
+runtime identity、中断処理、所有resource cleanupのoffline 35契約があります。
 固定hop実験ではなく、実native adapter/publisherを使用します。
 製品query・権限・migration・source変更の動作は変更しません。
 この限定profileでは、速度だけのために新しい定数時間counterを導入せず、
 **canonicalと物理投影の完全性照合を維持する**判断です。
 graph拡大、全量Sとの同居、同時負荷、coldは別作業で、artifact上限をlatency保証とはしません。
-資源結果にはcommit固定のexact runが引き続き必要です。
+固定archive **`d1b894d`**のexact runは全六層を通過し、
+AGE p95は111.89–1,292.52 ms、SQLは22.30–73.80 ms、396 samples/36 probesでerror 0です。
+raw証跡の再確認も成功しました。範囲付き`resource_qualified:true`であり、
+`m3_qualified:true`やSQLに対するAGE高速化とは主張しません。
+Apple Containerの設定workload6/2 CPUsにはVMごとoverhead1 CPUが加わり、
+共有hostを占有8-core容量認定とは扱いません。
+詳細と範囲は[EVALUATION](EVALUATION-jp.md#exact-warm-graph-run-d1b894d)に記録します。
 
 ## v0.1.3 / schema 20: enabled AGE baselineの隔離復元
 

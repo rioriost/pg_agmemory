@@ -13,7 +13,7 @@ without errors; all six strata met the timing target, but its qualification
 flags remain false. Later stricter classification is preserved separately from
 the original raw report.
 
-The benchmark has 28 offline contracts for profile/sample/order/oracle integrity,
+The benchmark has 35 offline contracts for profile/sample/order/oracle integrity,
 private errors, runtime identity, interruption handling and owned cleanup.
 It uses the actual native adapter and publisher, never the fixed-hop experiment.
 No production query, permission, migration or source-mutation behavior is changed.
@@ -21,7 +21,13 @@ The decision for this bounded profile is to **retain the full canonical and
 physical-projection completeness proof**, not introduce a new constant-time
 counter merely for speed. Larger graphs and co-resident full-S/concurrent/cold
 loads remain separate work; the current artifact maximum is not a latency claim.
-An exact committed run is still required for the resource result.
+The exact archived **`d1b894d`** run passes all six strata: AGE p95 ranges
+111.89–1,292.52 ms, SQL 22.30–73.80 ms, with 396 samples/36 probes and zero errors.
+The raw-evidence recheck also passes. This explicitly scoped
+`resource_qualified:true` is not `m3_qualified:true`, nor an AGE speedup over SQL.
+Apple Container's configured 6/2 workload CPUs also have one overhead CPU per VM;
+the shared host is not an exclusive 8-core capacity claim. Full measurements and
+scope are in [EVALUATION](EVALUATION.md#exact-warm-graph-run-d1b894d).
 
 ## v0.1.3 / schema 20: isolated recovery of an enabled AGE baseline
 

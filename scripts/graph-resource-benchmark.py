@@ -422,10 +422,34 @@ def summarize_case(case, profile):
         for s in case["samples"]
     ] == expected_order
 
-    def valid_sample(sample):
+    def valid_read(sample):
+        result_digest = sample.get("result_digest")
         return (
             sample.get("valid") is True and sample.get("error") is None
+            and sample.get("oracle_equal") is True
+            and isinstance(result_digest, str) and len(result_digest) == 64
+            and all(character in "0123456789abcdef" for character in result_digest)
             and finite_number(sample.get("end_to_end_ms")) and sample["end_to_end_ms"] >= 0
+        )
+
+    probes = case.get("probes", [])
+    probes_verified = [
+        (probe.get("name"), probe.get("backend"), probe.get("phase")) for probe in probes
+    ] == [
+        (name, backend, "probe")
+        for name in ("current", "historical", "hidden_intermediate_path")
+        for backend in ("sql", "age")
+    ] and all(valid_read(probe) for probe in probes)
+    if probes_verified:
+        probes_verified = all(
+            probes[index]["result_digest"] == probes[index + 1]["result_digest"]
+            for index in (0, 2, 4)
+        )
+    expected_digest = case.get("fixture", {}).get("expected_digest")
+
+    def valid_sample(sample):
+        return (
+            valid_read(sample) and sample["result_digest"] == expected_digest
             and sample.get("pair_equal") is True
             and type(sample.get("pair_index")) is int and sample["pair_index"] >= 0
             and type(sample.get("position")) is int and sample["position"] in (0, 1)
@@ -462,12 +486,13 @@ def summarize_case(case, profile):
             "p95_under_threshold": p95 is not None
             and p95 < profile["gate"]["end_to_end_p95_ms_exclusive"],
         }
-    qualified = (recognized and ordered and case["setup"]["status"] == "passed"
+    qualified = (recognized and ordered and probes_verified and case["setup"]["status"] == "passed"
                  and not case.get("failures")
                  and case.get("probes_passed") is True
                  and all(s["settled"] and s["p95_under_threshold"] for s in strata.values()))
     return {"strata": strata, "resource_qualified": qualified,
-            "sample_records_recognized": recognized, "sample_order_verified": ordered}
+            "sample_records_recognized": recognized, "sample_order_verified": ordered,
+            "probes_verified": probes_verified}
 
 
 def summarize_report(report, profile):

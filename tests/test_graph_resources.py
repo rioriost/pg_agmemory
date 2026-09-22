@@ -47,6 +47,17 @@ def complete_case(profile, index=0):
     return {
         "id": profile["cases"][index]["id"], "setup": {"status": "passed"},
         "samples": samples, "probes_passed": True, "failures": [],
+        "fixture": {"expected_digest": "a" * 64},
+        "probes": [
+            {
+                "name": name, "backend": backend, "phase": "probe", "valid": True,
+                "error": None, "oracle_equal": True, "result_digest": fingerprint * 64,
+                "end_to_end_ms": 50.0,
+            }
+            for name, fingerprint in (
+                ("current", "a"), ("historical", "b"), ("hidden_intermediate_path", "c"),
+            ) for backend in ("sql", "age")
+        ],
     }
 
 
@@ -311,6 +322,30 @@ def test_setup_and_probe_failures_override_fast_samples(profile, tmp_path):
     assert bench.summarize_report(report, profile)["resource_qualified"] is False
     bench.save_report(tmp_path, report, profile)
     assert json.loads((tmp_path / "result.json").read_text())["resource_qualified"] is False
+
+
+@pytest.mark.parametrize("mutation", [
+    "missing_probes", "missing_probe", "probe_error", "probe_mismatch",
+    "sample_oracle_false", "sample_digest_mismatch", "missing_expected_digest",
+])
+def test_raw_probes_and_digests_override_stale_success_flags(profile, mutation):
+    case = complete_case(profile)
+    if mutation == "missing_probes":
+        del case["probes"]
+    elif mutation == "missing_probe":
+        case["probes"].pop()
+    elif mutation == "probe_error":
+        case["probes"][0]["error"] = {"code": "oracle_mismatch"}
+    elif mutation == "probe_mismatch":
+        case["probes"][1]["result_digest"] = "d" * 64
+    elif mutation == "sample_oracle_false":
+        case["samples"][6]["oracle_equal"] = False
+    elif mutation == "sample_digest_mismatch":
+        case["samples"][7]["result_digest"] = "d" * 64
+    else:
+        del case["fixture"]["expected_digest"]
+    assert case["probes_passed"] and all(sample["valid"] for sample in case["samples"])
+    assert not bench.summarize_case(case, profile)["resource_qualified"]
 
 
 def test_independent_oracle_checks_revisions_order_coverage_and_hidden_paths():
