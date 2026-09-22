@@ -30,6 +30,13 @@ development v6実dump/restoreでは非空のrecorded receiptと台帳をその�
 graph readはSQLのままで、下記の固定hop不採用とnative経路保存も維持します。
 [schema 19運用](operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
 
+`50ed5e2`の初回[native run 35686566134](https://github.com/rioriost/pg_agmemory/actions/runs/35686566134)は、
+両architectureの2,096 tests/optional 31 skipsは完了しましたが、**全体では失敗**しました。
+製品image用の復旧export smokeに、運用table数21という旧期待値が残っていたためです。
+23件と両世代tableの包含・replacement rowからの除外を確認するよう修正し、
+非rootの製品imageで空台帳・recorded世代ありの両方を実行しました。
+両native distribution認定には修正版のrun完了が引き続き必要です。
+
 ## M3開発: graph認定の基盤
 
 `feat/m3-graph`で隔離AGE build/probeと独立graph oracleを追加しました。

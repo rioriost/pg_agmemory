@@ -35,6 +35,14 @@ M3 completion or production DR certification. Current graph reads remain SQL;
 the fixed-hop non-adoption and preserved native strategy below are unchanged.
 Use [schema-19 operations](operations/README.md#graph-generation-metadata-schema-19).
 
+The first [native run 35686566134](https://github.com/rioriost/pg_agmemory/actions/runs/35686566134)
+at `50ed5e2` passed 2,096 tests/31 optional skips per architecture but **failed
+overall**: the production recovery-export smoke still expected 21 operational
+tables. Its assertion now requires 23, includes both generation tables and
+excludes them from replacement rows. The exact corrected smoke passes on a
+non-root production image with both empty and recorded-generation ledgers.
+Full native distribution qualification still requires the corrected run.
+
 ## M3 development: graph qualification foundation
 
 The `feat/m3-graph` branch adds an isolated AGE build/probe and an independent
