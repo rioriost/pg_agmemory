@@ -269,7 +269,9 @@ def create_app(
         title="pg_agmemory",
         version=__version__,
         lifespan=lifespan,
-        description="Development memory service with optional pinned AGE. Not production qualified.",
+        description=(
+            "Development memory service with optional pinned AGE. Not production qualified."
+        ),
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
             status: {"model": ErrorBody} for status in (400, 401, 403, 404, 409, 413, 422, 503)
