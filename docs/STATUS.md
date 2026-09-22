@@ -2,6 +2,37 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.1.1 / schema 19: rebuildable canonical graph artifacts
+
+`graph-artifact export/check` adds bounded, administrator-only canonical graph
+data construction. It binds ordered node IDs and all retained temporal edge
+revisions to an existing pending generation or recorded head, its input snapshot,
+profile declaration and private recovery-key lineage. It exports neither node
+labels, source text nor evidence quotes. Files are private, exclusive-create and
+never overwrite an existing destination. An unchanged recorded head rebuilds
+byte-for-byte, including the signature and digest.
+
+Verification checks current ledger revision, current canonical input, keyed
+signature, exact canonical topology and (for a recorded head) the receipt's file
+digest. A correctly signed but different topology still fails. A stale generation
+cannot be rebuilt from current data under its old identity. Export/check do not
+change any database rows, and the tenant barrier spans file creation/output.
+Filesystem writes and subsequent receipt recording are separate operations,
+not a distributed transaction or an automatic retry.
+
+Here **`artifact_verified=true` means only that the artifact matches the current
+canonical build input**. The generic generation receipt still always reports
+`artifact_verified=false`; neither command grants serving authority. Artifacts
+include retained topology across tenant scopes/history and are not filtered for
+a runtime principal. `permission_filter_required=true` and
+`serving_enabled=false` remain mandatory.
+
+Independent artifact contracts and the non-root packaged smoke cover exact
+history/rebuild, private files, tampering, failed writes, source mutation and
+read-only metadata. No migration, inference, AGE load or Native graph selector
+is added. Native serving, constant-time freshness and actual AGE projection
+activation remain unimplemented. See [operations](operations/README.md#canonical-graph-artifacts).
+
 ## v0.1.1 / schema 19: graph-generation metadata
 
 M3's backend-neutral coordinator records generations without enabling a graph
@@ -41,7 +72,15 @@ overall**: the production recovery-export smoke still expected 21 operational
 tables. Its assertion now requires 23, includes both generation tables and
 excludes them from replacement rows. The exact corrected smoke passes on a
 non-root production image with both empty and recorded-generation ledgers.
-Full native distribution qualification still requires the corrected run.
+The corrected **`a017ae5c6d2c22e31447f54ddb7253f58ce15d69`**
+[native run 35689800671](https://github.com/rioriost/pg_agmemory/actions/runs/35689800671)
+passed on both architectures: **2,096 tests / 31 optional skips each**, all
+packaged smokes and exact v6 restore. Both reports retain the unchanged recorded
+generation at ledger revision 2, mark its input stale and keep it non-serving;
+35 payload fingerprints, 20 denials and 11 reservations match. Pytest took
+1413.20 s amd64 / 1353.32 s arm64. This qualifies the metadata checkpoint only;
+the subsequent artifact exporter has separate evidence and is not covered by
+that earlier run. The 31 skips include eight optional model cases and 23 AGE cases.
 
 ## M3 development: graph qualification foundation
 

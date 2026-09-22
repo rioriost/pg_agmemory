@@ -2,14 +2,27 @@
 
 [English](EVALUATION.md)
 
-## 現在の開発版: v0.1.1 / schema 19世代metadata
+## 現在の開発版: v0.1.1 / schema 19 canonical graph artifact
+
+backend非依存artifact exporter/checkerに対象36契約（offline 6件・DB 30件）を追加しました。
+非root製品imageのsmokeはnode 3件・relation一つの両revisionを扱い、
+非公開・本文なしの出力、digest記録、同一bytes再構築、後続source変更の拒否を確認します。
+決定論的なgraph build入力の構築/照合であり、新しいAGE実行、runtime権限cache、
+serving認定ではありません。下記schema 19 coordinatorと汎用receiptの意味は維持し、
+migrationやmodel呼出しも追加しません。
+[artifact範囲](operations/README-jp.md#canonical-graph-artifacts)を参照してください。
+
+## Schema 19世代metadata
 
 M3 coordinatorのlifecycle/復元対象44件と、schema 19のmigration/互換性を確認しました。
 development v6の実backup drillは非空の世代receipt一つを保持し、
 削除/ACL replay後の入力をstaleとし、artifact検証/servingを無効に保ちます。
 運用照合は23 tableで、世代履歴は完全一致を要求し、replacement rowとして取り込みません。
-metadata契約の確認であり、AGE認定やgraph data再構築ではありません。
-固定buildの両native証跡は別途必要です。
+metadata契約の確認であり、AGE認定やextension上のprojection再構築ではありません。
+完全一致`a017ae5`の[native run 35689800671](https://github.com/rioriost/pg_agmemory/actions/runs/35689800671)は
+amd64/arm64とも2,096 passes/optional 31 skips、packaged smokeとv6復元が成功しました。
+旧`50ed5e2`のsmoke失敗もSTATUSに保持します。この配布証跡はartifact追加前のもので、
+その追加分の認定とはしません。
 [現行制限](STATUS-jp.md)と[運用](operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
 下記の過去の資源/model観測と公開済みM2認定は元source versionとの対応を維持します。
 

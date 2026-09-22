@@ -17,6 +17,13 @@ Stop/drain before migration 019, deploy matching components and regenerate
 schema-19 recovery artifacts. See [generation operations](docs/operations/README.md#graph-generation-metadata-schema-19).
 M3 is incomplete; the published M2 rollback point remains tag `v0.1.0`.
 
+`pg-agmemory graph-artifact export/check` now builds and verifies a private,
+deterministic canonical topology artifact for an existing generation. It includes
+IDs and temporal edge revisions, not labels/source text; rebuilding an unchanged
+recorded generation produces identical bytes. File verification compares both
+its keyed signature and current canonical data, without enabling a graph backend
+or modifying generation metadata. See [artifact operations](docs/operations/README.md#canonical-graph-artifacts).
+
 ## Published M2 contract: v0.1.0 / schema 18
 
 **Memory infrastructure for agents and LLMs, not a judgment system.** M2's

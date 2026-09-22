@@ -78,6 +78,80 @@ refuses it before writes. Keep a sufficiently recent backup; neither rewriting
 immutable receipts nor importing unverifiable graph artifacts is supported.
 Actual graph-data rebuild/reconciliation and production HA/PITR remain separate.
 
+## Canonical graph artifacts
+
+`pg-agmemory graph-artifact` is an admin-only, backend-neutral build-input
+export/check command for **service 0.1.1 / API v1 / schema 19**. It makes no schema
+change and does not build/activate an AGE graph. Supply `PGAG_ADMIN_DATABASE_URL`
+privately. An existing pending generation or current recorded head is required;
+unknown, abandoned and superseded generations are refused.
+
+1. Use `graph-generation get/begin` as above to reserve a generation and input.
+2. Export and check its artifact using the current ledger revision:
+
+```bash
+pg-agmemory graph-artifact export --tenant-id TENANT_UUID \
+  --generation-id GENERATION_UUID --expected-revision 1 --file /private/path/graph.json
+pg-agmemory graph-artifact check --tenant-id TENANT_UUID \
+  --generation-id GENERATION_UUID --expected-revision 1 --file /private/path/graph.json
+```
+
+3. Record the returned `artifact_digest` using `graph-generation record`. This is
+   a separate CAS operation; if the source or ledger changed, it refuses the
+   receipt. A file left behind by failed recording is not a serving artifact.
+
+Export/check leave the ledger unchanged. After successful recording, use its
+new revision (normally 2 for the first generation) to check the old file or
+export to a **different nonexistent path**. The bytes and SHA256 are identical
+while that head and canonical input remain unchanged; generation state and
+ledger revision are deliberately not part of the file. If data/ACL/deletion
+epochs changed, create a new generation rather than relabeling the old one.
+For unknown/lost output delivery, use `get` and `check`; do not overwrite or
+silently replace files or generation identities.
+
+Format `pgag-graph-artifact-v1` contains the tenant/generation/parent/profile
+binding, schema-19 input fingerprints, canonical nodes and edge-revision history.
+Nodes carry ID, scope and creation time. Edges carry ID/revision, scope,
+source/target, allowlisted predicate and half-open valid/system intervals.
+They are ordered uniquely with same-scope endpoints. No label, source payload,
+quote, model response or secret is serialized. All retained tenant topology is
+included: **this is a private administrator artifact, not a principal-authorized
+query result**. A future graph reader must apply current canonical permissions,
+source visibility, deletion and statement-time expiry on every traversal.
+
+The signature is HMAC-SHA256 under the private recovery key, domain
+`pgag-graph-artifact-v1:` followed by canonical unsigned JSON and its final newline.
+The file digest is SHA256 of the full canonical signed JSON plus final newline.
+`check` authenticates that binding **and** recomputes exact current canonical
+content; a valid signature alone, a byte hash alone or a self-declared profile
+cannot certify arbitrary graph data. A recorded head additionally requires the
+file digest already stored in its receipt.
+
+Successful export/check reports `artifact_verified:true` and
+`serving_enabled:false`. Verification is narrowly scoped to these canonical
+bytes; it does not change the generic generation receipt's
+`artifact_verified:false`, activate a backend, prove access for another principal,
+or certify an external extension. There is no file importer, public API endpoint,
+automatic rebuild, pruning or inference call.
+
+Bounds are **10,000 nodes, 40,000 edge revisions and 16 MiB per artifact**.
+Canonical construction is bounded to 30 seconds, plus existing input-capture
+bounds and per-statement timeouts. These are not whole-filesystem-I/O deadlines.
+Both commands hold the tenant barrier through read-only snapshot validation and
+output; export writes only after the read-only transaction commits. A file and
+a later metadata write are not transactionally atomic across storage systems.
+
+Export uses exclusive creation with mode 0600, refuses an existing file/symlink,
+flushes file and directory metadata, and on write failure removes only its own
+new file if its inode still matches. An externally replaced path is never
+deleted; cleanup failure is explicit. `check` accepts only a regular file with
+no group/other permissions, refuses final symlinks and oversized/malformed
+input, and never repairs content silently. Use a trusted private directory and
+protect artifacts/backups as operational metadata. Purging database memory does
+not erase already exported files; operator retention/deletion still applies.
+Restoring an older file does not bypass current source/ledger checks or authorize
+service activation.
+
 ## M3 AGE qualification profile
 
 This is an **optional, disposable development profile**, not a service backend,

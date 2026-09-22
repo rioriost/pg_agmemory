@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.5 / M3世代metadata境界、2026-09-22
+- 文書版: 0.6 / M3 canonical graph artifact境界、2026-09-22
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。M3開発版v0.1.1/schema 19で管理者専用の世代metadataを追加し、実graph readはSQLのまま。固定hop AGEは高コストで不採用、native VLEは保存・無効を維持し、receipt/input digestからserving許可を推測しない。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。M3開発版v0.1.1/schema 19で管理者専用世代metadataと決定論的canonical graph artifact export/checkを追加し、実graph readはSQLのまま。固定hop AGEは高コストで不採用、native VLEは保存・無効を維持し、receipt/artifactからserving許可を推測しない。証跡と範囲は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -659,7 +659,7 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 |---|---|---|
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | PG18/v1.8.0-rc0のbuild/probe実装済み。native VLEは6確認失敗。固定1-hop候補は40確認成功だがadapter認定ではない |
 | M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 固定hop実験候補はcanonical SQL/独立oracleとlive 20件で一致。read中央値がSQLの9–62倍、統計だけの診断後も4.47–6.81倍のため不採用。native経路は保存・無効のまま。本番graphは有効化しない |
-| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 19のmetadata coordinatorでsnapshot入力CAS、不変receipt、pending build一つ、stale判定を実装。v6復元は不変metadataを起動なしで保持。定数時間の変更追跡、実graph data構築/再構築、serving世代切替は未了 |
+| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 19 coordinatorでsnapshot入力CAS、不変receipt、pending build一つ、stale判定を実装。v6復元は不変metadataを起動なしで保持。canonical graph artifactの同一bytes構築/再構築と現行source照合を追加。定数時間の変更追跡、extension上の投影構築、serving世代切替は未了 |
 | M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | adapter統合後 |
 
 世代metadataの入力captureは上限付きrepeatable-readのcanonical fingerprintであり、
@@ -668,6 +668,12 @@ builder指定artifact digestの記録をartifact検証とはしません。
 復元は世代台帳を不変contentとして比較し、欠落/変更履歴を拒否します。
 旧backupからgraphを自動再開しません。この分離により、高コスト迂回策の採用や
 無効なnative strategyの修正済み認定をせずにbackend非依存部分を進めます。
+
+canonical artifactは非公開・全scopeの管理者build入力であり、principal認可済みviewではありません。
+署名付きtopologyを現行canonical dataへ照合したfileだけに`artifact_verified=true`を返せますが、
+汎用receiptの検証flagやserving pointerは変更しません。
+exportと後続receipt記録は入力/revision照合付きの明示的な別操作であり、
+filesystem/DBをまたぐ分散transactionとは主張しません。
 
 ## 13. MCP adapter
 

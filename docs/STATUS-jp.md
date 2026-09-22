@@ -2,6 +2,31 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.1.1 / schema 19: 再構築可能なcanonical graph artifact
+
+`graph-artifact export/check`で管理者専用・上限付きのcanonical graph data構築を追加しました。
+順序付きnode IDと保持する全temporal edge revisionを、既存pending世代またはrecorded head、
+入力snapshot、profile宣言、非公開の復旧鍵系統へ結び付けます。
+node label・原文・evidence quoteは出力しません。fileは非公開・排他的に新規作成し、
+既存出力先を上書きしません。不変のrecorded headは署名/digestも含む同一bytesへ再構築できます。
+
+照合は現行台帳revision、canonical入力、鍵付き署名、正確なcanonical topology、
+recorded headならreceiptのfile digestまで確認します。
+署名が正しくてもtopologyが違えば拒否し、古い世代identityで変更後のdataを再構築しません。
+export/checkはDB rowを変更せず、file作成/outputまでtenant barrierを保持します。
+filesystem書込みと後続receipt記録は別操作であり、分散transactionや自動retryではありません。
+
+このcommandの**`artifact_verified=true`は、現行canonical build入力と一致することだけ**を表します。
+汎用世代receiptの`artifact_verified=false`は維持し、どちらもserving権限を与えません。
+artifactはtenant内のscope/historyをまたぐ保持topologyを含み、
+runtime principal向けの認可filter済みviewではありません。
+`permission_filter_required=true`、`serving_enabled=false`は必須です。
+
+独立artifact契約と非root製品smokeで、履歴/再構築一致、非公開file、改変、書込み失敗、
+source変更、metadata非変更を扱います。migration・推論・AGE load・Native graph選択は追加しません。
+native serving、定数時間の鮮度判定、実AGE投影の起動は未実装です。
+[運用](operations/README-jp.md#canonical-graph-artifacts)を参照してください。
+
 ## v0.1.1 / schema 19: graph世代metadata
 
 M3のbackend非依存coordinatorは、graph backendを有効化せず世代を記録します。
@@ -35,7 +60,13 @@ graph readはSQLのままで、下記の固定hop不採用とnative経路保存�
 製品image用の復旧export smokeに、運用table数21という旧期待値が残っていたためです。
 23件と両世代tableの包含・replacement rowからの除外を確認するよう修正し、
 非rootの製品imageで空台帳・recorded世代ありの両方を実行しました。
-両native distribution認定には修正版のrun完了が引き続き必要です。
+修正済み**`a017ae5c6d2c22e31447f54ddb7253f58ce15d69`**の
+[native run 35689800671](https://github.com/rioriost/pg_agmemory/actions/runs/35689800671)は、
+両architectureの**2,096 tests / optional 31 skips**、全packaged smoke、完全一致v6復元が成功しました。
+両reportは不変のrecorded世代と台帳revision 2を保持し、入力をstale・非servingとし、
+payload fingerprint 35件、拒否20件、予約11件も一致します。
+pytestはamd64 1413.20秒、arm64 1353.32秒です。metadata checkpointだけの認定であり、
+後続artifact exporterをこの旧runの認定へ含めません。skipは任意model 8件・AGE 23件です。
 
 ## M3開発: graph認定の基盤
 

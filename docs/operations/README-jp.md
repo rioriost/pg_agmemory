@@ -66,6 +66,65 @@ backup後に世代履歴が変わっていれば、現在の適用経路では�
 十分新しいbackupを保持し、不変receiptの書換えや未検証graph artifactの取込みで回避しないでください。
 実graph dataの再構築/照合、本番HA/PITRは別途必要です。
 
+## Canonical graph artifacts
+
+`pg-agmemory graph-artifact`は**service 0.1.1 / API v1 / schema 19**向けの
+管理者専用・backend非依存build入力export/checkです。schemaを変更せず、AGE graphも構築/起動しません。
+`PGAG_ADMIN_DATABASE_URL`は非公開に設定します。既存pending世代か現行recorded headを要求し、
+不明・abandoned・後継headへ置換済みの世代は拒否します。
+
+1. 上記`graph-generation get/begin`で世代と入力を予約します。
+2. 現行台帳revisionでartifactをexport/checkします。
+
+```bash
+pg-agmemory graph-artifact export --tenant-id TENANT_UUID \
+  --generation-id GENERATION_UUID --expected-revision 1 --file /private/path/graph.json
+pg-agmemory graph-artifact check --tenant-id TENANT_UUID \
+  --generation-id GENERATION_UUID --expected-revision 1 --file /private/path/graph.json
+```
+
+3. 出力の`artifact_digest`を`graph-generation record`で記録します。
+   別のCAS操作なのでsource/台帳が変われば拒否します。記録失敗後に残るfileをserving用に扱いません。
+
+export/checkは台帳を変更しません。record成功後は新revision（初回世代なら通常2）で
+旧fileをcheckするか、**別の存在しないpath**へ再exportできます。
+headとcanonical入力が不変ならbytes/SHA256は同一で、世代stateや台帳revisionをfileには含めません。
+data/ACL/deletion epochが変わったら旧世代の改名でなく新世代を作成してください。
+応答喪失時は`get`と`check`で照合し、fileや世代identityを黙って置換しません。
+
+`pgag-graph-artifact-v1`はtenant/世代/親/profile対応、schema 19入力fingerprint、
+canonical nodeとedge revision履歴を含みます。nodeはID/scope/作成時刻、
+edgeはID/revision/scope/source/target/許可predicateと半開valid/system区間を持ちます。
+一意順序と同一scopeのendpointを要求し、label・原文・quote・model応答・秘密は含めません。
+保持するtenant topology全体なので、**非公開の管理者artifactであり、principal向け認可済み結果ではありません**。
+将来のgraph readerは各探索で現行canonical認可、source可視性、削除、statement時点の期限を確認します。
+
+署名は非公開復旧鍵のHMAC-SHA256で、domain `pgag-graph-artifact-v1:`に、
+署名fieldを除くcanonical JSONと末尾改行を連結して計算します。
+file digestは署名込みcanonical JSON＋末尾改行のSHA256です。
+`check`はこの対応の認証**と**現行canonical内容の再構築・完全一致を要求します。
+署名だけ、byte hashだけ、自己申告profileだけで任意graph dataを認定しません。
+recorded headならreceiptへ保存したfile digestも一致する必要があります。
+
+export/check成功は`artifact_verified:true`、`serving_enabled:false`です。
+検証はcanonical bytesだけを対象とし、汎用世代receiptの`artifact_verified:false`を変えず、
+backend起動、他principalのアクセス許可、外部extensionの認定を意味しません。
+file importer・公開API endpoint・自動再構築・pruning・推論は追加しません。
+
+上限は**10,000 nodes、40,000 edge revisions、artifactごと16 MiB**です。
+canonical構築に30秒、既存input capture上限とstatement timeoutも適用します。
+filesystem I/O全体の期限ではありません。両commandはread-only snapshot照合/outputまで
+tenant barrierを保持し、exportはread-only transaction commit後にfileを書きます。
+fileと後続metadata書込みはstorageをまたぐ原子的transactionではありません。
+
+exportはmode 0600で排他作成し、既存file/symlinkを拒否、file/directory metadataをflushします。
+書込み失敗時は自身が新規作成した同じinodeだけを削除し、外部で置換されたpathは削除せず、
+cleanup失敗を明示します。checkはgroup/other権限なしの通常fileだけを受け付け、
+末尾symlink、上限超過、不正入力を拒否して黙った修復はしません。
+信頼できる非公開directoryを使い、artifact/backupを運用metadataとして保護してください。
+DBのpurgeでexport済みfileは消えず、operatorの保持/削除管理が必要です。
+旧fileの復元を現行source/台帳照合の回避やservice起動許可にしません。
+
 ## M3 AGE qualification profile
 
 **任意の使い捨て開発profile**であり、service backend、application migration、

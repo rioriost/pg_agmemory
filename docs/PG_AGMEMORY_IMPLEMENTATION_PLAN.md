@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.5 / M3 generation metadata boundary, 2026-09-22
+- Document version: 0.6 / M3 canonical graph artifact boundary, 2026-09-22
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.1/schema 19 adds admin-only generation metadata; actual graph reads remain SQL. Fixed-hop AGE was rejected for cost, native VLE is preserved but disabled, and neither receipts nor source digests enable serving. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.1/schema 19 adds admin-only generation metadata and deterministic canonical graph artifact export/check; actual graph reads remain SQL. Fixed-hop AGE was rejected for cost, native VLE is preserved but disabled, and receipts/artifacts never enable serving. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -674,7 +674,7 @@ Do not infer that a version change alone supplies that evidence.
 |---|---|---|
 | M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Build/probe implemented for PG18/v1.8.0-rc0. Native VLE fails six checks; fixed one-hop candidate passes 40 checks but is not an adapter qualification |
 | M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Fixed-hop laboratory candidate passes 20 live cases against canonical SQL/independent oracle. Not adopted: raw median read cost 9–62x SQL; statistics-only diagnosis still 4.47–6.81x. Native strategy preserved but disabled; no production graph activation |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema19 metadata coordinator implements snapshot-input CAS, immutable receipts, one pending build and stale detection; v6 restore preserves unchanged metadata without activation. Constant-time mutation tracking, actual graph-data construction/rebuild and serving-generation switch remain pending |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema19 metadata coordinator implements snapshot-input CAS, immutable receipts, one pending build and stale detection; v6 restore preserves unchanged metadata without activation. Canonical graph artifacts now build/rebuild identically and authenticate against current source. Constant-time mutation tracking, extension-backed projection construction and serving-generation switch remain pending |
 | M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Pending integrated adapter |
 
 Generation metadata capture uses a bounded repeatable-read canonical fingerprint,
@@ -684,6 +684,13 @@ Recovery compares the generation ledger as immutable content and refuses missing
 or changed history; no automatic graph reactivation follows an old backup.
 This split permits backend-neutral progress without adopting the expensive
 workaround or claiming the disabled native strategy has been repaired.
+
+The canonical artifact is a private, all-scope administrator build input, not a
+principal-authorized view. Verifying signed topology against current canonical
+data may report `artifact_verified=true` for that file only; it changes neither
+the generic receipt's verification flag nor any serving pointer. Export and
+later receipt recording are explicit separate operations with input/revision
+checks, never claimed as a filesystem/database distributed transaction.
 
 ## 13. MCP Adapter
 

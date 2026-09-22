@@ -358,6 +358,17 @@ def create_app(
                 "artifact_verified": False,
                 "serving_enabled": False,
             },
+            "graph_artifact_administration": {
+                "transport": "admin-cli",
+                "command": "graph-artifact",
+                "operations": ["export", "check"],
+                "format": "pgag-graph-artifact-v1",
+                "max_nodes": 10000,
+                "max_edge_revisions": 40000,
+                "max_bytes": 16777216,
+                "generation_metadata_writes": False,
+                "serving_enabled": False,
+            },
             "episode_query": {
                 "endpoint": "/v1/episodes/query",
                 "order": ["recorded_at_desc", "memory_id_desc"],

@@ -17,6 +17,12 @@ migration 019前に停止/drainし、componentを揃えてschema 19復旧artifac
 [世代管理の運用](docs/operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
 M3は未完了で、公開済みM2のrollback点はtag `v0.1.0`です。
 
+`pg-agmemory graph-artifact export/check`で、既存世代の非公開・決定論的なcanonical topology
+artifactを作成/照合できます。IDと時刻付きedge revisionを含み、labelや原文は含めません。
+不変のrecorded世代は同じbytesへ再構築し、鍵付き署名と現在のcanonical dataの両方を照合します。
+graph backendの有効化や世代metadataの変更は行いません。
+[artifact運用](docs/operations/README-jp.md#canonical-graph-artifacts)を参照してください。
+
 ## 公開済みM2契約: v0.1.0 / schema 18
 
 **エージェントとLLMの記憶基盤であり、判断システムではありません。**

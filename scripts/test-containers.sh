@@ -1193,6 +1193,10 @@ with TemporaryDirectory(prefix="pgag-processing-recovery-") as directory:
 print("Production processing recovery smoke passed: private snapshot, exact state check, no restart authority")
 ' "$provisioned"
 
+"$engine" exec -i -w /tmp \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$api_name" python - < scripts/smoke-graph-artifact.py
+
 echo "Running isolated logical-backup recovery drill..."
 PGAG_RECOVERY_TEST_IMAGE="$test_image" bash scripts/test-recovery-containers.sh "$engine"
 

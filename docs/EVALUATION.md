@@ -2,15 +2,31 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current development: v0.1.1 / schema 19 generation metadata
+## Current development: v0.1.1 / schema 19 canonical graph artifacts
+
+The backend-neutral artifact exporter/checker adds 36 focused contracts
+(6 offline and 30 database cases). A non-root production-image smoke exercises
+three nodes and both revisions of one relation, checks private/content-free
+output, records the digest, rebuilds identical bytes and refuses a later source
+mutation. This is deterministic graph build-input construction and verification,
+not a new AGE execution, runtime permission cache or serving qualification.
+The schema-19 generation coordinator and generic receipt semantics below remain
+unchanged; no migration or model call is added.
+See [artifact scope](operations/README.md#canonical-graph-artifacts).
+
+## Schema 19 generation metadata
 
 The M3 coordinator now has 44 focused lifecycle/recovery cases plus schema-19
 migration/compatibility checks. Its development v6 actual backup drill preserves
 one nonempty generation receipt, observes stale input after deletion/ACL replay,
 and keeps artifact verification/serving disabled. Operational comparison covers
 23 tables; generation history must match exactly and is not a replacement-row
-import. These are metadata contracts, not AGE qualification or graph-data
-reconstruction. Full frozen-build native evidence remains required.
+import. These are metadata contracts, not AGE qualification or extension-backed
+projection reconstruction. Exact `a017ae5` passed native run
+[35689800671](https://github.com/rioriost/pg_agmemory/actions/runs/35689800671)
+on amd64/arm64 (2,096 passes/31 optional skips each) including packaged smokes and
+v6 recovery; the earlier `50ed5e2` smoke failure remains recorded in STATUS.
+This distribution evidence predates and does not certify the artifact increment.
 See [current limits](STATUS.md) and [operations](operations/README.md#graph-generation-metadata-schema-19).
 The historical resource/model observations and published M2 qualification below
 remain bound to their original source versions.
