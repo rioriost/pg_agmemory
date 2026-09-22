@@ -2,6 +2,39 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.1.1 / schema 19: graph-generation metadata
+
+M3's backend-neutral coordinator records generations without enabling a graph
+backend. New admin-only, forced-RLS tables hold an immutable generation history
+and a CAS-fenced head/building ledger. `graph-generation` accepts closed JSON
+requests for `get`, `begin`, `record` and `abandon`; runtime roles have no table
+access. One build per tenant, server-assigned completion time, terminal-history
+immutability and deferred pointer consistency are database constraints.
+
+Input equality is a keyed digest of seven graph-relevant canonical table
+snapshots plus current access/deletion epochs, captured under the tenant barrier
+and repeatable-read. It is not a wall-clock cursor or a constant-time mutation
+counter. Unrelated observations/assertions do not invalidate it; graph changes
+and changed authority/deletion epochs do. `record` rechecks both source and ledger
+CAS. `abandon` can close a stale/oversized build without rescanning its source.
+`source_matches` is not permission to use an artifact or extend an ACL expiry:
+**`artifact_verified=false` and `serving_enabled=false` are unconditional.**
+
+Forty-four focused Linux lifecycle/recovery cases pass. Schema rollback and existing
+recovery contracts are also checked; the development v6 actual dump/restore
+preserves a nonempty recorded-generation receipt and ledger while marking its
+input stale after newer deletions/ACL changes. Core 35 payload fingerprints,
+20 hidden targets and 11 call reservations remain intact. The operational
+snapshot now includes 23 tables; generation history is compared as immutable
+content and is never imported as replacement rows. A missing/different history
+therefore refuses application rather than recreating or activating it.
+
+This increment is **metadata coordination**, not graph-data construction,
+constant-time read-side freshness, actual projection rebuild, AGE activation,
+M3 completion or production DR certification. Current graph reads remain SQL;
+the fixed-hop non-adoption and preserved native strategy below are unchanged.
+Use [schema-19 operations](operations/README.md#graph-generation-metadata-schema-19).
+
 ## M3 development: graph qualification foundation
 
 The `feat/m3-graph` branch adds an isolated AGE build/probe and an independent

@@ -28,6 +28,7 @@ MIGRATIONS = (
     "016_set_based_visibility.sql",
     "017_tombstone_visibility_set.sql",
     "018_tombstone_read_set.sql",
+    "019_graph_generation.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

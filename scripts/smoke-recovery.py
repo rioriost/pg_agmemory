@@ -1,9 +1,9 @@
-"""Disposable schema-18 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-19 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
 three synthetic call outcomes, unknown-call fences and consumed quota.
-The v5 fixture includes retained and purged processing/working/graph/effect derivatives.
+The v6 fixture includes retained and purged processing/working/graph/effect derivatives.
 """
 
 import asyncio
@@ -33,6 +33,7 @@ from pg_agmemory.compaction import Working
 from pg_agmemory.database import SCHEMA_VERSION, RuntimeValidationError, migrate, validate_runtime
 from pg_agmemory.deletion_history import DeletionHistory, purge_replay_suffix
 from pg_agmemory.effects import ToolEffects
+from pg_agmemory.graph_generation import GraphGenerationRequest, graph_generation
 from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.jobs import Jobs
 from pg_agmemory.models import (
@@ -170,7 +171,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 19)], "schema18 required")
+        require(versions == [{"version": n} for n in range(1, 20)], "schema19 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -185,7 +186,7 @@ def snapshot(url):
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         result = {
-            "format": "pgag-isolated-purge-drill-v5",
+            "format": "pgag-isolated-purge-drill-v6",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
@@ -213,6 +214,10 @@ def snapshot(url):
     result["processing_state"] = capture_processing_state(
         url, UUID(result["tenant"][0]["id"])
     ).model_dump(mode="json")
+    with graph_generation(url, GraphGenerationRequest(
+        operation="get", tenant_id=UUID(result["tenant"][0]["id"]),
+    )) as generation:
+        result["graph_generation"] = generation.model_dump(mode="json")
     return result
 
 
@@ -257,7 +262,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 18, "schema18 required")
+        require(evidence["schema_version"] == 19, "schema19 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -330,9 +335,9 @@ def validate_evidence(before, latest):
 
 
 def validate_application_evidence(before, latest):
-    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v5",
-            "application evidence v5 required")
-    require(before["schema_version"] == latest["schema_version"] == 18, "schema18 required")
+    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v6",
+            "application evidence v6 required")
+    require(before["schema_version"] == latest["schema_version"] == 19, "schema19 required")
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
             "changed identities or anchors unsupported")
@@ -639,6 +644,25 @@ async def seed(admin_url):
                     scope_id=scope, kind="extract",
                     source=MemoryReference(memory_id=UUID(source["memory_id"])),
                 ), "model-enqueue-" + outcome)
+    with graph_generation(admin_url, GraphGenerationRequest(
+        operation="get", tenant_id=tenant,
+    )) as initial:
+        require(initial.revision == 0 and initial.head is None, "unexpected generation baseline")
+    generation_id = uuid4()
+    with graph_generation(admin_url, GraphGenerationRequest(
+        operation="begin", tenant_id=tenant, expected_revision=initial.revision,
+        generation_id=generation_id, expected_input_digest=initial.current_input_digest,
+        profile_digest=digest("synthetic-metadata-only-graph-profile"),
+    )) as building:
+        require(building.building is not None, "generation reservation missing")
+    with graph_generation(admin_url, GraphGenerationRequest(
+        operation="record", tenant_id=tenant, expected_revision=building.revision,
+        generation_id=generation_id, expected_input_digest=initial.current_input_digest,
+        artifact_digest=digest("synthetic-receipt-not-a-built-graph"),
+    )) as recorded:
+        require(recorded.head is not None and recorded.head.source_matches is True
+                and not recorded.artifact_verified and not recorded.serving_enabled,
+                "generation receipt must not enable or verify a graph")
 
 
 async def later(admin_url):
@@ -905,8 +929,21 @@ async def recover(admin_url, directory):
     require(applied == bundle.reference, "operational application did not match latest")
     final = snapshot(admin_url)
     for key in ("tenant", "principals", "memberships", "tombstones", "access_events", "canonical",
-                "deletions", "deletion_targets", "processing_state"):
+                "deletions", "deletion_targets", "processing_state", "graph_generation"):
         require(final[key] == latest[key], f"latest {key} reconciliation mismatch")
+    generation = final["graph_generation"]
+    require(
+        before["graph_generation"]["head"]["source_matches"] is True
+        and generation["head"]["source_matches"] is False
+        and generation["revision"] == 2
+        and generation["building"] is None
+        and {k: v for k, v in generation["head"].items() if k != "source_matches"}
+        == {k: v for k, v in before["graph_generation"]["head"].items()
+            if k != "source_matches"}
+        and generation["artifact_verified"] is False
+        and generation["serving_enabled"] is False,
+        "restored generation receipt must remain unchanged, stale and unactivated",
+    )
     def normalized(evidence):
         return [r.model_dump(mode="json", exclude={"deletion_id"})
                 for r in deletion_history(evidence).records]
@@ -951,8 +988,9 @@ async def recover(admin_url, directory):
     report = {
         "status": "passed",
         "m2_qualified": False,
-        "scope": "schema18-derived-memory-operational-state-application-v5",
-        "schema_version": 18,
+        "m3_qualified": False,
+        "scope": "schema19-derived-memory-operational-state-application-v6",
+        "schema_version": 19,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
@@ -1000,9 +1038,14 @@ async def recover(admin_url, directory):
         "semantic_job_identity_preserved": True,
         "processing_baseline_matches": baseline_check.processing_state_matches,
         "latest_processing_check": processing_check.model_dump(mode="json"),
+        "graph_generation": {
+            "recorded_receipts": 1, "ledger_revision": generation["revision"],
+            "metadata_unchanged": True, "input_stale": True,
+            "artifact_verified": False, "serving_enabled": False,
+        },
         "unqualified": ["general-DR", "HA/PITR", "retention-deadlines", "new-suppress-replay",
                         "unbounded-or-arbitrary-history", "new-or-missing-canonical-content",
-                        "automatic-service-activation"],
+                        "automatic-service-activation", "graph-projection-data-rebuild"],
     }
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, sort_keys=True), flush=True)
@@ -1010,7 +1053,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 18, "this bounded smoke is pinned to schema18")
+    require(SCHEMA_VERSION == 19, "this bounded smoke is pinned to schema19")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

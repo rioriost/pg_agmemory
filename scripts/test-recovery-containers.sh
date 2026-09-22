@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "Usage: $0 [container|docker]"
-    echo "Disposable schema18 operational-state restore drill; no API or worker starts."
+    echo "Disposable schema19 operational-state restore drill; no API or worker starts."
     echo "PGAG_RECOVERY_TEST_IMAGE may select an existing test image; otherwise builds one."
     echo "Prints a JSON report; deletes all disposable databases, dumps, and metadata on exit."
     exit 0

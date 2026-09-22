@@ -298,7 +298,8 @@ def test_history_closed_binding_rejects_gaps_unknowns_and_scope_contracts(env):
     forget(env, source)
     original = export_deletions(env.admin_url, env.tenants[0]).model_dump(mode="json")
     for field, value in (
-        ("deletion_epoch", 5), ("schema_version", 13), ("restore_authorized", True),
+        ("deletion_epoch", 5), ("schema_version", 13), ("schema_version", 18),
+        ("restore_authorized", True),
         ("includes_acl_policy_and_call_accounting", True), ("records", []),
     ):
         with pytest.raises(ValidationError):

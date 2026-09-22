@@ -56,6 +56,11 @@ def main() -> None:
 
         apply_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["graph-generation"]:
+        from pg_agmemory.graph_generation import main as graph_generation_main
+
+        graph_generation_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -73,6 +78,7 @@ def main() -> None:
             "deletion-history",
             "processing-recovery",
             "recovery-apply",
+            "graph-generation",
             "infer",
         ],
     )
@@ -108,6 +114,8 @@ def main() -> None:
         )
     elif args.command == "recovery-apply":
         parser.error("recovery-apply must precede its arguments; use recovery-apply --help")
+    elif args.command == "graph-generation":
+        parser.error("graph-generation must precede its arguments; use graph-generation --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

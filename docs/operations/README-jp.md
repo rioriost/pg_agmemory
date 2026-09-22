@@ -7,6 +7,65 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Graph generation metadata (schema 19)
+
+開発版componentは**service 0.1.1 / API v1 / schema 19**、
+stageは`m3-graph-generation-metadata`です。公開M2 tagはv0.1.0/schema 18のままです。
+API/worker/自動再起動をdrain・停止し、対応する保護backupを取得した後、管理者で
+`pg-agmemory migrate`を実行しledger 1–19全体を確認します。
+client/adapter/workerを揃え、管理者復旧鍵を保持して新backupを取得し、
+schema 19の削除/処理/適用artifactを再生成します。schema 18の旧artifactは改名せず拒否します。
+sourceだけのrollbackではDBはdowngradeできません。
+
+新しい管理者CLIはstdinからclosed JSON一件（UTF-8で最大32 KiB）を受け取り、
+非公開に設定した`PGAG_ADMIN_DATABASE_URL`を使用します。AGEのloadやmodel呼出しはしません。
+runtime roleには新table二つのread/write権限を与えず、Native resourceやbackend選択も追加しません。
+以下のplaceholderを実UUID/digestへ置き換え、revision/input digestは`get`の値を使ってください。
+
+```bash
+printf '%s\n' '{"operation":"get","tenant_id":"TENANT_UUID"}' | pg-agmemory graph-generation
+
+printf '%s\n' '{"operation":"begin","tenant_id":"TENANT_UUID","expected_revision":0,"generation_id":"GENERATION_UUID","expected_input_digest":"INPUT_DIGEST_64_HEX","profile_digest":"PROFILE_DIGEST_64_HEX"}' | pg-agmemory graph-generation
+
+printf '%s\n' '{"operation":"record","tenant_id":"TENANT_UUID","expected_revision":1,"generation_id":"GENERATION_UUID","expected_input_digest":"INPUT_DIGEST_64_HEX","artifact_digest":"ARTIFACT_DIGEST_64_HEX"}' | pg-agmemory graph-generation
+```
+
+初回`get`はrow/head/buildなしのrevision 0です。`begin`は指定UUIDを観測済みrevisionと
+source digestの両方で予約し、tenantごとの未完buildを一つに限定します。
+`record`は同じpending世代/inputと現行revisionを要求し、operator指定のartifact digestを記録、
+recorded headを進めてpendingを解消します。旧recordは不変です。
+graph/ACL/deletion状態が変われば完了を拒否し、pending buildは明示abandon用に残します。
+profile/artifact digestは宣言の対応付けであり、外部bytes・model品質・graph利用可能性の検証ではありません。
+
+pendingを破棄するには`operation:"abandon"`、`tenant_id`、`expected_revision`、
+`generation_id`、1–256文字の`reason`だけを渡し、digest引数は付けません。
+sourceを再走査しないため増大してcapture上限を超えても実行でき、input/source-matchは
+現在値を推測せずnullとします。reasonに原文やcredentialを含めないでください。
+receiptは不変の運用metadataで、汎用記憶の保存先ではありません。
+自動retry・期限切れ・履歴pruning・producer job・graph起動は追加しません。
+応答喪失/成否不明時は`get`で照合し、黙って別世代を作らないでください。
+
+全commandがcommit/outputまでtenant barrierを保持します。入力captureはgraph関連の
+固定canonical 7選択、現行access/deletion epoch、管理復旧鍵を使い、
+原文でなく件数/hashを記録します。共通上限はtableごと1,000,000 rows、
+serialized入力合計256 MiB、30秒と、通常のstatement timeoutです。
+管理用の走査であり、hot read用watermark/cacheではありません。
+初期契約ではtenantごとの世代履歴を10,000件まで保持できます。
+将来のgraph readでも現行認可・statement時点の期限を確認し、
+`source_matches`を権限と見なしてはいけません。
+
+**全応答は`artifact_verified:false`、`serving_enabled:false`です。**
+`recorded`はreceiptの存在であってgraph構築・検証・client向け公開・起動ではありません。
+高コストの固定hopと未認定native VLEは無効を維持し、世代metadataはbackend非依存とすることで、
+将来認定したstrategyでもinput/receipt契約を置換せず利用できます。
+
+復旧では新tableを運用snapshot 23 tableと不変content照合へ追加しますが、replacement rowには含めません。
+v6隔離drillは変更のない非空世代履歴を復元し、新しいpurgeと最新ACL/会計を反映、
+旧headをstale・非servingのまま保持します。
+backup後に世代履歴が変わっていれば、現在の適用経路では書込み前に拒否します。
+十分新しいbackupを保持し、不変receiptの書換えや未検証graph artifactの取込みで回避しないでください。
+実graph dataの再構築/照合、本番HA/PITRは別途必要です。
+
 ## M3 AGE qualification profile
 
 **任意の使い捨て開発profile**であり、service backend、application migration、
@@ -106,7 +165,7 @@ helperは自身のcontainer/imageだけをcleanupします。credentialやlocal�
 
 ## M2 core MVP deployment
 
-現行契約は**service 0.1.0 / API v1 / schema 18**、capability stageは`m2-core-mvp`です。
+公開済みM2 tagの契約は**service 0.1.0 / API v1 / schema 18**、stageは`m2-core-mvp`です。
 API/worker/SDK/MCP/hookを同じversionに揃え、rolling/mixed-version互換は主張しません。
 対応distributionはnative Linux amd64/arm64、Python 3.12.14、PostgreSQL 18.6、
 pgvector 0.8.6で、`Dockerfile`、`uv.lock`、container helperの不変pinを使います。

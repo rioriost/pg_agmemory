@@ -6,7 +6,18 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current contract: M2 core MVP v0.1.0 / schema 18
+## Current development: v0.1.1 / API v1 / schema 19
+
+M3 now adds **administrator-only graph-generation metadata**, not an enabled
+graph backend. `pg-agmemory graph-generation` records input fingerprints,
+generation lineage and artifact receipts using revision/input CAS. Receipts
+never verify an artifact or authorize serving. SQL remains the only active graph
+backend; the expensive fixed-hop candidate and unqualified native VLE remain off.
+Stop/drain before migration 019, deploy matching components and regenerate
+schema-19 recovery artifacts. See [generation operations](docs/operations/README.md#graph-generation-metadata-schema-19).
+M3 is incomplete; the published M2 rollback point remains tag `v0.1.0`.
+
+## Published M2 contract: v0.1.0 / schema 18
 
 **Memory infrastructure for agents and LLMs, not a judgment system.** M2's
 declared engineering gates are complete: scoped storage/retrieval/updates,
@@ -74,7 +85,8 @@ semantic job identities, job state and related operational metadata. A mismatch
 exits nonzero. It writes no database state and **never authorizes restart**;
 the bounded application above has separate preconditions. See
 [processing recovery operations](docs/operations/README.md#processing-state-recovery-check).
-Use matching v0.1.0 / API v1 / schema 18 components. No model calls are made by the check.
+For current development, use matching v0.1.1 / API v1 / schema 19 components.
+No model calls are made by the check.
 
 Schema 14 adds **transaction-bound deletion target manifests** and the
 administrator-only `pg-agmemory deletion-history export` command. Each new

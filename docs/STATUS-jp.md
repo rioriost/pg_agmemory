@@ -2,6 +2,34 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.1.1 / schema 19: graph世代metadata
+
+M3のbackend非依存coordinatorは、graph backendを有効化せず世代を記録します。
+管理者専用・強制RLSの新tableで、不変の世代履歴とCAS付きhead/building台帳を保持します。
+`graph-generation`はclosed JSONの`get`、`begin`、`record`、`abandon`を受け付け、
+runtime roleへtable権限を与えません。tenantごとbuild一つ、完了時刻のserver採番、
+終端履歴の不変性、deferred pointer整合をDB制約でも守ります。
+
+入力一致はtenant barrierとrepeatable-readで得た、graph関連canonical 7 tableと
+現行access/deletion epochの鍵付きdigestで判断します。wall-clock cursorや
+定数時間の変更counterではありません。無関係のobserve/assertionでは変わらず、
+graph変更や権限/削除epoch変更で変わります。`record`は入力と台帳の両CASを再確認し、
+`abandon`はsource再走査なしで古い/上限超過buildを終了できます。
+`source_matches`はartifact利用許可やACL期限延長ではなく、
+**`artifact_verified=false`、`serving_enabled=false`を常に返します。**
+
+Linuxのlifecycle/復元対象44件が成功しました。schema rollback・既存復旧契約に加え、
+development v6実dump/restoreでは非空のrecorded receiptと台帳をそのまま保持し、
+新しい削除/ACL変更後の入力をstaleとします。core 35 payload fingerprint、
+非公開対象20件、call予約11件も維持します。運用snapshotは23 tableになり、
+世代履歴は不変contentとして照合するだけでreplacement rowとして取込みません。
+欠落/相違があれば再作成や起動ではなく適用を拒否します。
+
+今回は**metadataの調整・記録**であり、graph dataの構築、定数時間のread-side鮮度判定、
+実projection再構築、AGE有効化、M3完了、本番DR認定ではありません。
+graph readはSQLのままで、下記の固定hop不採用とnative経路保存も維持します。
+[schema 19運用](operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
+
 ## M3開発: graph認定の基盤
 
 `feat/m3-graph`で隔離AGE build/probeと独立graph oracleを追加しました。

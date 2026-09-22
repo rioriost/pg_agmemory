@@ -2,7 +2,20 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current status: M2 core MVP v0.1.0 / schema 18 complete
+## Current development: v0.1.1 / schema 19 generation metadata
+
+The M3 coordinator now has 44 focused lifecycle/recovery cases plus schema-19
+migration/compatibility checks. Its development v6 actual backup drill preserves
+one nonempty generation receipt, observes stale input after deletion/ACL replay,
+and keeps artifact verification/serving disabled. Operational comparison covers
+23 tables; generation history must match exactly and is not a replacement-row
+import. These are metadata contracts, not AGE qualification or graph-data
+reconstruction. Full frozen-build native evidence remains required.
+See [current limits](STATUS.md) and [operations](operations/README.md#graph-generation-metadata-schema-19).
+The historical resource/model observations and published M2 qualification below
+remain bound to their original source versions.
+
+## Published M2: core MVP v0.1.0 / schema 18 complete
 
 The frozen release implementation **`af878fc51fa50cefecca69de2df22edfef2a321b`** passed
 [native CI 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016):

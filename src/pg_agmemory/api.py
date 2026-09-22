@@ -322,7 +322,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m2-core-mvp",
+            "stage": "m3-graph-generation-metadata",
             "features": [
                 "observe",
                 "episode_query",
@@ -350,6 +350,14 @@ def create_app(
                 "working_compaction",
             ],
             "graph_backend": "sql",
+            "graph_generation_administration": {
+                "transport": "admin-cli",
+                "command": "graph-generation",
+                "operations": ["get", "begin", "record", "abandon"],
+                "compare_and_swap": "revision_and_input_digest",
+                "artifact_verified": False,
+                "serving_enabled": False,
+            },
             "episode_query": {
                 "endpoint": "/v1/episodes/query",
                 "order": ["recorded_at_desc", "memory_id_desc"],

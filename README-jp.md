@@ -7,7 +7,17 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の契約: M2 core MVP v0.1.0 / schema 18
+## 現在の開発版: v0.1.1 / API v1 / schema 19
+
+M3で**管理者専用のgraph世代metadata**を追加しました。graph backendの有効化ではありません。
+`pg-agmemory graph-generation`は入力fingerprint、世代関係、artifact receiptを
+revision/input CASで記録します。receiptからartifact検証やserving許可を推測しません。
+有効なgraph backendはSQLのみで、高コストな固定hop候補と未認定native VLEは無効です。
+migration 019前に停止/drainし、componentを揃えてschema 19復旧artifactを再生成してください。
+[世代管理の運用](docs/operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
+M3は未完了で、公開済みM2のrollback点はtag `v0.1.0`です。
+
+## 公開済みM2契約: v0.1.0 / schema 18
 
 **エージェントとLLMの記憶基盤であり、判断システムではありません。**
 scope付き保存/検索/更新、非破壊圧縮、限定隔離復元、model呼出し会計、資源上限、
@@ -65,7 +75,7 @@ upgrade後に復旧鍵を含む新しいschema 15 backupを取得してくださ
 この照合command自体はDBを変更せず、**一致しても再開を許可しません**。
 上記の限定した適用操作には別途前提条件があります。
 [処理状態の復旧照合](docs/operations/README-jp.md#processing-state-recovery-check)を参照してください。
-componentはv0.1.0 / API v1 / schema 18に揃えます。照合はmodelを呼びません。
+現行開発版のcomponentはv0.1.1 / API v1 / schema 19に揃えます。照合はmodelを呼びません。
 
 schema 14で**transactionに結び付いた削除対象manifest**と管理者専用の
 `pg-agmemory deletion-history export`を追加しました。新しいreceiptは展開済みの

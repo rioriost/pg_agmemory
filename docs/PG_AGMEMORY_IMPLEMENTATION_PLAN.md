@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.4 / M3 graph qualification boundary, 2026-09-21
+- Document version: 0.5 / M3 generation metadata boundary, 2026-09-22
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: M2 core MVP v0.1.0 / schema 18 is complete for the declared bounded profile. M3 begins with an isolated AGE profile and an independent bounded-graph oracle; the core SQL default remains unchanged until backend qualification. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.1/schema 19 adds admin-only generation metadata; actual graph reads remain SQL. Fixed-hop AGE was rejected for cost, native VLE is preserved but disabled, and neither receipts nor source digests enable serving. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -653,10 +653,12 @@ including direct label reads and paths through hidden intermediate vertices.
 | Rebuild/restore | Retain prior generation identity until an atomic switch. A restored graph stays disabled until latest canonical/deletion/ACL state is reconciled and the generation is rebuilt or verified; importing metadata is not activation authority |
 | Extension profile | Pin the PG18-compatible source commit/archive checksum and database image. Record actual version/privileges and failed probes. Core SQL operation must not require the optional AGE library |
 
-The runtime response schema, administrative generation commands and migration
-are wired together only after the optional profile has a viable permission path.
-Do not publish a configurable but unimplemented backend or upgrade a release
-claim based on a synthetic substitute for the extension.
+The graph-serving response schema and backend selector remain gated on an
+actually qualified profile. The schema-19 administrative coordinator may record
+input equality and builder receipts independently, but always declares
+`artifact_verified=false` and `serving_enabled=false`. Its `recorded` head is not
+a serving pointer. Do not publish a configurable but unimplemented backend or
+upgrade a release claim based on a synthetic substitute for the extension.
 
 Preserve native VLE as a separate, currently disabled strategy rather than
 deleting its implementation when introducing the fixed-hop workaround. Upstream
@@ -672,8 +674,16 @@ Do not infer that a version change alone supplies that evidence.
 |---|---|---|
 | M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Build/probe implemented for PG18/v1.8.0-rc0. Native VLE fails six checks; fixed one-hop candidate passes 40 checks but is not an adapter qualification |
 | M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Fixed-hop laboratory candidate passes 20 live cases against canonical SQL/independent oracle. Not adopted: raw median read cost 9–62x SQL; statistics-only diagnosis still 4.47–6.81x. Native strategy preserved but disabled; no production graph activation |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Pending. Backend-neutral implementation must not enable the expensive candidate or unqualified native strategy; schema 18 remains unchanged |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema19 metadata coordinator implements snapshot-input CAS, immutable receipts, one pending build and stale detection; v6 restore preserves unchanged metadata without activation. Constant-time mutation tracking, actual graph-data construction/rebuild and serving-generation switch remain pending |
 | M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Pending integrated adapter |
+
+Generation metadata capture uses a bounded repeatable-read canonical fingerprint,
+not a timestamp cursor or an already implemented constant-time mutation counter.
+Recording a builder-supplied artifact digest does not verify that artifact.
+Recovery compares the generation ledger as immutable content and refuses missing
+or changed history; no automatic graph reactivation follows an old backup.
+This split permits backend-neutral progress without adopting the expensive
+workaround or claiming the disabled native strategy has been repaired.
 
 ## 13. MCP Adapter
 

@@ -456,6 +456,31 @@ def database():
                WHERE polrelid='memory_ops.object_tombstone'::regclass
                  AND polname='tombstone_read'"""
         ).fetchone()[0]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:18])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_graph_generation_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (19,):
+                raise RuntimeError("simulated graph generation migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_graph_generation_ledger)
+        with pytest.raises(RuntimeError, match="simulated graph generation migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 18
+        assert admin.execute(
+            "SELECT to_regclass('memory_ops.graph_generation'),"
+            "to_regclass('memory_ops.graph_generation_state'),"
+            "to_regprocedure('memory_ops.guard_graph_generation()'),"
+            "to_regprocedure('memory_ops.guard_graph_generation_state()'),"
+            "to_regprocedure('memory_ops.check_graph_generation_state()')"
+        ).fetchone() == (None, None, None, None, None)
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

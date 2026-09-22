@@ -38,6 +38,7 @@ CONTENT_TABLES = dict.fromkeys((
     "memory.relation", "memory.relation_revision", "memory.episode_lexical",
     "memory.assertion_lexical", "memory.episode_embedding", "memory.assertion_embedding",
     "memory.assertion_derivation", "memory.working_event", "memory.working_snapshot",
+    "memory_ops.graph_generation", "memory_ops.graph_generation_state",
 ), "")
 REPLACE_TABLES = (
     "memory_ops.deletion_target", "memory_ops.deletion_request", "memory_ops.object_tombstone",

@@ -42,6 +42,8 @@ TABLES = {
     "memory_ops.deletion_target": "deletion_id,object_id",
     "memory.assertion_derivation": "assertion_id,revision",
     "memory.working_snapshot": "checkpoint_id",
+    "memory_ops.graph_generation": "id",
+    "memory_ops.graph_generation_state": "tenant_id",
 }
 MAX_ROWS = 1000000
 MAX_BYTES = 256 * 1024 * 1024
@@ -57,7 +59,7 @@ class StateFingerprint(HistoryContract):
 
 class ProcessingRecoverySnapshot(HistoryContract):
     format: Literal["pgag-processing-recovery-v1"] = "pgag-processing-recovery-v1"
-    schema_version: Literal[18] = 18
+    schema_version: Literal[19] = 19
     tenant_id: UUID
     lineage: Digest
     access_epoch: Epoch
@@ -81,7 +83,11 @@ class ProcessingRecoveryCheck(HistoryContract):
 def fingerprint_tables(
     conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID, secret: bytes,
     tables: dict[str, str],
+    *,
+    filters: dict[str, sql.Composable] | None = None,
 ) -> tuple[StateFingerprint, ...]:
+    if filters is not None and not filters.keys() <= tables.keys():
+        raise ValueError("Fingerprint filters must reference declared tables")
     started = time.monotonic()
     total_bytes = 0
     fingerprints = []
@@ -91,9 +97,13 @@ def fingerprint_tables(
         digest = hmac.new(secret, ("processing-recovery-v1:" + table).encode(), hashlib.sha256)
         order = (sql.SQL(",").join(map(sql.Identifier, keys.split(","))) if keys
                  else sql.SQL('to_jsonb(t)::text COLLATE "C"'))
-        query = sql.SQL("SELECT to_jsonb(t) AS value FROM {} t WHERE tenant_id=%s "
+        predicate = (
+            sql.SQL(" AND ({})").format(filters[table])
+            if filters is not None and table in filters else sql.SQL("")
+        )
+        query = sql.SQL("SELECT to_jsonb(t) AS value FROM {} t WHERE tenant_id=%s{} "
                         "ORDER BY {} LIMIT %s").format(
-            sql.Identifier(*table.split(".")), order,
+            sql.Identifier(*table.split(".")), predicate, order,
         )
         count = 0
         with conn.cursor(name="pgag_processing_recovery") as cursor:
@@ -120,7 +130,7 @@ def fingerprint_tables(
 def capture_processing_connection(
     conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID,
 ) -> ProcessingRecoverySnapshot:
-    if SCHEMA_VERSION != 18:
+    if SCHEMA_VERSION != 19:
         raise AdminError("schema_version_mismatch")
     conn.execute("SET LOCAL timezone='UTC'")
     tenant = conn.execute(

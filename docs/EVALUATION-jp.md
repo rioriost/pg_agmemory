@@ -2,7 +2,18 @@
 
 [English](EVALUATION.md)
 
-## 現在の状態: M2 core MVP v0.1.0 / schema 18完了
+## 現在の開発版: v0.1.1 / schema 19世代metadata
+
+M3 coordinatorのlifecycle/復元対象44件と、schema 19のmigration/互換性を確認しました。
+development v6の実backup drillは非空の世代receipt一つを保持し、
+削除/ACL replay後の入力をstaleとし、artifact検証/servingを無効に保ちます。
+運用照合は23 tableで、世代履歴は完全一致を要求し、replacement rowとして取り込みません。
+metadata契約の確認であり、AGE認定やgraph data再構築ではありません。
+固定buildの両native証跡は別途必要です。
+[現行制限](STATUS-jp.md)と[運用](operations/README-jp.md#graph-generation-metadata-schema-19)を参照してください。
+下記の過去の資源/model観測と公開済みM2認定は元source versionとの対応を維持します。
+
+## 公開済みM2: core MVP v0.1.0 / schema 18完了
 
 固定release実装**`af878fc51fa50cefecca69de2df22edfef2a321b`**の
 [native CI 35565944016](https://github.com/rioriost/pg_agmemory/actions/runs/35565944016)は、

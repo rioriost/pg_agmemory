@@ -508,7 +508,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
             )
             assert response.json()["evidence"][0]["memory_id"] == str(record["source"])
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 18 and capabilities["temporal_revisions"] is True
+    assert capabilities["schema_version"] == 19 and capabilities["temporal_revisions"] is True
     schema = env.client.get("/openapi.json").json()
     contract = schema["paths"]["/v1/assertions/{memory_id}/revisions"]["post"]
     assert contract["security"] == [{"BearerAuth": []}]

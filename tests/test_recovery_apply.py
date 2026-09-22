@@ -4,6 +4,7 @@ import json
 import psycopg
 import pytest
 from psycopg.rows import dict_row
+from pydantic import ValidationError
 from test_processing import configure, enqueue, get, install_extraction, run
 from test_processing import profile as profile
 
@@ -13,6 +14,9 @@ from pg_agmemory.jobs import job_transaction
 from pg_agmemory.processing import Processing
 from pg_agmemory.processing_recovery import capture_processing_state
 from pg_agmemory.recovery_apply import (
+    CONTENT_TABLES,
+    ROW_TABLES,
+    RecoveryBundle,
     apply_bundle,
     export_bundle,
     insert_rows,
@@ -20,6 +24,19 @@ from pg_agmemory.recovery_apply import (
     secret_for,
     signature,
 )
+
+
+def test_graph_generation_metadata_is_verified_but_never_imported():
+    tables = {"memory_ops.graph_generation", "memory_ops.graph_generation_state"}
+    assert tables <= CONTENT_TABLES.keys()
+    assert tables.isdisjoint(ROW_TABLES)
+
+
+def test_previous_schema_bundle_requires_matching_version(env):
+    bundle = export_bundle(env.admin_url, env.tenants[0]).model_dump(mode="json")
+    bundle["reference"]["schema_version"] = 18
+    with pytest.raises(ValidationError):
+        RecoveryBundle.model_validate_json(json.dumps(bundle))
 
 
 def reserve(env, profile):

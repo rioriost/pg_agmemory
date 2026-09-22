@@ -8,6 +8,76 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Graph generation metadata (schema 19)
+
+Development components are **service 0.1.1 / API v1 / schema 19**, capability
+stage `m3-graph-generation-metadata`. The published M2 tag remains v0.1.0/schema18.
+Drain API/workers and automatic restarts, retain a protected matching backup,
+run `pg-agmemory migrate` as administrator and verify the complete 1–19 ledger.
+Deploy matching clients/adapters/workers, preserve the admin recovery key, take
+a fresh backup and regenerate schema-19 deletion/processing/application artifacts.
+Old schema-18 artifacts are rejected, not relabeled. Source rollback alone
+does not downgrade a database.
+
+The new administrator CLI accepts one closed JSON request on stdin (at most
+32 KiB UTF-8), with `PGAG_ADMIN_DATABASE_URL` supplied privately. It neither
+loads AGE nor contacts a model. The runtime role cannot read/write the two
+generation tables. This is not a public Native resource or a backend selector.
+Replace placeholders below with actual UUIDs/digests and use the revision/input
+digest returned by `get`, not invented values:
+
+```bash
+printf '%s\n' '{"operation":"get","tenant_id":"TENANT_UUID"}' | pg-agmemory graph-generation
+
+printf '%s\n' '{"operation":"begin","tenant_id":"TENANT_UUID","expected_revision":0,"generation_id":"GENERATION_UUID","expected_input_digest":"INPUT_DIGEST_64_HEX","profile_digest":"PROFILE_DIGEST_64_HEX"}' | pg-agmemory graph-generation
+
+printf '%s\n' '{"operation":"record","tenant_id":"TENANT_UUID","expected_revision":1,"generation_id":"GENERATION_UUID","expected_input_digest":"INPUT_DIGEST_64_HEX","artifact_digest":"ARTIFACT_DIGEST_64_HEX"}' | pg-agmemory graph-generation
+```
+
+`get` starts at revision 0 with no rows/head/build. `begin` reserves a supplied
+generation UUID against both the observed revision and source digest. Only one
+build may be pending per tenant. `record` requires the same pending generation
+and input plus the current ledger revision; it records an operator-supplied
+artifact digest, advances the recorded head and clears the pending build.
+Previous records remain immutable. A different graph/ACL/deletion state rejects
+completion, leaving the pending build available for explicit abandonment.
+Profile/artifact digests bind declarations; they do not verify external bytes,
+model quality or a graph's usability.
+
+To discard a pending build, send `operation:"abandon"`, `tenant_id`,
+`expected_revision`, `generation_id` and a 1–256-character `reason`, with no
+digest arguments. It does not scan source data, so it works after source growth
+exceeds capture limits; input/source-match fields are null, not guessed current.
+Reasons must not contain source text or credentials: receipts are immutable
+operational metadata, not general memory storage. There is no automatic retry,
+expiry, pruning, producer job or graph activation. After an unknown/lost command
+response, use `get` to reconcile; do not silently mint another generation.
+
+All commands hold the tenant barrier through commit/output. Input capture uses
+seven fixed, graph-relevant canonical selections, current access/deletion epochs
+and the admin recovery key. Stored fingerprints expose counts/hashes, not source
+content. Shared capture bounds are 1,000,000 rows per table, 256 MiB serialized
+input total and 30 seconds, plus the normal per-statement database timeout.
+This administrative scan is not a hot-read watermark/cache. A tenant may retain
+at most 10,000 generation records in this first bounded contract.
+Current permissions and statement-time expiry must still govern every future
+graph read; `source_matches` does not grant authority.
+
+**Every response says `artifact_verified:false` and `serving_enabled:false`.**
+`recorded` means a receipt exists, not that a graph was built, verified, published
+to clients or activated. The expensive fixed-hop and unqualified native-VLE
+strategies stay disabled. Generation metadata is backend-neutral so a later
+qualified strategy need not replace the input/receipt contract.
+
+For recovery, these tables join the 23-table processing snapshot and the strict
+content comparison, but are excluded from replacement rows. The v6 isolated
+drill restores an unchanged, nonempty generation history, replays newer purges
+and restores latest ACL/accounting; the old head remains stale and non-serving.
+If generation history changed after the backup, the present application path
+refuses it before writes. Keep a sufficiently recent backup; neither rewriting
+immutable receipts nor importing unverifiable graph artifacts is supported.
+Actual graph-data rebuild/reconciliation and production HA/PITR remain separate.
+
 ## M3 AGE qualification profile
 
 This is an **optional, disposable development profile**, not a service backend,
@@ -122,7 +192,7 @@ its own containers/images. Do not publish raw credentials or local failure logs.
 
 ## M2 core MVP deployment
 
-The current contract is **service 0.1.0 / API v1 / schema 18**, capability stage
+The published M2 tag's contract is **service 0.1.0 / API v1 / schema 18**, capability stage
 `m2-core-mvp`. Use matching API, worker, SDK, MCP and hook components; no rolling
 or mixed-version compatibility is promised. The supported distribution profile
 is native Linux amd64/arm64, Python 3.12.14, PostgreSQL 18.6 and pgvector 0.8.6,
