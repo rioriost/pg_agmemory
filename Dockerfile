@@ -27,7 +27,8 @@ COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/smoke-graph-artifact.py scripts/smoke-age-patched.py \
     scripts/test-age-patched-containers.sh scripts/smoke-age-enabled.py \
     scripts/test-age-enabled-containers.sh scripts/smoke-age-recovery.py \
-    scripts/test-age-recovery-containers.sh ./scripts/
+    scripts/test-age-recovery-containers.sh scripts/graph-resource-benchmark.py \
+    scripts/measure-graph-resources.sh ./scripts/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps

@@ -201,6 +201,63 @@ HTTP refusal and explicitly rebuilds before current/historical native-SQL
 comparison and purge/ACL negative checks. Dumps, credentials and private fixture
 files are removed; content-free reports retain source identity and exclusions.
 
+## Native graph resource profile
+
+`examples/graph-resource-profile.json` declares a separate, graph-only profile:
+chain, fanout and multiseed graphs at 12 and 64 visible nodes, with hidden-scope
+data retained in the same projection. The database receives 6 vCPU/24 GiB and
+the application 2 vCPU/8 GiB. Each of the six strata uses three warmup pairs and
+30 measured pairs, alternating SQL-first and AGE-first, with the existing
+two-hop/100-path bounds. The target remains **p95 strictly below 1,500 ms** for
+every stratum, conservatively including connection, tenant barrier and commit.
+Do not substitute a per-query timer for that whole-operation gate.
+
+This is not the M2 S mixed workload, a cold-cache test, a concurrency guarantee
+or proof that all 10,000-node/40,000-revision artifact limits are economical.
+Before accepting timings, both backends must return the exact independently
+expected canonical IDs, revisions, ordered paths and coverage, with permission
+and historical controls. Warmups and failed/incomplete samples are not counted
+as successful measurements. Build/publication, projection footprint, statement
+counts and the full visible-topology freshness proof are reported separately.
+
+The benchmark never disables RLS, skips the canonical proof, changes planner
+settings to hide cost or calls a model. SQL remains an explicit deployment
+selection, not an unreported fallback for an AGE measurement. Current per-request
+freshness is a bounded proof, **not constant-time mutation tracking**; a later
+implementation change requires its own semantic and cost evidence. Reports that
+miss a threshold or a required sample remain failed, not a reduced qualification
+with retrospectively smaller fixtures.
+
+Run from a clean committed checkout; the default runner builds an immutable
+`git archive` snapshot. The output must be a new private project-relative
+directory, normally under ignored `.review-artifacts`:
+
+```bash
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-resources-v1
+# Docker uses an explicit empty mode argument:
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-resources-docker '' docker
+# Short diagnostics deliberately never qualify:
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-preflight --preflight container
+```
+
+`--development` executes the full recipe using working files but remains
+non-exact/unqualified. `--preflight` shortens sampling and also remains unqualified.
+The canonical profile digest is
+`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`;
+the runner rejects altered profile fields and mismatching runtime service/schema.
+Every raw sample retains safe error codes, expected-result digests and timing
+boundaries; no raw SQL, source text or credentials are emitted into the report.
+Warmup exclusion, order, both backend counts and all six strata are rechecked
+from raw records, not trusted cached summary flags. A diagnostic report or an
+incomplete/interrupted run cannot claim qualification. Export/publication time
+includes the packaged administrator CLI overhead and is not a pure DB timer.
+
+The current bounded implementation deliberately retains the complete per-request
+proof. Passing this profile alone does not justify replacing it with a mutation
+counter, skipping physical-projection checks or claiming constant-time freshness.
+Larger graphs, more seeds, concurrent writers and a full-S co-resident dataset
+need separately declared measurements before expanding the supported cost claim.
+
 ## Graph generation metadata (schema 19)
 
 This section records the schema-19 introduction. For current schema-20 versions,

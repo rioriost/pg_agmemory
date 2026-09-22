@@ -2,6 +2,25 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## Native graph資源recipeと鮮度管理の判断
+
+六つのgraph専用caseを`examples/graph-resource-profile.json`へ固定しました
+（digest `c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`）。
+可視/非公開scope、12/64-nodeのchain/fanout/multiseed、
+各3 warmup＋30測定組と、従来の厳密なp95 1,500 ms未満を使います。
+非exact development runは396 samples・意味契約probe 36件をerrorなしで取得し、
+六層すべてが時間目標を満たしましたが、認定flagはfalseのままです。
+後続の厳格な再判定は元のraw reportと分けて保持します。
+
+benchmarkにはprofile/sample/順序/oracle整合性、非公開error、
+runtime identity、中断処理、所有resource cleanupのoffline 28契約があります。
+固定hop実験ではなく、実native adapter/publisherを使用します。
+製品query・権限・migration・source変更の動作は変更しません。
+この限定profileでは、速度だけのために新しい定数時間counterを導入せず、
+**canonicalと物理投影の完全性照合を維持する**判断です。
+graph拡大、全量Sとの同居、同時負荷、coldは別作業で、artifact上限をlatency保証とはしません。
+資源結果にはcommit固定のexact runが引き続き必要です。
+
 ## v0.1.3 / schema 20: enabled AGE baselineの隔離復元
 
 `recovery-apply apply --isolated --disable-age-projection`で、復元と無効化を明示選択できます。
@@ -41,7 +60,15 @@ model呼出しやworker起動はなく、drillのoffline 30契約も成功しま
 欠落投影の新規22契約と既存publisher 22件も、新しい修正clusterでまとめて成功しました。
 catalog namespaceは`regnamespace`の表示名と整数を比較せず、明示OIDで照合します。
 通常SQL-only v7復元もAGEを有効にせず、payload 35 table・拒否20件・予約11件の結果を維持します。
-development証跡であり、固定revisionには別のnative runが必要です。
+続いて固定**`5a2172856e9625f57af8e5935c287775aa8f41a4`**の
+[run35725941968](https://github.com/rioriost/pg_agmemory/actions/runs/35725941968)が全4 native jobを通過しました。
+core amd64/arm64は各**2,335件/optional 113 skips**、全製品smoke、通常v7完全一致復元が成功し、
+pytestは1446.42/1379.22秒です。AGEは各**profile 84契約**、元の59確認、
+**enabled 207件**、実HTTP公開、新しい完全一致canonical-only復元が成功しました。
+復元両reportは固定commitに結び付き、意図したregistry遷移以外の
+canonical 35/運用24 fingerprint、revision 1→2→3を維持し、
+full-catalog復元/M3認定はfalseのままです。AGE対象は270.58/364.16秒でした。
+graph資源認定と鮮度確認の費用判断は別gateです。
 ## v0.1.2 / schema 20: 修正済みnative AGEの任意有効化
 
 完全一致**`07417131782270ecff460018c0f2139a43d24441`**の

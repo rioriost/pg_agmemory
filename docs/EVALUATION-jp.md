@@ -2,6 +2,23 @@
 
 [English](EVALUATION.md)
 
+## Native graph資源profile
+
+独立oracleへの一致をSQL/native AGE対測定の資源評価より先に要求します。
+固定recipeは可視node 12/64の六層と同数の非公開scope、
+各3 warmup/30測定組、DB6 vCPU/24 GiB・app2 vCPU/8 GiBです。
+warm・静止状態のservice callであり、HTTP、全量S、同時負荷、model性能の評価ではありません。
+各backend/層のgateはp95 **1,500 ms未満**です。
+初回非exact development runは396 samples、probe 36件、error 0で全時間gateを通過しましたが、
+未認定のまま、元reportと後続raw証跡再判定を分けて保持します。
+
+診断では完全な鮮度照合がAGE wall timeの約24–42%、native path queryが55–63%でした。
+stage時間の合計比であり、percentile同士の比やhardware-counter profileではありません。
+planner/権限の緩和や製品変更は不要でした。
+mutation counterへ黙って置換せず上限付き完全照合を維持し、
+拡大配置には別途宣言したprofileを要求します。commit固定のexact測定は引き続き必要です。
+[runnerと範囲](operations/README-jp.md#native-graph-resource-profile)を参照してください。
+
 ## 現在の開発版: v0.1.3 / schema 20 AGE隔離復元
 
 明示的な復元＋無効化optionは署名付き最新状態/canonical照合の全要件を維持し、
@@ -20,8 +37,15 @@ canonical-only経路は派生物理構造を破棄し、信頼済みextensionの
 実arm64 development runは復元前にsourceを削除し、canonical 35 fingerprintを照合、
 鍵/ID/旧世代を維持してregistry 1→2→3を進めます。
 disabled HTTP409、再構築後の現行/履歴native-SQL一致、purge 3件拒否、reader失効を確認し、
-model呼出しは0です。offline 30契約、無効化36契約、新規22/既存22の公開caseは別途成功し、
-固定配布証跡は引き続き必要です。
+model呼出しは0です。offline 30契約、無効化36契約、新規22/既存22の公開caseも、
+開発段階で別途成功しました。
+
+その後、固定`5a21728`の
+[run35725941968](https://github.com/rioriost/pg_agmemory/actions/runs/35725941968)が両architectureで成功しました。
+core 2,335 passes/optional 113 skips、通常v7復元、
+AGE profile 84契約/元の59確認/enabled 207件、実HTTP、canonical-only復元を含みます。
+新復元両reportは固定commitと意図したregistry fingerprint差分一件を確認し、
+full-AGE catalog復元、自動再起動、M3全体認定を主張しません。
 
 ## v0.1.2 / schema 20修正済みAGE
 

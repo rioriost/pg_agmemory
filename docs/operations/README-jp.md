@@ -174,6 +174,57 @@ enabled receiptの無効化とHTTP拒否を確認してから明示再構築し�
 現行/履歴のnative-SQL一致とpurge/ACL拒否も確認し、
 dump/credential/非公開fixture fileは削除、本文なしreportにsource identityと除外条件を残します。
 
+## Native graph resource profile
+
+`examples/graph-resource-profile.json`は独立したgraph専用profileです。
+可視node 12/64件のchain/fanout/multiseedと、同じ投影に残す非公開scope dataを使います。
+DB割当は6 vCPU/24 GiB、applicationは2 vCPU/8 GiBで、
+六つの層を各3 warmup組＋30測定組、SQL先行/AGE先行を交互に実行します。
+既存2-hop/100-path上限を維持し、各層の目標は**p95が1,500 ms未満**です。
+接続・tenant barrier・commitを含む保守的な全操作時間で判定し、
+query単体timerへの置換はしません。
+
+M2 Sの混合負荷、cold cache、同時実行保証、
+artifact上限10,000 nodes/40,000 revisions全域の費用認定ではありません。
+時間を採用する前に、両backendが独立した期待canonical ID/revision、
+順序付きpath/coverage、権限・履歴controlに一致する必要があります。
+warmupや失敗/不足sampleを測定成功へ数えず、構築/公開、投影容量、
+statement数、可視topology全体の鮮度照合費用は分けて報告します。
+
+benchmarkはRLS無効化、canonical照合省略、費用を隠すplanner設定変更、
+model呼出しを行いません。SQLは明示配置選択であり、AGE測定中の黙ったfallbackにはしません。
+現行の要求ごとの鮮度確認は上限付き証明で、**定数時間の変更追跡ではありません**。
+後続実装変更には別の意味契約/費用証跡が必要です。
+閾値や必要sample数に届かないreportは失敗とし、
+事後にfixtureを小さくして認定済みへ読み替えません。
+
+cleanなcommit済みcheckoutから実行し、既定runnerは不変の`git archive` snapshotをbuildします。
+出力先は新規・非公開・project相対directoryで、通常はignore対象`.review-artifacts`配下です。
+
+```bash
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-resources-v1
+# Dockerではmodeに空文字を明示する。
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-resources-docker '' docker
+# 短い診断は意図的に認定対象外とする。
+bash scripts/measure-graph-resources.sh .review-artifacts/graph-preflight --preflight container
+```
+
+`--development`は作業fileで全recipeを実行しますが非exact・未認定のままです。
+`--preflight`はsample数を短縮し、やはり未認定とします。canonical profile digestは
+`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`で、
+profile fieldの改変やruntime service/schema不一致を拒否します。
+raw sampleには安全なerror code、期待結果digest、計測境界を残し、
+生SQL、原文、credentialはreportへ出しません。
+warmup除外、順序、両backend件数、全六層をraw記録から再確認し、
+cache済みsummary flagを信用しません。診断・不足・中断runは認定しません。
+export/publish時間は製品管理CLI起動費用を含み、純粋なDB timerではありません。
+
+現行の上限付き実装は、意図的に要求ごとの完全照合を維持します。
+このprofileの成功だけを根拠にmutation counterへ置換したり、
+物理投影照合を省いたり、定数時間の鮮度と主張したりしません。
+graph拡大、seed増加、同時writer、全量S dataとの同居には、
+費用認定範囲を広げる前に別途宣言した測定が必要です。
+
 ## Graph generation metadata (schema 19)
 
 この節はschema 19での導入履歴です。現行schema 20のversion、artifact再生成、

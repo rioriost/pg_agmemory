@@ -660,7 +660,7 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | 別固定72707aa source treeでnative/direct 19件・固定40件が全成功。旧rc0の6失敗と固定hop費用証跡は改名せず保持 |
 | M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 実修正VLE adapterが独立17件oracle、制約/鮮度確認、実HTTP SQL一致を通過。任意AGE profileでhost側固定hop BFS迂回策は使わない |
 | M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 20 registryが検証済みgraphを原子的公開/置換し、epochと上限付き可視topology完全性で拒否。v0.1.3は変更のないenabled receiptへ検証済み復元＋原子的無効化を追加し、後続再構築/publishは別操作。定数時間追跡と変更済み世代の拡張復元は未了 |
-| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/修正AGEは0741713で両architecture成功。後続復元追加には別の配布証跡が必要で、graph資源profileとrelease引継ぎも未了 |
+| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/修正AGE/canonical-only復元は5a21728で両architecture成功。graph資源profile、鮮度確認費用の判断、release引継ぎは未了 |
 
 世代metadataの入力captureは上限付きrepeatable-readのcanonical fingerprintであり、
 timestamp cursorや実装済みの定数時間変更counterではありません。

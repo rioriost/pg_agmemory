@@ -2,6 +2,25 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Native graph resource profile
+
+The independent oracle gates paired SQL/native AGE measurements before resource
+claims. The frozen recipe covers six 12/64-visible-node strata with an equal-sized
+hidden scope, 3 warmup/30 measured pairs each, DB6 vCPU/24 GiB and app2 vCPU/8 GiB.
+It uses warm quiescent service calls, not HTTP, full S, concurrent load or model
+performance. The gate is p95 **strictly below 1,500 ms** per backend/stratum.
+The initial non-exact development run has 396 samples, 36 probes, zero errors
+and all timing gates passing, but remains unqualified. Its original report and
+later raw-evidence reclassification are separate.
+
+The complete freshness proof accounted for about 24–42% of measured AGE wall
+time in that diagnostic; native path queries accounted for 55–63%. These are
+summed stage shares, not ratios of percentiles or a hardware-counter profile.
+No planner/permission overrides or product changes were needed. Retain the
+bounded proof rather than silently substituting a mutation counter; larger
+deployments need a separate declared profile. Exact committed measurements
+remain required. See [runner and limits](operations/README.md#native-graph-resource-profile).
+
 ## Current development: v0.1.3 / schema 20 isolated AGE recovery
 
 The explicit recovery-and-disable option preserves all signed latest-state and
@@ -25,7 +44,15 @@ The real arm64 development run removes the source before restore, compares all
 1→2→3 and verifies disabled HTTP409 followed by current/historical native-SQL
 equality, three purged denials and reader revocation. It makes zero model calls.
 Its 30 offline contracts, 36 quarantine contracts and 22 new/22 existing
-publication cases pass separately; frozen distribution evidence is still required.
+publication cases passed separately during development.
+
+Frozen `5a21728` subsequently passed
+[run35725941968](https://github.com/rioriost/pg_agmemory/actions/runs/35725941968)
+on both architectures: core 2,335 passes/113 optional skips, ordinary v7 restore,
+AGE 84 profile contracts/59 original checks/207 enabled cases, real HTTP and the
+canonical-only restore. Both new restore reports verify the exact commit and
+only the intended registry fingerprint difference; neither claims full-AGE
+catalog recovery, automatic activation or full M3 qualification.
 
 ## v0.1.2 / schema 20 patched AGE
 

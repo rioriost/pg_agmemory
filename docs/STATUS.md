@@ -2,6 +2,27 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Native graph resource recipe and freshness decision
+
+The six-case graph-only recipe is frozen in `examples/graph-resource-profile.json`
+(digest `c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`).
+It uses visible/hidden scopes, 12/64-node chain/fanout/multiseed shapes, three
+warmup plus 30 measured pairs each, and the unchanged strict 1,500 ms p95 target.
+The non-exact development run collected 396 samples and 36 semantic probes
+without errors; all six strata met the timing target, but its qualification
+flags remain false. Later stricter classification is preserved separately from
+the original raw report.
+
+The benchmark has 28 offline contracts for profile/sample/order/oracle integrity,
+private errors, runtime identity, interruption handling and owned cleanup.
+It uses the actual native adapter and publisher, never the fixed-hop experiment.
+No production query, permission, migration or source-mutation behavior is changed.
+The decision for this bounded profile is to **retain the full canonical and
+physical-projection completeness proof**, not introduce a new constant-time
+counter merely for speed. Larger graphs and co-resident full-S/concurrent/cold
+loads remain separate work; the current artifact maximum is not a latency claim.
+An exact committed run is still required for the resource result.
+
 ## v0.1.3 / schema 20: isolated recovery of an enabled AGE baseline
 
 `recovery-apply apply --isolated --disable-age-projection` adds an explicit
@@ -50,7 +71,17 @@ together on a fresh patched cluster. Catalog namespace comparison uses OIDs
 explicitly rather than comparing PostgreSQL's rendered `regnamespace` name to
 an integer. The ordinary SQL-only v7 restore also retains its 35-table payload,
 20-denial and 11-reservation result without enabling AGE.
-This is development evidence; the frozen revision needs its own native run.
+The frozen **`5a2172856e9625f57af8e5935c287775aa8f41a4`**
+[run35725941968](https://github.com/rioriost/pg_agmemory/actions/runs/35725941968)
+then passed all four native jobs. Core amd64/arm64 each passed **2,335 cases /
+113 optional skips**, all production smokes and exact ordinary v7 restore
+(pytest 1446.42/1379.22 seconds). Patched AGE each passed **84 profile contracts**,
+the original 59 checks, **207 enabled-profile cases**, real HTTP publication and
+the new exact canonical-only recovery drill. Both recovery reports bind the
+frozen commit, preserve 35 canonical/24 operational fingerprints apart from the
+explicit registry transition, retain revisions 1→2→3 and keep full-catalog
+recovery/M3 qualification false. AGE cases took 270.58/364.16 seconds.
+Graph resource qualification and the freshness cost decision remain separate.
 
 ## v0.1.2 / schema 20: optional patched native AGE enabled
 
