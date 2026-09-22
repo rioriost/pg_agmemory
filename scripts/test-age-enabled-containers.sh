@@ -33,6 +33,18 @@ images=()
 password="$(openssl rand -hex 24)"
 runtime_password="$(openssl rand -hex 24)"
 
+build_image() {
+    local log="$1"
+    shift
+    local status=0
+    "$engine" build "$@" > "$log" 2>&1 || status=$?
+    if [[ "$status" -ne 0 ]]; then
+        echo "Image build failed; diagnostic tail: $log" >&2
+        tail -n 80 "$log" >&2
+        return "$status"
+    fi
+}
+
 cleanup() {
     status=$?
     trap - EXIT INT TERM
@@ -69,15 +81,14 @@ else
     container system status >/dev/null
 fi
 if [[ -z "${PGAG_AGE_PATCHED_IMAGE:-}" ]]; then
-    "$engine" build -f Dockerfile.age-patched -t "$age_image" . \
-        > "$directory/age-build.log" 2>&1
+    build_image "$directory/age-build.log" -f Dockerfile.age-patched -t "$age_image" .
     images+=("$age_image")
 fi
 if [[ -z "${PGAG_AGE_TEST_IMAGE:-}" ]]; then
-    "$engine" build --target test -t "$test_image" . > "$directory/test-build.log" 2>&1
+    build_image "$directory/test-build.log" --target test -t "$test_image" .
     images+=("$test_image")
 fi
-"$engine" build --target runtime -t "$runtime_image" . > "$directory/runtime-build.log" 2>&1
+build_image "$directory/runtime-build.log" --target runtime -t "$runtime_image" .
 images+=("$runtime_image")
 "$engine" image inspect "$age_image" > "$directory/age-image.json"
 git rev-parse HEAD > "$directory/git-sha.txt"
@@ -91,15 +102,21 @@ start_database() {
     databases+=("$name")
     local ready=false
     for ((attempt = 0; attempt < 90; attempt++)); do
-        if "$engine" exec "$name" pg_isready -U postgres -d pgag_test >/dev/null 2>&1; then
+        if "$engine" exec "$name" pg_isready -h 127.0.0.1 -U postgres -d pgag_test \
+            >/dev/null 2>&1; then
             ready=true
             break
         fi
         sleep 1
     done
     if [[ "$ready" != true ]]; then echo "AGE database not ready." >&2; return 1; fi
+    local status=0
     "$engine" exec "$name" psql -U postgres -d pgag_test -v ON_ERROR_STOP=1 \
-        -c 'CREATE EXTENSION age' > "$directory/$name-extension.log" 2>&1
+        -c 'CREATE EXTENSION age' > "$directory/$name-extension.log" 2>&1 || status=$?
+    if [[ "$status" -ne 0 ]]; then
+        cat "$directory/$name-extension.log" >&2
+        return "$status"
+    fi
 }
 
 database_host() {

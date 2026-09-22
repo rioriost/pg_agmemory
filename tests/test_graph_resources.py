@@ -775,6 +775,10 @@ elif args[:1] == ["run"]:
     assert result.returncode == 37, result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     runs = [args for _, *args in calls if args[:1] == ["run"]]
+    readiness = [args for _, *args in calls if "pg_isready" in args]
+    assert readiness and all(
+        args[args.index("-h") + 1] == "127.0.0.1" for args in readiness
+    )
     assert len(runs) == 2
     db, app = runs
     assert db[db.index("--cpus") + 1] == "6" and db[db.index("--memory") + 1] == "24g"

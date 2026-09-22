@@ -29,6 +29,15 @@ Apple Container's configured 6/2 workload CPUs also have one overhead CPU per VM
 the shared host is not an exclusive 8-core capacity claim. Full measurements and
 scope are in [EVALUATION](EVALUATION.md#exact-warm-graph-run-d1b894d).
 
+Run35734293423 for the recipe commit passed both core jobs and AGE arm64, but
+AGE amd64 exited2 during setup before tests; its redirected setup log was not
+available from the completed runner, so the precise cause is unconfirmed.
+The launcher now exposes safe build/extension setup diagnostics and waits for
+TCP readiness, not the temporary Unix-socket-only initialization server.
+Eight offline launcher cases cover both engines and all setup failure stages.
+This is an explicit incomplete distribution result, not a graph measurement
+failure or a passed four-job run.
+
 ## v0.1.3 / schema 20: isolated recovery of an enabled AGE baseline
 
 `recovery-apply apply --isolated --disable-age-projection` adds an explicit

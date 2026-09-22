@@ -168,7 +168,8 @@ db_created=true
     -c log_error_verbosity=terse >/dev/null
 ready=false
 for ((attempt=0; attempt<90; attempt++)); do
-    if "$engine" exec "$db" pg_isready -U postgres -d pgag_graph_resource >/dev/null 2>&1; then
+    if "$engine" exec "$db" pg_isready -h 127.0.0.1 -U postgres -d pgag_graph_resource \
+        >/dev/null 2>&1; then
         ready=true; break
     fi
     sleep 1

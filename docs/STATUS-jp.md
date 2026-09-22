@@ -27,6 +27,14 @@ Apple Containerの設定workload6/2 CPUsにはVMごとoverhead1 CPUが加わり�
 共有hostを占有8-core容量認定とは扱いません。
 詳細と範囲は[EVALUATION](EVALUATION-jp.md#exact-warm-graph-run-d1b894d)に記録します。
 
+recipe commitのrun35734293423はcore両jobとAGE arm64が成功しましたが、
+AGE amd64はtest前のsetup中にexit2で終了しました。
+redirectされたsetup logは終了済みrunnerから取得できず、厳密な原因は未確定です。
+launcherは安全なbuild/extension setup診断を出すようにし、
+一時的なUnix socket専用初期化serverではなくTCP readinessを待つよう修正しました。
+両engine・全setup失敗stageをoffline 8件で確認します。
+配布全体の未完了を明示し、graph測定失敗や全4 job成功へ読み替えません。
+
 ## v0.1.3 / schema 20: enabled AGE baselineの隔離復元
 
 `recovery-apply apply --isolated --disable-age-projection`で、復元と無効化を明示選択できます。
