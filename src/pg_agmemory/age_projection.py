@@ -13,7 +13,7 @@ from uuid import UUID
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from pydantic import ValidationError, model_validator
+from pydantic import StrictBool, ValidationError, model_validator
 
 from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, admin_failure
 from pg_agmemory.age_graph import AGE_COMMIT, AGE_VERSION, LABELS, label_policy
@@ -30,6 +30,7 @@ class AgeProjectionRequest(HistoryContract):
     generation_id: UUID | None = None
     expected_generation_revision: Epoch | None = None
     file: Path | None = None
+    rebuild_missing: StrictBool = False
 
     @model_validator(mode="after")
     def arguments(self) -> Self:
@@ -47,6 +48,8 @@ class AgeProjectionRequest(HistoryContract):
         }
         if supplied != required:
             raise ValueError("Operation requires its exact argument set")
+        if self.rebuild_missing and self.operation != "publish":
+            raise ValueError("Missing projection rebuild requires explicit publication")
         return self
 
 
@@ -77,6 +80,7 @@ class AgeProjectionResult(HistoryContract):
     changed: bool
     artifact_verified: bool
     serving_enabled: bool
+    rebuilt_missing_projection: bool = False
 
 
 def validate_build(conn: AdminConnection) -> None:
@@ -175,10 +179,31 @@ def _publish(
         operation="check", tenant_id=request.tenant_id, generation_id=request.generation_id,
         expected_revision=request.expected_generation_revision, file=request.file,
     ))
+    if request.rebuild_missing and (previous is None or previous.enabled):
+        raise AdminError("graph_projection_unavailable")
+    previous_missing = False
+    if previous is not None:
+        locations = conn.execute(
+            """SELECT (SELECT oid FROM pg_namespace WHERE nspname=%s) AS schema_oid,
+                      (SELECT namespace::oid FROM ag_catalog.ag_graph
+                       WHERE name=%s) AS graph_schema""",
+            (previous.graph_name, previous.graph_name),
+        ).fetchone()
+        assert locations is not None
+        previous_missing = locations["schema_oid"] is None and locations["graph_schema"] is None
+        if not previous_missing and (
+            locations["schema_oid"] is None or locations["graph_schema"] is None
+            or locations["schema_oid"] != locations["graph_schema"]
+        ):
+            raise AdminError("graph_projection_invalid")
+        if previous_missing and not request.rebuild_missing:
+            raise AdminError("graph_projection_missing")
+        if not previous_missing and request.rebuild_missing:
+            raise AdminError("graph_projection_not_missing")
     replacing_same = (
         previous is not None and previous.generation_id == artifact.generation_id
     )
-    if replacing_same:
+    if replacing_same and not previous_missing:
         assert previous is not None
         conn.execute("SET LOCAL search_path=ag_catalog,pg_catalog")
         conn.execute("SELECT ag_catalog.drop_graph(%s,true)", (previous.graph_name,))
@@ -208,7 +233,7 @@ def _publish(
         if cursor.rowcount != 1:
             raise AdminError("graph_projection_revision_conflict")
         # Only the schema named by the prior, generation-bound registry is removed.
-        if not replacing_same:
+        if not replacing_same and not previous_missing:
             conn.execute("SELECT ag_catalog.drop_graph(%s,true)", (previous.graph_name,))
 
 
@@ -252,6 +277,7 @@ def age_projection(
                     revision=final.revision if final else 0, projection=final, changed=changed,
                     artifact_verified=request.operation == "publish",
                     serving_enabled=final.enabled if final else False,
+                    rebuilt_missing_projection=request.rebuild_missing,
                 )
                 commit_attempted = changed
             yield result
@@ -274,6 +300,7 @@ def main(argv: list[str]) -> None:
     parser.add_argument("--generation-id", type=UUID)
     parser.add_argument("--expected-generation-revision", type=int)
     parser.add_argument("--file", type=Path)
+    parser.add_argument("--rebuild-missing", action="store_true")
     try:
         request = AgeProjectionRequest.model_validate(vars(parser.parse_args(argv)))
     except ValidationError:

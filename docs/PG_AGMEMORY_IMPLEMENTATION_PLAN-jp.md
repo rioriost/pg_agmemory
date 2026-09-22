@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.7 / M3修正済みnative AGE profile、2026-09-22
+- 文書版: 0.8 / M3 AGE隔離復元境界、2026-09-22
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。M3開発版v0.1.2/schema 20で固定local修正72707aa、検証済みartifact公開、明示serving registryによる任意native AGEを有効化。SQLは既定/明示切戻しとし、旧rc0と高コスト固定hopは選択しない。資源/active投影復元/配布gateは別管理し、証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。v0.1.2/schema20修正AGEのnative配布全4 jobが成功。開発版v0.1.3は変更のないenabled baselineへの明示的な隔離復元＋無効化を追加し、新世代取込みやservice起動は行わない。SQLは既定/明示切戻し、旧rc0と高コスト固定hopは未選択を維持。資源/拡張復元/配布gateは別管理し、証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -659,8 +659,8 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 |---|---|---|
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | 別固定72707aa source treeでnative/direct 19件・固定40件が全成功。旧rc0の6失敗と固定hop費用証跡は改名せず保持 |
 | M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 実修正VLE adapterが独立17件oracle、制約/鮮度確認、実HTTP SQL一致を通過。任意AGE profileでhost側固定hop BFS迂回策は使わない |
-| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 20 registryが検証済み物理AGE graphを両CAS付きで原子的公開/置換。runtime epochと上限付き可視topology完全性で拒否。metadata/artifact復元は限定し、定数時間追跡とactive投影DR/照合は未了 |
-| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/修正AGEのnative jobを分離追加。全graph資源profile、拡張復元認定、release引継ぎは未了 |
+| M3-C | transactionに結び付いた変更watermark、世代CAS、stale/rebuild処理、隔離復元 | schema 20 registryが検証済みgraphを原子的公開/置換し、epochと上限付き可視topology完全性で拒否。v0.1.3は変更のないenabled receiptへ検証済み復元＋原子的無効化を追加し、後続再構築/publishは別操作。定数時間追跡と変更済み世代の拡張復元は未了 |
+| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/修正AGEは0741713で両architecture成功。後続復元追加には別の配布証跡が必要で、graph資源profileとrelease引継ぎも未了 |
 
 世代metadataの入力captureは上限付きrepeatable-readのcanonical fingerprintであり、
 timestamp cursorや実装済みの定数時間変更counterではありません。
@@ -672,8 +672,10 @@ builder指定artifact digestの記録をartifact検証とはしません。
 今回のnative選択は別固定72707aa profileとruntime build/preload gateだけを対象にします。
 汎用receipt/artifact自体は起動せず、検証付き管理publishだけがserving registryを変え、
 APIは`PGAG_GRAPH_BACKEND=age`でのみ選択します。黙ったfallbackは行いません。
-source完全性の走査を定数時間変更追跡とは呼ばず、active registryは運用復元を拒否します。
-対応baselineはbackup前にdisableし、replay中はその台帳を不変に保つものです。
+source完全性の走査を定数時間変更追跡とは呼ばず、既定復元はactive registryを引き続き拒否します。
+v0.1.3では変更のない認証済みenabled receiptを、明示選択で復元後に同一transactionで無効化できます。
+local遷移前の一致を確認し、遷移後の差分も報告します。自動再起動を目的とはせず、
+別途canonical照合・再構築/publish・operator承認済み起動を正規の復元境界とします。
 
 canonical artifactは非公開・全scopeの管理者build入力であり、principal認可済みviewではありません。
 署名付きtopologyを現行canonical dataへ照合したfileだけに`artifact_verified=true`を返せますが、

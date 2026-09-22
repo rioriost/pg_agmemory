@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.7 / M3 patched native AGE profile, 2026-09-22
+- Document version: 0.8 / M3 isolated AGE recovery boundary, 2026-09-22
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.2/schema 20 enables optional native AGE using pinned local fix72707aa, verified artifact publication and an explicit serving registry. SQL remains default/explicit rollback; old rc0 and costly fixed-hop paths stay unselected. Resource/active-projection recovery and distribution gates remain separate. Evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. Native distribution of v0.1.2/schema20 patched AGE passed all four jobs. Development v0.1.3 adds explicit isolated recovery-and-disable for unchanged enabled baselines, without importing newer generations or activating services. SQL remains default/explicit rollback; old rc0 and costly fixed-hop paths stay unselected. Resource/expanded recovery and distribution gates remain separate. Evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -674,8 +674,8 @@ Do not infer that a version change alone supplies that evidence.
 |---|---|---|
 | M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Separate patched72707aa source tree passes all19 native/direct and40 fixed checks. Old rc0 six failures and rejected fixed-hop cost evidence are retained, not relabeled |
 | M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Actual patched VLE adapter passes independent17-case oracle, restriction/freshness tests and real HTTP SQL equality. Optional AGE profile uses no host fixed-hop BFS workaround |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema20 registry publishes/replaces verified physical AGE graphs atomically with both CAS revisions; runtime epochs and bounded visible-topology completeness fail closed. Metadata/artifact recovery remains bounded; constant-time tracking and active-projection DR/reconciliation are pending |
-| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Separate core and patched-AGE native jobs added. Full graph resource profile, broader restore qualification and release handoff remain pending |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema20 registry publishes/replaces verified graphs atomically; epochs and bounded visible-topology completeness fail closed. v0.1.3 adds explicit, verified recovery followed by atomic disabling for an unchanged enabled receipt; later rebuild/publication stays separate. Constant-time tracking and broader changed-generation restore remain pending |
+| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Core and patched AGE passed both architectures at0741713. Subsequent recovery increment needs its own distribution evidence; graph resource profile and release handoff remain pending |
 
 Generation metadata capture uses a bounded repeatable-read canonical fingerprint,
 not a timestamp cursor or an already implemented constant-time mutation counter.
@@ -690,8 +690,12 @@ The now-explicit native selection applies only to the separately pinned
 still do not activate anything; only verified admin publication changes the
 serving registry, and only `PGAG_GRAPH_BACKEND=age` chooses it at the API.
 Requests never fall back silently. Source completeness scans are not advertised
-as constant-time mutation tracking. Active registries block operational restore;
-the supported baseline is disabled before backup and unchanged during replay.
+as constant-time mutation tracking. Active registries still block default restore;
+v0.1.3 may explicitly recover then disable an unchanged authenticated enabled
+receipt in one transaction. It verifies equality before the local transition and
+reports the resulting difference. Automatic reactivation is not a goal: separate
+canonical verification, rebuild/publication and operator-approved startup remain
+the intended recovery boundary.
 
 The canonical artifact is a private, all-scope administrator build input, not a
 principal-authorized view. Verifying signed topology against current canonical

@@ -9,14 +9,14 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## Patched AGE enabled profile
 
-現行開発版は**service 0.1.2 / API v1 / schema 20**、stageは`m3-age-vle`です。
+現行開発版は**service 0.1.3 / API v1 / schema 20**、stageは`m3-age-vle`です。
 既定は`PGAG_GRAPH_BACKEND=sql`で、`age`は明示的・上限付きprofileです。
 黙ったfallbackや一般的な本番/HA認定ではありません。
 保存した旧`Dockerfile.age`を有効化用imageに使ってはいけません。
 
 ```bash
 docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
-docker build --target runtime -t pg-agmemory:0.1.2 .
+docker build --target runtime -t pg-agmemory:0.1.3 .
 ```
 
 DB imageはPostgreSQL18.6/pgvector0.8.6、公開upstream
@@ -95,13 +95,66 @@ schema 19の世代receiptは認証・不変性・可読性を維持し、upgrade
 旧graph fileをschema20へ改名して代用せず、新backupと現行復旧artifactを取得してください。
 
 **復元範囲は意図的に限定しています。** 運用snapshotは24 tableです。
-`recovery-apply`はmetadataが一致してもenabled registryを一つでも含むtenantを、書込み前に拒否します。
-disabled metadataも完全一致の照合だけで取り込みません。
-対応する運用replayでは、**baseline backupを取る前にdisable**し、
-後続復旧証跡を取得する間もdisabled registryを変更せず、
-core復元と現行source確認の完了後だけ再構築/publishします。
-旧復元先を独立にdisableしても別の最新receiptと同一にはなりません。
-active投影のDR、欠落/新世代の取込み、自動再起動は未対応です。
+明示optionなしの`recovery-apply`は、従来どおりenabled registryを書込み前に拒否します。
+backup前にdisableし後続証跡でもregistryを変更しない従来手順に加え、
+v0.1.3ではenabled baselineからの**原子的な復元＋無効化**を選べます。
+
+```bash
+# API/worker/自動再起動を停止し、隔離clusterへ復元する。
+# 対応する削除suffixを先にreplayし、復元先の正確なCASを取得する。
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" \
+  --file /private/path/restored-expected.json
+pg-agmemory recovery-apply apply --tenant-id "$TENANT_ID" \
+  --expected /private/path/restored-expected.json --bundle /private/path/latest-bundle.json \
+  --isolated --disable-age-projection
+```
+
+`latest-bundle.json`は独立して保全した最新正本からexportしたもので、
+古い復元先から捏造してはいけません。復旧鍵、canonical本文、job identity、
+世代履歴、投影receipt全体は引き続き署名付き参照との一致が必要です。
+optionは欠落/新世代を取り込まず、変更されたregistryも許容しません。
+隔離は運用上の前提です。復元前からapplicationのnetwork接続と自動再起動を止め、
+`--isolated`自体をnetwork遮断機能と見なさないでください。
+
+単一transaction内で最新の運用/canonical fingerprintの**完全一致**を確認した後、
+通常のrevision+1 guardで一致するenabled registryを無効化します。
+世代、artifact/input digest、物理graphを保持し、投影fingerprintだけが変わったことを照合します。
+どこかで失敗すれば全体をrollbackし、AGE query・graph DDL・model呼出し・起動は行いません。
+
+再構築可能なAGE catalog/投影dataを意図的に除外する**canonical-only backup**では、
+復元後に同じ信頼済み修正imageからAGEを新規導入し、graph OID/catalog counterを手修復しません。
+投影registryとcanonical世代履歴はbackupに残します。物理graphが存在しなくても、
+上記操作で復元先のregistryを無効化できます。enabled receiptは、
+物理graphの存在やserving適格性を証明するものではありません。
+
+専用drillはPostgreSQL18の`pg_dump --format=custom`に、
+`--exclude-extension=age --exclude-schema=ag_catalog --exclude-schema='pgag_age_*'`
+を明示指定し、archive manifestにAGE extension/catalog/投影entryがないことを確認します。
+この限定memory専用profile以外のAGE graphは黙って除外せず拒否します。
+新しい復元先は修正imageの`CREATE EXTENSION age`と、
+runtime診断前の`pgag_runtime`への`ag_catalog` schema USAGEを必要とします。
+table読取りpolicy/grantはpublisherが再構築し、所有権/BYPASSRLSで代用しません。
+明示backup modeであり、全AGE復元失敗後の自動retryではありません。
+全AGE catalogの往復復元は引き続き未認定です。
+
+応答は意図的に`processing_state_matches:false`、
+`operational_state_restored:true`、`age_projection_disabled:true`、
+`projection_rebuild_required:true`と差分`memory_ops.age_projection`一件を返します。
+検証済み復元に続く明示的なlocal無効化であり、enabled参照とのbytes一致とは主張しません。
+registryなし/既にdisabledなら追加遷移はなく、一致を返します。
+応答喪失/成否不明時は新たな状態exportとreceipt照合を行い、
+古いCASの盲目的な再送や不一致の迂回はしないでください。
+
+隔離を維持し、現行canonicalの削除/ACL/会計とAGEのdisabled拒否を確認します。
+その後だけ現行artifactをbuild/check/recordし、新registry revisionで明示publishします。
+source変更時は新しい子世代が必要で、旧artifactの改名では代用しません。
+旧物理graphを意図的に除外した場合は`age-projection publish`に`--rebuild-missing`を付けます。
+既存の**disabled** registry、物理schemaとAGE graph catalog entryの両方の完全な不在、
+現行の両CAS revision、検証済み現行artifactが必要です。
+catalog/schemaの片方だけが残る状態は修復せず拒否し、graphが存在するなら通常publishを使います。
+成功時は`rebuilt_missing_projection:true`を返し、別graphを代替として削除しません。
+別途承認した起動だけがclient受付を再開できます。
+欠落/新本文、変更された世代履歴、任意復元履歴、HA/PITR、自動再起動は未対応です。
 export済みartifactの保持/削除はoperatorの責務です。
 
 再現可能な隔離認定command:
@@ -109,12 +162,17 @@ export済みartifactの保持/削除はoperatorの責務です。
 ```bash
 bash scripts/test-age-patched-containers.sh container
 bash scripts/test-age-enabled-containers.sh container
+bash scripts/test-age-recovery-containers.sh container
 ```
 
 前者は旧probeの期待値をそのまま修正sourceへ適用します。
 後者は独立した新test/HTTP cluster、非root製品image、実管理publisher、native HTTP選択を使います。
 Docker/native CIでも同じhelperをamd64/arm64で実行し、
 log/image/digestを旧rc0失敗や固定hop不採用実験と区別します。
+三つ目はsourceを削除してから実canonical-only復元を行い、復旧鍵/canonical identityを照合し、
+enabled receiptの無効化とHTTP拒否を確認してから明示再構築します。
+現行/履歴のnative-SQL一致とpurge/ACL拒否も確認し、
+dump/credential/非公開fixture fileは削除、本文なしreportにsource identityと除外条件を残します。
 
 ## Graph generation metadata (schema 19)
 
@@ -240,6 +298,9 @@ DBのpurgeでexport済みfileは消えず、operatorの保持/削除管理が必
 旧fileの復元を現行source/台帳照合の回避やservice起動許可にしません。
 
 ## M3 AGE qualification profile
+
+以下は保存した**旧rc0実験**であり、上記の別固定・修正済み有効profileではありません。
+当時の失敗と無効なstrategyはそのまま保持します。
 
 **任意の使い捨て開発profile**であり、service backend、application migration、
 本番imageではありません。通常Dockerfileのcore runtimeは不変で、

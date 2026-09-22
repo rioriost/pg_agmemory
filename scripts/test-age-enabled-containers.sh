@@ -120,7 +120,8 @@ test_status=0
     -e PGAG_TEST_AGE_NATIVE=1 "$test_image" sh -c \
     'ruff check . && mypy && pytest -q --tb=short -p no:cacheprovider \
         tests/test_age_patched_profile.py tests/test_age_native_graph.py \
-        tests/test_age_projection.py tests/test_age_projection_schema.py tests/test_age_api.py' \
+        tests/test_age_projection.py tests/test_age_projection_schema.py tests/test_age_api.py \
+        tests/test_age_projection_recovery.py' \
     > "$directory/native-tests.log" 2>&1 || test_status=$?
 cat "$directory/native-tests.log"
 if [[ "$test_status" -ne 0 ]]; then exit "$test_status"; fi

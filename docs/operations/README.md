@@ -10,14 +10,14 @@ databases or real user histories.
 
 ## Patched AGE enabled profile
 
-Current development is **service 0.1.2 / API v1 / schema 20**, stage `m3-age-vle`.
+Current development is **service 0.1.3 / API v1 / schema 20**, stage `m3-age-vle`.
 The default remains `PGAG_GRAPH_BACKEND=sql`; `age` is an explicit, bounded profile,
 not a silent fallback or a general production/HA certification. The unchanged
 historical `Dockerfile.age` is **not** the enabled image.
 
 ```bash
 docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
-docker build --target runtime -t pg-agmemory:0.1.2 .
+docker build --target runtime -t pg-agmemory:0.1.3 .
 ```
 
 The database image pins PostgreSQL18.6/pgvector0.8.6, public upstream
@@ -107,22 +107,87 @@ stale after upgrade. Old pending builds can be abandoned; old recorded heads can
 parent new schema-20 generations. Old graph files cannot be relabeled to schema20.
 Take new schema-20 backups and regenerate current recovery artifacts.
 
-**Recovery is deliberately bounded.** Operational snapshots now cover 24 tables.
-`recovery-apply` refuses any enabled projection registry before writes, even if
-its metadata matches. Disabled registry metadata is compared exactly, not
-imported. For the supported operational-replay workflow, disable projections
-**before taking the baseline backup**, keep that disabled registry unchanged
-while collecting later recovery evidence, and only rebuild/publish after core
-recovery and current-source checks. Independently disabling an old restored
-registry does not manufacture equality with a different latest receipt.
-Active-projection DR, missing/newer generation import and automatic restart are
-not supported. Exported artifact retention/deletion remains operator-owned.
+**Recovery is deliberately bounded.** Operational snapshots cover 24 tables.
+Without an explicit option, `recovery-apply` still refuses enabled projection
+registries before writes. The disabled-before-backup workflow remains supported
+when that registry stays unchanged in later evidence. Since v0.1.3, an enabled
+baseline can instead use **atomic recovery and disabling**:
+
+```bash
+# Restore in an isolated cluster with APIs/workers/restarts stopped.
+# Replay supported deletion suffixes first, then capture the exact current CAS.
+pg-agmemory processing-recovery export --tenant-id "$TENANT_ID" \
+  --file /private/path/restored-expected.json
+pg-agmemory recovery-apply apply --tenant-id "$TENANT_ID" \
+  --expected /private/path/restored-expected.json --bundle /private/path/latest-bundle.json \
+  --isolated --disable-age-projection
+```
+
+`latest-bundle.json` must have been exported from the independently preserved
+latest authoritative state, not fabricated from the old restored database.
+The recovery key, canonical content, job identities, generation history and
+entire projection receipt must still match their signed reference. The option
+does not import a missing/newer generation or tolerate a changed registry.
+Isolation is operational: deny application network access and stop automatic
+restarts before restore; `--isolated` is an acknowledgment, not a network fence.
+
+Within one transaction, recovery verifies the **exact** latest operational and
+canonical fingerprints, then disables the matching enabled registry with its
+normal revision+1 guard. It preserves the generation, artifact/input digests and
+physical graph, verifies that only the projection fingerprint changed, and
+rolls back everything on any failure. No AGE query, graph DDL, model call or
+activation occurs during this operation.
+
+For a **canonical-only** backup that deliberately omits rebuildable AGE catalog
+and projection data, reinstall AGE from the same trusted patched image after
+restore; never restore or repair graph OIDs/catalog counters by hand. The
+projection registry and canonical generation history remain part of the backup.
+The restored registry can be disabled by the operation above even when its
+physical graph is absent. An enabled receipt is not proof that its graph exists
+or is fit for serving.
+
+The dedicated drill uses PostgreSQL18 `pg_dump --format=custom` with the explicit
+exclusions `--exclude-extension=age --exclude-schema=ag_catalog
+--exclude-schema='pgag_age_*'` and verifies the archive manifest contains no AGE
+extension/catalog/projection entries. It rejects unrelated AGE graphs rather than
+silently dropping them from this bounded memory-only profile. A fresh restore
+requires `CREATE EXTENSION age` from the patched image and schema USAGE on
+`ag_catalog` for `pgag_runtime` before runtime diagnostics; table-read policies and
+grants are recreated by the publisher, never replaced by ownership or BYPASSRLS.
+This is an explicit backup mode, not an automatic retry after full-AGE restore
+failure. Full-AGE catalog round-trip currently remains unqualified.
+
+The response deliberately reports `processing_state_matches:false`,
+`operational_state_restored:true`, `age_projection_disabled:true`,
+`projection_rebuild_required:true` and the single difference
+`memory_ops.age_projection`. This is a verified recovery followed by an explicit
+local disabling transition, **not** byte equality with an enabled reference.
+An absent/already-disabled registry produces no such transition and reports
+matching state. Lost/unknown outcomes require a fresh state export and receipt
+inspection; do not blindly retry an old CAS or bypass a mismatch.
+
+Keep services isolated. Confirm current canonical deletion/ACL/accounting state
+and that AGE reads refuse the disabled projection. Then build/check/record a
+current artifact and explicitly `age-projection publish` using the new registry
+revision; source changes require a new child generation, never relabeling an old
+artifact. If the old physical graph was deliberately omitted, add
+`--rebuild-missing` to `age-projection publish`. This explicit option requires an
+existing **disabled** registry, both its physical schema and AGE graph-catalog
+entry to be entirely absent, both current CAS revisions and a verified current
+artifact. Partial catalog/schema presence is rejected, not repaired; a graph
+that still exists must use ordinary publication. Successful missing-graph
+publication reports `rebuilt_missing_projection:true` and never drops another
+graph as a substitute. Only separately approved startup may resume clients. Missing/newer
+canonical content, changed generation histories, arbitrary restore histories,
+HA/PITR and automatic reactivation remain unsupported. Exported artifact
+retention/deletion remains operator-owned.
 
 The reproducible isolated qualification is:
 
 ```bash
 bash scripts/test-age-patched-containers.sh container
 bash scripts/test-age-enabled-containers.sh container
+bash scripts/test-age-recovery-containers.sh container
 ```
 
 The first retains the old probe's expected results against the fixed source.
@@ -130,6 +195,11 @@ The second uses fresh independent test/HTTP clusters, the actual non-root runtim
 the real admin publisher and native HTTP selection. Docker/native CI runs the
 same helpers on amd64 and arm64. Logs/images/digests distinguish this profile
 from the old failed rc0 and rejected fixed-hop experiment.
+The third destroys the source before actual canonical-only restore, verifies
+recovery-key/canonical identity, quarantines the enabled receipt, checks disabled
+HTTP refusal and explicitly rebuilds before current/historical native-SQL
+comparison and purge/ACL negative checks. Dumps, credentials and private fixture
+files are removed; content-free reports retain source identity and exclusions.
 
 ## Graph generation metadata (schema 19)
 
@@ -280,6 +350,9 @@ Restoring an older file does not bypass current source/ledger checks or authoriz
 service activation.
 
 ## M3 AGE qualification profile
+
+The following is the retained **historical rc0 experiment**, not the separately
+patched enabled profile above. Its failure and disabled strategy remain intact.
 
 This is an **optional, disposable development profile**, not a service backend,
 application migration or production image. The ordinary Dockerfile still builds

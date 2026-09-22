@@ -363,6 +363,14 @@ def create_app(
                 "operations": ["get", "publish", "disable"],
                 "required_age_commit": "72707aab7ce982bf13cad3d102bd869dab07d64b",
                 "fallback": "explicit_sql_configuration_only",
+                "isolated_recovery": {
+                    "command": "recovery-apply apply",
+                    "required_option": "--disable-age-projection",
+                    "registry_must_match_signed_reference": True,
+                    "activation": "separate_verified_publication",
+                    "missing_projection_publication_option": "--rebuild-missing",
+                    "automatic_reactivation": False,
+                },
             },
             "graph_generation_administration": {
                 "transport": "admin-cli",

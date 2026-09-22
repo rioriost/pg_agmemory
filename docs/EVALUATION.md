@@ -2,7 +2,39 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current development: v0.1.2 / schema 20 patched AGE
+## Current development: v0.1.3 / schema 20 isolated AGE recovery
+
+The explicit recovery-and-disable option preserves all signed latest-state and
+canonical matching requirements, then quarantines the matching projection in
+the same transaction. Its final comparison reports only the intended registry
+difference, never a false full-state match. The 36 new contracts cover successful
+and no-op application, rejected authority/lineage/CAS/content/history changes,
+call monotonicity, isolation, bounded revisions, atomic rollback and CLI output.
+Current-source regeneration and publication remain separate admin operations.
+This is a bounded restore extension, not automatic reactivation, arbitrary
+newer-content import or a general HA/PITR qualification.
+
+Full-AGE catalog restoration is explicitly **not qualified**: the initial real
+dump/restore reached correct quarantine but rebuilding failed on duplicate
+`ag_graph_graphid_index`. Retained failure evidence is not replaced by a claim
+that canonical recovery also restores AGE allocation/catalog state. The
+canonical-only path discards those derived physical structures and uses a fresh
+trusted extension plus explicit guarded missing-graph publication.
+The real arm64 development run removes the source before restore, compares all
+35 canonical fingerprints, retains keys/IDs/old generation, progresses registry
+1→2→3 and verifies disabled HTTP409 followed by current/historical native-SQL
+equality, three purged denials and reader revocation. It makes zero model calls.
+Its 30 offline contracts, 36 quarantine contracts and 22 new/22 existing
+publication cases pass separately; frozen distribution evidence is still required.
+
+## v0.1.2 / schema 20 patched AGE
+
+Exact `0741713` [run35709955807](https://github.com/rioriost/pg_agmemory/actions/runs/35709955807)
+passed core and AGE jobs on both native architectures: core 2,269 passes/91 optional
+skips each with exact v7 restore; AGE 84 profile contracts, all 59 original probe
+checks, 185 enabled cases and the real HTTP smoke. Failed `6f2a8fa`'s description
+lint and its wrapping-only correction remain recorded in STATUS. This evidence
+does not cover the subsequent v0.1.3 recovery changes.
 
 AGE source `72707aab7ce982bf13cad3d102bd869dab07d64b` is separately pinned and
 passes the unchanged 19 native/direct plus 40 fixed-template probe checks.

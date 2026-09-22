@@ -2,7 +2,35 @@
 
 [English](EVALUATION.md)
 
-## 現在の開発版: v0.1.2 / schema 20修正済みAGE
+## 現在の開発版: v0.1.3 / schema 20 AGE隔離復元
+
+明示的な復元＋無効化optionは署名付き最新状態/canonical照合の全要件を維持し、
+その後、同じtransactionで一致した投影を無効化します。
+最終照合は意図したregistry差分だけを報告し、全状態一致とは偽りません。
+新規36契約は成功/無変更、認証/系統/CAS/本文/履歴変更拒否、callの単調性、隔離、
+revision上限、原子的rollback、CLI出力を扱います。
+現行sourceからの再生成とpublishは別の管理操作です。
+限定復元の拡張で、自動再起動、新本文の任意取込み、一般HA/PITR認定ではありません。
+
+全AGE catalog復元は明示的に**未認定**です。初回の実dump/restoreは正しい無効化まで進みましたが、
+再構築が`ag_graph_graphid_index`重複で失敗しました。失敗証跡を残し、
+canonical復元をAGE割当/catalog状態の復元成功へ読み替えません。
+canonical-only経路は派生物理構造を破棄し、信頼済みextensionの新規導入と、
+明示的・条件付きの欠落graph公開を使います。
+実arm64 development runは復元前にsourceを削除し、canonical 35 fingerprintを照合、
+鍵/ID/旧世代を維持してregistry 1→2→3を進めます。
+disabled HTTP409、再構築後の現行/履歴native-SQL一致、purge 3件拒否、reader失効を確認し、
+model呼出しは0です。offline 30契約、無効化36契約、新規22/既存22の公開caseは別途成功し、
+固定配布証跡は引き続き必要です。
+
+## v0.1.2 / schema 20修正済みAGE
+
+完全一致`0741713`の[run35709955807](https://github.com/rioriost/pg_agmemory/actions/runs/35709955807)は
+core/AGE両native architectureが成功しました。
+coreは各2,269 passes/optional 91 skipsとv7完全一致復元、
+AGEはprofile 84契約、元のprobe 59確認、enabled 185件、実HTTP smokeが成功しました。
+旧`6f2a8fa`のdescription lint失敗と折返しだけの修正もSTATUSに保持します。
+この証跡は後続v0.1.3復元変更を含みません。
 
 AGE source `72707aab7ce982bf13cad3d102bd869dab07d64b`を別途固定し、
 変更していないnative/direct 19確認と固定template 40確認をすべて通過しました。

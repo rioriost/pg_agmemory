@@ -7,7 +7,15 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発版: v0.1.2 / API v1 / schema 20
+## 現在の開発版: v0.1.3 / API v1 / schema 20
+
+隔離復元では、変更のないenabled AGE registryを
+`recovery-apply apply --isolated --disable-age-projection`で明示的に扱えるようになりました。
+署名付き最新状態を照合し、投影を原子的に無効化して、その意図的な差分を報告します。
+再構築/publishは別の明示操作で、自動再起動や新世代の取込みは行いません。
+schema 20以降のmigration追加はありません。
+旧物理投影を意図的に除外するcanonical-only復元には、条件付きの
+`age-projection publish --rebuild-missing`を使います。
 
 **修正済みAGEを明示選択できるgraph backendとして有効化しました。**
 `Dockerfile.age-patched`はローカルAGE commit

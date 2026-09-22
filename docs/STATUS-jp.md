@@ -2,7 +2,59 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.1.3 / schema 20: enabled AGE baselineの隔離復元
+
+`recovery-apply apply --isolated --disable-age-projection`で、復元と無効化を明示選択できます。
+署名付きbundle、復元先の正確なCAS、canonical本文、世代履歴、投影receipt全体を従来どおり照合し、
+最新状態の完全一致を確認した後、同じtransactionで投影をrevision+1により無効化します。
+後続照合は投影fingerprint以外の差分を許さず、失敗なら復元/無効化の両方をrollbackします。
+optionなしでは引き続きenabled registryを書込み前に拒否します。
+
+最終状態は意図的にenabled参照と**同一ではない**ため、
+CLIは`processing_state_matches:false`、運用復元成功、明示的な投影無効化、差分table一件を返します。
+汎用世代receiptの改変、新しいgraph履歴の取込み、AGE実行、service起動は行いません。
+operator承認済み起動の前に、別操作で現行artifactを構築・検証・publishする必要があります。
+schema migration、権限変更、model呼出し、自動retryは追加しません。
+対象36契約は一致/無変更、認証/CAS、隔離、単調なcall予約、revision上限、
+失敗rollback、CLI出力を扱います。
+
+初回の全AGEを含む実`pg_dump`/restoreは無効化とHTTP拒否まで成功しましたが、
+後続graph作成が`ag_graph_graphid_index`重複で失敗しました。
+失敗runを保存し、成功を作るためのcatalog OID/割当状態の修復は行いません。
+対応方針はAGE物理graph/catalogを**再構築可能な投影**として扱うものです。
+明示的なcanonical-only backupにcanonical記憶、世代履歴、enabled registry、復旧鍵を残し、
+復元後に信頼済み修正imageからAGEを新規導入します。
+全AGE catalogの往復復元は認定しません。
+
+欠落graphの公開には`--rebuild-missing`、既存disabled receipt、
+物理schema/AGE graph catalogの両方の完全不在、現行世代/registry CAS、
+検証済み現行artifactが必要です。片方だけのmetadataや既存graphはこのmodeでは拒否し、
+任意drop/修復はしません。構築とserving切替は原子的で、
+任意の旧/新graph世代を自動照合するものではありません。
+
+arm64実development drillは非root製品runtimeで完走しました。
+復元前のsource削除、監査済みcanonical-only archive、35 tableのcanonical fingerprint完全一致、
+復旧鍵保持、registry revision 1→2→3、disabled HTTP409、
+purge対象3件の不可視性、reader失効、明示再構築後の現行/履歴native-SQL一致を確認しました。
+node 4/relation revision 3から3/2になり、canonical anchor ID 8件を維持します。
+model呼出しやworker起動はなく、drillのoffline 30契約も成功しました。
+欠落投影の新規22契約と既存publisher 22件も、新しい修正clusterでまとめて成功しました。
+catalog namespaceは`regnamespace`の表示名と整数を比較せず、明示OIDで照合します。
+通常SQL-only v7復元もAGEを有効にせず、payload 35 table・拒否20件・予約11件の結果を維持します。
+development証跡であり、固定revisionには別のnative runが必要です。
 ## v0.1.2 / schema 20: 修正済みnative AGEの任意有効化
+
+完全一致**`07417131782270ecff460018c0f2139a43d24441`**の
+[native run 35709955807](https://github.com/rioriost/pg_agmemory/actions/runs/35709955807)は全4 jobが成功しました。
+core amd64/arm64は各**2,269 passes/optional 91 skips**、全製品smokeとschema20 v7完全一致復元、
+AGE両architectureは**profile 84契約**、元の**native/direct 19＋固定40確認**、
+**enabled 185件**と実HTTP一致/無効/stale/再構築/SQL切替が成功しました。
+core pytestは1540.10/1360.17秒、AGE対象は326.64/361.90秒です。
+core復元はpayload 35/運用24 fingerprint、拒否20件、予約11件、
+不変stale/非serving汎用世代receiptを保持しました。
+旧`6f2a8fa` run35709038844は最終descriptionのE501 lintだけで失敗し、
+`0741713`は折返しだけの修正でAGE動作を変えません。
+この固定証跡は後続v0.1.3復元拡張を認定するものではありません。
 
 ローカルAGE修正**`72707aab7ce982bf13cad3d102bd869dab07d64b`**を、
 upstream `fa109ef1ddb1c7a945a1c340195d650000e49713`への再現可能なpatchとして取り込みました。

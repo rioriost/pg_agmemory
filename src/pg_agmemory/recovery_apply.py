@@ -14,7 +14,7 @@ from psycopg import sql
 from psycopg.types.json import Jsonb
 from pydantic import Field, JsonValue, ValidationError, model_validator
 
-from pg_agmemory.admin import AdminError, admin_connection, admin_failure
+from pg_agmemory.admin import MAX_EPOCH, AdminError, admin_connection, admin_failure
 from pg_agmemory.capture_policy import POLICY_COLUMNS, CapturePolicy
 from pg_agmemory.deletion_history import DeletionHistory, HistoryContract
 from pg_agmemory.models import Digest
@@ -52,6 +52,7 @@ MAX_BUNDLE_BYTES = 16 * 1024 * 1024
 MAX_TABLE_ROWS = 10000
 Rows = Annotated[list[dict[str, JsonValue]], Field(max_length=MAX_TABLE_ROWS)]
 AdminConnection = psycopg.Connection[dict[str, Any]]
+AGE_PROJECTION_TABLE = "memory_ops.age_projection"
 
 
 class RecoveryBundle(HistoryContract):
@@ -248,6 +249,7 @@ def insert_rows(
 
 def apply_bundle(
     url: str, expected: ProcessingRecoverySnapshot, bundle: RecoveryBundle, *, isolated: bool,
+    disable_age_projection: bool = False,
 ) -> ProcessingRecoverySnapshot:
     if not isolated:
         raise AdminError("recovery_isolation_required")
@@ -270,11 +272,14 @@ def apply_bundle(
                 conn.execute(sql.SQL("LOCK TABLE {} IN SHARE ROW EXCLUSIVE MODE").format(
                     sql.SQL(",").join(sql.Identifier(*t.split(".")) for t in tables),
                 ))
-                if conn.execute(
-                    "SELECT 1 FROM memory_ops.age_projection WHERE tenant_id=%s AND enabled",
+                active_projection = conn.execute(
+                    "SELECT * FROM memory_ops.age_projection WHERE tenant_id=%s AND enabled",
                     (tenant,),
-                ).fetchone():
+                ).fetchone()
+                if active_projection and not disable_age_projection:
                     raise AdminError("recovery_active_graph_projection")
+                if active_projection and active_projection["revision"] == MAX_EPOCH:
+                    raise AdminError("graph_revision_exhausted")
                 current = capture_processing_connection(conn, tenant)
                 secret = secret_for(conn, tenant)
                 if not hmac.compare_digest(bundle.signature, signature(bundle, secret)):
@@ -330,10 +335,43 @@ def apply_bundle(
                     raise AdminError("recovery_verification_failed")
                 if fingerprint_tables(conn, tenant, secret, CONTENT_TABLES) != bundle.content:
                     raise AdminError("recovery_content_mismatch")
+                if active_projection:
+                    final = quarantine_projection(conn, active_projection, final, bundle, secret)
                 commit_attempted = True
             return final
     except psycopg.Error as exc:
         raise admin_failure(exc, commit_attempted) from None
+
+
+def quarantine_projection(
+    conn: AdminConnection, previous: dict[str, Any], verified: ProcessingRecoverySnapshot,
+    bundle: RecoveryBundle, secret: bytes,
+) -> ProcessingRecoverySnapshot:
+    """Disable only after exact recovery verification, inside the same transaction."""
+    changed = conn.execute(
+        """UPDATE memory_ops.age_projection SET enabled=false,revision=revision+1
+           WHERE tenant_id=%s AND revision=%s AND enabled RETURNING *""",
+        (verified.tenant_id, previous["revision"]),
+    ).fetchone()
+    actor = conn.execute("SELECT current_user AS name").fetchone()
+    mutable = {"enabled", "revision", "updated_at", "database_role"}
+    if (
+        changed is None or actor is None or changed["enabled"] is not False
+        or changed["revision"] != previous["revision"] + 1
+        or changed["database_role"] != actor["name"]
+        or any(changed[key] != value for key, value in previous.items() if key not in mutable)
+    ):
+        raise AdminError("recovery_projection_verification_failed")
+    conn.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    final = capture_processing_connection(conn, verified.tenant_id)
+    differences = compare_processing_state(final, verified).differences
+    if differences != (AGE_PROJECTION_TABLE,):
+        raise AdminError("recovery_projection_verification_failed")
+    content = fingerprint_tables(conn, verified.tenant_id, secret, CONTENT_TABLES)
+    if any(a != b for a, b in zip(content, bundle.content, strict=True)
+           if a.table != AGE_PROJECTION_TABLE):
+        raise AdminError("recovery_content_mismatch")
+    return final
 
 
 def read_file(path: Path, limit: int) -> bytes:
@@ -354,10 +392,13 @@ def main(argv: list[str]) -> None:
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--expected", type=Path)
     parser.add_argument("--isolated", action="store_true")
+    parser.add_argument("--disable-age-projection", action="store_true")
     args = parser.parse_args(argv)
     if (args.operation == "apply") != (args.expected is not None and args.isolated):
         parser.error("apply requires expected state and explicit isolation")
-    if args.operation == "export" and (args.expected is not None or args.isolated):
+    if args.operation == "export" and (
+        args.expected is not None or args.isolated or args.disable_age_projection
+    ):
         parser.error("export does not accept apply options")
     url = os.environ.get("PGAG_ADMIN_DATABASE_URL", "")
     if not url.strip():
@@ -382,9 +423,23 @@ def main(argv: list[str]) -> None:
             )
             if bundle.reference.tenant_id != args.tenant_id:
                 raise AdminError("processing_recovery_lineage_mismatch")
-            result = apply_bundle(url, expected, bundle, isolated=args.isolated)
-            print(json.dumps({"status": "applied", "processing_state_matches": True,
-                              "access_epoch": result.access_epoch, "restore_authorized": False}))
+            result = apply_bundle(
+                url, expected, bundle, isolated=args.isolated,
+                disable_age_projection=args.disable_age_projection,
+            )
+            comparison = compare_processing_state(result, bundle.reference)
+            report: dict[str, Any] = {
+                "status": "applied",
+                "processing_state_matches": comparison.processing_state_matches,
+                "access_epoch": result.access_epoch, "restore_authorized": False,
+            }
+            if args.disable_age_projection:
+                disabled = comparison.differences == (AGE_PROJECTION_TABLE,)
+                report.update(
+                    operational_state_restored=True, age_projection_disabled=disabled,
+                    projection_rebuild_required=disabled, differences=list(comparison.differences),
+                )
+            print(json.dumps(report))
     except (AdminError, OSError, ValidationError) as exc:
         code = exc.code if isinstance(exc, AdminError) else "recovery_file_invalid"
         unknown = exc.outcome_unknown if isinstance(exc, AdminError) else False

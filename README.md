@@ -6,7 +6,15 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development: v0.1.2 / API v1 / schema 20
+## Current development: v0.1.3 / API v1 / schema 20
+
+Isolated recovery can now explicitly accept an unchanged enabled AGE registry
+with `recovery-apply apply --isolated --disable-age-projection`. It verifies the
+signed latest state, atomically disables the projection and reports that
+intentional difference. Rebuild and publication remain separate explicit steps;
+there is no automatic reactivation or newer-generation import. No migration is
+added beyond schema 20. Canonical-only restores that deliberately omit the old
+physical projection require guarded `age-projection publish --rebuild-missing`.
 
 **Patched AGE is now an explicit optional graph backend.** `Dockerfile.age-patched`
 builds the exact source tree of local AGE commit

@@ -69,3 +69,5 @@ jobs:
         run: bash scripts/test-age-patched-containers.sh docker
       - name: Test native AGE publication and real HTTP selection
         run: bash scripts/test-age-enabled-containers.sh docker
+      - name: Restore an enabled AGE baseline without automatic activation
+        run: bash scripts/test-age-recovery-containers.sh docker

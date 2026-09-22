@@ -2,7 +2,70 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.1.3 / schema 20: isolated recovery of an enabled AGE baseline
+
+`recovery-apply apply --isolated --disable-age-projection` adds an explicit
+recovery-and-disable transition. The signed bundle, exact restored CAS, canonical
+payloads, generation history and entire projection receipt are verified without
+relaxing the existing checks. After exact latest-state application is verified,
+the same transaction disables that projection with revision+1. Postchecks allow
+only the projection fingerprint to differ; failures roll back both recovery and
+disabling. Without the option, an enabled registry is still refused before writes.
+
+The final state is intentionally **not identical** to the enabled reference:
+the CLI reports `processing_state_matches:false`, successful operational recovery,
+the explicit projection disabling and the sole differing table. It neither
+rewrites generic generation receipts nor imports newer graph history, executes
+AGE, or starts a service. Separate current-artifact construction and verified
+publication are still required before operator-approved startup.
+There is no schema migration, permission change, new model call or automatic retry.
+The 36 focused recovery contracts cover matching/no-op paths, authentication/CAS,
+isolation, monotonic reservations, revision bounds, failure rollback and CLI output.
+
+The first real full-AGE `pg_dump`/restore attempt reached successful quarantine
+and disabled HTTP refusal, but subsequent graph creation failed with
+`ag_graph_graphid_index` duplication. The failed run is preserved; no catalog OID
+or allocation state was repaired to manufacture a pass. The supported approach
+therefore treats AGE physical graphs/catalogs as **rebuildable projections**:
+an explicitly canonical-only backup retains canonical memory, generation history,
+the enabled registry and recovery keys; AGE is freshly installed from the trusted
+patched image after restore. Full-AGE catalog round-trip is not qualified.
+
+Missing-graph publication requires `--rebuild-missing`, an existing disabled
+receipt, complete absence in both physical schema and AGE graph catalog, current
+generation/registry CAS and a verified current artifact. Partial metadata or an
+existing graph is refused for this mode, with no arbitrary drop or repair.
+Construction and the serving switch remain atomic. This is not automatic
+reconciliation of arbitrary old/new graph generations.
+
+The real arm64 development drill completed with the packaged non-root runtime:
+source destroyed before restore, an audited canonical-only archive, exact
+35-table canonical fingerprints and recovery-key preservation, registry revisions
+1→2→3, disabled HTTP409, three purged targets invisible, reader revocation and
+current/historical native-SQL equality after explicit rebuild. Four nodes/three
+relation revisions become three/two; eight canonical anchor IDs remain stable.
+No model calls or workers start. Thirty offline drill contracts also pass.
+The 22 new missing-projection contracts and 22 existing publisher cases pass
+together on a fresh patched cluster. Catalog namespace comparison uses OIDs
+explicitly rather than comparing PostgreSQL's rendered `regnamespace` name to
+an integer. The ordinary SQL-only v7 restore also retains its 35-table payload,
+20-denial and 11-reservation result without enabling AGE.
+This is development evidence; the frozen revision needs its own native run.
+
 ## v0.1.2 / schema 20: optional patched native AGE enabled
+
+Exact **`07417131782270ecff460018c0f2139a43d24441`**
+[native run 35709955807](https://github.com/rioriost/pg_agmemory/actions/runs/35709955807)
+passed all four jobs: core amd64/arm64 **2,269 passes/91 optional skips each**,
+all packaged smokes and exact schema20 v7 restore; patched AGE on both architectures
+**84 profile contracts**, all original **19 native/direct + 40 fixed checks**,
+**185 enabled-profile cases** and real HTTP equality/disable/stale/rebuild/SQL-switch.
+Core pytest took 1540.10/1360.17 seconds, AGE cases 326.64/361.90 seconds.
+Both core restores preserve 35 payload/24 operational fingerprints, 20 denials,
+11 reservations and the unchanged stale/non-serving generic generation receipt.
+The earlier `6f2a8fa` run35709038844 failed only the final description's E501 lint;
+`0741713` changes its wrapping, not AGE behavior. This frozen evidence predates
+the v0.1.3 recovery extension and does not qualify that later increment.
 
 The local AGE fix **`72707aab7ce982bf13cad3d102bd869dab07d64b`** is incorporated as
 a reproducible patch over upstream `fa109ef1ddb1c7a945a1c340195d650000e49713`.
