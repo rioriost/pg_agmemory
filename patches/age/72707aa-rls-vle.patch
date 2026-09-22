@@ -1,0 +1,995 @@
+diff --git a/Makefile b/Makefile
+index 2ea8f64ed7c6862e24c682184109623de326d132..fac0511c7fe6df08e30405eb219dea25531ccdcb 100644
+--- a/Makefile
++++ b/Makefile
+@@ -225,6 +225,7 @@ REGRESS = scan \
+           direct_field_access \
+           generated_columns \
+           security \
++          rls_vle \
+           reserved_keyword_alias \
+           agtype_jsonb_cast \
+           containment_selectivity \
+diff --git a/regress/expected/rls_vle.out b/regress/expected/rls_vle.out
+new file mode 100644
+index 0000000000000000000000000000000000000000..c96efe9d0930369b54cc9bf4e05586e3a8457892
+--- /dev/null
++++ b/regress/expected/rls_vle.out
+@@ -0,0 +1,213 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++LOAD 'age';
++SET search_path TO ag_catalog;
++SELECT create_graph('rls_vle_graph');
++NOTICE:  graph "rls_vle_graph" has been created
++ create_graph 
++--------------
++ 
++(1 row)
++
++SELECT * FROM cypher('rls_vle_graph', $$
++    CREATE (root:Node {key: 'root', visibility: 'public'}),
++           (direct:Node {key: 'direct', visibility: 'public'}),
++           (hidden:Node {key: 'hidden', visibility: 'private'}),
++           (via_hidden:Node {key: 'via_hidden', visibility: 'public'}),
++           (blocked:Node {key: 'blocked', visibility: 'public'}),
++           (root)-[:LINK {visibility: 'public'}]->(direct),
++           (root)-[:LINK {visibility: 'public'}]->(hidden),
++           (hidden)-[:LINK {visibility: 'public'}]->(via_hidden),
++           (root)-[:LINK {visibility: 'private'}]->(blocked)
++$$) AS (result agtype);
++ result 
++--------
++(0 rows)
++
++-- Prime the unrestricted cache, then change to a restricted execution role.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++     key      
++--------------
++ "blocked"
++ "direct"
++ "hidden"
++ "via_hidden"
++(4 rows)
++
++CREATE ROLE rls_vle_user NOLOGIN NOBYPASSRLS;
++GRANT USAGE ON SCHEMA ag_catalog, rls_vle_graph TO rls_vle_user;
++GRANT SELECT ON ALL TABLES IN SCHEMA ag_catalog, rls_vle_graph TO rls_vle_user;
++ALTER TABLE rls_vle_graph._ag_label_vertex ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_vertex FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_edge ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_edge FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."Node" ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."Node" FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."LINK" ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."LINK" FORCE ROW LEVEL SECURITY;
++CREATE POLICY vertex_base_visible ON rls_vle_graph._ag_label_vertex
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY edge_base_visible ON rls_vle_graph._ag_label_edge
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY node_visible ON rls_vle_graph."Node"
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY link_visible ON rls_vle_graph."LINK"
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++SET ROLE rls_vle_user;
++-- The restricted traversal sees only the public edge with public endpoints.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++   key    
++----------
++ "direct"
++(1 row)
++
++-- Materializing a path must use the same statement-local security context.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH p=(:Node {key: 'root'})-[:LINK*1..2]->(:Node {key: 'direct'})
++    RETURN p
++$$) AS (path agtype);
++                                                                                                                                                                                    path                                                                                                                                                                                     
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
++ [{"id": 844424930131969, "label": "Node", "properties": {"key": "root", "visibility": "public"}}::vertex, {"id": 1125899906842625, "label": "LINK", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {"visibility": "public"}}::edge, {"id": 844424930131970, "label": "Node", "properties": {"key": "direct", "visibility": "public"}}::vertex]::path
++(1 row)
++
++SELECT count(*) AS shortest_path_count
++FROM age_shortest_path(
++    '"rls_vle_graph"'::agtype,
++    (SELECT id FROM cypher('rls_vle_graph', $$
++        MATCH (n:Node {key: 'root'}) RETURN id(n)
++    $$) AS (id agtype)),
++    (SELECT id FROM cypher('rls_vle_graph', $$
++        MATCH (n:Node {key: 'direct'}) RETURN id(n)
++    $$) AS (id agtype)),
++    '"LINK"'::agtype,
++    '"out"'::agtype
++);
++ shortest_path_count 
++---------------------
++                   1
++(1 row)
++
++-- The cache is query-independent, so a row must pass both the base-label
++-- policy used by untyped patterns and the child-label policy used by typed
++-- patterns.  Denial by either side must remove the edge from traversal.
++RESET ROLE;
++DROP POLICY edge_base_visible ON rls_vle_graph._ag_label_edge;
++SET ROLE rls_vle_user;
++SELECT count(*) AS child_visible_edges FROM rls_vle_graph."LINK";
++ child_visible_edges 
++---------------------
++                   3
++(1 row)
++
++SELECT count(*) AS base_visible_edges FROM rls_vle_graph._ag_label_edge;
++ base_visible_edges 
++--------------------
++                  0
++(1 row)
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++ vle_path_count 
++----------------
++              0
++(1 row)
++
++RESET ROLE;
++CREATE POLICY edge_base_visible ON rls_vle_graph._ag_label_edge
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++DROP POLICY link_visible ON rls_vle_graph."LINK";
++SET ROLE rls_vle_user;
++SELECT count(*) AS base_visible_edges FROM rls_vle_graph._ag_label_edge;
++ base_visible_edges 
++--------------------
++                  3
++(1 row)
++
++SELECT count(*) AS child_visible_edges FROM rls_vle_graph."LINK";
++ child_visible_edges 
++---------------------
++                   0
++(1 row)
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++ vle_path_count 
++----------------
++              0
++(1 row)
++
++-- Removing the final edge policy is the decisive default-deny control and
++-- also verifies that the preceding RLS-filtered cache is not reused.
++RESET ROLE;
++DROP POLICY edge_base_visible ON rls_vle_graph._ag_label_edge;
++SET ROLE rls_vle_user;
++SELECT count(*) AS directly_visible_edges FROM rls_vle_graph."LINK";
++ directly_visible_edges 
++------------------------
++                      0
++(1 row)
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++ vle_path_count 
++----------------
++              0
++(1 row)
++
++RESET ROLE;
++-- The table owner still bypasses RLS and may use the fast cache.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++     key      
++--------------
++ "blocked"
++ "direct"
++ "hidden"
++ "via_hidden"
++(4 rows)
++
++DROP OWNED BY rls_vle_user CASCADE;
++DROP ROLE rls_vle_user;
++SELECT drop_graph('rls_vle_graph', true);
++NOTICE:  drop cascades to 4 other objects
++DETAIL:  drop cascades to table rls_vle_graph._ag_label_vertex
++drop cascades to table rls_vle_graph._ag_label_edge
++drop cascades to table rls_vle_graph."Node"
++drop cascades to table rls_vle_graph."LINK"
++NOTICE:  graph "rls_vle_graph" has been dropped
++ drop_graph 
++------------
++ 
++(1 row)
++
+diff --git a/regress/sql/rls_vle.sql b/regress/sql/rls_vle.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..570dfe9be8fa0bc994c203c10e81fd089bb39fff
+--- /dev/null
++++ b/regress/sql/rls_vle.sql
+@@ -0,0 +1,144 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++LOAD 'age';
++SET search_path TO ag_catalog;
++
++SELECT create_graph('rls_vle_graph');
++
++SELECT * FROM cypher('rls_vle_graph', $$
++    CREATE (root:Node {key: 'root', visibility: 'public'}),
++           (direct:Node {key: 'direct', visibility: 'public'}),
++           (hidden:Node {key: 'hidden', visibility: 'private'}),
++           (via_hidden:Node {key: 'via_hidden', visibility: 'public'}),
++           (blocked:Node {key: 'blocked', visibility: 'public'}),
++           (root)-[:LINK {visibility: 'public'}]->(direct),
++           (root)-[:LINK {visibility: 'public'}]->(hidden),
++           (hidden)-[:LINK {visibility: 'public'}]->(via_hidden),
++           (root)-[:LINK {visibility: 'private'}]->(blocked)
++$$) AS (result agtype);
++
++-- Prime the unrestricted cache, then change to a restricted execution role.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++
++CREATE ROLE rls_vle_user NOLOGIN NOBYPASSRLS;
++GRANT USAGE ON SCHEMA ag_catalog, rls_vle_graph TO rls_vle_user;
++GRANT SELECT ON ALL TABLES IN SCHEMA ag_catalog, rls_vle_graph TO rls_vle_user;
++
++ALTER TABLE rls_vle_graph._ag_label_vertex ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_vertex FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_edge ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph._ag_label_edge FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."Node" ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."Node" FORCE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."LINK" ENABLE ROW LEVEL SECURITY;
++ALTER TABLE rls_vle_graph."LINK" FORCE ROW LEVEL SECURITY;
++
++CREATE POLICY vertex_base_visible ON rls_vle_graph._ag_label_vertex
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY edge_base_visible ON rls_vle_graph._ag_label_edge
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY node_visible ON rls_vle_graph."Node"
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++CREATE POLICY link_visible ON rls_vle_graph."LINK"
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++
++SET ROLE rls_vle_user;
++
++-- The restricted traversal sees only the public edge with public endpoints.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++
++-- Materializing a path must use the same statement-local security context.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH p=(:Node {key: 'root'})-[:LINK*1..2]->(:Node {key: 'direct'})
++    RETURN p
++$$) AS (path agtype);
++
++SELECT count(*) AS shortest_path_count
++FROM age_shortest_path(
++    '"rls_vle_graph"'::agtype,
++    (SELECT id FROM cypher('rls_vle_graph', $$
++        MATCH (n:Node {key: 'root'}) RETURN id(n)
++    $$) AS (id agtype)),
++    (SELECT id FROM cypher('rls_vle_graph', $$
++        MATCH (n:Node {key: 'direct'}) RETURN id(n)
++    $$) AS (id agtype)),
++    '"LINK"'::agtype,
++    '"out"'::agtype
++);
++
++-- The cache is query-independent, so a row must pass both the base-label
++-- policy used by untyped patterns and the child-label policy used by typed
++-- patterns.  Denial by either side must remove the edge from traversal.
++RESET ROLE;
++DROP POLICY edge_base_visible ON rls_vle_graph._ag_label_edge;
++SET ROLE rls_vle_user;
++
++SELECT count(*) AS child_visible_edges FROM rls_vle_graph."LINK";
++SELECT count(*) AS base_visible_edges FROM rls_vle_graph._ag_label_edge;
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++
++RESET ROLE;
++CREATE POLICY edge_base_visible ON rls_vle_graph._ag_label_edge
++    FOR SELECT USING (properties->>'"visibility"' = 'public');
++DROP POLICY link_visible ON rls_vle_graph."LINK";
++SET ROLE rls_vle_user;
++
++SELECT count(*) AS base_visible_edges FROM rls_vle_graph._ag_label_edge;
++SELECT count(*) AS child_visible_edges FROM rls_vle_graph."LINK";
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++
++-- Removing the final edge policy is the decisive default-deny control and
++-- also verifies that the preceding RLS-filtered cache is not reused.
++RESET ROLE;
++DROP POLICY edge_base_visible ON rls_vle_graph._ag_label_edge;
++SET ROLE rls_vle_user;
++
++SELECT count(*) AS directly_visible_edges FROM rls_vle_graph."LINK";
++
++SELECT count(*) AS vle_path_count FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n
++$$) AS (n agtype);
++
++RESET ROLE;
++
++-- The table owner still bypasses RLS and may use the fast cache.
++SELECT * FROM cypher('rls_vle_graph', $$
++    MATCH (:Node {key: 'root'})-[:LINK*1..2]->(n:Node)
++    RETURN n.key ORDER BY n.key
++$$) AS (key agtype);
++
++DROP OWNED BY rls_vle_user CASCADE;
++DROP ROLE rls_vle_user;
++SELECT drop_graph('rls_vle_graph', true);
+diff --git a/src/backend/utils/adt/age_global_graph.c b/src/backend/utils/adt/age_global_graph.c
+index 984d0fd013a686263da810ae28e4e7b414ddc415..f2bb5a43086fbfdb9e7de95733fed410f5b2068a 100644
+--- a/src/backend/utils/adt/age_global_graph.c
++++ b/src/backend/utils/adt/age_global_graph.c
+@@ -28,11 +28,14 @@
+ #include "commands/trigger.h"
+ #include "common/hashfn.h"
+ #include "commands/label_commands.h"
++#include "executor/spi.h"
++#include "miscadmin.h"
+ #include "port/atomics.h"
+ #include "storage/lwlock.h"
+ #include "utils/datum.h"
+ #include "utils/lsyscache.h"
+ #include "utils/memutils.h"
++#include "utils/rls.h"
+ #include "utils/snapmgr.h"
+ #include "utils/builtins.h"
+ 
+@@ -54,6 +57,7 @@
+ #define VERTEX_HTAB_NAME "Vertex to edge lists " /* added a space at end for */
+ #define VERTEX_HTAB_INITIAL_SIZE 10000
+ #define EDGE_HTAB_INITIAL_SIZE 10000
++#define RLS_SCAN_BATCH_SIZE 1024
+ 
+ /*
+  * Maximum number of graphs tracked for version counting.
+@@ -158,6 +162,11 @@ typedef struct GRAPH_global_context
+     TransactionId xmin;            /* snapshot fallback: transaction xmin */
+     TransactionId xmax;            /* snapshot fallback: transaction xmax */
+     CommandId curcid;              /* snapshot fallback: command id */
++    bool rls_enabled;              /* cache was populated through RLS */
++    Oid security_user_id;          /* effective user for an RLS cache */
++    TimestampTz statement_start;   /* statement owning an RLS cache */
++    CommandId security_command_id; /* distinguishes batched SQL statements */
++    bool valid;                    /* false until loading completes */
+     int64 num_loaded_vertices;     /* number of loaded vertices in this graph */
+     int64 num_loaded_edges;        /* number of loaded edges in this graph */
+     ListGraphId *vertices;         /* vertices for vertex hashtable cleanup */
+@@ -220,9 +229,17 @@ static void create_GRAPH_global_hashtables(GRAPH_global_context *ggctx);
+ static void load_GRAPH_global_hashtables(GRAPH_global_context *ggctx);
+ static void load_vertex_hashtable(GRAPH_global_context *ggctx);
+ static void load_edge_hashtable(GRAPH_global_context *ggctx);
++static void load_rls_GRAPH_global_hashtables(GRAPH_global_context *ggctx);
++static void load_rls_label_table(GRAPH_global_context *ggctx,
++                                 char *label_name, char label_type,
++                                 HTAB *base_visible_ids);
++static void load_rls_base_visibility(GRAPH_global_context *ggctx,
++                                     char label_type,
++                                     HTAB *base_visible_ids);
+ static void freeze_GRAPH_global_hashtables(GRAPH_global_context *ggctx);
+ static List *get_ag_labels_names(Snapshot snapshot, Oid graph_oid,
+                                  char label_type);
++static bool graph_has_enabled_rls(char *graph_name, Oid graph_oid);
+ static bool insert_edge_entry(GRAPH_global_context *ggctx, graphid edge_id,
+                               ItemPointerData tid, graphid start_vertex_id,
+                               graphid end_vertex_id, Oid edge_label_table_oid);
+@@ -247,6 +264,43 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
+  */
+ bool is_ggctx_invalid(GRAPH_global_context *ggctx)
+ {
++    bool rls_enabled;
++
++    if (!ggctx->valid)
++    {
++        return true;
++    }
++
++    /* A dropped graph schema can have its OID reused before this cache dies. */
++    if (!OidIsValid(get_namespace_oid(ggctx->graph_name, true)))
++    {
++        return true;
++    }
++
++    rls_enabled = graph_has_enabled_rls(ggctx->graph_name, ggctx->graph_oid);
++
++    /* Never reuse an unrestricted cache after SET ROLE makes RLS effective. */
++    if (ggctx->rls_enabled != rls_enabled)
++    {
++        return true;
++    }
++
++    /*
++     * RLS policies may depend on the effective user or session settings.  Keep
++     * filtered graph data local to the SQL statement that populated it.
++     */
++    if (rls_enabled &&
++        (ggctx->security_user_id != GetUserId() ||
++         ggctx->statement_start != GetCurrentStatementStartTimestamp()))
++    {
++        return true;
++    }
++    if (rls_enabled &&
++        ggctx->security_command_id != GetCurrentCommandId(false))
++    {
++        return true;
++    }
++
+     /* use version counter if DSM or SHMEM mode is active */
+     if (version_mode == VERSION_MODE_DSM || version_mode == VERSION_MODE_SHMEM)
+     {
+@@ -516,6 +570,56 @@ static List *get_ag_labels_names(Snapshot snapshot, Oid graph_oid,
+     return labels;
+ }
+ 
++/*
++ * Return true when row security applies to at least one label table for the
++ * current effective user.  check_enable_rls() deliberately distinguishes an
++ * enabled policy from an owner/superuser/BYPASSRLS bypass, so the fast graph
++ * cache remains available to roles for which PostgreSQL would not add row
++ * security quals.
++ */
++static bool graph_has_enabled_rls(char *graph_name, Oid graph_oid)
++{
++    static const char label_types[] = {LABEL_TYPE_VERTEX, LABEL_TYPE_EDGE};
++    Oid graph_namespace_oid;
++    Snapshot snapshot;
++    int i;
++
++    graph_namespace_oid = get_namespace_oid(graph_name, false);
++    snapshot = GetActiveSnapshot();
++
++    for (i = 0; i < lengthof(label_types); i++)
++    {
++        List *label_names;
++        ListCell *lc;
++
++        label_names = get_ag_labels_names(snapshot, graph_oid,
++                                          label_types[i]);
++        foreach (lc, label_names)
++        {
++            char *label_name = lfirst(lc);
++            Oid relid = get_relname_relid(label_name, graph_namespace_oid);
++
++            if (!OidIsValid(relid))
++            {
++                ereport(ERROR,
++                        (errcode(ERRCODE_UNDEFINED_TABLE),
++                         errmsg("graph label table %s.%s does not exist",
++                                graph_name, label_name)));
++            }
++
++            if (check_enable_rls(relid, InvalidOid, true) == RLS_ENABLED)
++            {
++                list_free_deep(label_names);
++                return true;
++            }
++        }
++
++        list_free_deep(label_names);
++    }
++
++    return false;
++}
++
+ /*
+  * Helper function to insert one edge/edge->vertex, key/value pair, in the
+  * current GRAPH global edge hashtable.
+@@ -823,6 +927,307 @@ static void load_GRAPH_global_hashtables(GRAPH_global_context *ggctx)
+     load_edge_hashtable(ggctx);
+ }
+ 
++/*
++ * Load one label through PostgreSQL's normal parser, rewriter, planner, and
++ * executor.  In particular, the rewriter attaches row-security quals and the
++ * executor performs the table privilege check that a raw table scan bypasses.
++ * ONLY is required because every AGE label is an inheritance child and the
++ * label catalog already gives us each physical table exactly once.  A child
++ * row must also be visible through the base label: typed Cypher can use the
++ * child policy while an untyped pattern uses the inherited base-table policy,
++ * and this query-independent graph cache must be safe for both forms.  The
++ * caller supplies the IDs returned by one base-table scan so that applying
++ * both policy layers remains linear in graph size.
++ */
++static void load_rls_label_table(GRAPH_global_context *ggctx,
++                                 char *label_name, char label_type,
++                                 HTAB *base_visible_ids)
++{
++    Oid graph_namespace_oid;
++    Oid label_table_oid;
++    char *qualified_name;
++    char *query;
++    SPIPlanPtr plan;
++    Portal portal;
++
++    graph_namespace_oid = get_namespace_oid(ggctx->graph_name, false);
++    label_table_oid = get_relname_relid(label_name, graph_namespace_oid);
++    if (!OidIsValid(label_table_oid))
++    {
++        ereport(ERROR,
++                (errcode(ERRCODE_UNDEFINED_TABLE),
++                 errmsg("graph label table %s.%s does not exist",
++                        ggctx->graph_name, label_name)));
++    }
++
++    qualified_name = quote_qualified_identifier(ggctx->graph_name, label_name);
++    if (label_type == LABEL_TYPE_VERTEX)
++    {
++        query = psprintf("SELECT ctid AS age_ctid, id FROM ONLY %s",
++                         qualified_name);
++    }
++    else
++    {
++        query = psprintf("SELECT ctid AS age_ctid, id, start_id, end_id "
++                         "FROM ONLY %s", qualified_name);
++    }
++
++    plan = SPI_prepare(query, 0, NULL);
++    if (plan == NULL)
++    {
++        elog(ERROR, "could not prepare RLS-aware graph scan for %s: %s",
++             qualified_name, SPI_result_code_string(SPI_result));
++    }
++
++    portal = SPI_cursor_open(NULL, plan, NULL, NULL, true);
++    if (portal == NULL)
++    {
++        elog(ERROR, "could not open RLS-aware graph scan for %s",
++             qualified_name);
++    }
++
++    for (;;)
++    {
++        SPITupleTable *tuptable;
++        TupleDesc tupdesc;
++        uint64 row;
++
++        SPI_cursor_fetch(portal, true, RLS_SCAN_BATCH_SIZE);
++        if (SPI_processed == 0)
++        {
++            break;
++        }
++
++        tuptable = SPI_tuptable;
++        tupdesc = tuptable->tupdesc;
++
++        for (row = 0; row < SPI_processed; row++)
++        {
++            HeapTuple tuple = tuptable->vals[row];
++            ItemPointerData tid;
++            Datum datum;
++            graphid entity_id;
++            bool isnull;
++            MemoryContext oldctx;
++
++            datum = SPI_getbinval(tuple, tupdesc, 1, &isnull);
++            if (isnull)
++            {
++                elog(ERROR, "RLS-aware graph scan returned a null ctid");
++            }
++            ItemPointerCopy((ItemPointer) DatumGetPointer(datum), &tid);
++
++            datum = SPI_getbinval(tuple, tupdesc, 2, &isnull);
++            if (isnull)
++            {
++                elog(ERROR, "RLS-aware graph scan returned a null graph id");
++            }
++            entity_id = DatumGetInt64(datum);
++
++            if (hash_search(base_visible_ids, &entity_id, HASH_FIND, NULL) ==
++                NULL)
++            {
++                continue;
++            }
++
++            /* adjacency arrays and the cleanup list must survive SPI_finish */
++            oldctx = MemoryContextSwitchTo(TopMemoryContext);
++
++            if (label_type == LABEL_TYPE_VERTEX)
++            {
++                if (!insert_vertex_entry(ggctx, entity_id, label_table_oid,
++                                         tid))
++                {
++                    ereport(WARNING,
++                            (errcode(ERRCODE_DATA_EXCEPTION),
++                             errmsg("ignored duplicate vertex")));
++                }
++            }
++            else
++            {
++                graphid start_id;
++                graphid end_id;
++                bool isnull_start;
++                bool isnull_end;
++                bool inserted;
++
++                datum = SPI_getbinval(tuple, tupdesc, 3, &isnull_start);
++                start_id = isnull_start ? 0 : DatumGetInt64(datum);
++                datum = SPI_getbinval(tuple, tupdesc, 4, &isnull_end);
++                end_id = isnull_end ? 0 : DatumGetInt64(datum);
++                if (isnull_start || isnull_end)
++                {
++                    elog(ERROR,
++                         "RLS-aware graph scan returned a null edge endpoint");
++                }
++
++                /*
++                 * An edge is traversable only when RLS exposed both endpoint
++                 * vertices.  Skip it before either adjacency list is changed.
++                 */
++                if (get_vertex_entry(ggctx, start_id) == NULL ||
++                    get_vertex_entry(ggctx, end_id) == NULL)
++                {
++                    MemoryContextSwitchTo(oldctx);
++                    continue;
++                }
++
++                inserted = insert_edge_entry(ggctx, entity_id, tid, start_id,
++                                             end_id, label_table_oid);
++                if (!inserted)
++                {
++                    ereport(WARNING,
++                            (errcode(ERRCODE_DATA_EXCEPTION),
++                             errmsg("ignored duplicate edge")));
++                }
++                else if (!insert_vertex_edge(ggctx, start_id, end_id,
++                                             entity_id, label_name))
++                {
++                    elog(ERROR, "visible edge has a missing endpoint");
++                }
++            }
++
++            MemoryContextSwitchTo(oldctx);
++        }
++
++        SPI_freetuptable(tuptable);
++    }
++
++    SPI_cursor_close(portal);
++    SPI_freeplan(plan);
++    pfree(query);
++    pfree(qualified_name);
++}
++
++/*
++ * Collect rows visible through the inherited base label. PostgreSQL applies
++ * the base relation's RLS policy to every descendant selected this way.
++ */
++static void load_rls_base_visibility(GRAPH_global_context *ggctx,
++                                     char label_type,
++                                     HTAB *base_visible_ids)
++{
++    const char *base_label_name;
++    char *qualified_name;
++    char *query;
++    SPIPlanPtr plan;
++    Portal portal;
++
++    base_label_name = label_type == LABEL_TYPE_VERTEX
++                          ? AG_DEFAULT_LABEL_VERTEX
++                          : AG_DEFAULT_LABEL_EDGE;
++    qualified_name = quote_qualified_identifier(ggctx->graph_name,
++                                                base_label_name);
++    query = psprintf("SELECT id FROM %s", qualified_name);
++
++    plan = SPI_prepare(query, 0, NULL);
++    if (plan == NULL)
++    {
++        elog(ERROR, "could not prepare base-label RLS scan for %s: %s",
++             qualified_name, SPI_result_code_string(SPI_result));
++    }
++
++    portal = SPI_cursor_open(NULL, plan, NULL, NULL, true);
++    if (portal == NULL)
++    {
++        elog(ERROR, "could not open base-label RLS scan for %s",
++             qualified_name);
++    }
++
++    for (;;)
++    {
++        SPITupleTable *tuptable;
++        TupleDesc tupdesc;
++        uint64 row;
++
++        SPI_cursor_fetch(portal, true, RLS_SCAN_BATCH_SIZE);
++        if (SPI_processed == 0)
++        {
++            break;
++        }
++
++        tuptable = SPI_tuptable;
++        tupdesc = tuptable->tupdesc;
++        for (row = 0; row < SPI_processed; row++)
++        {
++            Datum datum;
++            graphid entity_id;
++            bool isnull;
++
++            datum = SPI_getbinval(tuptable->vals[row], tupdesc, 1, &isnull);
++            if (isnull)
++            {
++                elog(ERROR,
++                     "base-label RLS scan returned a null graph id");
++            }
++            entity_id = DatumGetInt64(datum);
++            hash_search(base_visible_ids, &entity_id, HASH_ENTER, NULL);
++        }
++
++        SPI_freetuptable(tuptable);
++    }
++
++    SPI_cursor_close(portal);
++    SPI_freeplan(plan);
++    pfree(query);
++    pfree(qualified_name);
++}
++
++/* Populate a statement-local, RLS-filtered view of the whole graph. */
++static void load_rls_GRAPH_global_hashtables(GRAPH_global_context *ggctx)
++{
++    static const char label_types[] = {LABEL_TYPE_VERTEX, LABEL_TYPE_EDGE};
++    Snapshot snapshot = GetActiveSnapshot();
++    int i;
++
++    ggctx->num_loaded_vertices = 0;
++    ggctx->num_loaded_edges = 0;
++
++    if (SPI_connect() != SPI_OK_CONNECT)
++    {
++        elog(ERROR, "could not connect to SPI for RLS-aware graph loading");
++    }
++
++    for (i = 0; i < lengthof(label_types); i++)
++    {
++        HASHCTL ctl;
++        List *label_names;
++        ListCell *lc;
++        HTAB *base_visible_ids;
++        MemoryContext visibility_mcxt;
++
++        visibility_mcxt = AllocSetContextCreate(
++            ggctx->edge_table_mcxt, "AGE RLS base visibility",
++            ALLOCSET_DEFAULT_SIZES);
++        MemSet(&ctl, 0, sizeof(ctl));
++        ctl.keysize = sizeof(graphid);
++        ctl.entrysize = sizeof(graphid);
++        ctl.hash = graphid_hash;
++        ctl.hcxt = visibility_mcxt;
++        base_visible_ids = hash_create("AGE RLS base-visible IDs",
++                                       VERTEX_HTAB_INITIAL_SIZE, &ctl,
++                                       HASH_ELEM | HASH_FUNCTION |
++                                       HASH_CONTEXT);
++
++        load_rls_base_visibility(ggctx, label_types[i], base_visible_ids);
++
++        label_names = get_ag_labels_names(snapshot, ggctx->graph_oid,
++                                          label_types[i]);
++        foreach (lc, label_names)
++        {
++            load_rls_label_table(ggctx, lfirst(lc), label_types[i],
++                                 base_visible_ids);
++        }
++        list_free_deep(label_names);
++        MemoryContextDelete(visibility_mcxt);
++    }
++
++    if (SPI_finish() != SPI_OK_FINISH)
++    {
++        elog(ERROR, "could not finish SPI RLS-aware graph loading");
++    }
++}
++
+ /*
+  * Helper routine to load all edges into the GRAPH global edge and vertex
+  * hashtables.
+@@ -1109,6 +1514,12 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
+     {
+         if (curr_ggctx->graph_oid == graph_oid)
+         {
++            /* Record the security check performed by is_ggctx_invalid(). */
++            curr_ggctx->security_user_id = GetUserId();
++            curr_ggctx->statement_start =
++                GetCurrentStatementStartTimestamp();
++            curr_ggctx->security_command_id = GetCurrentCommandId(false);
++
+             /* switch our context back */
+             MemoryContextSwitchTo(oldctx);
+ 
+@@ -1130,9 +1541,6 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
+         new_ggctx->next = NULL;
+     }
+ 
+-    /* set the global context variable */
+-    global_graph_contexts = new_ggctx;
+-
+     /* set the graph name and oid */
+     new_ggctx->graph_name = pstrdup(graph_name);
+     new_ggctx->graph_oid = graph_oid;
+@@ -1145,13 +1553,35 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
+     new_ggctx->xmax = GetActiveSnapshot()->xmax;
+     new_ggctx->curcid = GetActiveSnapshot()->curcid;
+ 
++    /* Bind an RLS-filtered cache to its effective user and SQL statement. */
++    new_ggctx->rls_enabled = graph_has_enabled_rls(graph_name, graph_oid);
++    new_ggctx->security_user_id = GetUserId();
++    new_ggctx->statement_start = GetCurrentStatementStartTimestamp();
++    new_ggctx->security_command_id = GetCurrentCommandId(false);
++
+     /* initialize our vertices list */
+     new_ggctx->vertices = NULL;
+ 
+     /* build the hashtables for this graph */
+     create_GRAPH_global_hashtables(new_ggctx);
+-    load_GRAPH_global_hashtables(new_ggctx);
++
++    /*
++     * Publish an explicitly invalid entry before loading.  If loading raises
++     * an error that a caller catches, the next cache lookup will remove the
++     * partial entry instead of reusing it.
++     */
++    global_graph_contexts = new_ggctx;
++
++    if (new_ggctx->rls_enabled)
++    {
++        load_rls_GRAPH_global_hashtables(new_ggctx);
++    }
++    else
++    {
++        load_GRAPH_global_hashtables(new_ggctx);
++    }
+     freeze_GRAPH_global_hashtables(new_ggctx);
++    new_ggctx->valid = true;
+ 
+ 
+     /* switch back to the previous memory context */
+@@ -1302,6 +1732,12 @@ edge_entry *get_edge_entry(GRAPH_global_context *ggctx, graphid edge_id)
+     return ee;
+ }
+ 
++/* Nullable lookup used when revalidating a persisted internal path value. */
++edge_entry *find_edge_entry(GRAPH_global_context *ggctx, graphid edge_id)
++{
++    return (edge_entry *) agehash_lookup(ggctx->edge_table, (void *) &edge_id);
++}
++
+ /*
+  * Variant of get_edge_entry that uses a precomputed hash value to skip the
+  * agehash internal hash callback. The caller is responsible for ensuring
+diff --git a/src/backend/utils/adt/age_vle.c b/src/backend/utils/adt/age_vle.c
+index cb036b154df23ba7a715e440cefdd124fd286acb..65479e5ef01822db9e72f6081a5b05ae32e856ee 100644
+--- a/src/backend/utils/adt/age_vle.c
++++ b/src/backend/utils/adt/age_vle.c
+@@ -1756,7 +1756,6 @@ static agtype_value *build_edge_list(VLE_path_container *vpc)
+ 
+     /* get the GRAPH global context for this graph */
+     ggctx = find_GRAPH_global_context(graph_oid);
+-    /* verify we got a global context */
+     Assert(ggctx != NULL);
+ 
+     /* get the graphid_array and size */
+@@ -1775,7 +1774,13 @@ static agtype_value *build_edge_list(VLE_path_container *vpc)
+         agtype_value *agtv_edge = NULL;
+ 
+         /* get the edge entry from the hashtable */
+-        ee = get_edge_entry(ggctx, graphid_array[index]);
++        ee = find_edge_entry(ggctx, graphid_array[index]);
++        if (ee == NULL)
++        {
++            ereport(ERROR,
++                    (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++                     errmsg("path cannot be materialized in the current security context")));
++        }
+         /* get the label name from the oid */
+         label_name = get_rel_name(get_edge_entry_label_table_oid(ee));
+         /* reconstruct the edge */
+@@ -1820,7 +1825,6 @@ static agtype_value *build_path(VLE_path_container *vpc)
+ 
+     /* get the GRAPH global context for this graph */
+     ggctx = find_GRAPH_global_context(graph_oid);
+-    /* verify we got a global context */
+     Assert(ggctx != NULL);
+ 
+     /* get the graphid_array and size */
+@@ -1842,6 +1846,12 @@ static agtype_value *build_path(VLE_path_container *vpc)
+ 
+         /* get the vertex entry from the hashtable */
+         ve = get_vertex_entry(ggctx, graphid_array[index]);
++        if (ve == NULL)
++        {
++            ereport(ERROR,
++                    (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++                     errmsg("path cannot be materialized in the current security context")));
++        }
+         /* get the label name from the oid */
+         label_name = get_rel_name(get_vertex_entry_label_table_oid(ve));
+         /* reconstruct the vertex */
+@@ -1862,7 +1872,13 @@ static agtype_value *build_path(VLE_path_container *vpc)
+         }
+ 
+         /* get the edge entry from the hashtable */
+-        ee = get_edge_entry(ggctx, graphid_array[index+1]);
++        ee = find_edge_entry(ggctx, graphid_array[index+1]);
++        if (ee == NULL)
++        {
++            ereport(ERROR,
++                    (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++                     errmsg("path cannot be materialized in the current security context")));
++        }
+         /* get the label name from the oid */
+         label_name = get_rel_name(get_edge_entry_label_table_oid(ee));
+         /* reconstruct the edge */
+diff --git a/src/include/utils/age_global_graph.h b/src/include/utils/age_global_graph.h
+index b08b0d18f28acc076160216163551cb307bfd967..bab309d7a4e1097d66cd47923dc10ab78f465ea3 100644
+--- a/src/include/utils/age_global_graph.h
++++ b/src/include/utils/age_global_graph.h
+@@ -65,6 +65,7 @@ ListGraphId *get_graph_vertices(GRAPH_global_context *ggctx);
+ vertex_entry *get_vertex_entry(GRAPH_global_context *ggctx,
+                                graphid vertex_id);
+ edge_entry *get_edge_entry(GRAPH_global_context *ggctx, graphid edge_id);
++edge_entry *find_edge_entry(GRAPH_global_context *ggctx, graphid edge_id);
+ 
+ /*
+  * Variant of get_edge_entry that accepts a precomputed hash value, allowing

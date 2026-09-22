@@ -7,7 +7,119 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## Patched AGE enabled profile
+
+現行開発版は**service 0.1.2 / API v1 / schema 20**、stageは`m3-age-vle`です。
+既定は`PGAG_GRAPH_BACKEND=sql`で、`age`は明示的・上限付きprofileです。
+黙ったfallbackや一般的な本番/HA認定ではありません。
+保存した旧`Dockerfile.age`を有効化用imageに使ってはいけません。
+
+```bash
+docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
+docker build --target runtime -t pg-agmemory:0.1.2 .
+```
+
+DB imageはPostgreSQL18.6/pgvector0.8.6、公開upstream
+`fa109ef1ddb1c7a945a1c340195d650000e49713`と、ローカル
+`72707aab7ce982bf13cad3d102bd869dab07d64b`までの完全一致変更を固定します。
+archive・patch・適用後Git treeをbuild時に照合し、隣接repoの未追跡fileはコピーしません。
+全hashは`patches/age/source.json`に記録します。
+既定CMDはAGEをpreloadするため、`shared_preload_libraries=age`を落とすCMDへ置換しないでください。
+永続dataの保護とnetwork制限を行い、管理者DSNをAPI/workerへ渡さないでください。
+
+API/worker/自動再起動を停止・drainし、対応backupを保持してcomponentを揃えmigrationします。
+020はtenantごとのserving registryだけを追加し、AGEは導入しません。
+修正DB上で管理者が別途`CREATE EXTENSION age`を実行します。
+通常どおり非owner/NOSUPERUSER/NOBYPASSRLSのruntime loginを準備し、
+起動のためにgraph所有権、`pg_read_all_settings`、任意SQL/DDL権限を追加しないでください。
+
+起動/readinessは修正build stampと、任意extensionが持つ
+`ag_catalog.pgag_age_preloaded()`を要求します。
+引数なし・固定`search_path=pg_catalog`のSECURITY DEFINERで、
+固定server設定に対するbooleanだけを返し、memory tableを読まず、設定名を受け取らず、
+graph dataへの認可も行いません。runtimeはsignature/extension所属owner/固定設定も確認します。
+別のimmutable build stampは信頼する固定image上での識別子であり、
+悪意あるDB管理者に対する暗号的attestationではありません。
+
+まず`graph-generation get/begin`、`graph-artifact export/check`、
+正確なfile digestによる`graph-generation record`で**現行schema 20のrecorded head**を準備します。
+profile/receipt作成だけではgraphをserveしません。
+台帳と世代の両CAS revisionで検証済みfileを公開します
+（registry未作成なら0、初回recorded headの世代revisionは通常2）。
+
+```bash
+pg-agmemory age-projection get --tenant-id "$TENANT_ID"
+pg-agmemory age-projection publish --tenant-id "$TENANT_ID" \
+  --generation-id "$GENERATION_ID" --expected-generation-revision 2 \
+  --expected-revision 0 --file /private/path/graph.json
+
+# 公開済み投影を使うAPI配置だけで設定する。
+export PGAG_GRAPH_BACKEND=age
+pg-agmemory serve
+```
+
+publishは`pgag_age_<hyphenなし世代UUID>`を作成/ANALYZEし、
+base/child両labelへcanonical read policyとFORCE RLSを適用、registryを原子的にenabledにします。
+runtimeへはSELECT/USAGEだけを付与します。置換時は旧registryに対応するgraphだけを
+同じtransactionで削除し、失敗ならDDL/registryともrollbackします。
+現行headの再publishも同じgraphを原子的に再構築します。手作業でschemaを作成/改名しないでください。
+応答喪失/成否不明時は`get`で照合し、mutationを盲目的に再送しません。
+
+Native `/v1/graph/expand`は`backend:"age"`と世代UUIDの`projection_watermark`を返します。
+時計や定数時間の変更counterではありません。実native VLEが1/2-hop探索し、
+canonical joinでID/revision/方向、現行認可、evidence、時刻区間、cycle除外、決定論的予算順を守ります。
+上限はseed 16件・2 hops・100 pathsのまま、artifact/投影は10,000 nodes・40,000 edge revisionsです。
+callerの任意Cypherは受け付けません。
+
+各要求でimage、label保護、取得時ACL/deletion epoch、要求で可視なcanonical topologyの完全性を確認します。
+対象の追加/revisionには新世代を要求し、古い投影で新たに可視になったpathを黙って欠落させません。
+epochが変わらないACL期限もstatement時点で評価します。
+この上限付き照合は高コストになり得るため、定数時間の鮮度や全量S graphのlatencyは主張しません。
+statement timeoutは5秒で、E2E応答時間の保証ではありません。
+
+欠落/無効は`graph_projection_unavailable`（409）、stale topology/epochは
+`graph_projection_stale`（409）、runtime build不一致は`graph_backend_unqualified`（503）です。
+自動SQL fallback・再構築・可視性緩和・model呼出しは行いません。
+
+```bash
+pg-agmemory age-projection disable --tenant-id "$TENANT_ID" --expected-revision 1
+# 明示切戻し先。APIをこの設定で再起動して反映する。
+export PGAG_GRAPH_BACKEND=sql
+```
+
+disableはregistry receiptとgraphを保持します。SQL選択はAGEに依存せず、dataを削除しません。
+環境変数を変えるだけでは実行中APIに反映されないため、drain・再起動してください。
+
+schema 19の世代receiptは認証・不変性・可読性を維持し、upgrade後はstaleになります。
+旧pendingはabandonでき、旧recorded headから新schema 20子世代を作れます。
+旧graph fileをschema20へ改名して代用せず、新backupと現行復旧artifactを取得してください。
+
+**復元範囲は意図的に限定しています。** 運用snapshotは24 tableです。
+`recovery-apply`はmetadataが一致してもenabled registryを一つでも含むtenantを、書込み前に拒否します。
+disabled metadataも完全一致の照合だけで取り込みません。
+対応する運用replayでは、**baseline backupを取る前にdisable**し、
+後続復旧証跡を取得する間もdisabled registryを変更せず、
+core復元と現行source確認の完了後だけ再構築/publishします。
+旧復元先を独立にdisableしても別の最新receiptと同一にはなりません。
+active投影のDR、欠落/新世代の取込み、自動再起動は未対応です。
+export済みartifactの保持/削除はoperatorの責務です。
+
+再現可能な隔離認定command:
+
+```bash
+bash scripts/test-age-patched-containers.sh container
+bash scripts/test-age-enabled-containers.sh container
+```
+
+前者は旧probeの期待値をそのまま修正sourceへ適用します。
+後者は独立した新test/HTTP cluster、非root製品image、実管理publisher、native HTTP選択を使います。
+Docker/native CIでも同じhelperをamd64/arm64で実行し、
+log/image/digestを旧rc0失敗や固定hop不採用実験と区別します。
+
 ## Graph generation metadata (schema 19)
+
+この節はschema 19での導入履歴です。現行schema 20のversion、artifact再生成、
+AGE選択は上記enabled profileに従ってください。
 
 開発版componentは**service 0.1.1 / API v1 / schema 19**、
 stageは`m3-graph-generation-metadata`です。公開M2 tagはv0.1.0/schema 18のままです。
@@ -69,7 +181,9 @@ backup後に世代履歴が変わっていれば、現在の適用経路では�
 ## Canonical graph artifacts
 
 `pg-agmemory graph-artifact`は**service 0.1.1 / API v1 / schema 19**向けの
-管理者専用・backend非依存build入力export/checkです。schemaを変更せず、AGE graphも構築/起動しません。
+管理者専用・backend非依存build入力export/checkとして導入しました。
+現行service 0.1.2はschema 20 fileを出力し、同じcommand/上限を使います。
+export/check自体はschemaを変更せず、AGE graphも構築/起動しません。
 `PGAG_ADMIN_DATABASE_URL`は非公開に設定します。既存pending世代か現行recorded headを要求し、
 不明・abandoned・後継headへ置換済みの世代は拒否します。
 
@@ -92,7 +206,7 @@ headとcanonical入力が不変ならbytes/SHA256は同一で、世代stateや�
 data/ACL/deletion epochが変わったら旧世代の改名でなく新世代を作成してください。
 応答喪失時は`get`と`check`で照合し、fileや世代identityを黙って置換しません。
 
-`pgag-graph-artifact-v1`はtenant/世代/親/profile対応、schema 19入力fingerprint、
+`pgag-graph-artifact-v1`はtenant/世代/親/profile対応、対応schemaの入力fingerprint、
 canonical nodeとedge revision履歴を含みます。nodeはID/scope/作成時刻、
 edgeはID/revision/scope/source/target/許可predicateと半開valid/system区間を持ちます。
 一意順序と同一scopeのendpointを要求し、label・原文・quote・model応答・秘密は含めません。

@@ -1,6 +1,10 @@
 *
 !Dockerfile
 !Dockerfile.age
+!Dockerfile.age-patched
+!patches/
+!patches/age/
+!patches/age/**
 !pyproject.toml
 !uv.lock
 !README.md

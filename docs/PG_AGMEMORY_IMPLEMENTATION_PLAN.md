@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.6 / M3 canonical graph artifact boundary, 2026-09-22
+- Document version: 0.7 / M3 patched native AGE profile, 2026-09-22
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.1/schema 19 adds admin-only generation metadata and deterministic canonical graph artifact export/check; actual graph reads remain SQL. Fixed-hop AGE was rejected for cost, native VLE is preserved but disabled, and receipts/artifacts never enable serving. Evidence and boundaries are in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. M3 development v0.1.2/schema 20 enables optional native AGE using pinned local fix72707aa, verified artifact publication and an explicit serving registry. SQL remains default/explicit rollback; old rc0 and costly fixed-hop paths stay unselected. Resource/active-projection recovery and distribution gates remain separate. Evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -672,10 +672,10 @@ Do not infer that a version change alone supplies that evidence.
 
 | M3 increment | Deliverable / acceptance | Initial state |
 |---|---|---|
-| M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Build/probe implemented for PG18/v1.8.0-rc0. Native VLE fails six checks; fixed one-hop candidate passes 40 checks but is not an adapter qualification |
-| M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Fixed-hop laboratory candidate passes 20 live cases against canonical SQL/independent oracle. Not adopted: raw median read cost 9–62x SQL; statistics-only diagnosis still 4.47–6.81x. Native strategy preserved but disabled; no production graph activation |
-| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema19 metadata coordinator implements snapshot-input CAS, immutable receipts, one pending build and stale detection; v6 restore preserves unchanged metadata without activation. Canonical graph artifacts now build/rebuild identically and authenticate against current source. Constant-time mutation tracking, extension-backed projection construction and serving-generation switch remain pending |
-| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Pending integrated adapter |
+| M3-A | Reproducible pinned AGE build plus real runtime-role traversal/RLS probe on disposable PG18 | Separate patched72707aa source tree passes all19 native/direct and40 fixed checks. Old rc0 six failures and rejected fixed-hop cost evidence are retained, not relabeled |
+| M3-B | Independent topology/time/permission/budget fixtures, then exact AGE-versus-SQL canonical IDs, revisions and ordered paths | Actual patched VLE adapter passes independent17-case oracle, restriction/freshness tests and real HTTP SQL equality. Optional AGE profile uses no host fixed-hop BFS workaround |
+| M3-C | Transactional mutation watermark, generation CAS, stale/rebuild handling and isolated restore | Schema20 registry publishes/replaces verified physical AGE graphs atomically with both CAS revisions; runtime epochs and bounded visible-topology completeness fail closed. Metadata/artifact recovery remains bounded; constant-time tracking and active-projection DR/reconciliation are pending |
+| M3-D | Bounded graph resource example, native amd64/arm64 distribution, bilingual deployment limits and v0.2 release handoff | Separate core and patched-AGE native jobs added. Full graph resource profile, broader restore qualification and release handoff remain pending |
 
 Generation metadata capture uses a bounded repeatable-read canonical fingerprint,
 not a timestamp cursor or an already implemented constant-time mutation counter.
@@ -684,6 +684,14 @@ Recovery compares the generation ledger as immutable content and refuses missing
 or changed history; no automatic graph reactivation follows an old backup.
 This split permits backend-neutral progress without adopting the expensive
 workaround or claiming the disabled native strategy has been repaired.
+
+The now-explicit native selection applies only to the separately pinned
+72707aa profile and its runtime build/preload gates. Generic receipts/artifacts
+still do not activate anything; only verified admin publication changes the
+serving registry, and only `PGAG_GRAPH_BACKEND=age` chooses it at the API.
+Requests never fall back silently. Source completeness scans are not advertised
+as constant-time mutation tracking. Active registries block operational restore;
+the supported baseline is disabled before backup and unchanged during replay.
 
 The canonical artifact is a private, all-scope administrator build input, not a
 principal-authorized view. Verifying signed topology against current canonical

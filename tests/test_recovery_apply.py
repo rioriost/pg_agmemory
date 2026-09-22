@@ -27,14 +27,18 @@ from pg_agmemory.recovery_apply import (
 
 
 def test_graph_generation_metadata_is_verified_but_never_imported():
-    tables = {"memory_ops.graph_generation", "memory_ops.graph_generation_state"}
+    tables = {
+        "memory_ops.graph_generation", "memory_ops.graph_generation_state",
+        "memory_ops.age_projection",
+    }
     assert tables <= CONTENT_TABLES.keys()
     assert tables.isdisjoint(ROW_TABLES)
 
 
-def test_previous_schema_bundle_requires_matching_version(env):
+@pytest.mark.parametrize("schema", [18, 19])
+def test_previous_schema_bundle_requires_matching_version(env, schema):
     bundle = export_bundle(env.admin_url, env.tenants[0]).model_dump(mode="json")
-    bundle["reference"]["schema_version"] = 18
+    bundle["reference"]["schema_version"] = schema
     with pytest.raises(ValidationError):
         RecoveryBundle.model_validate_json(json.dumps(bundle))
 

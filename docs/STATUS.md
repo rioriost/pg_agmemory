@@ -2,6 +2,56 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## v0.1.2 / schema 20: optional patched native AGE enabled
+
+The local AGE fix **`72707aab7ce982bf13cad3d102bd869dab07d64b`** is incorporated as
+a reproducible patch over upstream `fa109ef1ddb1c7a945a1c340195d650000e49713`.
+Archive, patch, resulting Git tree, build stamp and preload diagnostic hashes
+are pinned in `patches/age/source.json`. The image retains Apache LICENSE/NOTICE.
+The historical `Dockerfile.age`, failing native probe and rejected fixed-hop
+candidate remain unchanged. This is not an assertion about all upstream builds.
+
+`PGAG_GRAPH_BACKEND=age` selects the real VLE adapter after startup validates the
+patched image identity. Native one-/two-hop traversal, not host-side fixed-hop
+BFS, supplies candidates. Forced-RLS label policies apply canonical scope,
+evidence, predicate and temporal constraints before traversal; canonical joins,
+cycle exclusion and deterministic ordering apply before the path limit.
+Returned labels and assertion details still come from canonical SQL.
+Responses use `backend:"age"` and a generation UUID `projection_watermark`.
+
+Admin `age-projection publish` rechecks the current recorded head, exact artifact
+and both revisions, creates/analyzes an owned physical graph, and atomically
+switches a tenant-scoped registry. Replacement removes only the previous
+registered graph in the same transaction; failures roll back graph and registry.
+Disable retains the receipt. Runtime has no graph/registry write or ownership
+privileges. The optional image exposes a narrowly scoped, fixed-setting boolean
+preload diagnostic; it does not grant `pg_read_all_settings` or bypass data RLS.
+Ordinary migrations do not install AGE or that diagnostic definer.
+
+The patched image passed all 19 original native/direct and 40 fixed-template
+checks. The integrated development runner passes **185 cases** plus a non-root
+packaged **real HTTP** smoke: native two-hop/SQL equality, disable rejection,
+same-head rebuild, stale-input rejection and explicit SQL restart selection.
+An initial combined-run fixture failure assumed AGE was absent before migration;
+the corrected invariant verifies migration preserves an already installed AGE
+unchanged and still installs none in the ordinary profile. Failed evidence remains.
+
+Freshness currently checks captured ACL/deletion epochs and bounded
+request-visible canonical topology completeness on every request. It is **not
+constant-time**, a full-S graph cost qualification, or automatic regeneration.
+The source probe's safety result does not imply inexpensive production reads.
+Missing/disabled projections return 409, eligible additions/revisions or epoch
+changes return stale 409, and an unqualified runtime build returns 503; none
+silently invokes SQL. A configured SQL deployment remains independent of AGE.
+
+Current recovery snapshots contain 24 operational tables. Enabled projection
+registries block `recovery-apply` before writes; disabled registry metadata is
+strictly compared, never imported. Use the disabled-before-backup procedure in
+[operations](operations/README.md#patched-age-enabled-profile). Old authenticated
+schema-19 generation receipts remain immutable/readable and stale; abandon old
+pending builds or create a new schema-20 child, never relabel old artifacts.
+M3 resource/restore scope and full frozen-build distribution are separate gates.
+
 ## v0.1.1 / schema 19: rebuildable canonical graph artifacts
 
 `graph-artifact export/check` adds bounded, administrator-only canonical graph

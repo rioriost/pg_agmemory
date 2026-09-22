@@ -140,6 +140,10 @@ def database():
     url = os.environ.get("PGAG_TEST_DATABASE_URL")
     if not url:
         pytest.skip("PGAG_TEST_DATABASE_URL must identify a disposable PostgreSQL database")
+    with psycopg.connect(url) as admin:
+        age_before = admin.execute(
+            "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
+        ).fetchone()
     legacy = seed_legacy_database(url)
     role = "pgag_test_" + uuid4().hex
     password = secrets.token_urlsafe(32)
@@ -481,9 +485,37 @@ def database():
             "to_regprocedure('memory_ops.guard_graph_generation_state()'),"
             "to_regprocedure('memory_ops.check_graph_generation_state()')"
         ).fetchone() == (None, None, None, None, None)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:19])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_age_projection_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (20,):
+                raise RuntimeError("simulated AGE projection migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_age_projection_ledger)
+        with pytest.raises(RuntimeError, match="simulated AGE projection migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 19
+        assert admin.execute(
+            "SELECT to_regclass('memory_ops.age_projection'),"
+            "to_regprocedure('memory_ops.guard_age_projection()')"
+        ).fetchone() == (None, None)
+        assert admin.execute(
+            "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
+        ).fetchone() == age_before
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
+        ).fetchone() == age_before
         assert admin.execute(
             "SELECT state,attempt,payload FROM memory_ops.job WHERE id=%s",
             (legacy[0]["job"]["result"]["job_id"],),

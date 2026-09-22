@@ -1,0 +1,4 @@
+# Preserve pinned source inputs and verbatim upstream license/patch whitespace.
+/patches/age/* -text
+/patches/age/72707aa-rls-vle.patch -whitespace
+/patches/age/LICENSE -whitespace

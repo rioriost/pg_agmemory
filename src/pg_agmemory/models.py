@@ -742,8 +742,8 @@ class GraphCoverage(BaseModel):
 
 
 class GraphResult(BaseModel):
-    backend: Literal["sql"] = "sql"
-    projection_watermark: None = None
+    backend: Literal["sql", "age"] = "sql"
+    projection_watermark: UUID | None = None
     as_of: datetime
     known_at: datetime
     nodes: list[EntitySummary]

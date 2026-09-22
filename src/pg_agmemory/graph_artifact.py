@@ -66,7 +66,7 @@ class ArtifactEdge(HistoryContract):
 
 class GraphArtifact(HistoryContract):
     format: Literal["pgag-graph-artifact-v1"] = "pgag-graph-artifact-v1"
-    schema_version: Literal[19] = 19
+    schema_version: Literal[20] = 20
     tenant_id: UUID
     generation_id: UUID
     parent_id: UUID | None
@@ -86,6 +86,7 @@ class GraphArtifact(HistoryContract):
         edge_ids = tuple((edge.memory_id, edge.revision) for edge in self.edge_revisions)
         if (
             self.tenant_id != self.input_snapshot.tenant_id
+            or self.schema_version != self.input_snapshot.schema_version
             or self.generation_id == self.parent_id
             or node_ids != tuple(sorted(set(node_ids)))
             or edge_ids != tuple(sorted(set(edge_ids)))
@@ -248,6 +249,48 @@ def write_artifact(path: Path, payload: bytes) -> None:
         os.close(directory)
 
 
+def current_artifact(
+    conn: AdminConnection, request: GraphArtifactRequest,
+) -> tuple[GraphArtifact, GraphArtifactResult]:
+    """Require the caller's tenant barrier, repeatable-read transaction and UTC."""
+    started = time.monotonic()
+    secret = secret_for(conn, request.tenant_id)
+    state = _state(conn, request.tenant_id)
+    if state["revision"] != request.expected_revision:
+        raise AdminError("graph_revision_conflict")
+    if request.generation_id not in (state["head_id"], state["building_id"]):
+        raise AdminError("graph_generation_unavailable")
+    current = capture_input(conn, request.tenant_id, secret)
+    digest = input_digest(current, secret)
+    generation = _record(conn, request.tenant_id, request.generation_id, secret, digest)
+    if generation is None or generation.state not in ("building", "recorded"):
+        raise AdminError("graph_generation_unavailable")
+    if not generation.source_matches:
+        raise AdminError("graph_input_changed")
+    expected = materialize(
+        conn, request.tenant_id, generation, current, digest, secret, started,
+    )
+    payload = canonical_bytes(expected)
+    file_digest = hashlib.sha256(payload).hexdigest()
+    if generation.state == "recorded" and generation.artifact_digest != file_digest:
+        raise AdminError("graph_artifact_invalid")
+    if request.operation == "check":
+        actual = read_artifact(request.file)
+        artifact = GraphArtifact.model_validate_json(actual)
+        if (
+            not hmac.compare_digest(artifact.signature, signature(artifact, secret))
+            or artifact != expected or actual != payload
+        ):
+            raise AdminError("graph_artifact_invalid")
+    _deadline(started)
+    return expected, GraphArtifactResult(
+        operation=request.operation, tenant_id=request.tenant_id,
+        generation_id=request.generation_id, revision=state["revision"],
+        artifact_digest=file_digest, node_count=len(expected.nodes),
+        edge_revision_count=len(expected.edge_revisions),
+    )
+
+
 @contextmanager
 def graph_artifact(
     url: str, request: GraphArtifactRequest,
@@ -257,42 +300,8 @@ def graph_artifact(
             with conn.transaction():
                 conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
                 conn.execute("SET LOCAL timezone='UTC'")
-                started = time.monotonic()
-                secret = secret_for(conn, request.tenant_id)
-                state = _state(conn, request.tenant_id)
-                if state["revision"] != request.expected_revision:
-                    raise AdminError("graph_revision_conflict")
-                if request.generation_id not in (state["head_id"], state["building_id"]):
-                    raise AdminError("graph_generation_unavailable")
-                current = capture_input(conn, request.tenant_id, secret)
-                digest = input_digest(current, secret)
-                generation = _record(conn, request.tenant_id, request.generation_id, secret, digest)
-                if generation is None or generation.state not in ("building", "recorded"):
-                    raise AdminError("graph_generation_unavailable")
-                if not generation.source_matches:
-                    raise AdminError("graph_input_changed")
-                expected = materialize(
-                    conn, request.tenant_id, generation, current, digest, secret, started,
-                )
+                expected, result = current_artifact(conn, request)
                 payload = canonical_bytes(expected)
-                file_digest = hashlib.sha256(payload).hexdigest()
-                if generation.state == "recorded" and generation.artifact_digest != file_digest:
-                    raise AdminError("graph_artifact_invalid")
-                if request.operation == "check":
-                    actual = read_artifact(request.file)
-                    artifact = GraphArtifact.model_validate_json(actual)
-                    if (
-                        not hmac.compare_digest(artifact.signature, signature(artifact, secret))
-                        or artifact != expected or actual != payload
-                    ):
-                        raise AdminError("graph_artifact_invalid")
-                _deadline(started)
-                result = GraphArtifactResult(
-                    operation=request.operation, tenant_id=request.tenant_id,
-                    generation_id=request.generation_id, revision=state["revision"],
-                    artifact_digest=file_digest, node_count=len(expected.nodes),
-                    edge_revision_count=len(expected.edge_revisions),
-                )
             # The tenant barrier spans file creation and delivery, but no database
             # transaction claims atomicity with the caller-owned filesystem.
             if request.operation == "export":

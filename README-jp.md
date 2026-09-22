@@ -7,7 +7,23 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発版: v0.1.1 / API v1 / schema 19
+## 現在の開発版: v0.1.2 / API v1 / schema 20
+
+**修正済みAGEを明示選択できるgraph backendとして有効化しました。**
+`Dockerfile.age-patched`はローカルAGE commit
+`72707aab7ce982bf13cad3d102bd869dab07d64b`の完全一致source treeをbuildし、
+旧rc0 buildの改名で代用しません。
+`pg-agmemory age-projection publish`で検証済み世代を公開した後、
+`PGAG_GRAPH_BACKEND=age`で`/v1/graph/expand`がnativeの上限付きVLEを使用します。
+RLS・現行canonical認可・順序・予算を維持し、投影の欠落/無効/staleは明示エラーにします。
+SQLへの黙ったfallbackはせず、SQLは既定および明示的な切戻し先として残します。
+
+upgradeは停止/drain、migration 020、componentの整合が必要です。
+現行artifactはschema 20で、schema 19の旧receiptは読めますがstaleとして扱います。
+[修正済みAGEの設定と復元制限](docs/operations/README-jp.md#patched-age-enabled-profile)を参照してください。
+限定開発profileの有効化であり、M3全体の資源/DR認定ではありません。
+
+## 以前の開発checkpoint: v0.1.1 / schema 19
 
 M3で**管理者専用のgraph世代metadata**を追加しました。graph backendの有効化ではありません。
 `pg-agmemory graph-generation`は入力fingerprint、世代関係、artifact receiptを

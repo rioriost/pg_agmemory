@@ -52,7 +52,7 @@ AdminConnection = psycopg.Connection[dict[str, Any]]
 
 class GraphInput(HistoryContract):
     format: Literal["pgag-graph-input-v1"] = "pgag-graph-input-v1"
-    schema_version: Literal[19] = 19
+    schema_version: Literal[19, 20] = 20
     tenant_id: UUID
     access_epoch: Epoch
     deletion_epoch: Epoch
@@ -134,7 +134,7 @@ def input_digest(snapshot: GraphInput, secret: bytes) -> str:
 
 
 def capture_input(conn: AdminConnection, tenant_id: UUID, secret: bytes) -> GraphInput:
-    if SCHEMA_VERSION != 19:
+    if SCHEMA_VERSION != 20:
         raise AdminError("schema_version_mismatch")
     tenant = conn.execute(
         "SELECT access_epoch,deletion_epoch FROM memory.tenant WHERE id=%s", (tenant_id,),

@@ -6,7 +6,23 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development: v0.1.1 / API v1 / schema 19
+## Current development: v0.1.2 / API v1 / schema 20
+
+**Patched AGE is now an explicit optional graph backend.** `Dockerfile.age-patched`
+builds the exact source tree of local AGE commit
+`72707aab7ce982bf13cad3d102bd869dab07d64b`; it does not relabel the older rc0 build.
+After publishing a verified generation with `pg-agmemory age-projection publish`,
+set `PGAG_GRAPH_BACKEND=age` to use native bounded VLE at `/v1/graph/expand`.
+RLS, current canonical authority, ordering and budgets remain enforced.
+Missing/disabled/stale projections fail explicitly, never silently falling back.
+SQL remains the default and an explicit rollback selection.
+
+Upgrade requires stop/drain, migration 020 and matching components. Current
+artifacts use schema 20; schema-19 receipts remain readable but stale.
+See [patched AGE setup and recovery limits](docs/operations/README.md#patched-age-enabled-profile).
+This enables the bounded development profile, not full M3 resource/DR certification.
+
+## Previous development checkpoint: v0.1.1 / schema 19
 
 M3 now adds **administrator-only graph-generation metadata**, not an enabled
 graph backend. `pg-agmemory graph-generation` records input fingerprints,

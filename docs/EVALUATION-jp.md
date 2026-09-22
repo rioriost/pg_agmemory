@@ -2,7 +2,30 @@
 
 [English](EVALUATION.md)
 
-## 現在の開発版: v0.1.1 / schema 19 canonical graph artifact
+## 現在の開発版: v0.1.2 / schema 20修正済みAGE
+
+AGE source `72707aab7ce982bf13cad3d102bd869dab07d64b`を別途固定し、
+変更していないnative/direct 19確認と固定template 40確認をすべて通過しました。
+enabled-profile runnerは統合185件と非root実HTTP smokeが成功し、
+native 2-hop/SQL一致、原子的公開/再構築、disable/stale拒否、明示SQL選択を扱います。
+fixture代用品でなくimageに導入したpreload helperを使用します。
+source/build identityと初回統合fixture失敗も、旧rc0失敗と分けて保持します。
+
+任意AGEの正しさ/packaging証跡であり、全量S graphの費用benchmarkではありません。
+native鮮度確認は上限付きですが定数時間ではありません。
+現行復元は運用24 fingerprintで、enabled registry tenantは書込み前に拒否し、
+active投影DR/自動再起動は範囲外です。固定amd64/arm64のcore/AGE jobは別の配布gateです。
+[範囲と配置](operations/README-jp.md#patched-age-enabled-profile)を参照してください。
+
+## v0.1.1 / schema 19 canonical graph artifact
+
+完全一致`dc56d006edd0618dec05ec9cc6df0d3f6623f3c4`の
+[native run 35692443083](https://github.com/rioriost/pg_agmemory/actions/runs/35692443083)は、
+amd64/arm64とも2,132 passes/optional 31 skips、artifact製品smoke、完全一致v6復元が成功しました。
+pytestは1035.55/1401.69秒で、artifact両reportはnode 3件/revision 2件、2,713 bytes、
+同一再構築、source変更拒否を示します。復元両reportもpayload fingerprint 35件、拒否20件、
+call予約11件と不変stale/非serving receiptを保持します。
+後続schema 20 AGE追加をこの過去runで認定したことにはしません。
 
 backend非依存artifact exporter/checkerに対象36契約（offline 6件・DB 30件）を追加しました。
 非root製品imageのsmokeはnode 3件・relation一つの両revisionを扱い、

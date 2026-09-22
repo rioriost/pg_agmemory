@@ -93,7 +93,7 @@ def evidence():
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
         "format": "pgag-isolated-purge-drill-v3",
-        "schema_version": 19,
+        "schema_version": 20,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
         "objects": [{"tenant_id": "tenant", "id": "object", "scope_id": "scope",
@@ -280,7 +280,7 @@ def test_existing_suppress_prefix_is_preserved_without_replaying_it(application)
     for value in (before, latest):
         value["deletions"][0].update(mode="suppress", state="blocked_for_reads")
         if application:
-            value["format"] = "pgag-isolated-purge-drill-v6"
+            value["format"] = "pgag-isolated-purge-drill-v7"
     validate = drill.validate_application_evidence if application else drill.validate_evidence
     receipts = validate(before, latest)[0]
     assert len(receipts) == 1 and receipts[0].mode == "purge"
@@ -291,28 +291,29 @@ def test_existing_suppress_prefix_is_preserved_without_replaying_it(application)
         validate(before, latest)
 
 
-@pytest.mark.parametrize("old_format", ["v4", "v5"])
+@pytest.mark.parametrize("old_format", ["v4", "v5", "v6"])
 def test_application_rejects_new_suppress_and_old_recipe(old_format):
     before, latest = multiple_evidence()
     for value in (before, latest):
-        value["format"] = "pgag-isolated-purge-drill-v6"
+        value["format"] = "pgag-isolated-purge-drill-v7"
     latest["deletions"][1].update(mode="suppress", state="blocked_for_reads")
     with pytest.raises(drill.DrillError, match="history_unsupported"):
         drill.validate_application_evidence(before, latest)
     before["format"] = f"pgag-isolated-purge-drill-{old_format}"
-    with pytest.raises(drill.DrillError, match="v6 required"):
+    with pytest.raises(drill.DrillError, match="v7 required"):
         drill.validate_application_evidence(before, latest)
 
 
 @pytest.mark.parametrize("application", [False, True])
-def test_previous_schema_artifacts_require_matching_recovery_version(application):
+@pytest.mark.parametrize("schema", [18, 19])
+def test_previous_schema_artifacts_require_matching_recovery_version(application, schema):
     before, latest = evidence()
     if application:
         for value in (before, latest):
-            value["format"] = "pgag-isolated-purge-drill-v6"
-    before["schema_version"] = 18
+            value["format"] = "pgag-isolated-purge-drill-v7"
+    before["schema_version"] = schema
     validate = drill.validate_application_evidence if application else drill.validate_evidence
-    with pytest.raises(drill.DrillError, match="schema19 required"):
+    with pytest.raises(drill.DrillError, match="schema20 required"):
         validate(before, latest)
 
 

@@ -44,6 +44,7 @@ TABLES = {
     "memory.working_snapshot": "checkpoint_id",
     "memory_ops.graph_generation": "id",
     "memory_ops.graph_generation_state": "tenant_id",
+    "memory_ops.age_projection": "tenant_id",
 }
 MAX_ROWS = 1000000
 MAX_BYTES = 256 * 1024 * 1024
@@ -59,7 +60,7 @@ class StateFingerprint(HistoryContract):
 
 class ProcessingRecoverySnapshot(HistoryContract):
     format: Literal["pgag-processing-recovery-v1"] = "pgag-processing-recovery-v1"
-    schema_version: Literal[19] = 19
+    schema_version: Literal[20] = 20
     tenant_id: UUID
     lineage: Digest
     access_epoch: Epoch
@@ -130,7 +131,7 @@ def fingerprint_tables(
 def capture_processing_connection(
     conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID,
 ) -> ProcessingRecoverySnapshot:
-    if SCHEMA_VERSION != 19:
+    if SCHEMA_VERSION != 20:
         raise AdminError("schema_version_mismatch")
     conn.execute("SET LOCAL timezone='UTC'")
     tenant = conn.execute(

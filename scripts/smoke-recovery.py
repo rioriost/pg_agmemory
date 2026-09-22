@@ -1,9 +1,9 @@
-"""Disposable schema-19 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-20 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
 three synthetic call outcomes, unknown-call fences and consumed quota.
-The v6 fixture includes retained and purged processing/working/graph/effect derivatives.
+The v7 fixture includes retained and purged processing/working/graph/effect derivatives.
 """
 
 import asyncio
@@ -171,7 +171,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 20)], "schema19 required")
+        require(versions == [{"version": n} for n in range(1, 21)], "schema20 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -186,7 +186,7 @@ def snapshot(url):
                       "model_call", "source_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         result = {
-            "format": "pgag-isolated-purge-drill-v6",
+            "format": "pgag-isolated-purge-drill-v7",
             "schema_version": SCHEMA_VERSION,
             "database": database[0],
             "tenant": rows(conn, "SELECT id,access_epoch,deletion_epoch FROM memory.tenant"),
@@ -262,7 +262,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 19, "schema19 required")
+        require(evidence["schema_version"] == 20, "schema20 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -335,9 +335,9 @@ def validate_evidence(before, latest):
 
 
 def validate_application_evidence(before, latest):
-    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v6",
-            "application evidence v6 required")
-    require(before["schema_version"] == latest["schema_version"] == 19, "schema19 required")
+    require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v7",
+            "application evidence v7 required")
+    require(before["schema_version"] == latest["schema_version"] == 20, "schema20 required")
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
             "changed identities or anchors unsupported")
@@ -989,8 +989,8 @@ async def recover(admin_url, directory):
         "status": "passed",
         "m2_qualified": False,
         "m3_qualified": False,
-        "scope": "schema19-derived-memory-operational-state-application-v6",
-        "schema_version": 19,
+        "scope": "schema20-derived-memory-operational-state-application-v7",
+        "schema_version": 20,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
@@ -1053,7 +1053,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 19, "this bounded smoke is pinned to schema19")
+    require(SCHEMA_VERSION == 20, "this bounded smoke is pinned to schema20")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

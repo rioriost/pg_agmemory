@@ -153,7 +153,7 @@ def timestamp(value):
 
 def check_payload(raw, provisioned, generation_id, pending, nodes, edge):
     payload = json.loads(raw)
-    require(payload["format"] == FORMAT and payload["schema_version"] == 19,
+    require(payload["format"] == FORMAT and payload["schema_version"] == 20,
             "artifact_format")
     require(
         payload["tenant_id"] == provisioned["tenant_id"]
@@ -298,7 +298,7 @@ async def smoke(directory):
     require(private_bytes(first) == raw and private_bytes(rebuilt_path) == raw,
             "stale_check_changed_artifact")
     return {
-        "status": "passed", "artifact_format": FORMAT, "schema_version": 19,
+        "status": "passed", "artifact_format": FORMAT, "schema_version": 20,
         "node_count": 3, "edge_revision_count": 2, "bytes": len(raw),
         "exact_rebuild": True, "source_mutation_refused": True, "serving_enabled": False,
     }

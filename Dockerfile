@@ -18,12 +18,15 @@ RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra pr
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 COPY examples/ ./examples/
-COPY Dockerfile.age ./
+COPY Dockerfile.age Dockerfile.age-patched ./
+COPY patches/age/ ./patches/age/
 COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/resource-benchmark.py scripts/resource-probes.py \
     scripts/smoke-age.py scripts/test-age-containers.sh \
     scripts/age_graph_candidate.py scripts/test-age-graph-containers.sh \
-    scripts/smoke-graph-artifact.py ./scripts/
+    scripts/smoke-graph-artifact.py scripts/smoke-age-patched.py \
+    scripts/test-age-patched-containers.sh scripts/smoke-age-enabled.py \
+    scripts/test-age-enabled-containers.sh ./scripts/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
 
 FROM build AS runtime-deps

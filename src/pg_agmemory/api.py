@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pg_agmemory import __version__
+from pg_agmemory.age_graph import AgeGraph, validate_age_runtime
 from pg_agmemory.capture import Captures
 from pg_agmemory.checkpoints import Checkpoints
 from pg_agmemory.compaction import Working
@@ -260,13 +261,15 @@ def create_app(
         if not isinstance(key, rsa.RSAPublicKey) or key.key_size < 2048:
             raise RuntimeError("JWT verification requires an RSA public key of at least 2048 bits")
         await validate_runtime(configured.database_url)
+        if configured.graph_backend == "age":
+            await validate_age_runtime(configured.database_url)
         yield
 
     app = FastAPI(
         title="pg_agmemory",
         version=__version__,
         lifespan=lifespan,
-        description="Development M2 vertical slice. Not a production-qualified memory service.",
+        description="Development memory service with optional pinned AGE. Not production qualified.",
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
             status: {"model": ErrorBody} for status in (400, 401, 403, 404, 409, 413, 422, 503)
@@ -304,6 +307,8 @@ def create_app(
                 try:
                     async with asyncio.timeout(READINESS_TIMEOUT_SECONDS):
                         await validate_runtime(configured.database_url)
+                        if configured.graph_backend == "age":
+                            await validate_age_runtime(configured.database_url)
                 except RuntimeValidationError as exc:
                     failure = exc.code
                 except (psycopg.Error, TimeoutError) as exc:
@@ -322,7 +327,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m3-graph-generation-metadata",
+            "stage": "m3-age-vle",
             "features": [
                 "observe",
                 "episode_query",
@@ -349,7 +354,14 @@ def create_app(
                 "background_embeddings",
                 "working_compaction",
             ],
-            "graph_backend": "sql",
+            "graph_backend": configured.graph_backend,
+            "age_projection_administration": {
+                "transport": "admin-cli",
+                "command": "age-projection",
+                "operations": ["get", "publish", "disable"],
+                "required_age_commit": "72707aab7ce982bf13cad3d102bd869dab07d64b",
+                "fallback": "explicit_sql_configuration_only",
+            },
             "graph_generation_administration": {
                 "transport": "admin-cli",
                 "command": "graph-generation",
@@ -744,6 +756,8 @@ def create_app(
 
     @app.post("/v1/graph/expand", response_model=GraphResult)
     async def expand_graph(data: ExpandGraph, request: Request) -> Any:
+        if configured.graph_backend == "age":
+            return await AgeGraph(service(request)).expand(data)
         return await SqlGraph(service(request)).expand(data)
 
     @app.post("/v1/jobs", status_code=202, response_model=JobReceipt)

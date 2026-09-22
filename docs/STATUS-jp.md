@@ -2,6 +2,50 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## v0.1.2 / schema 20: 修正済みnative AGEの任意有効化
+
+ローカルAGE修正**`72707aab7ce982bf13cad3d102bd869dab07d64b`**を、
+upstream `fa109ef1ddb1c7a945a1c340195d650000e49713`への再現可能なpatchとして取り込みました。
+archive・patch・適用後Git tree・build stamp・preload診断のhashを
+`patches/age/source.json`へ固定し、imageにもApache LICENSE/NOTICEを保持します。
+旧`Dockerfile.age`、native probeの失敗記録、不採用の固定hop候補は変更しません。
+他のupstream buildすべてへの保証ではありません。
+
+`PGAG_GRAPH_BACKEND=age`は起動時に修正imageのidentityを照合し、本来のVLE adapterを選択します。
+host側の固定hop BFSではなくnative 1/2-hop探索で候補を取得します。
+強制RLS label policyでcanonical scope/evidence/predicate/時刻を探索前に適用し、
+canonical join、cycle除外、決定論的順序をpath上限の前に適用します。
+label/assertion詳細は引き続きcanonical SQLから返します。
+応答は`backend:"age"`、`projection_watermark`は世代UUIDです。
+
+管理者`age-projection publish`は現行recorded head、正確なartifact、両revisionを再確認し、
+所有する物理graphの作成/ANALYZEとtenant registry切替を原子的に行います。
+置換は旧registryのgraphだけを同じtransactionで削除し、失敗ならgraph/registryともrollbackします。
+disable後もreceiptを保持し、runtimeにはgraph/registryの書込み・所有権を与えません。
+任意imageのpreload診断は固定設定のbooleanだけを返す限定関数で、
+`pg_read_all_settings`付与やdata RLSの迂回ではありません。
+通常migrationはAGEもその診断definerも導入しません。
+
+修正imageは元のnative/direct 19確認と固定template 40確認をすべて通過しました。
+統合development runnerは**185件**と、非root製品imageの**実HTTP** smokeが成功しました。
+native 2-hop/SQL一致、disable拒否、同一head再構築、stale拒否、明示SQL再起動切替を確認します。
+初回の統合runはmigration前のAGE不在を仮定したfixtureで失敗しましたが、
+修正後は既設AGEを変更しないことと通常profileで新規導入しないことの両方を確認します。
+失敗証跡も保持します。
+
+鮮度はACL/deletion epochと要求で可視なcanonical topologyの完全性を毎回上限付きで確認します。
+**定数時間ではなく**、全量S graphの費用認定や自動再生成でもありません。
+source probeの安全性結果を安価な本番readとは解釈しません。
+投影の欠落/無効は409、可視追加/revisionやepoch変更はstale 409、
+未認定runtime buildは503で、SQLへ黙ってfallbackしません。SQL配置はAGEに依存しません。
+
+現行復元snapshotは運用24 tableです。enabled registryがあれば`recovery-apply`は書込み前に拒否し、
+disabled metadataも厳密照合だけで取込みません。
+[backup前にdisableする運用](operations/README-jp.md#patched-age-enabled-profile)を使ってください。
+認証済みschema 19旧世代は不変・可読・staleのまま保持し、
+旧pendingをabandonするか新schema 20子世代を作り、旧artifactの改名で代用しません。
+M3の資源/復元範囲と固定build配布全体の認定は別gateです。
+
 ## v0.1.1 / schema 19: 再構築可能なcanonical graph artifact
 
 `graph-artifact export/check`で管理者専用・上限付きのcanonical graph data構築を追加しました。

@@ -618,5 +618,5 @@ def test_schema9_migration_preserves_existing_memberships(env, database):
             "WHERE oid='memory_ops.scope_access_event'::regclass"
         ).fetchone() == (True, True)
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["schema_version"] == 19 and caps["stage"] == "m3-graph-generation-metadata"
+    assert caps["schema_version"] == 20 and caps["stage"] == "m3-age-vle"
     assert caps["scope_access_administration"]["transport"] == "admin-cli"

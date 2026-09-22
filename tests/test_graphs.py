@@ -1108,7 +1108,7 @@ def test_schema_five_preserves_v4_effect_history_keys_and_replay(env, database):
     assert detail.json()["action_fingerprint"] == legacy["fingerprint"]
     assert [event["status"] for event in detail.json()["history"]] == ["planned", "dispatched"]
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 19 and capabilities["graph_backend"] == "sql"
+    assert capabilities["schema_version"] == 20 and capabilities["graph_backend"] == "sql"
     assert capabilities["limits"]["graph_paths"] == 100
     schema = env.client.get("/openapi.json").json()
     for path, verb, status in [

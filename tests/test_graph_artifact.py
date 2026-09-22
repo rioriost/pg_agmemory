@@ -205,7 +205,7 @@ def test_deterministic_canonical_history_is_complete_and_read_only(env, artifact
         "profile_digest", "input_digest", "input_snapshot", "nodes", "edge_revisions",
         "signature", "serving_enabled", "permission_filter_required",
     }
-    assert body["format"] == "pgag-graph-artifact-v1" and body["schema_version"] == 19
+    assert body["format"] == "pgag-graph-artifact-v1" and body["schema_version"] == 20
     assert body["profile_digest"] == reserved.building.profile_digest
     assert body["input_digest"] == reserved.building.input_digest
     assert body["input_snapshot"] == reserved.building.input_snapshot.model_dump(mode="json")
@@ -433,6 +433,28 @@ def test_runtime_credentials_are_denied_for_both_operations(env, artifact_dir):
         with pytest.raises(AdminError, match="^admin_role_required$"):
             run(env, reserved, target, operation, url=env.settings.database_url)
     assert not (artifact_dir / "runtime.json").exists()
+    assert database_rows(env) == before
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("schema", [18, 19])
+@pytest.mark.parametrize("field", ["schema_version", "input_snapshot"])
+def test_previous_schema_artifact_requires_matching_version(env, artifact_dir, schema, field):
+    reserved = begin(env)
+    path = artifact_dir / "old-schema.json"
+    run(env, reserved, path)
+    body = json.loads(path.read_bytes())
+    if field == "input_snapshot":
+        body[field]["schema_version"] = schema
+    else:
+        body[field] = schema
+    with pytest.raises(ValidationError):
+        artifact.GraphArtifact.model_validate_json(json.dumps(body))
+    body["signature"] = signed_body(env, body)
+    path.write_bytes(canonical_bytes(body) + b"\n")
+    before = database_rows(env)
+    with pytest.raises(AdminError, match="^graph_artifact_invalid$"):
+        run(env, reserved, path, "check")
     assert database_rows(env) == before
 
 

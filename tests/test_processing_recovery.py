@@ -32,7 +32,8 @@ def snapshot():
 
 
 @pytest.mark.parametrize("case", [
-    "missing", "duplicate", "reordered", "unknown", "schema", "previous_schema", "authority",
+    "missing", "duplicate", "reordered", "unknown", "schema", "previous_schema",
+    "schema18", "authority",
 ])
 def test_snapshot_requires_complete_versioned_state(case):
     value = snapshot().model_dump(mode="json")
@@ -47,6 +48,8 @@ def test_snapshot_requires_complete_versioned_state(case):
     elif case == "schema":
         value["schema_version"] = 13
     elif case == "previous_schema":
+        value["schema_version"] = 19
+    elif case == "schema18":
         value["schema_version"] = 18
     else:
         value["restore_authorized"] = True
@@ -82,9 +85,10 @@ def test_other_tenant_or_recreated_lineage_is_not_comparable(field, value):
 def test_capture_is_read_only_deterministic_private_and_admin_only(env):
     env.observe(content="PRIVATE_SOURCE_MUST_NOT_APPEAR")
     before = capture_processing_state(env.admin_url, env.tenants[0])
-    assert before.schema_version == 19 and len(before.tables) == 23
-    assert {row.table: row.rows for row in before.tables[-2:]} == {
+    assert before.schema_version == 20 and len(before.tables) == 24
+    assert {row.table: row.rows for row in before.tables[-3:]} == {
         "memory_ops.graph_generation": 0, "memory_ops.graph_generation_state": 0,
+        "memory_ops.age_projection": 0,
     }
     assert capture_processing_state(env.admin_url, env.tenants[0]) == before
     assert compare_processing_state(before, before).processing_state_matches

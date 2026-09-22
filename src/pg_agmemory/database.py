@@ -29,6 +29,7 @@ MIGRATIONS = (
     "017_tombstone_visibility_set.sql",
     "018_tombstone_read_set.sql",
     "019_graph_generation.sql",
+    "020_age_projection.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"
@@ -42,14 +43,23 @@ class Settings:
     jwt_public_key: str
     jwt_issuer: str
     jwt_audience: str
+    graph_backend: Literal["sql", "age"] = "sql"
+
+    def __post_init__(self) -> None:
+        if self.graph_backend not in ("sql", "age"):
+            raise ValueError("PGAG_GRAPH_BACKEND must be sql or age")
 
     @classmethod
     def from_env(cls) -> "Settings":
+        graph_backend = os.environ.get("PGAG_GRAPH_BACKEND", "sql")
+        if graph_backend not in ("sql", "age"):
+            raise ValueError("PGAG_GRAPH_BACKEND must be sql or age")
         return cls(
             database_url=os.environ["PGAG_DATABASE_URL"],
             jwt_public_key=os.environ["PGAG_JWT_PUBLIC_KEY"],
             jwt_issuer=os.environ["PGAG_JWT_ISSUER"],
             jwt_audience=os.environ["PGAG_JWT_AUDIENCE"],
+            graph_backend="age" if graph_backend == "age" else "sql",
         )
 
 

@@ -8,7 +8,133 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## Patched AGE enabled profile
+
+Current development is **service 0.1.2 / API v1 / schema 20**, stage `m3-age-vle`.
+The default remains `PGAG_GRAPH_BACKEND=sql`; `age` is an explicit, bounded profile,
+not a silent fallback or a general production/HA certification. The unchanged
+historical `Dockerfile.age` is **not** the enabled image.
+
+```bash
+docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
+docker build --target runtime -t pg-agmemory:0.1.2 .
+```
+
+The database image pins PostgreSQL18.6/pgvector0.8.6, public upstream
+`fa109ef1ddb1c7a945a1c340195d650000e49713` and the exact local source changes through
+`72707aab7ce982bf13cad3d102bd869dab07d64b`. Build checks verify the archive, patch
+and resulting Git tree; untracked sibling-repository files are not copied.
+`patches/age/source.json` records all hashes. The image's default command preloads
+AGE. Do not replace that command with one omitting `shared_preload_libraries=age`.
+Use protected persistent storage and a restricted network; never expose the
+administrator DSN to API/worker containers.
+
+Stop/drain API/workers and automatic restart, retain a matching backup, then
+migrate with matching components. Migration 020 adds only a tenant-scoped serving
+registry; it does **not** install AGE. On the patched database, separately run
+`CREATE EXTENSION age` as administrator. Provision the ordinary non-owner,
+NOSUPERUSER/NOBYPASSRLS runtime login as usual. Do not grant graph ownership,
+`pg_read_all_settings`, or arbitrary SQL/DDL privileges to make startup pass.
+
+Startup/readiness checks require the patched build stamp and the optional
+extension's `ag_catalog.pgag_age_preloaded()` diagnostic. That no-argument
+SECURITY DEFINER function has fixed `search_path=pg_catalog` and exposes only a
+boolean for a fixed server setting. It reads no memory tables, accepts no setting
+name and cannot authorize graph data. The runtime verifies its signature,
+extension membership/owner and fixed configuration. The separate immutable
+build stamp is meaningful only with a trusted pinned image, not a cryptographic
+attestation against a malicious database administrator.
+
+First prepare a **current schema-20 recorded head** using
+`graph-generation get/begin`, `graph-artifact export/check`, then
+`graph-generation record` with the exact file digest. Profile/receipt creation
+alone still does not serve a graph. Publish the verified file with both CAS
+revisions (0 means no projection registry yet; a first recorded head normally
+has generation revision 2):
+
+```bash
+pg-agmemory age-projection get --tenant-id "$TENANT_ID"
+pg-agmemory age-projection publish --tenant-id "$TENANT_ID" \
+  --generation-id "$GENERATION_ID" --expected-generation-revision 2 \
+  --expected-revision 0 --file /private/path/graph.json
+
+# Set only on the API deployment that will use the published projections.
+export PGAG_GRAPH_BACKEND=age
+pg-agmemory serve
+```
+
+Publishing atomically builds/analyzes `pgag_age_<generation UUID without hyphens>`,
+installs canonical read policies on both base and child labels with FORCE RLS,
+and sets the enabled registry. It grants runtime SELECT/USAGE only. Replacing a
+projection removes only the prior registry-bound graph in the same transaction;
+errors roll back both DDL and registry. Republishing the same current head
+rebuilds that graph atomically. Do not create or rename these schemas manually.
+After a lost/unknown response, inspect `get`; do not blindly repeat a mutation.
+
+Native `/v1/graph/expand` returns `backend:"age"` and a generation UUID
+`projection_watermark`, not a clock or a constant-time mutation counter.
+Real bounded VLE performs one-/two-hop exploration, then canonical joins enforce
+exact IDs/revisions/directions, current permissions, evidence, temporal bounds,
+cycle exclusion and deterministic budget order. Limits remain 16 seeds, two
+hops and 100 paths; artifacts/projections are bounded to 10,000 nodes and 40,000
+edge revisions. No arbitrary caller Cypher is accepted.
+
+Every request checks the image, immutable-label protections, captured ACL/deletion
+epochs and request-visible canonical topology completeness. Eligible additions
+or revisions require a new generation; an old projection does not silently omit
+newly visible paths. ACL expiry remains evaluated at statement time even when
+the access epoch does not change. These bounded checks can be expensive: no
+constant-time freshness or full-S graph latency claim is made. Statement timeout
+is five seconds, not an end-to-end latency guarantee.
+
+Missing/disabled projections return `graph_projection_unavailable` (409);
+stale topology/epochs return `graph_projection_stale` (409); a runtime build
+mismatch returns `graph_backend_unqualified` (503). No automatic SQL fallback,
+rebuild, widening of visibility, or model call occurs.
+
+```bash
+pg-agmemory age-projection disable --tenant-id "$TENANT_ID" --expected-revision 1
+# Explicit rollback selection, applied by restarting the API with this setting:
+export PGAG_GRAPH_BACKEND=sql
+```
+
+Disable preserves the registry receipt and graph for controlled rebuild. SQL
+selection works without AGE and never drops data. Changing an environment
+variable does not reconfigure an already running API; drain/restart it.
+
+Schema-19 generation receipts stay authenticated, immutable and readable but
+stale after upgrade. Old pending builds can be abandoned; old recorded heads can
+parent new schema-20 generations. Old graph files cannot be relabeled to schema20.
+Take new schema-20 backups and regenerate current recovery artifacts.
+
+**Recovery is deliberately bounded.** Operational snapshots now cover 24 tables.
+`recovery-apply` refuses any enabled projection registry before writes, even if
+its metadata matches. Disabled registry metadata is compared exactly, not
+imported. For the supported operational-replay workflow, disable projections
+**before taking the baseline backup**, keep that disabled registry unchanged
+while collecting later recovery evidence, and only rebuild/publish after core
+recovery and current-source checks. Independently disabling an old restored
+registry does not manufacture equality with a different latest receipt.
+Active-projection DR, missing/newer generation import and automatic restart are
+not supported. Exported artifact retention/deletion remains operator-owned.
+
+The reproducible isolated qualification is:
+
+```bash
+bash scripts/test-age-patched-containers.sh container
+bash scripts/test-age-enabled-containers.sh container
+```
+
+The first retains the old probe's expected results against the fixed source.
+The second uses fresh independent test/HTTP clusters, the actual non-root runtime,
+the real admin publisher and native HTTP selection. Docker/native CI runs the
+same helpers on amd64 and arm64. Logs/images/digests distinguish this profile
+from the old failed rc0 and rejected fixed-hop experiment.
+
 ## Graph generation metadata (schema 19)
+
+This section records the schema-19 introduction. For current schema-20 versions,
+artifact regeneration and AGE selection, follow the enabled profile above.
 
 Development components are **service 0.1.1 / API v1 / schema 19**, capability
 stage `m3-graph-generation-metadata`. The published M2 tag remains v0.1.0/schema18.
@@ -81,7 +207,8 @@ Actual graph-data rebuild/reconciliation and production HA/PITR remain separate.
 ## Canonical graph artifacts
 
 `pg-agmemory graph-artifact` is an admin-only, backend-neutral build-input
-export/check command for **service 0.1.1 / API v1 / schema 19**. It makes no schema
+export/check command introduced at **service 0.1.1 / API v1 / schema 19**.
+Current service 0.1.2 emits schema-20 files; the same commands/bounds apply. It makes no schema
 change and does not build/activate an AGE graph. Supply `PGAG_ADMIN_DATABASE_URL`
 privately. An existing pending generation or current recorded head is required;
 unknown, abandoned and superseded generations are refused.
@@ -110,7 +237,7 @@ For unknown/lost output delivery, use `get` and `check`; do not overwrite or
 silently replace files or generation identities.
 
 Format `pgag-graph-artifact-v1` contains the tenant/generation/parent/profile
-binding, schema-19 input fingerprints, canonical nodes and edge-revision history.
+binding, matching-schema input fingerprints, canonical nodes and edge-revision history.
 Nodes carry ID, scope and creation time. Edges carry ID/revision, scope,
 source/target, allowlisted predicate and half-open valid/system intervals.
 They are ordered uniquely with same-scope endpoints. No label, source payload,

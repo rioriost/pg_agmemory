@@ -39,6 +39,7 @@ CONTENT_TABLES = dict.fromkeys((
     "memory.assertion_lexical", "memory.episode_embedding", "memory.assertion_embedding",
     "memory.assertion_derivation", "memory.working_event", "memory.working_snapshot",
     "memory_ops.graph_generation", "memory_ops.graph_generation_state",
+    "memory_ops.age_projection",
 ), "")
 REPLACE_TABLES = (
     "memory_ops.deletion_target", "memory_ops.deletion_request", "memory_ops.object_tombstone",
@@ -269,6 +270,11 @@ def apply_bundle(
                 conn.execute(sql.SQL("LOCK TABLE {} IN SHARE ROW EXCLUSIVE MODE").format(
                     sql.SQL(",").join(sql.Identifier(*t.split(".")) for t in tables),
                 ))
+                if conn.execute(
+                    "SELECT 1 FROM memory_ops.age_projection WHERE tenant_id=%s AND enabled",
+                    (tenant,),
+                ).fetchone():
+                    raise AdminError("recovery_active_graph_projection")
                 current = capture_processing_connection(conn, tenant)
                 secret = secret_for(conn, tenant)
                 if not hmac.compare_digest(bundle.signature, signature(bundle, secret)):

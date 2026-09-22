@@ -1,0 +1,62 @@
+# Bounded qualification of an explicit local patch, separate from historical rc0.
+FROM docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a AS age-build
+
+WORKDIR /opt/age-build
+COPY patches/age/72707aa-rls-vle.patch patches/age/source.json patches/age/build-stamp.sql ./
+COPY patches/age/preload-diagnostic.sql ./
+RUN set -eu; \
+    version="$(dpkg-query -W -f='${Version}' postgresql-18)"; \
+    apt-get update; \
+    apt-get install --no-install-recommends -y \
+        ca-certificates curl git build-essential flex bison \
+        "postgresql-server-dev-18=$version"; \
+    test "$(pg_config --version)" = 'PostgreSQL 18.6 (Debian 18.6-1.pgdg12+2)'; \
+    echo '89b711f33234a304476d3164b578f8da700a527a6668782823c694695efc1653  72707aa-rls-vle.patch' \
+        | sha256sum --check --strict; \
+    echo '5e4a0a7de069592a277af3388cff394d1fef06104ca56acd14a5d9ba9544da8f  source.json' \
+        | sha256sum --check --strict; \
+    echo '74e7696316dcb361e6f2c9286e4a945bc7c7a086c3d62a03462709799b0b4a6b  build-stamp.sql' \
+        | sha256sum --check --strict; \
+    echo '55a03bcf23ab675fdc4512a08c7969c59a4b61f74ea33dec3ab0a9ff334c2538  preload-diagnostic.sql' \
+        | sha256sum --check --strict; \
+    curl --fail --location --retry 3 --silent --show-error \
+        https://codeload.github.com/apache/age/tar.gz/fa109ef1ddb1c7a945a1c340195d650000e49713 \
+        --output age.tar.gz; \
+    echo '8ec03c92b420e7c45db5cde853bdd5a9964a4d5bc620923afa23ec380823f285  age.tar.gz' \
+        | sha256sum --check --strict; \
+    mkdir source; \
+    tar --extract --gzip --file age.tar.gz --strip-components=1 --directory source; \
+    cd source; \
+    git init --quiet; \
+    git -c core.autocrlf=false add --force --all; \
+    test "$(git write-tree)" = '71794faf2c65a5e76cd0d8b497a876560164c883'; \
+    git apply --check ../72707aa-rls-vle.patch; \
+    git apply --index --whitespace=nowarn ../72707aa-rls-vle.patch; \
+    test "$(git write-tree)" = 'fcbf49d7e945f82e1e8d43bf2284ae882b188b94'; \
+    git ls-tree -r -z fcbf49d7e945f82e1e8d43bf2284ae882b188b94 > ../source-tree; \
+    echo '0ea5a00a8c73ee85d561a6c3627815f43c3f15f32608da923c07a855ad206c91  ../source-tree' \
+        | sha256sum --check --strict; \
+    make -j2; \
+    cat ../build-stamp.sql >> age--1.8.0.sql; \
+    cat ../preload-diagnostic.sql >> age--1.8.0.sql; \
+    make install DESTDIR=/opt/age-install; \
+    install -D -m 644 ../source.json \
+        /opt/age-install/usr/share/postgresql/18/extension/pgag_age_build.json; \
+    install -D -m 644 LICENSE /opt/age-install/usr/share/doc/pgag-age-patched/LICENSE; \
+    install -D -m 644 NOTICE /opt/age-install/usr/share/doc/pgag-age-patched/NOTICE
+
+FROM docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+LABEL org.opencontainers.image.title="pg_agmemory patched Apache AGE qualification (not production)" \
+      org.opencontainers.image.source="https://github.com/apache/age" \
+      org.pg-agmemory.age.upstream-base="fa109ef1ddb1c7a945a1c340195d650000e49713" \
+      org.pg-agmemory.age.commit="72707aab7ce982bf13cad3d102bd869dab07d64b" \
+      org.pg-agmemory.age.source-tree="fcbf49d7e945f82e1e8d43bf2284ae882b188b94" \
+      org.pg-agmemory.age.archive-sha256="8ec03c92b420e7c45db5cde853bdd5a9964a4d5bc620923afa23ec380823f285" \
+      org.pg-agmemory.age.patch-sha256="89b711f33234a304476d3164b578f8da700a527a6668782823c694695efc1653" \
+      org.pg-agmemory.age.source-tree-sha256="0ea5a00a8c73ee85d561a6c3627815f43c3f15f32608da923c07a855ad206c91" \
+      org.pg-agmemory.age.manifest-sha256="5e4a0a7de069592a277af3388cff394d1fef06104ca56acd14a5d9ba9544da8f" \
+      org.pg-agmemory.age.distribution-stamp-sha256="74e7696316dcb361e6f2c9286e4a945bc7c7a086c3d62a03462709799b0b4a6b" \
+      org.pg-agmemory.age.preload-diagnostic-sha256="55a03bcf23ab675fdc4512a08c7969c59a4b61f74ea33dec3ab0a9ff334c2538"
+COPY --from=age-build /opt/age-install/ /
+# Runtime remains a non-owner without superuser or BYPASSRLS privileges.
+CMD ["postgres", "-c", "shared_preload_libraries=age"]

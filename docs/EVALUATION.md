@@ -2,7 +2,33 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Current development: v0.1.1 / schema 19 canonical graph artifacts
+## Current development: v0.1.2 / schema 20 patched AGE
+
+AGE source `72707aab7ce982bf13cad3d102bd869dab07d64b` is separately pinned and
+passes the unchanged 19 native/direct plus 40 fixed-template probe checks.
+The enabled-profile runner passes 185 integrated cases and a real non-root HTTP
+smoke with native two-hop/SQL equality, atomic publication/rebuild, disable/stale
+refusal and explicit SQL selection. It tests the image-installed preload helper,
+not a fixture substitute. The exact source/build identity and initial failed
+combined-fixture run are preserved separately from the old rc0 failure.
+
+This is correctness/packaging evidence for optional AGE, not a full-S graph cost
+benchmark. Native freshness scans are bounded but not constant-time. Current
+recovery uses 24 operational fingerprints and refuses enabled registry tenants
+before writes; active projection DR and automatic reactivation remain excluded.
+Frozen amd64/arm64 core and AGE jobs are separate distribution gates.
+See [scope and deployment](operations/README.md#patched-age-enabled-profile).
+
+## v0.1.1 / schema 19 canonical graph artifacts
+
+Exact `dc56d006edd0618dec05ec9cc6df0d3f6623f3c4` passed native run
+[35692443083](https://github.com/rioriost/pg_agmemory/actions/runs/35692443083)
+on amd64 and arm64: 2,132 passes/31 optional skips each, the artifact production
+smoke and exact v6 restore. Pytest took 1035.55/1401.69 seconds. Both artifact
+reports show 3 nodes/2 revisions, 2,713 bytes, exact rebuild and source mutation
+refusal. Both recovery reports retain 35 payload fingerprints, 20 denials,
+11 call reservations and the unchanged stale/non-serving generation receipt.
+This historical run does not qualify the later schema-20 AGE increment.
 
 The backend-neutral artifact exporter/checker adds 36 focused contracts
 (6 offline and 30 database cases). A non-root production-image smoke exercises
