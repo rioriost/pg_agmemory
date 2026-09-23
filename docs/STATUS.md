@@ -2,6 +2,35 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## M4 development: explicit external-source snapshots
+
+The next bounded increment adds a Native SDK adapter for a versioned historical
+source-result envelope: source system/dataset/subject, semantic revision, query
+ID, observation time, ACL version and exact-text digest. Source-query success
+and Memory capture success/failure/unknown outcome are separate. There is no
+source query, automatic lease renewal, model call, migration or new dependency.
+Snapshots always require a fresh source query before use as current values.
+
+The deployment profile uses dedicated source scopes, existing expiring reader
+grants and explicit administrator revocation, plus Native provenance/forget for
+source deletion. These controls are server-enforced, not just adapter checks.
+Envelope metadata is caller-asserted, not a signed authorization receipt.
+See the [source contract](operations/README.md#m4-external-source-snapshot-pilot).
+Upstream authentication/notification coordination, dataset-wide deletion target
+discovery and automatic shared-business retention remain unqualified and off;
+this is not full M4 completion or a postgresem connector.
+
+Local Linux arm64 passes **290 combined source/scope-access/SDK/LangGraph
+cases**, Ruff and strict source/usage typing. The six source integrations include
+real HTTP capture and a simulated lost post-commit response with explicit stable
+retry, configured lease expiry, administrator CAS revocation/renewal, independent
+task-memory access, and original/derived/checkpoint purge. Tests preserve
+tombstone identities and distinguish invalidated checkpoint heads from hidden
+objects; neither old nor new idempotency keys resurrect the purged source event.
+Separate core/hook/sdk/providers/LangGraph installation checks pass without a new
+dependency. These are focused local results, not upstream connector or full
+native distribution qualification of this newer increment.
+
 ## M4 development: explicit LangGraph pilot
 
 The first integration increment is an optional LangGraph 1.2.11 safe-boundary
@@ -28,6 +57,14 @@ propagation. Ruff and strict source/usage typing pass. Separate isolated-extra
 builds cover core/hook/sdk/providers/LangGraph; the non-root production image
 remains free of LangGraph, LangChain and LangSmith. These are focused local
 results, not full dual-native M4 distribution or external-source qualification.
+
+Frozen **`365b1488a035c1f8227c5a656c4e5bad1bf5549a`**
+[run35813098865](https://github.com/rioriost/pg_agmemory/actions/runs/35813098865)
+subsequently passed all four native jobs. Core amd64/arm64 each passed
+**2,446 cases / 113 optional skips**, packaged smokes and isolated recovery;
+patched AGE each passed 84 profile cases and 207 enabled cases, plus original
+traversal checks and canonical-only recovery. This qualifies distribution of the
+LangGraph increment, not the newer external-source code above.
 
 ## M3 v0.2.0 release contract
 

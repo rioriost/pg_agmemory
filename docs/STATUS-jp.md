@@ -2,6 +2,34 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## M4開発: 明示external-source snapshot
+
+次の限定incrementは、version付き過去source結果envelope用のNative SDK adapterです。
+source system/dataset/subject、semantic revision、query ID、
+観測時刻、ACL version、正確な本文digestを記録します。
+source照会成功とMemory保存の成功/失敗/結果不明を分離し、
+source照会、自動lease更新、model呼出し、migration、依存追加を行いません。
+現行値として使う前には常にsource再照会を要求します。
+
+deployment profileはsource専用scope、既存の期限付きreader grantと管理者の明示revoke、
+source削除用のNative provenance/forgetを使います。
+これらはadapterだけでなくserver側で強制する制御です。
+envelope metadataはcallerの申告で、署名付き認可receiptではありません。
+[source契約](operations/README-jp.md#m4-external-source-snapshot-pilot)を参照してください。
+上流認証/通知coordinator、dataset全体の削除target発見、
+shared business dataの自動長期保存は未認定・無効のままです。
+M4全体の完了やpostgresem connectorではありません。
+
+local Linux arm64で**source/scope-access/SDK/LangGraph合計290件**、
+Ruff、source/usageのstrict型確認が成功しました。
+source統合6件には実HTTP保存、commit後の応答喪失と明示的な同一入力retry、
+設定leaseの満了、管理者CASによる失効/再付与、独立task memory、
+元source/派生assertion/checkpointのpurgeを含みます。
+tombstoneのidentityを保持し、失効済みcheckpoint headと不可視objectを区別します。
+旧keyでも新keyでもpurge済みsource eventを復活させません。
+依存追加なしでcore/hook/sdk/providers/LangGraphの個別install確認も成功しました。
+限定local結果であり、上流connectorやこの新incrementのnative全配布認定ではありません。
+
 ## M4開発: 明示LangGraph pilot
 
 最初の連携incrementは、Native SDK上の任意LangGraph 1.2.11 safe-boundary bridgeです。
@@ -26,6 +54,13 @@ Ruffとsource/usageのstrict型確認も成功しています。
 core/hook/sdk/providers/LangGraphを個別installで確認し、
 non-root本番imageにはLangGraph/LangChain/LangSmithを含めません。
 限定したlocal結果であり、M4全体の両native配布や外部source認定ではありません。
+
+その後、固定**`365b1488a035c1f8227c5a656c4e5bad1bf5549a`**の
+[run35813098865](https://github.com/rioriost/pg_agmemory/actions/runs/35813098865)が
+全4 native jobで成功しました。
+core amd64/arm64は各**2,446件/optional 113 skips**、製品smoke、隔離復元、
+修正AGEは各profile84件とenabled207件、元の探索確認、canonical-only復元が成功しました。
+これはLangGraph incrementの配布認定であり、上記の新external-source実装の結果ではありません。
 
 ## M3 v0.2.0 release契約
 

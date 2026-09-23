@@ -7,6 +7,104 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M4 external-source snapshot pilot
+
+任意Python SDK adapter `pg_agmemory.external_source`は、
+**明示的な過去の観測**を保存し、現行business値とは扱いません。
+既存`[sdk]` extraだけを使い、新endpoint、migration、source provider、
+credential store、background collector、自動model呼出しは追加しません。
+source接続はcaller所有で、postgresem connectorの実装ではありません。
+
+信頼する`(source_system, dataset_id, source_subject)`ごとに専用scopeを使います。
+`SourceBinding`は起動設定であり、promptやsource結果から選びません。
+`ExternalSnapshot`にはsemantic revision、query ID、観測時刻、ACL version、
+除去処理済みsnapshot本文とSHA-256 digestを記録します。本文の空白も有意です。
+version付き`pgag-external-snapshot-v1` envelopeを通常episodeのcanonical JSONとして保存し、
+既存のprovenance・削除・論理backup契約を適用します。
+evidence quoteは復元した非escape本文ではなく、escapeを含む保存JSONに完全一致させます。
+新しいserver側metadata indexではありません。
+digestはpayload不整合の検出であり、**署名・sourceの権威・grant・上流ACL確認の証明ではありません**。
+callerは秘密を含まないopaque identifierを渡し、
+capture前に同意確認とsecret/PII除去を行ってください。
+
+全snapshotは`requires_refresh:true`、authorityは`external_observation`です。
+Memory読取leaseが有効でも、現行値の回答には現行source principalで再照会します。
+`read_snapshot`はNative認可後に宣言envelope/binding/digestを確認しますが、
+上流の権限を独立確認しません。
+Native episode explanationにはscope fieldがなく、
+envelopeの自己申告scopeは実際の配置scopeの証明になりません。
+token自体を専用scopeへ制限してください。
+通常Native recallでは、履歴JSONを非信頼episode本文として返します。
+
+### Source認可leaseと失効
+
+限定deployment profileは、client側checkだけでなく、
+**serverが強制する期限付きscope membership**を再利用します。
+信頼するcoordinatorがsource認可を検証し、Memory principalのread-only grantに対応付けます。
+capture/削除には別の限定maintenance identityを使い、
+そのtokenや管理DSNをserving reader/plannerへ渡しません。
+専用scope内の全grantを監査し、readerの無期限・過大grantを除去してください。
+無関係なtask memoryをsource専用scopeに混在させません。
+
+```bash
+# 特権coordinator専用。ID/epoch/expiryは信頼する設定から渡す。
+pg-agmemory scope-access get \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID"
+pg-agmemory scope-access set \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --permissions read \
+  --expires-at "$SOURCE_LEASE_END"
+```
+
+`SOURCE_LEASE_END`は検証済みsource認可の期限とoperatorの短いfreshness上限を超えないようにします。
+adapterは全体TTLの強制、source ACL versionの認証、grant更新、source通知受信を行いません。
+coordinatorはcache/未確認ACLからleaseを延長してはいけません。
+source拒否・失効・認可を確認できない場合は、現行`--expected-access-epoch`で
+`scope-access revoke`を明示実行します。
+CAS競合は再取得・source再確認を要求し、無条件retryしません。
+coordinator自体が停止した場合は既存lease満了で読取を停止します。
+これはstalenessの上限を設ける方式で、**上流との即時同期ではありません**。
+直接Native SDK/MCP/hookと派生memoryも同じRLS grantを使います。
+失効後、既に渡したcontextはhost側で破棄してください。
+
+source削除には、保存成功receiptの`memory_id`をmaintenance identityのNative `forget`へ渡します。
+削除receiptで完了を確認するまで、正本の通知とtarget mappingを保持します。
+不明targetの推測、receipt/closure上限の迂回、timeout時の完了扱いをしてはいけません。
+assertion/checkpointは元episodeをprovenance参照して削除を伝播させます。
+参照なしのtext copyには関連付けによる保護はありません。
+scope revokeは全memoryを隠しますが、purgeしたとは扱いません。
+復元後は現行source認可の再確認と必要な削除の照合前にsource scopeを再開しないでください。
+
+### Capture結果とretry
+
+`ExternalSourceMemory.capture`は成功済み・caller確認済みのsource観測を受け取り、
+business queryを実行・認定しません。
+`source_query_status:"succeeded"`と、
+`memory_capture_status:"stored"` / `"failed"` / `"outcome_unknown"`を分離します。
+Native保存receiptがあるのは`stored`だけです。
+その他はSDKの安全なerror metadataを含み、Memory成功でもbusiness query失敗でもありません。
+不正なlocal契約はnetwork I/O前に例外を返し、無関係な例外は握り潰しません。
+自動retry/extraction/embeddingは行いません。
+
+明示retry/照合のために正確なsnapshot、consent reference、idempotency keyを保持します。
+source event IDはsource system・dataset・subject・query IDに固定し、
+同じquery IDでsnapshotを変えれば競合します。
+本当に新しい観測には新query IDを使いますが、結果不明captureの迂回に使ってはいけません。
+digest/ACL versionはpurge済みsourceの再公開許可ではありません。
+capture停止時もsource照会結果は返せますが、Memory結果を未完/失敗として明示します。
+通常task memoryはsource systemの稼働に依存しません。
+
+[`examples/external_source_memory.py`](../../examples/external_source_memory.py)は
+明示同意した合成fixtureとNative SDKだけを使用します。
+file記載の信頼する`PGAG_*` binding、永続保持したquery/time/ACL/key入力、
+`PGAG_SYNTHETIC_CONSENT=yes`を設定し、
+`uv run --frozen --extra sdk python examples/external_source_memory.py`で実行します。
+未保存の結果は明示表示して非zero終了し、retryや本文/token出力は行いません。
+信頼する上流認可/通知coordinatorの接続・認定までは、
+shared business dataの自動長期保存を**無効**に保ちます。
+provider固有同期、dataset全体のtarget発見、即時失効保証、
+M4全体の認定をこの限定snapshot adapterが提供するわけではありません。
+
 ## M4 LangGraph safe-boundary pilot
 
 開発branchに任意の**LangGraph 1.2.11**連携を追加します。

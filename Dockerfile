@@ -29,7 +29,7 @@ COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/test-age-enabled-containers.sh scripts/smoke-age-recovery.py \
     scripts/test-age-recovery-containers.sh scripts/graph-resource-benchmark.py \
     scripts/measure-graph-resources.sh ./scripts/
-CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py tests/typing/langgraph_usage.py && pytest"]
+CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py tests/typing/langgraph_usage.py tests/typing/external_source_usage.py && pytest"]
 
 FROM build AS runtime-deps
 RUN uv sync --frozen --no-dev --no-editable --extra mcp --extra hook --extra sdk --extra providers \

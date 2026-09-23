@@ -8,6 +8,112 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M4 external-source snapshot pilot
+
+The optional Python SDK adapter `pg_agmemory.external_source` stores **explicit,
+historical observations**, not current business values. It needs only the
+existing `[sdk]` extra; there is no new service endpoint, migration, source
+provider, credential store, background collector or automatic model call.
+The source integration is caller-owned and is not a postgresem connector.
+
+Use one dedicated scope for a trusted `(source_system, dataset_id,
+source_subject)` binding. `SourceBinding` is startup configuration, never
+selected by a prompt or source result. `ExternalSnapshot` records semantic
+revision, query ID, observation time, ACL version, sanitized snapshot text and
+its SHA-256 digest. Text whitespace is significant. The versioned
+`pgag-external-snapshot-v1` envelope is stored as canonical JSON in an ordinary
+episode, so existing provenance, deletion and logical-backup rules apply.
+Evidence quotes must match that stored JSON, including escaping, rather than a
+reconstructed unescaped text value. This is not a new server-side metadata index.
+The digest detects inconsistent
+payloads; it is **not** a signature, proof of source authority, grant, or proof
+that an upstream ACL check happened. Callers must supply opaque, non-secret
+identifiers and perform consent checks and secret/PII removal before capture.
+
+Every snapshot has `requires_refresh:true` and authority `external_observation`.
+A current answer requires a fresh source query under the current source
+principal, even while a Memory read lease is valid. `read_snapshot` validates
+the declared envelope/binding/digest after Native authorization, not an
+independent upstream permission check. Native episode explanation has no
+scope field; self-described envelope scope is not proof of its physical scope.
+Restrict the token itself to the dedicated scope. Ordinary Native recall
+continues to return the historical JSON as untrusted episode content.
+
+### Source authorization leases and revocation
+
+The bounded deployment profile reuses **server-enforced, expiring scope
+membership**, not a client-only check. A trusted coordinator validates source
+authorization and maps it to a read-only Memory principal grant. Use a separate,
+restricted maintenance identity for capture/deletion; never give that identity's
+token or the administrator DSN to the serving reader or planner. Audit every
+grant in this dedicated scope and remove permanent/broader reader grants.
+Do not mix unrelated task memory into a source-bound scope.
+
+```bash
+# Privileged coordinator only; all IDs/epoch/expiry come from trusted configuration.
+pg-agmemory scope-access get \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID"
+pg-agmemory scope-access set \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --permissions read \
+  --expires-at "$SOURCE_LEASE_END"
+```
+
+Choose `SOURCE_LEASE_END` no later than the verified source authorization's
+expiry and the operator's short freshness bound. This adapter does not enforce
+a global TTL, authenticate source ACL versions, renew grants, or accept source
+notifications. The coordinator must not renew from cached/unverified ACL data.
+On source denial, revocation or inability to confirm authorization, explicitly
+`scope-access revoke` with the current `--expected-access-epoch`. CAS conflicts
+require a fresh inspection/source check, not an unconditional retry.
+If the coordinator itself is unavailable, access ends at the existing lease's
+expiry. This is bounded staleness, **not immediate upstream synchronization**.
+Direct Native SDK/MCP/hook reads and dependent memories use the same RLS grants.
+Already-delivered context must still be discarded by the host after revocation.
+
+Source deletion uses a recorded successful capture's `memory_id` with Native
+`forget` under the maintenance identity. Keep the authoritative notification and
+target mapping until the deletion receipt confirms completion. Do not guess
+missing targets, bypass receipt/closure limits, or report completion on timeout.
+Native provenance links must reference that original episode so deletion reaches
+assertions and checkpoints; copied text with no provenance is not protected by
+association. A scope revocation hides all its memories without pretending it
+purged them. Do not reactivate restored source scopes until the coordinator has
+revalidated current source authority and reconciled required deletions.
+
+### Capture outcomes and retries
+
+`ExternalSourceMemory.capture` accepts an already-successful, caller-validated
+source observation; it does not execute or certify the business query.
+It returns `source_query_status:"succeeded"` separately from
+`memory_capture_status:"stored"`, `"failed"` or `"outcome_unknown"`.
+Only `stored` contains a Native observation receipt. Other outcomes include the
+SDK's redacted error metadata and are not memory success or a business-query
+failure. Invalid local contracts raise before network I/O; unrelated exceptions
+are not swallowed. There are no automatic retries, extraction or embeddings.
+
+Retain the exact snapshot, consent reference and idempotency key for an explicit
+retry/reconciliation. The source event identity binds source system, dataset,
+subject and query ID; changing a snapshot while reusing that query ID conflicts.
+Use a new query ID for a genuinely new observation, not to bypass an unknown
+capture outcome. A digest/ACL version is not permission to republish a purged
+source. If capture is down, the business result can still be returned as a source
+result, with its memory outcome explicitly pending/failed; ordinary task memory
+does not depend on source-system availability.
+
+[`examples/external_source_memory.py`](../../examples/external_source_memory.py)
+uses only an explicitly approved synthetic fixture and the Native SDK.
+Set its documented trusted `PGAG_*` bindings, persisted query/time/ACL/key inputs
+and `PGAG_SYNTHETIC_CONSENT=yes`, then run
+`uv run --frozen --extra sdk python examples/external_source_memory.py`.
+It reports non-stored capture outcomes explicitly and exits nonzero without
+retrying or printing snapshot text or tokens.
+Automatic long-term retention of shared business data remains **disabled** until
+a trusted upstream authorization/notification coordinator is connected and
+qualified. Provider-specific synchronization, dataset-wide target discovery,
+immediate revocation guarantees and full M4 qualification are not supplied by
+this bounded snapshot adapter.
+
 ## M4 LangGraph safe-boundary pilot
 
 The development branch adds an optional **LangGraph 1.2.11** integration, not a

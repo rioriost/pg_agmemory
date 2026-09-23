@@ -11,6 +11,10 @@
 明示capture/recallと型付きcheckpoint/restoreを接続します。
 汎用LangGraph checkpointerではなく、副作用を実行せず、M4完了も主張しません。
 [pilot契約](docs/operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
+続く[外部source snapshot pilot](docs/operations/README-jp.md#m4-external-source-snapshot-pilot)では、
+履歴provenance envelopeと保存の部分結果を追加し、
+client側checkだけでなく専用scope leaseとNative削除を使います。
+上流coordinator接続とshared business dataの自動長期保存は無効のままです。
 以下の公開済みM3 releaseは変更しません。
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20

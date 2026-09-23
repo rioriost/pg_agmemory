@@ -34,13 +34,23 @@ if profile == "core":
     else:
         raise AssertionError("SDK imported without its HTTP dependency")
     try:
+        importlib.import_module("pg_agmemory.external_source")
+    except ImportError as exc:
+        assert str(exc) == "Python SDK requires the pg-agmemory[sdk] extra"
+    else:
+        raise AssertionError("External source adapter imported without the SDK dependency")
+    try:
         importlib.import_module("pg_agmemory.providers")
     except ImportError as exc:
         assert str(exc) == "Inference providers require the pg-agmemory[providers] extra"
     else:
         raise AssertionError("Provider module imported without its HTTP dependency")
 else:
+    from pg_agmemory.external_source import ExternalSourceMemory, snapshot_digest
     from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
+
+    assert callable(ExternalSourceMemory)
+    assert len(snapshot_digest("synthetic optional-install check")) == 64
 
     async def probe():
         try:

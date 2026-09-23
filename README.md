@@ -10,6 +10,10 @@ and service are `pg_agmemory`. Run the commands below from that local checkout.
 for explicit capture, recall and typed checkpoint/restore. It is not a general
 LangGraph checkpointer, does not execute side effects, and is not M4 completion.
 See the [pilot contract](docs/operations/README.md#m4-langgraph-safe-boundary-pilot).
+The next [external-source snapshot pilot](docs/operations/README.md#m4-external-source-snapshot-pilot)
+adds historical provenance envelopes and explicit partial capture outcomes,
+using dedicated scope leases and Native deletion rather than client-only access
+checks. Upstream coordination and automatic shared-business retention remain off.
 The published M3 release below remains unchanged.
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20
