@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.7 / M5 operational foundations、2026-09-23
+- 文書版: 1.8 / M5 replicationと所有HA、2026-09-24
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: M5開発を0.4.0.dev1/APIv1/schema21として開始し、read-only運用snapshotとpauseを維持するSQL-only物理PITR labを実装中。本番認定は未完。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
+- 状態: M5開発を0.4.0.dev1/APIv1/schema21で継続し、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。本番認定には同期待機cancelやpartitionの扱いも残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -856,6 +856,14 @@ named pointへ復元し、pause/read-onlyを維持します。過去状態の一
 `restore_authorized:false`、`production_qualified:false`を維持し、
 drill時間をRTO保証としません。物理fileは非公開の運用copyであり、
 application indexや公開release assetではありません。
+
+`replication-status`は非原子的・非承認のlocal複製観測を追加します。
+続く所有HA labでは、実writerの`remote_apply`、短いreplay pause待機、
+fencing前の拒否、primary破棄後の明示昇格、確定fixture/effect状態の保持を確認します。
+昇格先はdegradedで、一般servingは承認しません。同一hostの静止状態での実験なので、
+partition、rejoin、独立storage、同期COMMIT timeout/cancelを認定しません。
+PostgreSQLは同期待機cancel時にlocal commit後でもwarningを返す場合があり、
+本番の損失上限を宣言する前にapplication全体の結果分類を別途認定する必要があります。
 
 本番gateには引き続きhost/storage failure domain、負荷、RPO/RTO目標の宣言、
 HA/partition fencingとfailover drill、alert/metrics保持、

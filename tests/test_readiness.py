@@ -300,6 +300,14 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
         "restore_authorized": False,
         "production_qualified": False,
     }
+    assert caps["replication_status_administration"] == {
+        "command": "replication-status",
+        "transport": "admin-cli",
+        "read_only": True,
+        "statistics_atomic": False,
+        "promotion_authorized": False,
+        "production_qualified": False,
+    }
     assert caps["source_access_administration"]["dataset_administration"] == {
         "command": "source-dataset",
         "operations": ["get", "revoke"],

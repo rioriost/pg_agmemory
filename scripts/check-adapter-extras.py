@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory.api import create_app
 from pg_agmemory.operations_status import OperationsStatusRequest, operations_status
+from pg_agmemory.replication_status import replication_status
 from pg_agmemory.source_access import MAX_SOURCE_LEASE_SECONDS, SourceIdentity, SourceNotice
 from pg_agmemory.source_dataset import MAX_DATASET_TARGETS, SourceDatasetRequest
 from pg_agmemory.source_notice import (
@@ -31,6 +32,7 @@ assert MAX_DATASET_TARGETS == 100 and callable(SourceDatasetRequest)
 assert MAX_SIGNED_NOTICE_BYTES == 16384 and callable(verify_source_notice)
 assert MAX_SOURCE_PURGE_ROOTS == 100 and callable(SourcePurgeRequest)
 assert OperationsStatusRequest(tenant_id=UUID(int=1)) and callable(operations_status)
+assert callable(replication_status)
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
@@ -67,6 +69,12 @@ status_help = subprocess.run(
 )
 assert status_help.returncode == 0 and "tenant-id" in status_help.stdout
 assert "Traceback" not in status_help.stderr
+replication_help = subprocess.run(
+    ["pg-agmemory", "replication-status", "--help"],
+    capture_output=True, text=True, timeout=15,
+)
+assert replication_help.returncode == 0 and "replication" in replication_help.stdout
+assert "Traceback" not in replication_help.stderr
 signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 notice_profile = SourceNoticeProfile(
     issuer="synthetic-source", audience="synthetic-notices", subject="synthetic-coordinator",

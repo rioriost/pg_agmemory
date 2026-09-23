@@ -2,7 +2,38 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: operational foundations
+## M5 development: replication observations and owned HA
+
+The next **0.4.0.dev1 / API v1 / schema 21** increment adds `replication-status`
+and a two-node SQL-only HA rehearsal. The observer distinguishes physical and
+logical senders, preserves role-specific WAL fields, exposes no connection
+details and grants no promotion/fencing authority. Live statistics are explicitly
+non-atomic, and the observer's settings do not prove every writer's policy.
+
+The owned lab requires explicit opt-in, verifies `remote_apply` on actual
+restricted writer connections, observes a short `SyncRep` wait, rejects
+promotion before fencing, and destroys/verifies absence of its primary before
+promoting the exact standby. Three acknowledged writes, source cursor,
+checkpoint and dispatched effect state survive timeline **1→2**. A single
+post-promotion Native probe runs without starting an API or worker; the node
+remains explicitly degraded and `serving_authorized:false`.
+
+Packaged-image Linux checks pass **349 cases / one optional logical-slot skip**,
+Ruff and strict typing for 52 source files. The logical configuration separately
+passes all **80 replication-observer cases** without skips; counts overlap,
+not additive. All five isolated install profiles pass. The actual HA run passes
+with a **92.30 ms** controlled pause and a **16-second** observed total excluding
+image construction; these are not latency or RTO guarantees. Its production,
+failure-domain, network-partition and commit-timeout qualification flags remain false.
+Native CI now runs independent core, AGE, PITR and HA pairs on amd64/arm64.
+
+PostgreSQL synchronous wait cancellation can warn after local commit. This
+lab rejects notices and never cancels/retries its writer; production API/worker/
+administrator-wide cancellation, lost-acknowledgement and partition/rejoin
+semantics remain an explicit M5 gate. No general HA or RPO-zero claim is made.
+See [the HA contract](operations/README.md#explicitly-fenced-owned-ha-rehearsal).
+
+## Previous M5 foundation: operator snapshots and paused PITR
 
 Current development is **0.4.0.dev1 / API v1 / schema 21**, stage
 `m5-production-candidate`, not a production-qualified release. This first
@@ -27,8 +58,14 @@ It proves the post-backup target write survives, the later write is absent,
 latest source history differs, and the real standby snapshot remains
 non-authorizing. Its observed 17-second total excludes runtime-image construction
 and is not an RTO claim. Private physical files are retained locally, not published.
-Native core/AGE and the new parallel amd64/arm64 PITR jobs must qualify the
-committed checkpoint separately.
+The first native run exposed a test-image COPY omission masked by local source
+mounts: PITR/AGE passed, but both core jobs stopped during test collection.
+The isolated packaging fix **`0a5cd95`** passed image-only collection and contracts;
+[run35876011552](https://github.com/rioriost/pg_agmemory/actions/runs/35876011552)
+then passed all six jobs. Core each passed **3,304 cases / 116 optional skips**
+and packaged/restore smokes; AGE each passed 84 profile and 214 enabled cases
+plus canonical-only recovery; both native PITR labs passed. These qualify that
+foundation, not the later HA increment.
 See [M5 operations](operations/README.md#m5-operational-foundations).
 
 ## M4 integration pilot: v0.3.0

@@ -22,6 +22,7 @@ COPY Dockerfile.age Dockerfile.age-patched ./
 COPY patches/age/ ./patches/age/
 COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/smoke-pitr.py scripts/test-pitr-containers.sh \
+    scripts/smoke-ha.py scripts/test-ha-containers.sh \
     scripts/resource-benchmark.py scripts/resource-probes.py \
     scripts/smoke-age.py scripts/test-age-containers.sh \
     scripts/age_graph_candidate.py scripts/test-age-graph-containers.sh \

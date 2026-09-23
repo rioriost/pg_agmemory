@@ -12,8 +12,9 @@ databases or real user histories.
 
 Development identity: **0.4.0.dev1 / API v1 / schema 21**, stage
 `m5-production-candidate`. This is not M5 completion or production qualification.
-The first increment supplies read-only operator evidence and a SQL-only physical
-PITR lab. Published v0.3.0/M4 evidence retains its original identity.
+The foundations supply read-only operator/replication evidence, a SQL-only
+physical PITR lab and an explicitly fenced owned HA rehearsal.
+Published v0.3.0/M4 evidence retains its original identity.
 
 ### Read-only operations status
 
@@ -63,6 +64,33 @@ make the weaker observation explicit. `restore_authorized`,
 `source_authorization_verified` and `production_qualified` are always false.
 This on-demand report does not persist a metrics history or replace `/readyz`;
 automated collection/retention and production alert policies remain separate work.
+
+### Read-only replication observations
+
+```bash
+pg-agmemory replication-status
+```
+
+This administrator-only, **cluster-global** command uses
+`PGAG_ADMIN_DATABASE_URL` and the same read-only connection guard as
+`operations-status`. It reports the local recovery role, observer-session
+`synchronous_commit`, whether synchronous standby names are configured, role-safe
+WAL positions, sender/receiver counts and slot counts. Logical senders are
+separated from physical standbys. It does not emit peer addresses, usernames,
+application/slot names or connection strings, and closes the connection before
+returning the report.
+
+Live PostgreSQL replication statistics are **not an atomic MVCC snapshot**.
+An observer setting does not verify every writer's policy, and a streaming
+sender does not prove leader fencing, quorum or a loss bound. Consequently,
+`statistics_atomic`, `writer_policy_verified`, `fencing_verified`,
+`promotion_authorized` and `production_qualified` remain false.
+No lag estimate, healthy/leader verdict or promotion recommendation is inferred.
+Warnings (`standby_replay_paused`, `standby_receiver_not_streaming`,
+`synchronous_standby_missing`, `session_commit_not_remote_apply`,
+`inactive_replication_slots`) still return exit 0; command failures remain
+explicit redacted errors. This command changes no replication configuration,
+slots, replay state or admission policy.
 
 ### Paused physical PITR lab
 
@@ -115,8 +143,67 @@ Backup, archive and restored server share a host/failure domain in this lab:
 mandatory. This does not establish production storage durability, RPO/RTO or
 backup-retention enforcement.
 
+### Explicitly fenced owned HA rehearsal
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/test-ha-containers.sh .review-artifacts/m5-ha-local \
+  --allow-owned-promotion container
+```
+
+The opt-in is mandatory **before resource creation**. It authorizes only the
+disposable standby created by this invocation, not a production promotion API.
+External database targets, unsafe/existing output paths and unowned candidates
+are refused. `PGAG_HA_RUNTIME_IMAGE` may select a matching caller-owned runtime;
+that image is preserved. The same pinned SQL-only PostgreSQL/pgvector image,
+private physical-copy rules and owned-resource cleanup apply as in the PITR lab.
+Neither lab qualifies physical AGE recovery.
+
+The harness creates a physical standby with separate administrator, Native
+writer and replication credentials, verifies the basebackup manifest and
+establishes a single physical streaming peer without replication slots.
+It configures the owned primary for `remote_apply` and checks the policy on the
+**actual restricted writer connections**, not merely the observer.
+Two ordinary writes and one controlled replay-pause write are acknowledged.
+During the sub-second pause it observes the writer's `SyncRep` wait and absence
+of acknowledgement, then resumes replay without canceling or retrying COMMIT.
+The replicas' acknowledged state is compared before the quiescent transition.
+
+An actual call to the promotion guard must first be refused while the original
+primary exists. Only after targeted primary destruction, unsuccessful inspection/
+execution of that exact primary, and a still-responsive container engine may
+the gate open. It rechecks the candidate's physical system identity, timeline
+and read-only recovery role before issuing `pg_promote`. Fencing is a live
+owned-harness fact, not an accepted JSON assertion or a `replication-status`
+recommendation.
+
+After timeline advancement, exact acknowledged content/processing fingerprints,
+source cursor and the dispatched tool-effect state must survive. No effect is
+executed or retried. One named Native service read/write probe is then allowed;
+no HTTP service, agent or worker daemon starts. The promoted node has **no new
+synchronous standby** and is explicitly degraded, so `serving_authorized` stays
+false. This is an isolated test transition, not a generally reusable automatic
+failover controller or a continued zero-loss deployment.
+
+The terminal `pgag-ha-drill-v1` report distinguishes measured facts from
+unmeasured nulls. Backup size is bounded to 512 MiB, readiness waits to 90 seconds,
+and promotion wait to 30 seconds. Phase timings are observations, not RTO.
+`production_qualified`, `host_failure_domain_independent`,
+`network_partition_qualified`, `commit_timeout_qualified`, `automatic_failover`,
+`automatic_service_start`, `serving_authorized` and `effect_reexecution` remain
+false. Physical copies/reference files remain private and are not release assets.
+
+**Synchronous wait cancellation is a separate production gate.** PostgreSQL
+18.6's [`SyncRepWaitForLSN`](https://github.com/postgres/postgres/blob/REL_18_6/src/backend/replication/syncrep.c)
+can stop waiting with a warning after the transaction has already committed
+locally. A timeout/cancellation therefore cannot be treated as proof of rollback
+or remote durability. This lab rejects commit notices and keeps its controlled
+pause below one second; it does not qualify application-wide timeout/cancel,
+network partition, lost-acknowledgement or rejoin semantics. Do not infer a
+production RPO-zero contract from `remote_apply` or from this passing drill.
+
 M5 still needs a declared production topology/load profile, independent media,
-HA and partition/failover drills, production monitoring/alert retention,
+production partition/failover and commit-outcome handling, monitoring/alert retention,
 embedding-space migration, upgrade rehearsal and verified backup expiration.
 The new v5 development graph recipe does not relabel the frozen M4 v4 timings;
 `examples/graph-resource-profile-m4-v4.json` preserves that historical recipe.

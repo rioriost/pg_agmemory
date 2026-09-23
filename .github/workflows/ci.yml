@@ -69,6 +69,37 @@ jobs:
         run: |
           mkdir -p .review-artifacts
           bash scripts/test-pitr-containers.sh .review-artifacts/pitr-lab docker
+  ha-lab:
+    name: HA lab Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          case "$(uname -m)" in
+            x86_64) actual=amd64 ;;
+            aarch64) actual=arm64 ;;
+            *) echo "Unsupported native architecture"; exit 1 ;;
+          esac
+          test "$actual" = "$EXPECTED_ARCH"
+      - name: Fence owned primary before explicit standby promotion
+        run: |
+          mkdir -p .review-artifacts
+          bash scripts/test-ha-containers.sh .review-artifacts/ha-lab --allow-owned-promotion docker
   patched-age:
     name: Patched AGE Linux ${{ matrix.arch }}
     strategy:

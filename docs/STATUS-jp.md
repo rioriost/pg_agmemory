@@ -2,7 +2,35 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 運用foundation
+## M5開発: 複製観測と所有HA
+
+次の**0.4.0.dev1 / API v1 / schema 21** incrementで`replication-status`と
+2-node SQL-only HA rehearsalを追加します。physical/logical senderを区別し、
+role別WAL fieldを扱いますが、接続情報や昇格/fencing権限は返しません。
+live統計は非原子的で、観測sessionの設定による全writer policyの保証もしません。
+
+所有labは明示opt-inを要求し、実制限付きwriterの`remote_apply`と短い`SyncRep`待機を観測します。
+fencing前の昇格を拒否し、primary破棄と不存在を確認してからそのstandbyだけを昇格します。
+確定書込み3件、source cursor、checkpoint、dispatched effectをtimeline **1→2**で保持します。
+API/workerを起動せず、昇格後のNative probe一つだけを実行し、
+degradedと`serving_authorized:false`を明示します。
+
+source mountなしのpackaged imageで**349件/optional logical-slot 1 skip**、
+Ruff、source52 filesのstrict型確認が成功しました。logical構成でも別途
+**複製観測80件**がskipなしで成功しています（重複があり、加算しません）。
+5種類の個別install profileも成功しました。
+実HA runは制御pause **92.30 ms**、image buildを含まない観測全体**16秒**で成功しましたが、
+latency/RTO保証ではありません。本番、独立failure domain、network partition、
+commit timeoutの認定flagはfalseです。
+native CIはamd64/arm64のcore・AGE・PITR・HAを独立した8 jobsで確認します。
+
+PostgreSQLの同期待機cancelは、local commit後にwarningとなる場合があります。
+このlabはnoticeを拒否し、writerをcancel/retryしません。
+本番API/worker/管理操作全体のcancel、応答喪失、partition/rejoinはM5の明示的な残gateです。
+汎用HAやRPOゼロは主張しません。
+[HA契約](operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)を参照してください。
+
+## 以前のM5 foundation: 運用snapshotとpaused PITR
 
 現行開発は**0.4.0.dev1 / API v1 / schema 21**、
 stageは`m5-production-candidate`です。本番認定releaseではありません。
@@ -26,8 +54,13 @@ backup後のtarget書込みが残り、後続書込みが存在せず、最新so
 実standbyの運用snapshotも非承認のままであることを確認しました。
 観測した全体17秒はruntime image buildを含まず、RTO保証ではありません。
 非公開の物理fileはlocalに保持し、公開しません。
-commit済みcheckpointについて、native core/AGEと新しい並列amd64/arm64 PITR jobの
-認定が別途必要です。
+最初のnative runでは、local source mountに隠れていたtest-imageのCOPY漏れを検出しました。
+PITR/AGEは成功しましたが、core両jobがtest収集時に停止しました。
+独立した修正**`0a5cd95`**でimage単独の収集/契約確認を行い、
+[run35876011552](https://github.com/rioriost/pg_agmemory/actions/runs/35876011552)の
+全6 jobが成功しました。coreは各**3,304件/optional 116 skips**と製品/復元smoke、
+AGEは各profile84件/enabled214件とcanonical-only復元、PITR両native labも成功しました。
+これは当該foundationの認定で、後続HA差分の認定ではありません。
 [M5運用](operations/README-jp.md#m5-operational-foundations)を参照してください。
 
 ## M4 integration pilot: v0.3.0

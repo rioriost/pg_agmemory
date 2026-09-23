@@ -96,6 +96,11 @@ def main() -> None:
 
         operations_status_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["replication-status"]:
+        from pg_agmemory.replication_status import main as replication_status_main
+
+        replication_status_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -121,6 +126,7 @@ def main() -> None:
             "graph-artifact",
             "age-projection",
             "operations-status",
+            "replication-status",
             "infer",
         ],
     )
@@ -172,6 +178,8 @@ def main() -> None:
         parser.error("age-projection must precede its arguments; use age-projection --help")
     elif args.command == "operations-status":
         parser.error("operations-status must precede its arguments; use operations-status --help")
+    elif args.command == "replication-status":
+        parser.error("replication-status must precede its arguments; use replication-status --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

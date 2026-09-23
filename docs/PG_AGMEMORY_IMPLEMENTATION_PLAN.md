@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.7 / M5 operational foundations, 2026-09-23
+- Document version: 1.8 / M5 replication and owned HA, 2026-09-24
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: M5 development is underway as 0.4.0.dev1/APIv1/schema21, beginning with read-only operational snapshots and a paused SQL-only physical PITR lab. Production qualification remains open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M5 development continues as 0.4.0.dev1/APIv1/schema21 with operational/replication observations, paused SQL-only PITR and an explicitly fenced owned HA rehearsal. Production qualification remains open, including synchronous-wait cancellation and partition handling. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -882,6 +882,16 @@ required. Operational snapshots are exercised on that real paused standby.
 Reports retain `restore_authorized:false` and `production_qualified:false`;
 elapsed drill time is not an RTO promise. All physical files are private
 operational copies, not application indexes or public release artifacts.
+
+`replication-status` adds non-atomic, non-authorizing local replication facts.
+The subsequent owned HA lab verifies the actual writer's `remote_apply` policy,
+a short replay-pause wait, rejection before fencing, explicit promotion after
+primary destruction, and preservation of acknowledged fixture/effect state.
+The promoted node is degraded and never generally serving-authorized.
+This quiescent same-host exercise does not qualify network partitions, rejoin,
+independent storage or synchronous COMMIT timeout/cancellation. PostgreSQL can
+warn after local commit when synchronous waiting is canceled; application-wide
+outcome handling must be qualified separately before any production loss bound.
 
 The production gate still requires declared host/storage failure domains,
 load and RPO/RTO objectives; HA/partition fencing and failover drills; alert and

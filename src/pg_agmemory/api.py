@@ -368,6 +368,14 @@ def create_app(
                 "restore_authorized": False,
                 "production_qualified": False,
             },
+            "replication_status_administration": {
+                "command": "replication-status",
+                "transport": "admin-cli",
+                "read_only": True,
+                "statistics_atomic": False,
+                "promotion_authorized": False,
+                "production_qualified": False,
+            },
             "age_projection_administration": {
                 "transport": "admin-cli",
                 "command": "age-projection",

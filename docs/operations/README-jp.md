@@ -11,7 +11,8 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 開発identityは**0.4.0.dev1 / API v1 / schema 21**、
 stageは`m5-production-candidate`です。M5完了や本番認定ではありません。
-最初のincrementでread-only運用証跡とSQL-only物理PITR labを追加します。
+foundationとしてread-only運用/複製証跡、SQL-only物理PITR lab、
+所有primaryのfencingを明示確認するHA rehearsalを追加します。
 公開済みv0.3.0/M4の証跡は元のidentityを維持します。
 
 ### Read-only operations status
@@ -58,6 +59,29 @@ standbyでは`in_recovery:true`、`primary_snapshot:false`を明示します。
 on-demand reportであり、metrics履歴保存や`/readyz`の代用ではありません。
 自動収集/保持、本番alert policyは別の作業です。
 
+### Read-only replication observations
+
+```bash
+pg-agmemory replication-status
+```
+
+管理者専用の**cluster全体**のcommandで、`PGAG_ADMIN_DATABASE_URL`と
+`operations-status`と同じread-only接続guardを使います。
+local recovery role、観測sessionの`synchronous_commit`、同期standby設定の有無、
+roleに応じたWAL位置、sender/receiver/slot件数を返し、logical senderとphysical standbyを分離します。
+peer address、user/application/slot名、接続文字列は返さず、応答前に接続を閉じます。
+
+PostgreSQLのlive複製統計は**原子的なMVCC snapshotではありません**。
+観測sessionの設定で全writerのpolicyを証明できず、
+streaming senderだけでもleader fencing、quorum、損失上限を証明できません。
+`statistics_atomic`、`writer_policy_verified`、`fencing_verified`、
+`promotion_authorized`、`production_qualified`はfalseを維持します。
+lag推定、healthy/leader判定、昇格推奨は作りません。
+固定warning（`standby_replay_paused`、`standby_receiver_not_streaming`、
+`synchronous_standby_missing`、`session_commit_not_remote_apply`、
+`inactive_replication_slots`）でもexit0、command障害は明示的な秘匿化errorです。
+複製設定、slot、replay状態、admission policyは変更しません。
+
 ### Paused physical PITR lab
 
 ```bash
@@ -100,7 +124,57 @@ backup/WALにはDB role、秘密鍵/state、合成payloadが含まれます。
 `production_qualified:false`、`host_failure_domain_independent:false`が必須です。
 本番storage耐久性、RPO/RTO、backup保持期限強制の認定ではありません。
 
-M5では引き続き、本番topology/load profile、独立media、HA/partition/failover drill、
+### Explicitly fenced owned HA rehearsal
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/test-ha-containers.sh .review-artifacts/m5-ha-local \
+  --allow-owned-promotion container
+```
+
+opt-inは**resource作成前**から必須です。この実行が作成する使い捨てstandbyだけを対象とし、
+本番昇格APIにはしません。外部DB、不正/既存出力path、所有外candidateは拒否します。
+`PGAG_HA_RUNTIME_IMAGE`で対応するcaller所有runtimeを指定でき、そのimageは削除しません。
+固定SQL-only PostgreSQL/pgvector image、非公開物理copy、所有resource cleanupはPITR labと同じです。
+どちらもAGE物理復元の認定ではありません。
+
+管理者、Native writer、replicationのcredentialを分離し、物理standbyとbasebackup manifestを検証して、
+slotを作らず一つのphysical streaming peerを確立します。
+所有primaryを`remote_apply`に設定し、観測sessionだけでなく
+**実際の制限付きwriter接続**でpolicyを確認します。
+通常書込み二つと、短いreplay pause中の書込み一つを確定します。
+1秒未満のpause中にwriterの`SyncRep`待機と未応答を観測してからresumeし、
+COMMITのcancel/retryはしません。静止状態の切替前に、確定状態がreplicaへ一致していることも確認します。
+
+元primaryが存在する間の実promotion guard呼出しは拒否しなければなりません。
+そのprimaryだけを破棄し、同一IDのinspect/execが失敗し、engine自体は応答することを確認して
+初めてgateを開きます。candidateの物理system identity、timeline、
+read-only recovery roleを再確認してから`pg_promote`を実行します。
+fencingはliveな所有harnessの事実であり、JSON宣言や`replication-status`の推奨で代用しません。
+
+timeline更新後、確定済みcontent/processing fingerprint、source cursor、
+dispatched tool-effect状態の完全一致が必要です。effectは実行/retryしません。
+その後に名前を固定したNative serviceのread/write probe一つだけを実行し、
+HTTP service、agent、worker daemonは起動しません。
+昇格先には**新しい同期standbyがない**ためdegradedを明示し、`serving_authorized`はfalseです。
+隔離testの切替であり、汎用自動failover controllerや継続的な損失ゼロ配置ではありません。
+
+終端`pgag-ha-drill-v1` reportは測定した事実と未測定nullを分けます。
+backupは512 MiB、readiness待機90秒、昇格待機30秒を上限とし、phase時間をRTOとは扱いません。
+`production_qualified`、`host_failure_domain_independent`、
+`network_partition_qualified`、`commit_timeout_qualified`、`automatic_failover`、
+`automatic_service_start`、`serving_authorized`、`effect_reexecution`はfalseを維持します。
+物理copy/reference fileは非公開で、release assetにはしません。
+
+**同期waitのcancelは別の本番gateです。**
+PostgreSQL 18.6の[`SyncRepWaitForLSN`](https://github.com/postgres/postgres/blob/REL_18_6/src/backend/replication/syncrep.c)は、
+local commit済みでもwarningで同期待機を中断する場合があります。
+timeout/cancelをrollbackやremote durabilityの証明にしてはいけません。
+このlabはcommit noticeがあれば認定を拒否し、制御するpauseを1秒未満に保ちます。
+application全体のtimeout/cancel、network partition、応答喪失、rejoinは未認定です。
+`remote_apply`やこのdrill成功から、本番RPOゼロを推論しないでください。
+
+M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
 新v5開発graph recipeへM4 v4測定を読み替えず、
 `examples/graph-resource-profile-m4-v4.json`に過去recipeを保存しています。
