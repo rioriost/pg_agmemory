@@ -86,6 +86,108 @@ lease満了でcoordinator停止時のstalenessを制限しますが、未配送�
 実際の上流認証/通知経路とtarget mappingを接続・認定するまで、
 shared business dataを自動長期保存しないでください。
 
+### Signed source-notice receiver
+
+`pg-agmemory source-notice apply`は上限付きの**local署名付きdelivery**を受け、
+DBへ接続する前に検証し、既存coordinatorへ通知を一度だけ渡します。
+coreのPyJWT/cryptographyとschema21を再利用します。
+HTTP listener、remote鍵発見、署名service、自動binding、自動配送/retryは追加しません。
+source固有の認証器が実際のACL判断とsequence永続化を行い、
+operator所有relayが署名済みfileを届ける必要があります。
+
+```bash
+pg-agmemory source-notice apply \
+  --profile "$TRUSTED_SOURCE_PROFILE" --delivery-file "$SIGNED_DELIVERY_FILE" \
+  --expected-access-epoch "$ACCESS_EPOCH"
+```
+
+管理DSNは`PGAG_ADMIN_DATABASE_URL`に置き、profileや通知へ含めません。
+`--profile`は最大32,768 bytesの通常JSON fileです。
+次の識別子と公開鍵placeholderは説明用なので、信頼する実設定に置換してください。
+
+```json
+{
+  "format": "pgag-source-notice-profile-v1",
+  "issuer": "https://source-issuer.example.invalid",
+  "audience": "pgag-source-notices",
+  "subject": "trusted-source-coordinator",
+  "key_id": "source-signing-v1",
+  "public_key": "<PEM-encoded RSA public key>",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "scope_id": "00000000-0000-0000-0000-000000000002",
+  "principal_id": "00000000-0000-0000-0000-000000000003",
+  "source": {
+    "source_system": "synthetic-source",
+    "dataset_id": "dataset",
+    "source_subject": "upstream-reader"
+  }
+}
+```
+
+RSAの**公開鍵**かつ2,048 bits以上だけを受け付けます。
+公開情報でもprofileの完全性を保護してください。書換えは対象readerを認可できる主体を変えます。
+Native APIのend-user credentialと分離したsigner/audienceを使用します。
+署名者のsubjectは信頼するcoordinator、`source_subject`は上流readerです。
+tenant/scope/principalとsource対応は信頼するprofileと既存bindingで固定し、
+token内のURLやrouting claimから選びません。profileごとに一つのkey IDを固定し、
+鍵のrotation/撤去は明示管理操作とします。JWKS fetchは行いません。
+直接の`source-access`は引き続き特権管理経路であり、全管理者への署名強制ではありません。
+
+deliveryは最大32,768 bytesのstrict JSONで、
+`{"format":"pgag-signed-source-notice-v1","token":"<compact JWT>"}`形式です。
+tokenは空白除去なしのASCII、最大16,384 bytesです。
+protected headerは`alg:"RS256"`、`typ:"pgag-source-notice+jwt"`、固定`kid`の**3項目のみ**、
+payloadは`iss`、`aud`、`sub`、`iat`、`exp`、`notice`の**6項目のみ**です。
+`notice`は既存`pgag-source-access-notice-v1`形式でprofileのsourceと一致する必要があります。
+`iss`/`aud`/`sub`は完全一致し、audience配列は受け付けません。
+`iat`/`exp`は整数NumericDateで、clock leewayなしの
+`iat <= now < exp`かつ`0 < exp - iat <= 300`秒を要求します。
+JSON重複key、非有限数、未知header/claim、remote鍵hint、秘密鍵、別algorithmは拒否します。
+SQL、業務本文、鍵取得URL、credentialをenvelopeへ含めないでください。
+
+信頼するproducerは既存PyJWTで検証済みclaimへ署名できます。
+秘密鍵の管理はpg_agmemoryの範囲外です。
+
+```python
+token = jwt.encode(
+    {
+        "iss": profile.issuer, "aud": profile.audience, "sub": profile.subject,
+        "iat": issued_at_integer, "exp": issued_at_integer + 60,
+        "notice": durable_notice.model_dump(mode="json"),
+    },
+    source_private_key,
+    algorithm="RS256",
+    headers={"typ": "pgag-source-notice+jwt", "kid": profile.key_id},
+)
+delivery = {"format": "pgag-signed-source-notice-v1", "token": token}
+```
+
+`durable_notice`はproducerで永続化した判断であり、配送処理がsequenceを生成するものではありません。
+秘密鍵はproducer側に保持し、配送には権限を制限した通常fileを使用します。
+receiverは秘密鍵fileを必要としません。source署名credentialをMemory DBへコピーしないでください。
+
+応答は`notification_signature_verified:true`と`source_authorization_verified:false`を分け、
+`access`に既存coordinator結果を返します。署名は固定signerの申告を認証するもので、
+pg_agmemoryが上流entitlement serviceへ独立照会した証拠ではありません。
+外側tokenの期限は受信時、通知の元の確認時刻/lease期限は適用時のDB時計で確認します。
+DB待機による時刻更新はしません。署名不正や対応不一致はDBへ届かず、
+既存leaseを失効させる操作でもありません。既存leaseは本来の期限で満了します。
+有効な型付き通知のsequence欠落/無効leaseは原子的に拒否し、結果JSONとexit1を返します。
+通知で明示されたdenyは通常成功です。
+
+配送障害でもproducerのsequenceと通知本文を永続保持します。
+**同じ通知**を新しい配送期限で再署名してもlease延長、sequence消費、
+緊急revokeの取消しは行いません。期限切れdeliveryは重複通知でも拒否します。
+新通知には実際の新source判断が必要で、retryのためにcursorを作り直してはいけません。
+commit結果不明は既存分類を維持し、stateを確認して有効な認証済みdeliveryだけを明示retryします。
+別receipt台帳や分散transactionは追加しません。
+DB監査は管理roleと正規化notice digestを記録し、署名鍵やJWTは永続保存しません。
+安全な配送、非公開delivery fileの保持、signer監査はoperator責務です。署名は暗号化ではありません。
+
+これはlocal署名/routing境界の実装です。実source connector、確実な上流配送、
+sourceに対応する全memoryの削除mapping、M4全体の受入れは未完で、
+shared business dataの自動長期保存は無効に保ちます。
+
 ### Registered dataset readers
 
 `pg-agmemory source-dataset`は、tenant/source-system/datasetが完全一致する

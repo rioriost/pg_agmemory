@@ -36,6 +36,11 @@ def main() -> None:
 
         source_access_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["source-notice"]:
+        from pg_agmemory.source_notice import main as source_notice_main
+
+        source_notice_main(sys.argv[2:])
+        return
     if sys.argv[1:2] == ["source-dataset"]:
         from pg_agmemory.source_dataset import main as source_dataset_main
 
@@ -94,6 +99,7 @@ def main() -> None:
             "recall-hook",
             "scope-access",
             "source-access",
+            "source-notice",
             "source-dataset",
             "scope-capture",
             "scope-synthesis",
@@ -128,6 +134,8 @@ def main() -> None:
         parser.error("scope-access must precede its arguments; use scope-access --help")
     elif args.command == "source-access":
         parser.error("source-access must precede its arguments; use source-access --help")
+    elif args.command == "source-notice":
+        parser.error("source-notice must precede its arguments; use source-notice --help")
     elif args.command == "source-dataset":
         parser.error("source-dataset must precede its arguments; use source-dataset --help")
     elif args.command == "scope-capture":

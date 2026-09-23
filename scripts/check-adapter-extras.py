@@ -4,16 +4,29 @@ import json
 import os
 import subprocess
 import sys
+import time
 from importlib.resources import files
+from uuid import UUID
+
+import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory.api import create_app
-from pg_agmemory.source_access import MAX_SOURCE_LEASE_SECONDS, SourceIdentity
+from pg_agmemory.source_access import MAX_SOURCE_LEASE_SECONDS, SourceIdentity, SourceNotice
 from pg_agmemory.source_dataset import MAX_DATASET_TARGETS, SourceDatasetRequest
+from pg_agmemory.source_notice import (
+    MAX_SIGNED_NOTICE_BYTES,
+    SignedSourceNoticeDelivery,
+    SourceNoticeProfile,
+    verify_source_notice,
+)
 
 profile = sys.argv[1]
 assert MAX_SOURCE_LEASE_SECONDS == 300
 assert SourceIdentity(source_system="synthetic", dataset_id="data", source_subject="reader")
 assert MAX_DATASET_TARGETS == 100 and callable(SourceDatasetRequest)
+assert MAX_SIGNED_NOTICE_BYTES == 16384 and callable(verify_source_notice)
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
@@ -32,6 +45,35 @@ dataset_help = subprocess.run(
 )
 assert dataset_help.returncode == 0 and "expected-target-digest" in dataset_help.stdout
 assert "Traceback" not in dataset_help.stderr
+notice_help = subprocess.run(
+    ["pg-agmemory", "source-notice", "--help"],
+    capture_output=True, text=True, timeout=15,
+)
+assert notice_help.returncode == 0 and "delivery-file" in notice_help.stdout
+assert "Traceback" not in notice_help.stderr
+signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+notice_profile = SourceNoticeProfile(
+    issuer="synthetic-source", audience="synthetic-notices", subject="synthetic-coordinator",
+    key_id="synthetic-key",
+    public_key=signing_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode(),
+    tenant_id=UUID(int=1), scope_id=UUID(int=2), principal_id=UUID(int=3),
+    source=SourceIdentity(source_system="synthetic", dataset_id="data", source_subject="reader"),
+)
+notice = SourceNotice(
+    source=notice_profile.source, sequence=1, decision="deny", reason="unavailable",
+)
+issued_at = int(time.time())
+signed_notice = SignedSourceNoticeDelivery(token=jwt.encode(
+    {
+        "iss": notice_profile.issuer, "aud": notice_profile.audience, "sub": notice_profile.subject,
+        "iat": issued_at, "exp": issued_at + 60, "notice": notice.model_dump(mode="json"),
+    },
+    signing_key, algorithm="RS256",
+    headers={"typ": "pgag-source-notice+jwt", "kid": notice_profile.key_id},
+))
+assert verify_source_notice(notice_profile, signed_notice) == notice
 if profile == "langgraph":
     from pg_agmemory.langgraph import LangGraphMemory, build_turn_graph
 

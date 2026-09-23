@@ -2,9 +2,36 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M4 development: durable source-access coordination
+## M4 development: signed source-notice ingress
 
-The current schema-preserving increment adds administrator-only
+The current increment adds a local `source-notice apply` receiver for bounded
+RS256 deliveries. One trusted profile pins the signer/public key, exact
+issuer/audience/subject and existing source/reader mapping. Closed signed
+headers/claims and a maximum 300-second envelope lifetime are verified before
+database access; existing source-access transactions enforce original lease
+expiry, sequence, replay and terminal deletion semantics. The result separates
+verified notification signatures from independently verified upstream
+authorization, which remains false. There is no remote key fetch, public
+webhook, implicit binding, new ledger/migration/dependency or automatic retry.
+See the [signed delivery contract](operations/README.md#signed-source-notice-receiver).
+The real source connector, reliable delivery and complete source-to-memory
+deletion mapping remain open; automatic shared-business retention stays off.
+
+Local Linux arm64 passes **621 combined signed-notice/source/dataset/scope/
+readiness/snapshot/recovery cases**, including 272 signed-notice cases.
+Original-byte signatures exercise duplicate JSON keys, wrong keys/algorithms,
+identity and claim restrictions, exact token/file/time bounds, and rejection
+before database/network access. Database/real-HTTP cases preserve replay,
+lease expiry, gap/deletion denial, response barriers and uncertain-commit
+classification. Ruff, strict typing for 48 source files and three usage
+contracts pass. All five isolated package profiles verify an actual signature
+using an ephemeral in-memory RSA key; core needs neither SDK nor HTTPX.
+These are bounded local results, not real upstream delivery or full M4
+qualification. Service/API/schema remain 0.3.0.dev1/v1/21.
+
+## Previous M4 increment: dataset and source-access coordination
+
+The schema-preserving dataset increment adds administrator-only
 `source-dataset get/revoke`: discover at most 100 registered readers and revoke
 their memberships atomically using both tenant-epoch and exact target-set CAS.
 Empty/oversized matches are explicit errors; no target list is silently
@@ -23,6 +50,14 @@ notice replay and explicit later reopening. Ruff, strict source/usage typing and
 isolated core/hook/sdk/providers/LangGraph installs pass; the core administrator
 command needs no SDK. These results do not claim full M4 or upstream integration
 acceptance. Service/API/schema remain 0.3.0.dev1/v1/21.
+
+Frozen **`20ce3cae7ac01ca365e70c9bae4deb3a93917f41`**
+[run35820790247](https://github.com/rioriost/pg_agmemory/actions/runs/35820790247)
+subsequently passed all four native jobs: core amd64/arm64 each passed
+**2,748 cases / 116 optional skips**, packaged smokes and ordinary recovery;
+patched AGE each passed 84 profile cases and 214 enabled cases, real HTTP and
+canonical-only recovery. This qualifies the dataset checkpoint, not the newer
+signed-notice receiver.
 
 Current development is **0.3.0.dev1 / API v1 / schema 21**, stage
 `m4-integration-pilot`, not a v0.3 release. A private administrator-managed

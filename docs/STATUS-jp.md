@@ -2,9 +2,33 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M4開発: durable source-access coordination
+## M4開発: signed source-notice ingress
 
-今回のschema維持incrementで、管理者用`source-dataset get/revoke`を追加します。
+今回は、上限付きRS256 delivery用のlocal `source-notice apply`を追加します。
+信頼する一つのprofileでsigner/公開鍵、issuer/audience/subjectの完全一致、
+既存source/reader対応を固定します。閉じたheader/claimと最大300秒の配送期限を
+DB接続前に確認し、既存source-access transactionで元lease期限、sequence、
+再送、terminal削除を強制します。署名の確認と上流認可の独立確認を区別し、
+後者はfalseのままです。remote鍵取得、公開webhook、自動binding、
+新台帳/migration/依存、自動retryは追加しません。
+[署名付き配送契約](operations/README-jp.md#signed-source-notice-receiver)を参照してください。
+実source connector、確実な配送、sourceに対応する全memoryの削除mappingは未完で、
+shared business dataの自動長期保存は無効です。
+
+local Linux arm64で**署名通知/source/dataset/scope/readiness/snapshot/復元の621件**が成功し、
+署名通知272件を含みます。元bytesへの署名でJSON重複key、異なる鍵/algorithm、
+identity/claim制限、token/file/時刻の正確な上限、
+DB/network接続前の拒否を確認しました。
+DB/実HTTPでは再送、lease期限、欠落/削除の拒否、応答barrier、
+commit結果不明の分類を維持しています。
+Ruff、source48 filesとusage3件のstrict型確認も成功しました。
+5種類の個別package profileすべてで、メモリ内の一時RSA鍵による実署名を検証し、
+coreはSDK/HTTPXに依存しません。限定local結果であり、
+実上流配送やM4全体の認定ではありません。service/API/schemaは0.3.0.dev1/v1/21のままです。
+
+## 以前のM4 increment: datasetとsource-access coordination
+
+schema維持のdataset incrementで、管理者用`source-dataset get/revoke`を追加しました。
 最大100件の登録済みreaderを発見し、tenant epochと正確な対象集合の両CASを照合して
 membershipを原子的に失効します。0件/上限超過は明示エラーで、対象を黙って切り捨てません。
 source通知cursor/履歴と無関係なgrantは変更しません。
@@ -20,6 +44,13 @@ commit結果不明、実HTTP拒否、source不変の署名付き復元、
 Ruff、source/usageのstrict型確認、core/hook/sdk/providers/LangGraphの個別installも成功し、
 core管理commandはSDKに依存しません。M4全体や上流連携の受入れではありません。
 service/API/schemaは0.3.0.dev1/v1/21のままです。
+
+その後、固定**`20ce3cae7ac01ca365e70c9bae4deb3a93917f41`**の
+[run35820790247](https://github.com/rioriost/pg_agmemory/actions/runs/35820790247)が
+全4 native jobで成功しました。core amd64/arm64は各**2,748件/optional 116 skips**、
+製品smokeと通常復元、修正AGEは各profile84件とenabled214件、
+実HTTPとcanonical-only復元が成功しました。
+これはdataset checkpointの認定であり、新しい署名付き通知receiverの結果ではありません。
 
 現行開発は**0.3.0.dev1 / API v1 / schema 21**、
 stageは`m4-integration-pilot`です。v0.3 releaseではありません。

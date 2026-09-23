@@ -13,6 +13,11 @@ notices cannot renew access; gaps fail closed. This requires migration 021 and
 matching components, including rebuilt graph artifacts before AGE reactivation.
 It is not a v0.3 release or full M4 qualification.
 
+The [signed-notice receiver](docs/operations/README.md#signed-source-notice-receiver)
+verifies bounded RS256 deliveries against one operator-configured public key
+and source/reader mapping before calling the coordinator. It is a local
+administrator command, not a public webhook or independent source ACL check.
+
 The [dataset administrator](docs/operations/README.md#registered-dataset-readers)
 discovers up to 100 registered readers and atomically revokes their memberships
 using both an exact target-set digest and the tenant access epoch. It is an

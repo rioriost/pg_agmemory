@@ -14,6 +14,10 @@
 migration021と同一versionのcomponentが必要で、AGE再開前にgraph artifactを再構築します。
 v0.3 releaseやM4全体の認定ではありません。
 
+[署名付き通知receiver](docs/operations/README-jp.md#signed-source-notice-receiver)は、
+管理者が固定した公開鍵とsource/reader対応でRS256通知を検証してからcoordinatorへ渡します。
+local管理commandであり、公開webhookや上流ACLの独立照会ではありません。
+
 [dataset管理command](docs/operations/README-jp.md#registered-dataset-readers)で
 最大100件の登録済みreaderを発見し、対象集合digestとtenant access epochを照合して
 membershipを原子的に失効できます。緊急操作であり、

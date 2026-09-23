@@ -305,6 +305,17 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
         "durable_dataset_block": False,
         "automatic_retry": False,
     }
+    assert caps["source_access_administration"]["signed_notification"] == {
+        "command": "source-notice",
+        "transport": "local_signed_file",
+        "algorithm": "RS256",
+        "max_token_bytes": 16384,
+        "max_envelope_lifetime_seconds": 300,
+        "routing": "operator_profile",
+        "remote_key_fetch": False,
+        "upstream_authorization_verified": False,
+        "automatic_retry": False,
+    }
     assert caps["health_probes"] == {
         "liveness": "/healthz",
         "readiness": "/readyz",

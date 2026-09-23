@@ -90,6 +90,119 @@ undelivered upstream revocation instantaneous. Do not automatically retain
 shared business data until the real upstream authentication/notification path
 and its target mapping have been connected and qualified.
 
+### Signed source-notice receiver
+
+`pg-agmemory source-notice apply` accepts a bounded **local signed delivery**,
+verifies it without database access, and passes its notice to the existing
+coordinator exactly once. It reuses core PyJWT/cryptography dependencies and
+schema 21. There is no HTTP listener, remote key discovery, signing service,
+implicit binding creation or automatic delivery/retry. A source-specific
+authenticator must still make the real ACL decision and maintain its sequence;
+an operator-owned relay is responsible for bringing its signed file here.
+
+```bash
+pg-agmemory source-notice apply \
+  --profile "$TRUSTED_SOURCE_PROFILE" --delivery-file "$SIGNED_DELIVERY_FILE" \
+  --expected-access-epoch "$ACCESS_EPOCH"
+```
+
+The administrator DSN remains in `PGAG_ADMIN_DATABASE_URL`, not the profile or
+message. `--profile` is a regular JSON file, at most 32,768 bytes, with this
+shape (replace the illustrative identifiers and public-key placeholder):
+
+```json
+{
+  "format": "pgag-source-notice-profile-v1",
+  "issuer": "https://source-issuer.example.invalid",
+  "audience": "pgag-source-notices",
+  "subject": "trusted-source-coordinator",
+  "key_id": "source-signing-v1",
+  "public_key": "<PEM-encoded RSA public key>",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "scope_id": "00000000-0000-0000-0000-000000000002",
+  "principal_id": "00000000-0000-0000-0000-000000000003",
+  "source": {
+    "source_system": "synthetic-source",
+    "dataset_id": "dataset",
+    "source_subject": "upstream-reader"
+  }
+}
+```
+
+Only an RSA **public** key of at least 2,048 bits is accepted. Protect profile
+integrity even though the key is public: changing it changes who can authorize
+the configured reader. Use a dedicated signer/audience, not the Native API's
+end-user credentials. The signer subject identifies the trusted coordinator;
+`source_subject` identifies the source reader. Tenant/scope/principal and source
+mapping come only from this trusted profile and an already-established binding,
+never from a token-selected URL or routing claim. Pin one key ID per profile;
+key rotation/removal is an explicit operator action, with no JWKS fetching.
+Raw `source-access` remains a privileged administrative path, not a requirement
+that every database administrator use signatures.
+
+The delivery file is strict JSON of at most 32,768 bytes:
+`{"format":"pgag-signed-source-notice-v1","token":"<compact JWT>"}`.
+The token is untrimmed ASCII, at most 16,384 bytes. Its protected header contains
+**exactly** `alg:"RS256"`, `typ:"pgag-source-notice+jwt"` and the pinned `kid`.
+Its payload contains **exactly** `iss`, `aud`, `sub`, `iat`, `exp` and `notice`.
+`notice` has the existing `pgag-source-access-notice-v1` shape and must match the
+configured source. `iss`/`aud`/`sub` match the profile exactly; audience arrays
+are not accepted. `iat` and `exp` are integer NumericDates, with
+`iat <= now < exp` and `0 < exp - iat <= 300` seconds, without clock leeway.
+Duplicate JSON keys, non-finite values, unrecognized headers/claims, remote-key
+hints, private keys and algorithm substitution are rejected. Do not place SQL,
+business payloads, URLs for key retrieval or credentials in either envelope.
+
+The trusted producer can sign its already-validated claims with the existing
+PyJWT interface; private-key management is outside pg_agmemory:
+
+```python
+token = jwt.encode(
+    {
+        "iss": profile.issuer, "aud": profile.audience, "sub": profile.subject,
+        "iat": issued_at_integer, "exp": issued_at_integer + 60,
+        "notice": durable_notice.model_dump(mode="json"),
+    },
+    source_private_key,
+    algorithm="RS256",
+    headers={"typ": "pgag-source-notice+jwt", "kid": profile.key_id},
+)
+delivery = {"format": "pgag-signed-source-notice-v1", "token": token}
+```
+
+Here `durable_notice` is the producer's persisted decision, not a sequence
+allocated by delivery code. Keep the private key on the producer side and use
+restricted regular files for delivery; no private-key file is needed by the
+receiver. Never copy source signing credentials into the Memory database.
+
+The result distinguishes `notification_signature_verified:true` from
+`source_authorization_verified:false`; `access` contains the usual coordinator
+result. Authentication proves the pinned signer made the assertion, not that
+pg_agmemory independently queried an upstream entitlement service. The outer
+token lifetime is checked on receipt; database time independently enforces the
+notice's original verification time and lease expiry when applying it. Waiting
+for the database does not refresh either timestamp. Invalid signatures or
+misrouted messages never reach the database and do **not** revoke an existing
+lease; that lease still expires normally. A valid typed notice can atomically
+deny for a sequence gap or invalid lease, returning its result with exit 1.
+An explicitly requested denial succeeds normally.
+
+Keep producer sequence and notice content durable across delivery failures.
+Re-signing the **same** notice with a new delivery lifetime does not renew its
+lease, consume another sequence, or undo an emergency revocation. An expired
+delivery itself is rejected, including for a duplicate notice. A fresh notice
+requires an actual new source decision, not an invented retry cursor.
+Commit-unknown errors retain their existing classification; inspect state and
+explicitly retry only a still-valid authenticated delivery. There is no second
+receipt table or distributed transaction. Existing database audit records the
+administrator role and normalized notice digest, not the signing key or JWT.
+Secure transport, private delivery-file retention and signer audit are the
+operator's responsibility; signatures do not encrypt files.
+
+This closes the local signature/routing boundary only. A real source connector,
+reliable upstream delivery, complete source-to-memory deletion mapping, and
+full M4 acceptance remain open. Automatic shared-business retention stays off.
+
 ### Registered dataset readers
 
 `pg-agmemory source-dataset` provides bounded **administrator-only** discovery

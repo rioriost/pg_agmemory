@@ -572,6 +572,17 @@ def create_app(
                 "recovery": "exact_content_only",
                 "automatic_reactivation": False,
                 "post_restore_revalidation": "explicit",
+                "signed_notification": {
+                    "command": "source-notice",
+                    "transport": "local_signed_file",
+                    "algorithm": "RS256",
+                    "max_token_bytes": 16384,
+                    "max_envelope_lifetime_seconds": 300,
+                    "routing": "operator_profile",
+                    "remote_key_fetch": False,
+                    "upstream_authorization_verified": False,
+                    "automatic_retry": False,
+                },
                 "dataset_administration": {
                     "command": "source-dataset",
                     "operations": ["get", "revoke"],
