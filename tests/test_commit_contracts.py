@@ -8,8 +8,9 @@ import httpx
 import pytest
 
 from pg_agmemory import cli, worker
+from pg_agmemory.admin import admin_failure
 from pg_agmemory.native_client import AdapterFailure, NativeHTTPClient
-from pg_agmemory.transactions import CommitOutcomeUnknown
+from pg_agmemory.transactions import CommitDeadlineSetupError, CommitOutcomeUnknown
 
 
 @pytest.mark.parametrize("mutation", [False, True])
@@ -41,6 +42,12 @@ def test_native_unconfirmed_commit_is_not_retryable(mutation):
         assert calls[0].headers["idempotency-key"] == "caller-owned-key"
 
     asyncio.run(scenario())
+
+
+def test_admin_watchdog_setup_failure_is_not_an_attempted_commit():
+    failure = admin_failure(CommitDeadlineSetupError(), commit_attempted=True)
+    assert failure.code == "admin_database_unavailable"
+    assert not failure.outcome_unknown
 
 
 @pytest.mark.parametrize("phase", ["claim", "publish", "fail", "prepare", "model_publish"])

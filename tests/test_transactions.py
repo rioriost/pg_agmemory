@@ -9,7 +9,12 @@ import pytest
 from psycopg.pq import PipelineStatus, TransactionStatus
 
 from pg_agmemory.admin import admin_failure
-from pg_agmemory.transactions import CommitOutcomeUnknown, async_transaction, transaction
+from pg_agmemory.transactions import (
+    CommitDeadlineSetupError,
+    CommitOutcomeUnknown,
+    async_transaction,
+    transaction,
+)
 
 PRIVATE = "private SQL, diagnostic, and postgresql://user:password@host/database"
 
@@ -26,7 +31,7 @@ class FakeConnection:
         self.info = SimpleNamespace(
             transaction_status=TransactionStatus.IDLE, pipeline_status=PipelineStatus.OFF,
         )
-        self.pgconn = SimpleNamespace(finish=self.finish)
+        self.pgconn = SimpleNamespace(finish=self.finish, socket=self)
         self.closed = False
         self.handlers = []
         self.events = []
@@ -41,6 +46,12 @@ class FakeConnection:
         self.rollback_stuck = False
         self.commit_entered = None
         self.commit_release = None
+        self.commit_cancel_error = None
+        self.deadline_events = []
+        self.deadline_setup_error = None
+        self.deadline_start_error = None
+        self.deadline_cleanup_error = None
+        self.deadline_expired = False
 
     def transaction(self):
         return FakeTransaction(self)
@@ -74,6 +85,30 @@ class FakeConnection:
 class AsyncResult:
     def __await__(self):
         return iter(())
+
+
+class FakeCommitDeadline:
+    def __init__(self, conn):
+        self.conn = conn
+        conn.deadline_events.append("init")
+        if conn.deadline_setup_error:
+            raise conn.deadline_setup_error
+
+    def start(self):
+        self.conn.deadline_events.append("start")
+        if self.conn.deadline_start_error:
+            raise self.conn.deadline_start_error
+
+    def finish(self):
+        self.conn.deadline_events.append("finish")
+        if self.conn.deadline_cleanup_error:
+            raise self.conn.deadline_cleanup_error
+        return self.conn.deadline_expired
+
+
+@pytest.fixture(autouse=True)
+def controlled_deadline(monkeypatch):
+    monkeypatch.setattr("pg_agmemory.transactions.CommitDeadline", FakeCommitDeadline)
 
 
 class FakeTransaction:
@@ -121,7 +156,12 @@ class FakeTransaction:
     async def __aexit__(self, typ, error, traceback):
         if error is None and self.conn.commit_entered is not None:
             self.conn.commit_entered.set()
-            await self.conn.commit_release.wait()
+            try:
+                await self.conn.commit_release.wait()
+            except asyncio.CancelledError:
+                if self.conn.commit_cancel_error:
+                    raise self.conn.commit_cancel_error from None
+                raise
         return self.__exit__(typ, error, traceback)
 
 
@@ -152,6 +192,7 @@ def test_normal_commit_preserves_transaction_object_and_existing_handlers(kind):
     assert conn.handlers == [existing]
     assert conn.queries == ["SET LOCAL client_min_messages = warning"]
     assert not conn.closed
+    assert conn.deadline_events == ["init", "start", "finish"]
 
 
 def test_body_error_rolls_back_and_preserves_original(kind):
@@ -167,6 +208,7 @@ def test_body_error_rolls_back_and_preserves_original(kind):
     assert conn.events == ["begin", "rollback"]
     assert not conn.handlers
     assert not conn.closed
+    assert not conn.deadline_events
 
 
 def test_pipeline_is_rejected_before_diagnostics_can_be_misattributed(kind):
@@ -366,6 +408,7 @@ def test_force_rollback_is_not_a_commit(kind):
     assert conn.events == ["begin", "rollback"]
     assert not conn.closed
     assert not conn.queries
+    assert not conn.deadline_events
 
 
 def test_nested_savepoints_only_guard_the_outer_commit(kind):
@@ -389,6 +432,123 @@ def test_nested_savepoints_only_guard_the_outer_commit(kind):
     assert conn.queries == ["SET LOCAL client_min_messages = warning"]
     assert not conn.handlers
     assert not conn.closed
+    assert conn.deadline_events == ["init", "start", "finish"]
+
+
+def test_deadline_only_starts_after_body_and_warning_visibility(kind):
+    conn = FakeConnection()
+    execute = conn.execute
+
+    def prepare_warnings(query):
+        assert not conn.deadline_events
+        return execute(query)
+
+    def body(tx):
+        assert not conn.deadline_events
+
+    conn.execute = prepare_warnings
+    run_guard(kind, conn, body)
+    assert conn.deadline_events == ["init", "start", "finish"]
+
+
+@pytest.mark.parametrize("error_type", [
+    None, psycopg.OperationalError, psycopg.errors.SerializationFailure,
+    psycopg.errors.DeadlockDetected, psycopg.errors.UniqueViolation,
+])
+def test_deadline_expiry_never_succeeds_or_enters_driver_retry_path(kind, error_type):
+    conn = FakeConnection()
+    conn.deadline_expired = True
+    if error_type:
+        conn.commit_error = error_type(PRIVATE)
+    with pytest.raises(CommitOutcomeUnknown) as caught:
+        run_guard(kind, conn)
+    assert caught.value.local_committed is None
+    assert str(caught.value) == "commit_outcome_unknown"
+    assert not isinstance(caught.value, psycopg.Error)
+    assert caught.value.__suppress_context__
+    assert caught.value.__cause__ is None
+    assert conn.events == ["begin", "commit", "disconnect"]
+    assert conn.deadline_events == ["init", "start", "finish"]
+    assert not conn.handlers
+
+
+@pytest.mark.parametrize("stage", ["setup", "start"])
+def test_deadline_setup_failure_is_sanitized_and_rolls_back_before_commit(kind, stage):
+    conn = FakeConnection()
+    setattr(conn, f"deadline_{stage}_error", OSError(PRIVATE))
+    with pytest.raises(CommitDeadlineSetupError) as caught:
+        run_guard(kind, conn)
+    assert str(caught.value) == caught.value.code == "commit_deadline_setup_failed"
+    assert isinstance(caught.value, psycopg.OperationalError)
+    assert caught.value.__suppress_context__
+    assert caught.value.__cause__ is None
+    failure = admin_failure(caught.value, commit_attempted=False)
+    assert failure.code == "admin_database_unavailable"
+    assert failure.outcome_unknown is False
+    assert conn.events == ["begin", "rollback"]
+    assert not conn.closed
+    assert not conn.handlers
+    assert conn.deadline_events == (["init"] if stage == "setup" else ["init", "start", "finish"])
+
+
+def test_precommit_deadline_cleanup_failure_still_rolls_back_and_discards(kind):
+    conn = FakeConnection()
+    conn.deadline_start_error = RuntimeError(PRIVATE)
+    conn.deadline_cleanup_error = RuntimeError(PRIVATE)
+    with pytest.raises(CommitDeadlineSetupError) as caught:
+        run_guard(kind, conn)
+    assert str(caught.value) == "commit_deadline_setup_failed"
+    assert "commit_deadline_cleanup_failed" in caught.value.__notes__
+    assert PRIVATE not in repr(caught.value.__notes__)
+    assert conn.events == ["begin", "rollback", "disconnect"]
+    assert conn.closed
+    assert not conn.handlers
+
+
+@pytest.mark.parametrize("stage", ["setup", "start", "cleanup"])
+def test_precommit_deadline_interruption_is_preserved_and_rolls_back(kind, stage):
+    conn = FakeConnection()
+    interruption = asyncio.CancelledError()
+    setattr(conn, f"deadline_{stage}_error", interruption)
+    if stage == "cleanup":
+        conn.deadline_start_error = RuntimeError(PRIVATE)
+    with pytest.raises(asyncio.CancelledError) as caught:
+        run_guard(kind, conn)
+    assert caught.value is interruption
+    assert conn.events == ["begin", "rollback", "disconnect"]
+    assert "commit_outcome_unknown" not in caught.value.__notes__
+    assert conn.closed
+    assert not conn.handlers
+
+
+@pytest.mark.parametrize("retryable_error", [False, True])
+def test_deadline_cleanup_failure_after_commit_is_unknown(kind, retryable_error):
+    conn = FakeConnection()
+    conn.deadline_cleanup_error = RuntimeError(PRIVATE)
+    if retryable_error:
+        conn.commit_error = psycopg.errors.SerializationFailure(PRIVATE)
+    with pytest.raises(CommitOutcomeUnknown) as caught:
+        run_guard(kind, conn)
+    assert not isinstance(caught.value, psycopg.Error)
+    assert caught.value.local_committed is None
+    assert caught.value.__notes__ == ["commit_deadline_cleanup_failed"]
+    assert conn.events == ["begin", "commit", "disconnect"]
+    assert not conn.handlers
+
+
+def test_deadline_is_finished_before_discarding_connection(kind):
+    conn = FakeConnection()
+    conn.commit_error = psycopg.OperationalError(PRIVATE)
+    finish = conn.finish
+
+    def checked_finish():
+        assert conn.deadline_events == ["init", "start", "finish"]
+        finish()
+
+    conn.pgconn.finish = checked_finish
+    with pytest.raises(CommitOutcomeUnknown):
+        run_guard(kind, conn)
+    assert conn.closed
 
 
 def test_nested_rollback_restores_outer_transaction(kind):
@@ -492,11 +652,21 @@ def test_connection_disposal_error_is_sanitized_without_masking_unknown(kind):
     assert not conn.handlers
 
 
-def test_async_cancellation_during_commit_propagates_and_discards():
+@pytest.mark.parametrize("expired", [False, True])
+@pytest.mark.parametrize("cleanup_failed", [False, True])
+@pytest.mark.parametrize("driver_masks_cancellation", [False, True])
+def test_async_cancellation_during_commit_propagates_and_discards(
+    expired, cleanup_failed, driver_masks_cancellation,
+):
     async def run():
         conn = FakeConnection()
         conn.commit_entered = asyncio.Event()
         conn.commit_release = asyncio.Event()
+        conn.deadline_expired = expired
+        if cleanup_failed:
+            conn.deadline_cleanup_error = RuntimeError(PRIVATE)
+        if driver_masks_cancellation:
+            conn.commit_cancel_error = psycopg.OperationalError(PRIVATE)
 
         async def write():
             async with async_transaction(conn):
@@ -511,6 +681,21 @@ def test_async_cancellation_during_commit_propagates_and_discards():
         assert conn.closed
         assert not conn.handlers
         assert "rollback" not in conn.events
+        assert conn.deadline_events == ["init", "start", "finish"]
+
+    asyncio.run(run())
+
+
+def test_async_cancellation_already_handled_by_body_is_not_reintroduced():
+    async def run():
+        conn = FakeConnection()
+        async with async_transaction(conn):
+            asyncio.current_task().cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.sleep(0)
+        assert conn.events == ["begin", "commit"]
+        assert not conn.closed
+        assert not conn.handlers
 
     asyncio.run(run())
 

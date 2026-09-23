@@ -13,6 +13,8 @@ from typing import Any
 import psycopg
 from psycopg.pq import PipelineStatus, TransactionStatus
 
+from pg_agmemory.commit_deadline import CommitDeadline
+
 _Connection = psycopg.Connection[Any] | psycopg.AsyncConnection[Any]
 _Transaction = psycopg.Transaction | psycopg.AsyncTransaction
 _INTERRUPTED = (asyncio.CancelledError, KeyboardInterrupt, SystemExit)
@@ -27,6 +29,15 @@ class CommitOutcomeUnknown(Exception):
 
     def __init__(self, *, local_committed: bool | None = None) -> None:
         self.local_committed = local_committed
+        super().__init__(self.code)
+
+
+class CommitDeadlineSetupError(psycopg.OperationalError):
+    """Safe dependency failure: COMMIT was not attempted and may be retried."""
+
+    code = "commit_deadline_setup_failed"
+
+    def __init__(self) -> None:
         super().__init__(self.code)
 
 
@@ -51,6 +62,9 @@ class _CommitGuard:
         self.monitor_failed = False
         self.aborted = False
         self.local_committed: bool | None = None
+        self.deadline: CommitDeadline | None = None
+        self.deadline_expired = False
+        self.deadline_cleanup_failed = False
 
     def notice(self, diagnostic: psycopg.errors.Diagnostic) -> None:
         if not self.committing:
@@ -71,8 +85,64 @@ class _CommitGuard:
 
     def prepare(self, tx: _Transaction) -> None:
         self.committing = self.outer and not getattr(tx, "force_rollback", False)
-        if self.committing:
-            self.aborted = self.conn.info.transaction_status == TransactionStatus.INERROR
+        if not self.committing:
+            return
+        self.aborted = self.conn.info.transaction_status == TransactionStatus.INERROR
+        if self.conn.closed:
+            return
+        try:
+            self.deadline = CommitDeadline(self.conn.pgconn.socket)
+            self.deadline.start()
+        except BaseException as error:
+            self.committing = False
+            failure = error if isinstance(error, _INTERRUPTED) else CommitDeadlineSetupError()
+            try:
+                self.finish_deadline()
+            except BaseException as cleanup_error:
+                self.deadline_cleanup_failed = True
+                if isinstance(cleanup_error, _INTERRUPTED):
+                    failure = cleanup_error
+                failure.add_note("commit_deadline_cleanup_failed")
+            raise failure from None
+
+    def finish_deadline(self) -> None:
+        if self.deadline is not None:
+            deadline, self.deadline = self.deadline, None
+            self.deadline_expired = deadline.finish()
+
+    @contextmanager
+    def commit_phase(self, task: asyncio.Task[Any] | None = None) -> Iterator[None]:
+        cancellations = task.cancelling() if task is not None else 0
+        failure: BaseException | None = None
+        try:
+            yield
+        except BaseException as error:
+            failure = error
+        try:
+            self.finish_deadline()
+        except BaseException as error:
+            self.deadline_cleanup_failed = True
+            if isinstance(error, _INTERRUPTED):
+                failure = error
+            elif failure is None:
+                failure = CommitOutcomeUnknown()
+        if (
+            task is not None
+            and task.cancelling() > cancellations
+            and not isinstance(failure, _INTERRUPTED)
+        ):
+            # psycopg's post-cancel drain can replace CancelledError with the
+            # socket shutdown error. Preserve the external task cancellation.
+            failure = asyncio.CancelledError()
+        try:
+            if failure is not None:
+                raise failure
+            self.complete()
+        except BaseException as error:
+            if self.committing:
+                raise self.commit_error(error) from None
+            _discard(self.conn, error)
+            raise
 
     def needs_warning_visibility(self, tx: _Transaction) -> bool:
         return (
@@ -85,6 +155,8 @@ class _CommitGuard:
     def complete(self) -> None:
         if not self.committing:
             return
+        if self.deadline_expired:
+            raise CommitOutcomeUnknown()
         if self.conn.closed or self.conn.info.transaction_status != TransactionStatus.IDLE:
             raise CommitOutcomeUnknown()
         if self.aborted:
@@ -97,13 +169,19 @@ class _CommitGuard:
     def commit_error(self, error: BaseException) -> BaseException:
         if isinstance(error, _INTERRUPTED):
             error.add_note(CommitOutcomeUnknown.code)
+            if self.deadline_cleanup_failed:
+                error.add_note("commit_deadline_cleanup_failed")
             _discard(self.conn, error)
             return error
         if isinstance(error, CommitOutcomeUnknown):
+            if self.deadline_cleanup_failed:
+                error.add_note("commit_deadline_cleanup_failed")
             _discard(self.conn, error)
             return error
         if (
             isinstance(error, psycopg.Error)
+            and not self.deadline_expired
+            and not self.deadline_cleanup_failed
             and not self.interrupted
             and not self.monitor_failed
             and not self.conn.closed
@@ -118,12 +196,14 @@ class _CommitGuard:
             # constraints). In particular, 40003 is NOT a confirmed rollback.
             return error
         unknown = CommitOutcomeUnknown(local_committed=self.local_committed)
+        if self.deadline_cleanup_failed:
+            unknown.add_note("commit_deadline_cleanup_failed")
         _discard(self.conn, unknown)
         return unknown
 
     def rollback_complete(self, error: BaseException) -> None:
         expected = TransactionStatus.IDLE if self.outer else TransactionStatus.INTRANS
-        if isinstance(error, _INTERRUPTED) or (
+        if isinstance(error, _INTERRUPTED) or self.deadline_cleanup_failed or (
             not self.conn.closed and self.conn.info.transaction_status != expected
         ):
             # psycopg may swallow rollback transport errors. Do not reuse a
@@ -148,7 +228,10 @@ class _CommitGuard:
 
 @contextmanager
 def transaction(conn: psycopg.Connection[Any]) -> Iterator[psycopg.Transaction]:
-    """Guard a psycopg transaction; unknown outcomes must never be blindly retried."""
+    """Bound outer COMMIT acknowledgement to five seconds, not transaction runtime.
+
+    Unknown outcomes must never be blindly retried.
+    """
     guard = _CommitGuard(conn)
     conn.add_notice_handler(guard.notice)
     pending: BaseException | None = None
@@ -165,6 +248,7 @@ def transaction(conn: psycopg.Connection[Any]) -> Iterator[psycopg.Transaction]:
                 # Role/session defaults may suppress WARNING. Keep this local
                 # and before the commit phase, so preparation failure rolls back.
                 conn.execute(_ENABLE_COMMIT_WARNINGS)
+            guard.prepare(tx)
         except BaseException as error:
             try:
                 suppressed = manager.__exit__(type(error), error, error.__traceback__)
@@ -178,15 +262,8 @@ def transaction(conn: psycopg.Connection[Any]) -> Iterator[psycopg.Transaction]:
             if not suppressed:
                 raise
         else:
-            guard.prepare(tx)
-            try:
+            with guard.commit_phase():
                 manager.__exit__(None, None, None)
-                guard.complete()
-            except BaseException as error:
-                if guard.committing:
-                    raise guard.commit_error(error) from None
-                _discard(conn, error)
-                raise
     except BaseException as error:
         pending = error
         raise
@@ -198,7 +275,11 @@ def transaction(conn: psycopg.Connection[Any]) -> Iterator[psycopg.Transaction]:
 async def async_transaction(
     conn: psycopg.AsyncConnection[Any],
 ) -> AsyncIterator[psycopg.AsyncTransaction]:
-    """Async commit guard; cancellation propagates even during ambiguous COMMIT."""
+    """Async commit guard; cancellation propagates even during ambiguous COMMIT.
+
+    The watchdog doesn't use task cancellation. External cancellation may still
+    await psycopg's separate cancel-channel cleanup (currently up to five seconds).
+    """
     guard = _CommitGuard(conn)
     conn.add_notice_handler(guard.notice)
     pending: BaseException | None = None
@@ -213,6 +294,7 @@ async def async_transaction(
             yield tx
             if guard.needs_warning_visibility(tx):
                 await conn.execute(_ENABLE_COMMIT_WARNINGS)
+            guard.prepare(tx)
         except BaseException as error:
             try:
                 suppressed = await manager.__aexit__(type(error), error, error.__traceback__)
@@ -226,15 +308,8 @@ async def async_transaction(
             if not suppressed:
                 raise
         else:
-            guard.prepare(tx)
-            try:
+            with guard.commit_phase(asyncio.current_task()):
                 await manager.__aexit__(None, None, None)
-                guard.complete()
-            except BaseException as error:
-                if guard.committing:
-                    raise guard.commit_error(error) from None
-                _discard(conn, error)
-                raise
     except BaseException as error:
         pending = error
         raise

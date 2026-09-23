@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.9 / M5 COMMIT outcome guards, 2026-09-24
+- Document version: 1.10 / M5 bounded COMMIT acknowledgement, 2026-09-24
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M5 development continues as 0.4.0.dev1/APIv1/schema21 with COMMIT outcome guards, operational/replication observations, paused SQL-only PITR and an explicitly fenced owned HA rehearsal. Application handling of canceled synchronous waits no longer implies rollback or replication success; production HA and partition qualification remain open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
@@ -899,6 +899,11 @@ not success or rollback. Native mutations and administrator commands preserve
 uncertainty; workers stop for reconciliation without compensating writes or
 automatic retries. Local receipt/replay is not proof of remote durability.
 This is application-level handling, not closure of the production HA gate.
+Guarded outer COMMIT acknowledgement now has a separate fixed five-second
+application budget, independent of server cancel delivery. Expiry remains
+unknown and never authorizes automatic retry. Transaction bodies and end-to-end
+requests retain separate limits; this does not establish a production RPO/RTO
+or prove backend termination, rollback or replication.
 
 The production gate still requires declared host/storage failure domains,
 load and RPO/RTO objectives; HA/partition fencing and failover drills; alert and

@@ -2,7 +2,32 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: COMMIT結果不明の扱い
+## M5開発: COMMIT応答待ちの制限
+
+**0.4.0.dev1 / API v1 / schema 21**で、同期管理commandと非同期API/workerの
+guard対象outer COMMITに固定**5秒のlocal応答待ちbudget**を追加します。
+期限超過はserver cancel要求の成功に依存せず、対象connectionだけを中断します。
+`commit_outcome_unknown`、成功receipt抑止、adapterの非retryable error、
+worker停止を維持し、成功COMMITではconnection再利用前にdeadline処理を解除します。
+
+最終local Linux arm64/PostgreSQL 18.6で**重点1,542件/optional AGE・logical-slot 26 skip**、
+**非integration 2,609件/DB依存179 skip**、別の**cancel/deadline 18件**が成功しました。
+最初の二つは重複するため加算しません。実sync/async SyncRepとCOMMIT ACK破棄では、
+外部cancelなしで固定5秒budgetの**4.5秒以上8秒未満**を検査します。
+local行を保持し、buffered 201/管理receiptを抑止し、worker reservation後の継続を止め、
+成功connectionは5秒を超えるtransaction本文でも再利用できます。
+SyncRep backendのteardownはclient終了測定後で、切断自体によるbackend解放の証明ではありません。
+Ruff、source54 filesと型付きconsumer3 filesのstrict型確認が成功し、source mountなしの
+non-root packaged runtimeでもwatchdog作成/解除を確認しました。
+local観測であり、native CI完了の認定ではありません。
+
+transaction本文、migration、provider、request全体の制限を変えるものではありません。
+client切断はbackend停止、rollback、複製完了を証明しません。host障害中のhard real-time保証ではなく、
+外部cancel時はdriver独自のcleanupも残ります。end-to-end deadline、partition/rejoin、
+独立storage、正当な復旧先との照合、本番RPO/RTO認定は残ります。
+[deadline契約](operations/README-jp.md#commit-acknowledgement-deadline)を参照してください。
+
+## 以前のM5 increment: COMMIT結果不明の扱い
 
 **0.4.0.dev1 / API v1 / schema 21**で、同期/非同期の書込みtransaction終了を保護します。
 local commit後の同期複製cancel warningやCOMMIT応答喪失があれば、

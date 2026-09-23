@@ -133,7 +133,7 @@ echo "Running containerized lint, type checks, and PostgreSQL tests..."
     "$test_image"
 remove_container "$test_db"
 
-echo "Checking canceled synchronous COMMIT on a separate owned primary..."
+echo "Checking canceled and expired COMMIT waits on a separate owned primary..."
 start_database "$commit_db" postgres \
     -c synchronous_standby_names=pgag_missing -c synchronous_commit=local
 test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
@@ -143,7 +143,7 @@ test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
 commit_host="$(container_host "$commit_db")"
 "$engine" run --name "$commit_name" --network "$network" \
     -e "PGAG_TEST_DATABASE_URL=postgresql://postgres:${password}@${commit_host}:5432/pgag_test" \
-    "$test_image" timeout 120s pytest -q tests/test_commit_outcomes.py
+    "$test_image" timeout 120s pytest -q tests/test_commit_outcomes.py tests/test_commit_deadline.py
 remove_container "$commit_db"
 
 echo "Building and running the non-root production image..."

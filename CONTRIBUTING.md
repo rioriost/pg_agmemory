@@ -51,6 +51,13 @@ test backend, and verifies local persistence without success receipts or worker
 retry. It also covers warning-suppressing session defaults and pre-COMMIT
 rollback. Ordinary database runs skip the missing-standby cases; the main
 container runner executes them separately on both CI architectures.
+`tests/test_commit_deadline.py` additionally exercises automatic acknowledgement
+expiry without an external backend cancel, and lost responses through an owned
+loopback proxy. Preserve the fixed five-second COMMIT budget, local-state
+uncertainty, safe connection reuse and absence of success-shaped timing samples.
+This is not a whole-request deadline or remote durability qualification.
+Only those synthetic deadline probes disable their statement timeout to ensure
+the client watchdog is what ends the wait; production query limits are unchanged.
 See [the uncertainty contract](docs/operations/README.md#unconfirmed-commit-outcomes).
 Schema 10 adds terminal job cancellation. Its smoke uses the SDK to enqueue,
 cancel, replay, confirm worker idleness, and purge the source dependency. Preserve

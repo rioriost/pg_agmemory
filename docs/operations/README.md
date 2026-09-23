@@ -246,9 +246,45 @@ infer that promotion is safe. Replication policy, fencing and the chosen recover
 target require separate evidence. This guard does not establish production
 RPO/RTO or change the HA lab's `commit_timeout_qualified:false`.
 Statement timeout alone is not a reliable bound on PostgreSQL's synchronous
-COMMIT wait; the isolated regression explicitly observes `SyncRep` before
-canceling its target backend. Client deadlines/cancellation and reconciliation
-remain necessary; no timeout is increased or disabled by the guard.
+COMMIT wait. The explicit-cancellation regression observes `SyncRep` before
+canceling its target backend; the acknowledgement deadline below does not need
+server cancellation. No existing production timeout is increased or disabled.
+
+### COMMIT acknowledgement deadline
+
+Every guarded outer COMMIT has a fixed **5-second application acknowledgement
+budget**, separate from PostgreSQL's statement and lock timeouts. It starts
+immediately before COMMIT, after transaction-body work and warning-visibility
+preparation. It is not a five-second request, transaction-body, migration or
+provider deadline. Nested savepoints are not separate commits.
+If deadline setup fails before COMMIT, the guard rolls back and reports the
+existing dependency failure, not an attempted or unknown commit.
+
+Expiry interrupts the exact client connection without requiring a cancellation
+request to reach the server. It returns the existing `commit_outcome_unknown`,
+never an ordinary retryable dependency failure or an asserted rollback. An
+acknowledgement processed after expiry cannot turn that result into success.
+Only the owning thread/task disposes of libpq state; deadline cleanup must finish
+before connection reuse. Successful commits do not leave a watchdog capable of
+interrupting a later transaction.
+
+Disconnecting does not prove that the PostgreSQL backend stopped, released its
+locks, rolled back or replicated. The local change may already be committed.
+Keep the same operator-reconciliation procedure and leave automatic worker
+restart disabled. The API does not install a cluster-wide circuit breaker:
+operators must separately control admission and the authoritative recovery target.
+The isolated SyncRep regression measures the client deadline first, then tears
+down its named test backend to inspect persisted rows. That teardown is not a
+product action or part of the measured five-second exit.
+
+This is a best-effort local wait budget under a responsive host, not a hard
+real-time guarantee during process suspension, resource starvation or OS failure.
+External task cancellation remains cancellation, and the driver's separate
+cancel-channel cleanup may have its own wait. Request-body reads, connection/
+admission waits, transaction statements and response delivery retain their
+existing separate limits; end-to-end request deadlines and partition/rejoin
+qualification remain open. No `synchronous_commit` downgrade, failover, effect
+reexecution or service restart is performed.
 
 M5 still needs a declared production topology/load profile, independent media,
 production partition/failover and commit-outcome handling, monitoring/alert retention,

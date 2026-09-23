@@ -14,6 +14,8 @@ reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定�
 書込み境界では[COMMIT結果不明](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を拒否します。
 同期待機cancel後のlocal commitをrollbackや複製完了とは扱わず、
 workerは再試行せず照合のため停止します。
+guard対象COMMITの応答待ちは別の[5秒local budget](docs/operations/README-jp.md#commit-acknowledgement-deadline)で制限し、
+期限超過もrollbackではなく結果不明と扱います。
 公開済みM4 releaseと証跡は変更しません。
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21。**

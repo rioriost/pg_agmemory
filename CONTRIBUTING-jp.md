@@ -48,6 +48,12 @@ COMMIT cancel検査では、存在しない同期standbyと`local`既定値で�
 そのtest backendだけをcancelして、local永続化と成功receipt/worker retryの抑止を確認します。
 warningを隠すsession既定値とCOMMIT前rollbackも対象です。通常DBでは
 missing-standby caseをskipしますが、main container runnerはCI両architectureで別途実行します。
+`tests/test_commit_deadline.py`では外部backend cancelを行わない応答期限超過と、
+所有loopback proxyによる応答喪失も検査します。固定5秒のCOMMIT budget、local状態の不明性、
+安全なconnection再利用、成功扱いのtiming sampleを出さない契約を維持してください。
+request全体のdeadlineやremote durabilityの認定ではありません。
+client watchdogで待機が終了することを確認するため、合成deadline probeだけstatement timeoutを
+無効にします。製品のquery制限は変更しません。
 [結果不明の契約](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を参照してください。
 schema 10はjobの終端状態`cancelled`を追加します。smokeではSDKによるenqueue、
 cancel、再送、workerのidle確認、source依存先のpurgeを検査します。

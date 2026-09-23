@@ -2,7 +2,39 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: unconfirmed COMMIT outcomes
+## M5 development: bounded COMMIT acknowledgement
+
+**0.4.0.dev1 / API v1 / schema 21** adds a fixed **5-second local
+acknowledgement budget** at guarded outer COMMIT boundaries, for synchronous
+administrator commands and asynchronous API/worker transactions. Expiry does
+not depend on a server cancel request succeeding. It interrupts the exact
+connection and preserves `commit_outcome_unknown`, suppressed success receipts,
+non-retryable adapter errors and worker termination. Successful commits must
+disarm the deadline before the connection can be reused.
+
+Final local Linux arm64/PostgreSQL 18.6 checks pass **1,542 focused cases /
+26 optional AGE/logical-slot skips**, **2,609 non-integration cases / 179
+database-dependent skips**, and **18 separate cancellation/deadline cases**.
+The first two counts overlap and must not be added. Real sync/async SyncRep
+and dropped-COMMIT-ACK tests enforce **4.5 <= elapsed < 8 seconds** for the
+fixed five-second budget, without external cancellation. They preserve local
+rows, suppress buffered 201/admin receipts, stop worker reservation continuation
+and leave successful connections usable across transaction bodies longer than
+five seconds. SyncRep backend teardown occurs after measuring the client exit;
+it is not proof that disconnect itself releases the backend.
+Ruff, strict typing for 54 source files and three typed consumers pass; the
+non-root packaged runtime exercises watchdog creation/disarm without source
+mounts. These are local observations, not completed native CI qualification.
+
+This does not change transaction-body, migration, provider or whole-request
+limits. Client disconnect is not proof of backend termination, rollback or
+replication. The budget is not a hard real-time guarantee under host failure;
+external cancellation also retains the driver's separate cleanup semantics.
+End-to-end deadlines, partition/rejoin, independent storage, authoritative
+reconciliation and production RPO/RTO qualification remain open.
+See [the deadline contract](operations/README.md#commit-acknowledgement-deadline).
+
+## Previous M5 increment: unconfirmed COMMIT outcomes
 
 **0.4.0.dev1 / API v1 / schema 21** now guards write-capable synchronous and
 asynchronous transaction exits. A synchronous-replication cancellation warning

@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pg_agmemory.api import TransactionBoundary, create_app
+from pg_agmemory.transactions import CommitOutcomeUnknown
 
 
 def test_opt_in_timing_preserves_response_and_records_committed_phases(env):
@@ -104,3 +105,41 @@ def test_sink_failure_is_explicit_and_does_not_rollback_a_delivered_commit(env):
     replay = env.client.post("/v1/observe", json=body, headers=headers)
     assert replay.status_code == 201
     assert len(env.recall().json()["items"]) == 1
+
+
+def test_unknown_commit_never_records_successful_commit_timing(env, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from pg_agmemory import api
+
+    original = api.async_transaction
+    events = []
+
+    @asynccontextmanager
+    async def unconfirmed(conn):
+        async with original(conn) as tx:
+            yield tx
+        raise CommitOutcomeUnknown()
+
+    body = {
+        "scope_id": str(env.scopes[0]),
+        "source_namespace": "timing",
+        "source_event_id": "unconfirmed",
+        "occurred_at": "2026-09-01T00:00:00Z",
+        "content": "PRIVATE_UNCONFIRMED_PAYLOAD",
+        "consent_reference": "test",
+    }
+    headers = env.headers()
+    with monkeypatch.context() as patch:
+        patch.setattr(api, "async_transaction", unconfirmed)
+        with TestClient(create_app(env.settings, timing_sink=events.append)) as client:
+            response = client.post("/v1/observe", json=body, headers=headers)
+    assert response.status_code == 503
+    assert response.json()["code"] == "commit_outcome_unknown"
+    assert response.json()["retryable"] is False
+    assert len(events) == 1
+    assert events[0].status == 503
+    assert events[0].handler_ms is not None
+    assert events[0].commit_ms is None and events[0].transaction_ms is None
+    assert "PRIVATE_UNCONFIRMED_PAYLOAD" not in json.dumps(asdict(events[0]))
+    assert env.client.post("/v1/observe", json=body, headers=headers).status_code == 201

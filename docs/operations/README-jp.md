@@ -211,8 +211,37 @@ key変更、migration/provisionのblind再実行、effect再実行、昇格安�
 複製policy、fencing、復旧先には別途証拠が必要です。本guardは本番RPO/RTOを認定せず、
 HA labの`commit_timeout_qualified:false`も変更しません。
 statement timeoutだけではPostgreSQLの同期COMMIT待機時間を確実に制限できません。
-隔離回帰は`SyncRep`を観測してから対象backendだけをcancelします。
-client deadline/cancelと結果照合は引き続き必要で、guardによるtimeout延長/無効化はありません。
+明示cancel回帰は`SyncRep`を観測して対象backendだけをcancelしますが、
+以下の応答deadlineはserver側cancelを必要としません。既存の製品timeoutの延長/無効化はありません。
+
+### COMMIT acknowledgement deadline
+
+guard対象のouter COMMITには、PostgreSQLのstatement/lock timeoutとは別に
+固定**5秒のapplication応答待ちbudget**があります。transaction本文とwarning配信準備の後、
+COMMIT直前から計測します。request全体、transaction本文、migration、providerを
+5秒に制限するものではなく、nested savepointにも独立したdeadlineは設けません。
+COMMIT前のdeadline準備に失敗した場合はrollbackし、既存のdependency障害として返します。
+COMMIT試行済みや結果不明とは扱いません。
+
+期限超過では、cancel要求のserver到達に依存せず、対象client connectionだけを中断します。
+既存の`commit_outcome_unknown`を返し、retryableな通常dependency障害やrollback断定にはしません。
+期限後に処理された応答で成功へ戻すこともありません。libpq状態の破棄は所有thread/taskが行い、
+connection再利用前にdeadline処理を終了します。成功したCOMMITの監視処理が残り、
+後続transactionを中断することは許しません。
+
+切断はPostgreSQL backendの停止、lock解放、rollback、複製完了を証明しません。
+local変更はcommit済みの場合があるため、従来のoperator照合手順を維持し、
+workerの自動再起動も停止します。APIにcluster全体の遮断機能を追加するものではなく、
+operatorが別途admissionと正当な復旧先を制御する必要があります。
+隔離SyncRep回帰ではclient deadlineを測定した後に、名前で限定したtest backendを
+teardownして永続行を確認します。このteardownは製品の処理でも5秒の測定内処理でもありません。
+
+これはhostが応答する場合のbest-effort local待機budgetです。process停止、資源枯渇、
+OS障害中のhard real-time保証ではありません。外部task cancelはcancelとして伝播し、
+driverの別cancel channel cleanupには独自の待機があり得ます。request本文の読取り、
+接続/admission待機、transaction statement、応答配送は既存の個別制限を維持し、
+end-to-end request deadlineとpartition/rejoin認定は残ります。
+`synchronous_commit`の緩和、failover、effect再実行、service再開は行いません。
 
 M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
