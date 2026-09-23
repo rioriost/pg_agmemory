@@ -7,16 +7,50 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M3 graph MVP deployment
+
+M3 source releaseの契約は**service 0.2.0 / Native API v1 / schema 20**、
+capability stageは`m3-graph-mvp`です。
+native Linux amd64/arm64でPython3.12.14、PostgreSQL18.6、pgvector0.8.6を使い、
+AGE選択時には別固定したAGE72707aa sourceを要求します。
+管理された配置向けのgraph MVPであり、本番、HA/PITR、RPO/RTO、
+任意履歴の復元認定ではありません。
+
+認定source tagからserviceをbuildし、hosted service、PyPI package、
+registry imageの公開済みを前提にしないでください。
+SDK/MCP/hook/workerも同じversionに揃え、API v1/schema20が不変でも混在version互換とは解釈しません。
+既定SQLはAGE不要です。AGE選択には修正image、現行の検証済みartifact、
+下記の明示publishが必要で、旧rc0 imageや固定hop実験で代用してはいけません。
+
+upgrade前にAPI/workerをdrainし、自動再起動を止め、
+正確なsource/component identityに対応する保護backupを取得してください。
+管理者DSNで`pg-agmemory migrate`し、MAX(version)だけでなく**ledger 1–20全体**を確認します。
+0.1.3/schema20からのmigration追加はなく、M2/schema18からは019/020が必要です。
+schema19世代receiptの認証/可読性は維持しますがstaleになり、
+schema20 artifactを再構築して、旧fileの改名で代用しません。
+管理credentialをruntime containerへ渡さず、source切戻しだけではDBを降格できないことに注意してください。
+
+AGE導入は既存未修正extensionのin-place upgrade保証ではありません。
+起動のためにbuild stampや特権診断を捏造せず、対応する新規修正extensionと、
+宣言範囲のcanonical-only復元/再構築を使ってください。
+復元はAPI/worker/model callを自動起動せず、
+旧backupのenabled registryも再開の承認にはなりません。
+
+graph資源recipeは0.2.0用identityに更新しますが、保存した0.1.3 recipeと負荷/閾値は同一です。
+元reportのcommit/profile digestは変更せず、version昇格を理由に改名しません。
+公開済みM2 tag `v0.1.0`と認定済み昇格前checkpoint `37f9c21`を切戻し参照として残し、
+それぞれに対応するDB/artifact状態を要求します。
+
 ## Patched AGE enabled profile
 
-現行開発版は**service 0.1.3 / API v1 / schema 20**、stageは`m3-age-vle`です。
+現行契約は**service 0.2.0 / API v1 / schema 20**、stageは`m3-graph-mvp`です。
 既定は`PGAG_GRAPH_BACKEND=sql`で、`age`は明示的・上限付きprofileです。
 黙ったfallbackや一般的な本番/HA認定ではありません。
 保存した旧`Dockerfile.age`を有効化用imageに使ってはいけません。
 
 ```bash
 docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
-docker build --target runtime -t pg-agmemory:0.1.3 .
+docker build --target runtime -t pg-agmemory:0.2.0 .
 ```
 
 DB imageはPostgreSQL18.6/pgvector0.8.6、公開upstream
@@ -178,7 +212,7 @@ dump/credential/非公開fixture fileは削除、本文なしreportにsource ide
 
 `examples/graph-resource-profile.json`は独立したgraph専用profileです。
 可視node 12/64件のchain/fanout/multiseedと、同じ投影に残す非公開scope dataを使います。
-DB割当は6 vCPU/24 GiB、applicationは2 vCPU/8 GiBで、
+DB割当は6 vCPU/24 GiB、applicationは2 vCPU/8 GiBで、別記録のVM overhead CPUを区別し、
 六つの層を各3 warmup組＋30測定組、SQL先行/AGE先行を交互に実行します。
 既存2-hop/100-path上限を維持し、各層の目標は**p95が1,500 ms未満**です。
 接続・tenant barrier・commitを含む保守的な全操作時間で判定し、
@@ -211,7 +245,8 @@ bash scripts/measure-graph-resources.sh .review-artifacts/graph-preflight --pref
 
 `--development`は作業fileで全recipeを実行しますが非exact・未認定のままです。
 `--preflight`はsample数を短縮し、やはり未認定とします。canonical profile digestは
-`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`で、
+0.2.0の`M3-bounded-native-graph-v2` identityでは
+`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`で、
 profile fieldの改変やruntime service/schema不一致を拒否します。
 raw sampleには安全なerror code、期待結果digest、計測境界を残し、
 生SQL、原文、credentialはreportへ出しません。
@@ -224,6 +259,12 @@ export/publish時間は製品管理CLI起動費用を含み、純粋なDB timer�
 物理投影照合を省いたり、定数時間の鮮度と主張したりしません。
 graph拡大、seed増加、同時writer、全量S dataとの同居には、
 費用認定範囲を広げる前に別途宣言した測定が必要です。
+
+保存した0.1.3/v1 profileのdigestは
+`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`です。
+v2はprofile名とservice versionだけを変え、負荷/gateは変更しません。
+v1再現には対応する旧source checkoutを使い、v2 reportの改名で代用しません。
+releaseではcommit済み0.2.0入力で新profileを再実行します。
 
 ## Graph generation metadata (schema 19)
 
@@ -291,7 +332,7 @@ backup後に世代履歴が変わっていれば、現在の適用経路では�
 
 `pg-agmemory graph-artifact`は**service 0.1.1 / API v1 / schema 19**向けの
 管理者専用・backend非依存build入力export/checkとして導入しました。
-現行service 0.1.2はschema 20 fileを出力し、同じcommand/上限を使います。
+現行service 0.2.0はschema 20 fileを出力し、同じcommand/上限を使います。
 export/check自体はschemaを変更せず、AGE graphも構築/起動しません。
 `PGAG_ADMIN_DATABASE_URL`は非公開に設定します。既存pending世代か現行recorded headを要求し、
 不明・abandoned・後継headへ置換済みの世代は拒否します。

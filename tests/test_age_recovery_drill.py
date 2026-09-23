@@ -1,6 +1,8 @@
 """Offline contracts for the bounded fixture and destructive harness boundaries."""
 
+import hashlib
 import importlib.util
+import json
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -14,6 +16,47 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 drill = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(drill)
+
+
+@pytest.mark.parametrize("version", ["0.1.3", "0.2.1"])
+def test_main_rejects_nonrelease_service_versions_before_reading_private_state(
+    monkeypatch, capsys, version,
+):
+    monkeypatch.setattr(drill.sys, "platform", "linux")
+    monkeypatch.setattr(drill.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(drill.pg_agmemory, "__version__", version)
+    monkeypatch.delenv("PGAG_AGE_RECOVERY_DIRECTORY", raising=False)
+    with pytest.raises(SystemExit) as failure:
+        drill.main()
+    assert failure.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "failed", "error": "service_0_2_0_required",
+    }
+
+
+def test_main_accepts_current_release_and_runs_selected_phase(monkeypatch, capsys, tmp_path):
+    tmp_path.chmod(0o700)
+    monkeypatch.setattr(drill.sys, "platform", "linux")
+    monkeypatch.setattr(drill.sys, "argv", [str(SPEC.origin), "seed"])
+    monkeypatch.setattr(drill.os, "geteuid", lambda: 1000)
+    monkeypatch.setenv("PGAG_AGE_RECOVERY_DIRECTORY", str(tmp_path))
+    monkeypatch.setenv("PGAG_AGE_RECOVERY_BUILD_IDENTITY", json.dumps({
+        "files_sha256": {
+            "scripts/smoke-age-recovery.py": hashlib.sha256(
+                Path(drill.__file__).read_bytes()
+            ).hexdigest(),
+        },
+    }))
+
+    async def seed(directory):
+        assert directory == tmp_path.resolve()
+        return {"status": "passed", "service_version": drill.pg_agmemory.__version__}
+
+    monkeypatch.setattr(drill, "seed", seed)
+    drill.main()
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "passed", "service_version": "0.2.0",
+    }
 
 
 def fixture_evidence():

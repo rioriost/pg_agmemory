@@ -6,7 +6,21 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-## Current development: v0.1.3 / API v1 / schema 20
+## M3 graph MVP: v0.2.0 / API v1 / schema 20
+
+**Memory infrastructure for agents and LLMs, not a judgment system.** This is the
+bounded graph MVP contract: canonical PostgreSQL data stays authoritative, SQL
+remains the default, and the separately pinned patched AGE backend is opt-in.
+The capability stage is `m3-graph-mvp`; use matching service, SDK, MCP, hook and
+worker versions. Promotion from 0.1.3 adds no migration or query behavior change.
+The source tag is published only after the frozen version passes native
+distribution, isolated recovery and its separately pinned graph resource run.
+
+Start with the [M3 deployment and upgrade contract](docs/operations/README.md#m3-graph-mvp-deployment)
+and [release evidence](docs/STATUS.md). The source release does not imply a
+hosted service, PyPI/registry image publication, production/HA/PITR certification,
+or a guarantee of a model's judgment. Earlier milestone sections below retain
+historical contracts and must not override this one.
 
 Isolated recovery can now explicitly accept an unchanged enabled AGE registry
 with `recovery-apply apply --isolated --disable-age-projection`. It verifies the
@@ -28,7 +42,10 @@ SQL remains the default and an explicit rollback selection.
 Upgrade requires stop/drain, migration 020 and matching components. Current
 artifacts use schema 20; schema-19 receipts remain readable but stale.
 See [patched AGE setup and recovery limits](docs/operations/README.md#patched-age-enabled-profile).
-This enables the bounded development profile, not full M3 resource/DR certification.
+The qualified warm graph recipe covers 12/64 visible nodes per scope, not the
+entire artifact maximum, concurrent writers, cold caches or a full-S co-resident
+corpus. Full AGE catalog round-trip remains excluded; canonical-only restoration
+followed by explicit projection rebuild is the supported AGE recovery mode.
 
 ## Previous development checkpoint: v0.1.1 / schema 19
 

@@ -2,7 +2,15 @@
 
 [English](EVALUATION.md)
 
-## Native graph資源profile
+## v0.2.0 release identity
+
+release profileは`M3-bounded-native-graph-v2`、digestは
+`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`です。
+v1との差は名前/service versionだけで、六つの負荷、warmup/sample数、割当、
+厳密な1500ms閾値は維持します。新しいexact0.2.0 runを要求し、
+以下のv0.1.3結果は元の実装/profile bindingとM3全体flag=falseを変更しません。
+
+## 旧v0.1.3 native graph資源profile
 
 独立oracleへの一致をSQL/native AGE対測定の資源評価より先に要求します。
 固定recipeは可視node 12/64の六層と同数の非公開scope、
@@ -57,7 +65,7 @@ build identity、raw timings、割当inspect、入力hash、cleanup結果は
 `.review-artifacts/graph-resource-d1b894d/`へ非公開で保持します。
 同時writer、物理host cold、全量S corpus同居、artifact上限規模への認定には拡張しません。
 
-## 現在の開発版: v0.1.3 / schema 20 AGE隔離復元
+## v0.1.3 / schema 20 AGE隔離復元
 
 明示的な復元＋無効化optionは署名付き最新状態/canonical照合の全要件を維持し、
 その後、同じtransactionで一致した投影を無効化します。

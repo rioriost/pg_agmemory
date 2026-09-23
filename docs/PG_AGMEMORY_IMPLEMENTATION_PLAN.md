@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 0.9 / M3 bounded native graph resource qualification, 2026-09-22
+- Document version: 1.0 / M3 source-release handoff, 2026-09-23
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: Published M2 v0.1.0/schema 18 remains qualified in its bounded profile. Native distribution of v0.1.2/schema20 patched AGE passed all four jobs. Development v0.1.3 adds explicit isolated recovery-and-disable for unchanged enabled baselines, without importing newer generations or activating services. SQL remains default/explicit rollback; old rc0 and costly fixed-hop paths stay unselected. Resource/expanded recovery and distribution gates remain separate. Evidence is in [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M3 v0.2.0/APIv1/schema20 promotes the qualified bounded graph implementation without query/schema changes. SQL remains default, patched AGE72707aa is opt-in, and canonical-only recovery requires explicit rebuild. The release identity must pass its own native/resource gates before tag publication; M4 begins after that handoff. Published M2v0.1.0 and all historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -824,7 +824,7 @@ good model benchmark to bypass failed safety gates.
 | M0 / design freeze | ADRs, API/schema, threat model, fixtures, version matrix, small AGE/SQL/PGQ spikes | Agreement on golden examples for bitemporal, scope, and deletion contracts; compatible artifacts can be obtained and started | 1–2 weeks |
 | M1 / walking skeleton | PostgreSQL schema/RLS, observe, structured remember, basic recall/explain/forget, idempotency, typed checkpoints, SQL graph oracle | Store → retrieve → explain → correct → recover → delete succeeds in a two-tenant E2E test. Zero leakage or resurrection | 3–4 weeks |
 | M2 / core MVP v0.1 | Reliable core API/SDK/MCP/hook, declared generation/embedding interfaces, hybrid retrieval, non-destructive compaction, isolated logical restore | Section 18 core contract/resource gates; complete supported-history restore and call-accounting reconciliation; one reference benchmark with no semantic pass score | Complete as v0.1.0 within the limits below |
-| M3 / graph MVP v0.2 | One AGE-first or viable SQL/PGQ adapter, bounded temporal traversal, projection generations/rebuild | SQL-oracle IDs/paths/time/ACL agreement, revocation/deletion barriers, stale/rebuilding projection behavior, bounded query resources | After M2 |
+| M3 / graph MVP v0.2 | Patched AGE72707aa opt-in, bounded temporal traversal, verified generations and canonical-only rebuild | Declared graph/time/ACL/recovery gates qualified before promotion; frozen0.2.0 native/resource qualification precedes publication | Release handoff |
 | M4 / integration pilot v0.3 | One agent/harness integration, optional postgresem adapter, external-source revocation/freshness; optional rerank adapter only for a declared integration need | Versioned schemas, delegated identity, explicit restore/refresh, source deletion and partial-failure propagation; no unconditional side-effect replay | After core/graph dependencies |
 | M5 / production candidate | Capacity/HA/PITR, operational monitoring, upgrades, embedding-space migration and backup retention | Declared load/RPO/RTO/retention verified, compatibility and rollback/roll-forward contracts; model migration preserves identity/isolation, not a model-quality competition | After pilot |
 

@@ -270,7 +270,8 @@ def create_app(
         version=__version__,
         lifespan=lifespan,
         description=(
-            "Development memory service with optional pinned AGE. Not production qualified."
+            "M3 graph MVP with SQL by default and optional pinned AGE. "
+            "Bounded graph qualification only; not generally production qualified."
         ),
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
@@ -329,7 +330,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m3-age-vle",
+            "stage": "m3-graph-mvp",
             "features": [
                 "observe",
                 "episode_query",

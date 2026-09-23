@@ -2,7 +2,16 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Native graph resource profile
+## v0.2.0 release identity
+
+The release profile is `M3-bounded-native-graph-v2`, digest
+`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`.
+Relative to v1 it changes only name/service version; all six workloads, warmup/
+sample counts, allocations and strict1500ms threshold remain unchanged.
+A new exact0.2.0 run is required. The v0.1.3 results below retain their original
+implementation/profile bindings and false whole-M3 flags.
+
+## Historical v0.1.3 native graph resource profile
 
 The independent oracle gates paired SQL/native AGE measurements before resource
 claims. The frozen recipe covers six 12/64-visible-node strata with an equal-sized
@@ -61,7 +70,7 @@ results are retained privately in `.review-artifacts/graph-resource-d1b894d/`.
 No concurrent writer, physical-host cold, co-resident full-S corpus, or artifact-
 maximum scale claim follows from this run.
 
-## Current development: v0.1.3 / schema 20 isolated AGE recovery
+## v0.1.3 / schema 20 isolated AGE recovery
 
 The explicit recovery-and-disable option preserves all signed latest-state and
 canonical matching requirements, then quarantines the matching projection in

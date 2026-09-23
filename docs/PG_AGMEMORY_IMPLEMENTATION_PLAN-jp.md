@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 0.9 / M3上限付きnative graph資源認定、2026-09-22
+- 文書版: 1.0 / M3 source-release引き継ぎ、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: 公開済みM2 v0.1.0/schema 18の限定認定を維持。v0.1.2/schema20修正AGEのnative配布全4 jobが成功。開発版v0.1.3は変更のないenabled baselineへの明示的な隔離復元＋無効化を追加し、新世代取込みやservice起動は行わない。SQLは既定/明示切戻し、旧rc0と高コスト固定hopは未選択を維持。資源/拡張復元/配布gateは別管理し、証跡は[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)に記録する。
+- 状態: M3 v0.2.0/APIv1/schema20として認定済み限定graph実装を昇格し、query/schemaは変更しない。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。tag公開前にrelease identity自身のnative/資源gateを通し、その引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -804,7 +804,7 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 | M0 / 設計固定 | ADR、API/schema、脅威モデル、fixture、version matrix、AGE/SQL/PGQ小規模spike | 二時点・scope・削除契約のgolden例が合意され、対応artifactを取得・起動できる | 1〜2週 |
 | M1 / walking skeleton | PostgreSQL schema/RLS、observe、structured remember、basic recall/explain/forget、idempotency、typed checkpoint、SQL graph oracle | 2 tenantsのE2Eで保存→検索→説明→訂正→復旧→削除が成功。漏洩・再出現0 | 3〜4週 |
 | M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の制限内でv0.1.0として完了 |
-| M3 / graph MVP v0.2 | AGE優先または実用可能なSQL/PGQ adapter一つ、上限付き時間付き探索、projection世代/再構築 | SQL oracleとのID/path/time/ACL一致、失効/削除barrier、古い/再構築中projectionの挙動、query資源上限 | M2後 |
+| M3 / graph MVP v0.2 | 修正AGE72707aa opt-in、上限付き時間探索、検証済み世代、canonical-only再構築 | 宣言graph/time/ACL/復元gateは昇格前に認定済み。公開前に固定0.2.0のnative/資源認定を要求 | Release引き継ぎ |
 | M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | core/graphの依存完了後 |
 | M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
 

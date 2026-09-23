@@ -2,9 +2,37 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## Native graph resource recipe and freshness decision
+## M3 v0.2.0 release contract
 
-The six-case graph-only recipe is frozen in `examples/graph-resource-profile.json`
+The release identity is **service0.2.0 / APIv1 / schema20**, stage
+`m3-graph-mvp`. Promotion changes version/capability metadata and release-profile
+identity, not query semantics, schema, dependency pins or the selected AGE source.
+The graph resource v2 digest is
+`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`;
+only profile name/service version differ from v1. The exact release build must
+pass native distribution and a new run before tag publication. No previous raw
+artifact is relabeled or given new qualification flags.
+
+The last pre-release **`37f9c21b2b118c4bdc22bdd3147042179ba74e4c`**
+[run35743467738](https://github.com/rioriost/pg_agmemory/actions/runs/35743467738)
+passed all four jobs. Each core architecture passed2,378 cases/113 optional skips,
+all packaged smokes and ordinary v7 restore; patched AGE passed84 profile cases,
+all59 original checks,207 enabled cases, real HTTP and canonical-only restore.
+Core pytest took1571.02/1330.41 seconds on amd64/arm64; AGE cases282.33/385.81.
+`992fe8a` also passed all four jobs in run35738577570 before the readiness-only
+fix. Preserve the earlier unconfirmed setup failure as history, not a release gate
+silently treated as passed.
+
+M3's declared scope is canonical-authority graph traversal, exact bounded
+ordering/time/authorization, verified artifacts/generation CAS, fail-closed
+freshness, and isolated canonical-only restore followed by explicit rebuild.
+SQL remains default. Full AGE catalog restoration, arbitrary newer content,
+automatic reactivation, larger/co-resident/concurrent/cold graph costs and
+production HA/PITR are excluded. M4 starts only after the release handoff.
+
+## Historical v0.1.3 graph resource recipe and freshness decision
+
+The six-case graph-only v1 recipe was frozen at `d1b894d` in `examples/graph-resource-profile.json`
 (digest `c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`).
 It uses visible/hidden scopes, 12/64-node chain/fanout/multiseed shapes, three
 warmup plus 30 measured pairs each, and the unchanged strict 1,500 ms p95 target.

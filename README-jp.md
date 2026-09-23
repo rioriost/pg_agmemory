@@ -7,7 +7,19 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-## 現在の開発版: v0.1.3 / API v1 / schema 20
+## M3 graph MVP: v0.2.0 / API v1 / schema 20
+
+**エージェントとLLMの記憶基盤であり、判断システムではありません。**
+限定graph MVPの契約として、canonical PostgreSQL dataを正本に保ち、
+SQLを既定、別固定の修正済みAGEをopt-inとします。
+capability stageは`m3-graph-mvp`で、service/SDK/MCP/hook/workerのversionを揃えてください。
+0.1.3からの昇格によるmigrationやquery動作の変更はありません。
+固定versionのnative配布、隔離復元、別固定graph資源runが成功した後だけsource tagを公開します。
+
+[M3配置・upgrade契約](docs/operations/README-jp.md#m3-graph-mvp-deployment)と
+[release証跡](docs/STATUS-jp.md)を入口にしてください。
+source releaseはhosted service、PyPI/registry image公開、本番/HA/PITR認定、
+modelの判断保証を意味しません。以下の旧milestone節は履歴であり、この契約を上書きしません。
 
 隔離復元では、変更のないenabled AGE registryを
 `recovery-apply apply --isolated --disable-age-projection`で明示的に扱えるようになりました。
@@ -29,7 +41,9 @@ SQLへの黙ったfallbackはせず、SQLは既定および明示的な切戻し
 upgradeは停止/drain、migration 020、componentの整合が必要です。
 現行artifactはschema 20で、schema 19の旧receiptは読めますがstaleとして扱います。
 [修正済みAGEの設定と復元制限](docs/operations/README-jp.md#patched-age-enabled-profile)を参照してください。
-限定開発profileの有効化であり、M3全体の資源/DR認定ではありません。
+warm graph recipeの認定対象はscope当たり可視node 12/64件で、
+artifact上限全域、同時writer、cold cache、全量S corpus同居ではありません。
+全AGE catalogの往復復元は範囲外とし、canonical-only復元後の明示的投影再構築を対応経路とします。
 
 ## 以前の開発checkpoint: v0.1.1 / schema 19
 

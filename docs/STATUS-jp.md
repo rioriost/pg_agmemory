@@ -2,9 +2,33 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## Native graph資源recipeと鮮度管理の判断
+## M3 v0.2.0 release契約
 
-六つのgraph専用caseを`examples/graph-resource-profile.json`へ固定しました
+release identityは**service0.2.0 / APIv1 / schema20**、stageは`m3-graph-mvp`です。
+昇格はversion/capability metadataとrelease profile identityの変更で、
+queryの意味、schema、依存pin、AGE sourceは変えません。
+graph資源v2 digestは`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`で、
+v1から変えるのはprofile名/service versionだけです。
+tag公開前に固定release buildのnative配布と新しいrunを要求し、
+旧raw artifactの改名や認定flag変更は行いません。
+
+昇格前の**`37f9c21b2b118c4bdc22bdd3147042179ba74e4c`**の
+[run35743467738](https://github.com/rioriost/pg_agmemory/actions/runs/35743467738)は全4 jobが成功しました。
+core両architectureは各2,378件/optional 113 skips、全製品smoke、通常v7復元、
+AGEはprofile84件・元の59確認・enabled207件・実HTTP・canonical-only復元が成功しました。
+core pytestはamd64/arm64で1571.02/1330.41秒、AGE対象は282.33/385.81秒です。
+readinessだけの修正前の`992fe8a`もrun35738577570で全4 job成功しています。
+それ以前の原因未確定setup失敗は、成功へ読み替えず履歴として保持します。
+
+M3の宣言範囲はcanonical正本に基づくgraph探索、上限付きの順序/時刻/認可完全一致、
+検証済みartifact/世代CAS、鮮度不明時の拒否、
+canonical-only隔離復元後の明示再構築です。SQLは既定のままです。
+全AGE catalog復元、任意の新本文、自動再起動、拡大/全量同居/同時/cold graph費用、
+本番HA/PITRは範囲外とし、release引き継ぎ完了後にM4へ進みます。
+
+## 旧v0.1.3 graph資源recipeと鮮度管理の判断
+
+旧v1の六つのgraph専用caseは`d1b894d`の`examples/graph-resource-profile.json`へ固定しました
 （digest `c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`）。
 可視/非公開scope、12/64-nodeのchain/fanout/multiseed、
 各3 warmup＋30測定組と、従来の厳密なp95 1,500 ms未満を使います。

@@ -291,7 +291,7 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
             == 0
         )
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["stage"] == "m3-age-vle" and caps["schema_version"] == 20
+    assert caps["stage"] == "m3-graph-mvp" and caps["schema_version"] == 20
     assert caps["health_probes"] == {
         "liveness": "/healthz",
         "readiness": "/readyz",

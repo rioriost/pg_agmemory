@@ -8,16 +8,52 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M3 graph MVP deployment
+
+The M3 source-release contract is **service 0.2.0 / Native API v1 / schema 20**,
+capability stage `m3-graph-mvp`. Native Linux amd64/arm64 use Python3.12.14,
+PostgreSQL18.6, pgvector0.8.6 and the separately pinned AGE72707aa source when
+AGE is selected. This is a controlled-deployment graph MVP, not production,
+HA/PITR, RPO/RTO or arbitrary-history restore certification.
+
+Build the service from the qualified source tag; no hosted service, PyPI package
+or published registry image is implied. Use matching SDK/MCP/hook/worker
+components. API v1/schema20 staying unchanged is not a promise of mixed-service-
+version compatibility. Default SQL requires no AGE installation. To select AGE,
+use the patched image, current verified artifact and explicit publication below;
+the old rc0 image and fixed-hop experiment are not alternatives.
+
+Before upgrade, drain API/workers, stop automatic restart, and retain protected
+backups with the exact source/component identity. Run `pg-agmemory migrate` with
+the administrator DSN and verify the **complete1–20 ledger**, not only MAX(version).
+There is no new migration from0.1.3/schema20; M2/schema18 needs019/020. Schema19
+generation receipts remain authenticated/readable but stale; rebuild schema20
+artifacts rather than relabeling them. Keep admin credentials out of runtime
+containers. Source rollback alone does not downgrade a database.
+
+AGE installation is not an in-place upgrade guarantee for an existing unpatched
+extension. Do not manufacture a build stamp or privileged diagnostic to make
+startup pass. Use a matching fresh patched extension and the canonical-only
+restore/rebuild path for the declared scope. Recovery never automatically starts
+an API, worker or model call. An enabled registry in an old backup is not
+authorization to resume it.
+
+The graph resource recipe has a new0.2.0 identity with the same workloads and
+thresholds as the preserved0.1.3 recipe. Original reports retain their original
+commits and profile digests; release promotion does not relabel them.
+The published M2 tag `v0.1.0` and the qualified pre-release checkpoint `37f9c21`
+remain rollback references, each requiring its matching database/artifact state.
+
 ## Patched AGE enabled profile
 
-Current development is **service 0.1.3 / API v1 / schema 20**, stage `m3-age-vle`.
+The current contract is **service 0.2.0 / API v1 / schema 20**, stage `m3-graph-mvp`.
 The default remains `PGAG_GRAPH_BACKEND=sql`; `age` is an explicit, bounded profile,
 not a silent fallback or a general production/HA certification. The unchanged
 historical `Dockerfile.age` is **not** the enabled image.
 
 ```bash
 docker build -f Dockerfile.age-patched -t pg-agmemory-age:72707aa .
-docker build --target runtime -t pg-agmemory:0.1.3 .
+docker build --target runtime -t pg-agmemory:0.2.0 .
 ```
 
 The database image pins PostgreSQL18.6/pgvector0.8.6, public upstream
@@ -206,7 +242,8 @@ files are removed; content-free reports retain source identity and exclusions.
 `examples/graph-resource-profile.json` declares a separate, graph-only profile:
 chain, fanout and multiseed graphs at 12 and 64 visible nodes, with hidden-scope
 data retained in the same projection. The database receives 6 vCPU/24 GiB and
-the application 2 vCPU/8 GiB. Each of the six strata uses three warmup pairs and
+the application 2 vCPU/8 GiB, plus any separately recorded VM overhead CPUs.
+Each of the six strata uses three warmup pairs and
 30 measured pairs, alternating SQL-first and AGE-first, with the existing
 two-hop/100-path bounds. The target remains **p95 strictly below 1,500 ms** for
 every stratum, conservatively including connection, tenant barrier and commit.
@@ -243,7 +280,8 @@ bash scripts/measure-graph-resources.sh .review-artifacts/graph-preflight --pref
 `--development` executes the full recipe using working files but remains
 non-exact/unqualified. `--preflight` shortens sampling and also remains unqualified.
 The canonical profile digest is
-`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`;
+`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`
+for the0.2.0 `M3-bounded-native-graph-v2` identity;
 the runner rejects altered profile fields and mismatching runtime service/schema.
 Every raw sample retains safe error codes, expected-result digests and timing
 boundaries; no raw SQL, source text or credentials are emitted into the report.
@@ -257,6 +295,12 @@ proof. Passing this profile alone does not justify replacing it with a mutation
 counter, skipping physical-projection checks or claiming constant-time freshness.
 Larger graphs, more seeds, concurrent writers and a full-S co-resident dataset
 need separately declared measurements before expanding the supported cost claim.
+
+The preserved0.1.3/v1 profile has digest
+`c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212`.
+Only the profile name and service version change in v2; workload and gates do not.
+Use the corresponding historical source checkout to reproduce v1, not an edited
+v2 report. The release runs its new profile again with committed0.2.0 inputs.
 
 ## Graph generation metadata (schema 19)
 
@@ -335,7 +379,7 @@ Actual graph-data rebuild/reconciliation and production HA/PITR remain separate.
 
 `pg-agmemory graph-artifact` is an admin-only, backend-neutral build-input
 export/check command introduced at **service 0.1.1 / API v1 / schema 19**.
-Current service 0.1.2 emits schema-20 files; the same commands/bounds apply. It makes no schema
+Current service 0.2.0 emits schema-20 files; the same commands/bounds apply. It makes no schema
 change and does not build/activate an AGE graph. Supply `PGAG_ADMIN_DATABASE_URL`
 privately. An existing pending generation or current recorded head is required;
 unknown, abandoned and superseded generations are refused.
