@@ -7,6 +7,107 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M4 durable source-access coordinator
+
+開発identityは**0.3.0.dev1 / API v1 / schema 21**、
+stageは`m4-integration-pilot`です。v0.3 releaseやM4全体の認定ではありません。
+`pg-agmemory source-access`は、**信頼する上流coordinator**用の管理者専用local commandです。
+認証済みのsource判断を受け取り、公開webhook、署名検証器、source照会client、
+snapshot metadataからの権限推測は提供しません。
+管理DSNとtenant/scope/principal対応はsource message、reader、plannerから分離します。
+
+migration 021は不変のsource binding、単調な通知cursor、追記型の適用記録を
+非公開`memory_ops` tableに保存します。runtime roleは読み書きできません。
+bindingの管理対象は一つのscope内の一つのreader principalです。
+他memberの一括失効や、同じ外部datasetを使う全principalの発見ではありません。
+capture/削除は別の限定maintenance identityに残します。
+そのidentityと他のgrantも監査し、専用scopeという配置境界を省略しないでください。
+
+```bash
+# 信頼する管理設定。source本文から選ばせない。
+pg-agmemory source-access bind \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" \
+  --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --source-subject "$SOURCE_SUBJECT"
+pg-agmemory source-access get \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID"
+pg-agmemory source-access apply \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --notice-file "$VERIFIED_NOTICE_FILE"
+```
+
+bindは拒否状態から始め、既存read-only grantを原子的に除去します。
+write/delete/admin権限を持つprincipalの転用は拒否します。
+同じidentityの再bindはcursorをresetせず、新しい有効grantを取り消しません。
+identityの変更も拒否します。bind後の対象には通常`scope-access set`を許可せず、
+`get`と緊急`revoke`だけを残します。無関係なscopeのgrantは変更しません。
+
+上限付きJSON通知のformatは`pgag-source-access-notice-v1`です。
+`source`（`source_system`、`dataset_id`、`source_subject`）、
+正整数`sequence`、`decision`（`allow`/`deny`）、`reason`、
+任意`acl_version`/`verified_at`/`valid_until`を含みます。
+allowにはreason `authorized`と認可の3 fieldすべてが必要です。
+denyは`revoked`/`unavailable`/`deleted`でlease時刻を持ちません。
+source identityはbindingと一致させます。
+source connectorはbinding単位のsequenceを永続管理し、
+配送retryのためだけに新sequenceを生成してはいけません。
+
+allowにはDB時刻で
+`verified_at <= now < valid_until <= verified_at + 300 seconds`を要求します。
+grantは**readだけ**で、期限をそのまま適用します。
+無効なlease時刻は既存grantを残すのでなく、拒否を永続記録してfail closedにします。
+sequenceの欠落も拒否として記録してcursorを進め、
+未受信通知から許可を推測しません。
+未削除bindingは、その後の連続した新しい認可確認で明示再開できます。
+source削除はgapや後続denyをまたいでもterminalです。
+読取は止めますが、payloadの物理purge完了とは扱いません。
+source-memory対応を保持して既存Native削除workflowを実行してください。
+
+最新通知の正規化payloadが完全一致する再送はno-opです。
+grant付与、lease延長、epoch更新、audit重複は行わず、
+満了や緊急manual revokeを含む現行effective permissionsを返します。
+古いsequence、同sequenceの異なるpayload、identity不一致、
+新eventの古いaccess-epoch CASは拒否します。
+membership、通常access audit、source state/auditはtenant barrier内で同一transactionにし、
+途中失敗で認可変更の半分だけを公開しません。
+commit結果不明時は状態を確認し、同じ検証済み通知だけを再送します。
+未配送と決めつけたり、新cursorで無条件retryしたりしてはいけません。
+
+実際のmembership変更は既存のtenant access epochを使います。
+通常ACL編集と同様、epochに依存するprocessing、working snapshot、AGE投影を失効させ得ますが、
+このcommandが黙ってrefresh/再実行することはありません。
+metadataだけの通知ではaccess epochを増やさない場合があります。
+
+`source_authorization_verified:false`は意図的です。
+pg_agmemoryが確認するのはlocal契約・順序・lease上限で、
+source systemのcredentialや署名ではありません。
+lease満了でcoordinator停止時のstalenessを制限しますが、未配送の上流失効が即時反映されるわけではありません。
+実際の上流認証/通知経路とtarget mappingを接続・認定するまで、
+shared business dataを自動長期保存しないでください。
+
+### Schema 21 upgradeと復元境界
+
+migration前にAPI/worker/coordinatorを停止・drainし、旧source/component identityと保護backupを保持します。
+新管理CLIでledger 1–21全体を適用し、新しい同一versionのcomponentを使います。
+sourceだけ戻してもDBは降格しません。SQLは引き続き既定です。
+schema19/20のgraph世代履歴は読めますがstaleになり、
+schema20のAGE receipt/artifactはschema21でのservingを許可しません。
+旧投影を明示disableし、現行schema21 artifactをbuild/record/publishしてからAGEを再選択します。
+公開済みM3 tag、旧migration、過去の認定artifactは変更しません。
+
+processing/recovery fingerprintにsource-access両tableを含めます。
+このincrementは完全なstate/historyを復元時の一致必須canonical contentとして扱い、
+**backup後に変更されたsource authorityを`recovery-apply`で取り込みません**。
+cursor/binding/適用記録が異なる旧backupは、認可sequenceを後退させず拒否します。
+不変状態は既存の隔離復元で往復できますが、自動起動や上流lease更新の承認にはなりません。
+現行source認可と削除義務を別途照合するまでservingを停止してください。
+汎用source authority履歴replayは別の作業です。
+
+schema21 graph資源recipeは新しい開発identityで、新たな認定を主張しません。
+固定M3 v2 recipeは`examples/graph-resource-profile-m3-v2.json`に別保存し、
+旧計測は旧commit/schema/profileに属したままで、新buildへ読み替えません。
+
 ## M4 external-source snapshot pilot
 
 任意Python SDK adapter `pg_agmemory.external_source`は、
@@ -38,13 +139,15 @@ token自体を専用scopeへ制限してください。
 
 ### Source認可leaseと失効
 
-限定deployment profileは、client側checkだけでなく、
+snapshot-only deployment profileは、client側checkだけでなく、
 **serverが強制する期限付きscope membership**を再利用します。
 信頼するcoordinatorがsource認可を検証し、Memory principalのread-only grantに対応付けます。
 capture/削除には別の限定maintenance identityを使い、
 そのtokenや管理DSNをserving reader/plannerへ渡しません。
 専用scope内の全grantを監査し、readerの無期限・過大grantを除去してください。
 無関係なtask memoryをsource専用scopeに混在させません。
+
+**未bind**のsnapshot-only対象では、既存の手動手順を使います。
 
 ```bash
 # 特権coordinator専用。ID/epoch/expiryは信頼する設定から渡す。
@@ -55,6 +158,9 @@ pg-agmemory scope-access set \
   --expected-access-epoch "$ACCESS_EPOCH" --permissions read \
   --expires-at "$SOURCE_LEASE_END"
 ```
+
+schema21で管理するbindingには上記`source-access apply`を使います。
+通常`scope-access set`は意図的に拒否します。
 
 `SOURCE_LEASE_END`は検証済みsource認可の期限とoperatorの短いfreshness上限を超えないようにします。
 adapterは全体TTLの強制、source ACL versionの認証、grant更新、source通知受信を行いません。
@@ -367,6 +473,13 @@ log/image/digestを旧rc0失敗や固定hop不採用実験と区別します。
 enabled receiptの無効化とHTTP拒否を確認してから明示再構築します。
 現行/履歴のnative-SQL一致とpurge/ACL拒否も確認し、
 dump/credential/非公開fixture fileは削除、本文なしreportにsource identityと除外条件を残します。
+
+enabled/recovery helperは`PGAG_AGE_RUNTIME_IMAGE`で、同一sourceから構築した
+信頼する非root runtimeを明示指定できます。未指定時は従来どおり自ら構築します。
+両helperは選択imageのidentityを記録し、caller提供imageをcleanupで削除しません。
+local container builderがrepositoryのallowlist付きbuild contextを転送できない場合も、
+別途構築した同一runtimeで確認できます。service versionが同じという理由だけで
+古いimageへ置き換えてはいけません。
 
 ## Native graph resource profile
 

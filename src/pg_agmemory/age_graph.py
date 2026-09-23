@@ -11,7 +11,7 @@ from uuid import UUID
 import psycopg
 from psycopg import sql
 
-from pg_agmemory.database import Connection, RuntimeValidationError, connect
+from pg_agmemory.database import SCHEMA_VERSION, Connection, RuntimeValidationError, connect
 from pg_agmemory.graphs import SqlGraph
 from pg_agmemory.models import ExpandGraph, GraphEdge, GraphPath, MemoryReference
 from pg_agmemory.service import MemoryError, MemoryService
@@ -356,7 +356,8 @@ class AgeGraph:
             raise MemoryError("not_found", 404)
         projection = await (await self.conn.execute(
             """SELECT generation_id,graph_name,age_commit,captured_access_epoch,
-                      captured_deletion_epoch,node_count,edge_revision_count
+                      captured_deletion_epoch,node_count,edge_revision_count,
+                      captured_schema_version
                FROM memory_ops.age_projection WHERE tenant_id=%s AND enabled""",
             (self.tenant,),
         )).fetchone()
@@ -368,7 +369,8 @@ class AgeGraph:
                 or not 0 <= projection["node_count"] <= MAX_NODES
                 or not 0 <= projection["edge_revision_count"] <= MAX_EDGE_REVISIONS):
             raise MemoryError("graph_projection_invalid", 409)
-        if (projection["captured_access_epoch"] != timeline["access_epoch"]
+        if (projection["captured_schema_version"] != SCHEMA_VERSION
+                or projection["captured_access_epoch"] != timeline["access_epoch"]
                 or projection["captured_deletion_epoch"] != timeline["deletion_epoch"]):
             raise MemoryError("graph_projection_stale", 409)
         await _validate_labels(self.conn, graph_name)

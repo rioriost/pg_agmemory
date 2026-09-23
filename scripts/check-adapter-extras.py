@@ -7,14 +7,23 @@ import sys
 from importlib.resources import files
 
 from pg_agmemory.api import create_app
+from pg_agmemory.source_access import MAX_SOURCE_LEASE_SECONDS, SourceIdentity
 
 profile = sys.argv[1]
+assert MAX_SOURCE_LEASE_SECONDS == 300
+assert SourceIdentity(source_system="synthetic", dataset_id="data", source_subject="reader")
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
 assert (importlib.util.find_spec("httpx") is not None) == (profile != "core")
 assert (importlib.util.find_spec("langgraph") is not None) == (profile == "langgraph")
 assert files("pg_agmemory").joinpath("py.typed").is_file()
+source_help = subprocess.run(
+    ["pg-agmemory", "source-access", "--help"],
+    capture_output=True, text=True, timeout=15,
+)
+assert source_help.returncode == 0 and "notice-file" in source_help.stdout
+assert "Traceback" not in source_help.stderr
 if profile == "langgraph":
     from pg_agmemory.langgraph import LangGraphMemory, build_turn_graph
 

@@ -64,7 +64,10 @@ START = datetime(2026, 9, 1, tzinfo=UTC)
 SPLIT = datetime(2026, 9, 4, tzinfo=UTC)
 CURRENT = datetime(2026, 9, 5, tzinfo=UTC)
 PROJECTION = "memory_ops.age_projection"
-ACCOUNTING = ("memory_ops.model_call", "memory_ops.job", "memory.scope_synthesis_policy")
+ACCOUNTING = (
+    "memory_ops.model_call", "memory_ops.job", "memory.scope_synthesis_policy",
+    "memory_ops.source_access_state", "memory_ops.source_access_event",
+)
 
 
 class DrillError(RuntimeError):
@@ -125,6 +128,7 @@ def validate_archive_manifest(text):
         ("memory", "tenant"), ("memory", "episode"), ("memory", "relation_revision"),
         ("memory_ops", "age_projection"), ("memory_ops", "graph_generation"),
         ("memory_ops", "graph_generation_state"), ("memory_ops", "recovery_key"),
+        ("memory_ops", "source_access_state"), ("memory_ops", "source_access_event"),
         ("public", "pgag_schema_migration"),
     ):
         require(any(f" TABLE DATA {schema} {table} " in line for line in entries),
@@ -236,7 +240,7 @@ def snapshot(fixture):
         conn.execute("SET LOCAL timezone='UTC'")
         require(conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version",
-        ).fetchall() == [{"version": version} for version in range(1, 21)], "schema20_required")
+        ).fetchall() == [{"version": version} for version in range(1, 22)], "schema21_required")
         extensions = conn.execute(
             "SELECT extname,extversion FROM pg_extension "
             "WHERE extname IN ('age','vector') ORDER BY extname",
@@ -259,8 +263,9 @@ def snapshot(fixture):
         tables.update(dict.fromkeys((
             "memory_ops.job", "memory_ops.job_input", "memory_ops.job_identity",
             "memory_ops.extraction_candidate", "memory_ops.model_call", "memory_ops.source_event",
+            "memory_ops.source_access_state", "memory_ops.source_access_event",
         ), ""))
-        require(len(tables) == 35, "canonical_table_coverage_changed")
+        require(len(tables) == 37, "canonical_table_coverage_changed")
         require(conn.execute("SELECT id FROM memory.tenant").fetchall() == [{"id": tenant}],
                 "single_synthetic_tenant_required")
         secret = secret_for(conn, tenant)
@@ -328,13 +333,14 @@ def validate_fixture(fixture, before, latest):
             {row["object_id"] for row in latest["tombstones"]} == set(fixture["purged"]),
             "purge_closure_mismatch")
     for state in (before, latest):
-        require(len(state["canonical"]) == 35, "incomplete_canonical_fingerprints")
+        require(len(state["canonical"]) == 37, "incomplete_canonical_fingerprints")
         tables = {row["table"]: row for row in state["processing"]["tables"]}
         require(tables["memory_ops.model_call"]["rows"] == tables["memory_ops.job"]["rows"] == 0,
                 "unexpected_model_or_worker_activity")
     old = {row["table"]: row for row in before["processing"]["tables"]}
     new = {row["table"]: row for row in latest["processing"]["tables"]}
-    require(all(old[table] == new[table] for table in ACCOUNTING), "accounting_changed")
+    require(all(table in old and table in new and old[table] == new[table] for table in ACCOUNTING),
+            "accounting_changed")
     require(latest["provenance"] and len(before["provenance"]) > len(latest["provenance"]),
             "source_provenance_not_exercised")
 
@@ -624,7 +630,10 @@ async def recover(directory):
             require(final_processing[row["table"]] == row, "rebuild_modified_operational_state")
     report = {
         "status": "passed", "scope": "bounded-isolated-enabled-age", "m3_qualified": False,
-        "schema_version": 20, "service_version": pg_agmemory.__version__,
+        "schema_version": 21, "service_version": pg_agmemory.__version__,
+        "source_authority_recovery": "exact_content_only",
+        "source_authority_revalidation": "explicit",
+        "automatic_source_grant_refresh": False,
         "platform": platform.machine(), "age_commit": AGE_COMMIT,
         **backup, "source_cluster_removed_before_restore": True,
         "fresh_matching_image_restore": True, "nonroot_packaged_runtime": True,
@@ -632,7 +641,7 @@ async def recover(directory):
         "missing_previous_projection_rebuilt": True,
         "fresh_age_runtime_schema_usage_granted": True,
         "registry_revisions": [1, 2, 3], "old_generation_unchanged": True,
-        "canonical_tables": 35, "canonical_ids_retained": len(final["objects"]),
+        "canonical_tables": 37, "canonical_ids_retained": len(final["objects"]),
         "nodes_before": 4, "nodes_after": 3, "relation_revisions_before": 3,
         "relation_revisions_after": 2, "purged_objects": 3,
         "ordered_native_sql_equal": True, "historical_paths_equal": True,
@@ -653,7 +662,7 @@ async def recover(directory):
 def main():
     try:
         require(sys.platform == "linux" and os.geteuid() != 0, "nonroot_linux_required")
-        require(pg_agmemory.__version__ == "0.2.0", "service_0_2_0_required")
+        require(pg_agmemory.__version__ == "0.3.0.dev1", "service_0_3_0_dev1_required")
         directory = Path(os.environ["PGAG_AGE_RECOVERY_DIRECTORY"]).resolve()
         require(directory.is_dir() and stat.S_IMODE(directory.stat().st_mode) == 0o700,
                 "private_directory_required")

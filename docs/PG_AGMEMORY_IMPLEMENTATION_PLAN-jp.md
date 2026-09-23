@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.2 / M4明示external-source snapshot、2026-09-23
+- 文書版: 1.3 / M4 durable source-access coordination、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M3 v0.2.0/APIv1/schema20を宣言範囲で完了。固定4204892が両native architectureと新graph資源v2 runを通過し、公開差分は認定文書だけ。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。v0.2.0引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -20,7 +20,12 @@ DB metadata indexや上流connectorは追加しません。
 信頼する認可/通知coordinatorとdataset全体のtarget発見は未完で、
 shared business dataの自動長期保存は無効に保ちます。
 [source profile](operations/README-jp.md#m4-external-source-snapshot-pilot)を参照してください。
-これらのincrementでserviceをv0.3へ昇格せず、M4完了も宣言しません。
+続く**0.3.0.dev1/schema21**では、管理者専用の永続source binding/通知cursor、
+read-only leaseの原子的適用、重複/欠落制御、source削除のterminal拒否を追加します。
+復元はsource state/historyの完全一致を要求し、旧backupへ変更済みauthorityを取り込みません。
+実際の上流認証器/通知transport、dataset全体のmapping、統合受入れ全体は未完です。
+[coordinator契約](operations/README-jp.md#m4-durable-source-access-coordinator)を参照してください。
+この開発versionはv0.3 releaseではなく、M4完了も宣言しません。
 
 ## 1. 採用方針
 

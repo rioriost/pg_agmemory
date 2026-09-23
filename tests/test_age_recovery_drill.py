@@ -18,7 +18,7 @@ drill = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(drill)
 
 
-@pytest.mark.parametrize("version", ["0.1.3", "0.2.1"])
+@pytest.mark.parametrize("version", ["0.1.3", "0.2.0", "0.2.1", "0.3.0"])
 def test_main_rejects_nonrelease_service_versions_before_reading_private_state(
     monkeypatch, capsys, version,
 ):
@@ -30,7 +30,7 @@ def test_main_rejects_nonrelease_service_versions_before_reading_private_state(
         drill.main()
     assert failure.value.code == 1
     assert json.loads(capsys.readouterr().out) == {
-        "status": "failed", "error": "service_0_2_0_required",
+        "status": "failed", "error": "service_0_3_0_dev1_required",
     }
 
 
@@ -55,7 +55,7 @@ def test_main_accepts_current_release_and_runs_selected_phase(monkeypatch, capsy
     monkeypatch.setattr(drill, "seed", seed)
     drill.main()
     assert json.loads(capsys.readouterr().out) == {
-        "status": "passed", "service_version": "0.2.0",
+        "status": "passed", "service_version": "0.3.0.dev1",
     }
 
 
@@ -68,7 +68,7 @@ def fixture_evidence():
         "registry": [{"enabled": True, "revision": 1}],
         "tombstones": [], "provenance": [{"id": "purged"}, {"id": "retained"}],
         "canonical": [{"table": str(index), "rows": 0, "digest": "a" * 64}
-                      for index in range(35)],
+                      for index in range(37)],
         "processing": {"tables": [
             {"table": table, "rows": 0, "digest": "b" * 64} for table in drill.ACCOUNTING
         ]},
@@ -151,6 +151,33 @@ cleanup
     assert "rm:owned-drill/report.json" not in deleted
 
 
+@pytest.mark.parametrize("runtime", ["", "caller-owned-runtime"])
+def test_runtime_reuse_does_not_build_or_claim_caller_image(tmp_path, runtime):
+    text = (ROOT / "scripts" / "test-age-recovery-containers.sh").read_text()
+    assignment = next(line for line in text.splitlines() if line.startswith("runtime_image="))
+    build = 'if [[ -z "${PGAG_AGE_RUNTIME_IMAGE:-}" ]]; then'
+    block = build + text.split(build, 1)[1].split('\n"$engine" image inspect', 1)[0]
+    result = subprocess.run(["bash", "-c", f"""
+set -eu
+run_id=owned
+directory="$1"
+PGAG_AGE_RUNTIME_IMAGE="$2"
+images=()
+engine=stub
+stub() {{ printf 'build:%s\\n' "$*" >&2; }}
+{assignment}
+{block}
+printf 'runtime:%s\\n' "$runtime_image"
+printf 'owned:%s\\n' "${{images[*]:-}}"
+""", "bash", str(tmp_path), runtime], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        f"runtime:{runtime or 'pg-agmemory-runtime:owned'}",
+        "owned:" + ("" if runtime else "pg-agmemory-runtime:owned"),
+    ]
+    assert (tmp_path / "runtime-build.log").exists() is not bool(runtime)
+
+
 def test_source_removal_precedes_fresh_restore_and_only_smoke_is_mounted():
     text = (ROOT / "scripts" / "test-age-recovery-containers.sh").read_text()
     removed = text.index('source_removed=true\n')
@@ -181,6 +208,7 @@ def archive_manifest():
             ("memory", "tenant"), ("memory", "episode"), ("memory", "relation_revision"),
             ("memory_ops", "age_projection"), ("memory_ops", "graph_generation"),
             ("memory_ops", "graph_generation_state"), ("memory_ops", "recovery_key"),
+            ("memory_ops", "source_access_state"), ("memory_ops", "source_access_event"),
             ("public", "pgag_schema_migration"),
         ), 2)],
     ]) + "\n"
@@ -212,6 +240,7 @@ def test_projection_or_extension_entry_is_never_silently_allowed(entry):
 @pytest.mark.parametrize("table", [
     "memory tenant", "memory_ops age_projection", "memory_ops recovery_key",
     "memory_ops graph_generation", "public pgag_schema_migration",
+    "memory_ops source_access_state", "memory_ops source_access_event",
 ])
 def test_archive_must_retain_authoritative_registry_and_hmac_key_rows(table):
     text = "\n".join(line for line in archive_manifest().splitlines()

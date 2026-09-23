@@ -330,7 +330,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m3-graph-mvp",
+            "stage": "m4-integration-pilot",
             "features": [
                 "observe",
                 "episode_query",
@@ -562,6 +562,16 @@ def create_app(
                 "command": "scope-access",
                 "compare_and_swap": "tenant_access_epoch",
                 "audit": "database_role",
+            },
+            "source_access_administration": {
+                "transport": "admin-cli",
+                "command": "source-access",
+                "durable_binding": ["tenant_id", "scope_id", "principal_id"],
+                "notification_order": "monotonic_sequence",
+                "audit": "immutable_database_events",
+                "recovery": "exact_content_only",
+                "automatic_reactivation": False,
+                "post_restore_revalidation": "explicit",
             },
             "health_probes": {
                 "liveness": "/healthz",

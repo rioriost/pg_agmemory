@@ -110,6 +110,36 @@ def test_valid_patched_runtime_stamp():
     asyncio.run(age_graph.validate_age_connection(runtime_connection()))
 
 
+@pytest.mark.parametrize("captured_schema_version", [20, None])
+def test_historical_schema_projection_is_stale_before_labels_or_native_reads(
+    monkeypatch, captured_schema_version,
+):
+    conn = Mock()
+    cursor = Mock()
+    cursor.fetchone = AsyncMock(side_effect=[
+        {"access_epoch": 1, "deletion_epoch": 1},
+        {
+            "generation_id": uuid4(), "graph_name": GRAPH, "age_commit": age_graph.AGE_COMMIT,
+            "captured_access_epoch": 1, "captured_deletion_epoch": 1,
+            "node_count": 0, "edge_revision_count": 0,
+            "captured_schema_version": captured_schema_version,
+        },
+    ])
+    conn.execute = AsyncMock(return_value=cursor)
+    monkeypatch.setattr(age_graph, "validate_age_connection", AsyncMock())
+    labels = AsyncMock()
+    monkeypatch.setattr(age_graph, "_validate_labels", labels)
+    body = ExpandGraph(
+        scope_ids=[uuid4()], seeds=[uuid4()], relation_types=["depends_on"],
+        purpose="historical schema refusal",
+    )
+    with pytest.raises(MemoryError, match="^graph_projection_stale$"):
+        asyncio.run(age_graph.AgeGraph(Mock(conn=conn, tenant=uuid4())).expand(body))
+    labels.assert_not_awaited()
+    assert conn.execute.await_count == 4
+    assert "captured_schema_version" in conn.execute.call_args.args[0]
+
+
 def test_profile_owns_narrow_preload_diagnostic():
     conn = runtime_connection()
     asyncio.run(age_graph.validate_age_connection(conn))

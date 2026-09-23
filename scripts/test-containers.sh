@@ -1176,7 +1176,7 @@ with TemporaryDirectory(prefix="pgag-processing-recovery-") as directory:
             assert body["processing_state_matches"] and body["differences"] == []
     assert path.stat().st_mode & 0o777 == 0o600
     expected = ProcessingRecoverySnapshot.model_validate_json(path.read_bytes())
-    assert len(expected.tables) == 24
+    assert len(expected.tables) == 26
     generation_tables = {
         "memory_ops.graph_generation", "memory_ops.graph_generation_state",
         "memory_ops.age_projection",

@@ -4,7 +4,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Literal, Never
+from typing import Any, Literal, Never
 from uuid import UUID
 
 import psycopg
@@ -69,106 +69,124 @@ class ScopeAccessResult(BaseModel):
     evaluated_at: datetime
 
 
+def apply_scope_access(
+    conn: psycopg.Connection[dict[str, Any]],
+    request: ScopeAccessRequest,
+    *,
+    allow_source_binding: bool = False,
+) -> ScopeAccessResult:
+    """Apply within the caller's administrative transaction and tenant barrier."""
+    row_lock = " FOR UPDATE" if request.operation != "get" else ""
+    target = conn.execute(
+        """SELECT t.access_epoch FROM memory.tenant t
+           JOIN memory.scope s ON s.tenant_id=t.id AND s.id=%s
+           JOIN memory.principal p ON p.tenant_id=t.id AND p.id=%s
+           WHERE t.id=%s"""
+        + (" FOR UPDATE OF t" if row_lock else ""),
+        (request.scope_id, request.principal_id, request.tenant_id),
+    ).fetchone()
+    if target is None:
+        raise ScopeAccessError("not_found")
+    epoch = target["access_epoch"]
+    identity = (request.tenant_id, request.scope_id, request.principal_id)
+    if request.operation == "set" and not allow_source_binding:
+        bound = conn.execute(
+            """SELECT 1 FROM memory_ops.source_access_state
+               WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s""",
+            identity,
+        ).fetchone()
+        if bound is not None:
+            raise ScopeAccessError("source_access_managed")
+    if request.operation != "get" and epoch != request.expected_access_epoch:
+        raise ScopeAccessError("access_epoch_conflict")
+    before = conn.execute(
+        """SELECT permissions,expires_at FROM memory.scope_member
+           WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s"""
+        + row_lock,
+        identity,
+    ).fetchone()
+    clock = conn.execute("SELECT clock_timestamp() AS at").fetchone()
+    if clock is None:
+        raise ScopeAccessError("admin_database_error")
+    at = clock["at"]
+    configured = [p for p in PERMISSIONS if before and p in before["permissions"]]
+    expiry = before["expires_at"] if before else None
+    changed = False
+    after = before
+    if request.operation == "set":
+        expires_at = request.expires_at.astimezone(UTC) if request.expires_at else None
+        if expires_at is not None and expires_at <= at:
+            raise ScopeAccessError("invalid_expiration")
+        permissions = [p for p in PERMISSIONS if p in (request.permissions or ())]
+        changed = before is None or permissions != configured or expires_at != expiry
+        after = {"permissions": permissions, "expires_at": expires_at}
+    elif request.operation == "revoke":
+        changed, after = before is not None, None
+    if changed:
+        if epoch == MAX_EPOCH:
+            raise ScopeAccessError("access_epoch_exhausted")
+        if after is None:
+            conn.execute(
+                """DELETE FROM memory.scope_member
+                   WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s""",
+                identity,
+            )
+        else:
+            conn.execute(
+                """INSERT INTO memory.scope_member
+                   (tenant_id,scope_id,principal_id,permissions,expires_at)
+                   VALUES (%s,%s,%s,%s,%s)
+                   ON CONFLICT (tenant_id,scope_id,principal_id)
+                   DO UPDATE SET permissions=excluded.permissions,
+                                 expires_at=excluded.expires_at""",
+                (*identity, after["permissions"], after["expires_at"]),
+            )
+        epoch += 1
+        conn.execute(
+            "UPDATE memory.tenant SET access_epoch=%s WHERE id=%s",
+            (epoch, request.tenant_id),
+        )
+        conn.execute(
+            """INSERT INTO memory_ops.scope_access_event
+               (tenant_id,scope_id,principal_id,access_epoch,operation,
+                previous_permissions,previous_expires_at,permissions,expires_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (
+                *identity,
+                epoch,
+                request.operation,
+                before["permissions"] if before else None,
+                expiry,
+                after["permissions"] if after else None,
+                after["expires_at"] if after else None,
+            ),
+        )
+    configured = [p for p in PERMISSIONS if after and p in after["permissions"]]
+    expiry = after["expires_at"] if after else None
+    effective = [] if expiry is not None and expiry <= at else configured
+    return ScopeAccessResult(
+        operation=request.operation,
+        tenant_id=request.tenant_id,
+        scope_id=request.scope_id,
+        principal_id=request.principal_id,
+        access_epoch=epoch,
+        changed=changed,
+        membership_exists=after is not None,
+        permissions=configured,
+        expires_at=expiry,
+        effective_permissions=list(PERMISSIONS) if "admin" in effective else effective,
+        evaluated_at=at,
+    )
+
+
 @contextmanager
 def scope_access(url: str, request: ScopeAccessRequest) -> Iterator[ScopeAccessResult]:
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
             with conn.transaction():
-                row_lock = " FOR UPDATE" if request.operation != "get" else ""
-                target = conn.execute(
-                    """SELECT t.access_epoch FROM memory.tenant t
-                       JOIN memory.scope s ON s.tenant_id=t.id AND s.id=%s
-                       JOIN memory.principal p ON p.tenant_id=t.id AND p.id=%s
-                       WHERE t.id=%s"""
-                    + (" FOR UPDATE OF t" if row_lock else ""),
-                    (request.scope_id, request.principal_id, request.tenant_id),
-                ).fetchone()
-                if target is None:
-                    raise ScopeAccessError("not_found")
-                epoch = target["access_epoch"]
-                if request.operation != "get" and epoch != request.expected_access_epoch:
-                    raise ScopeAccessError("access_epoch_conflict")
-                identity = (request.tenant_id, request.scope_id, request.principal_id)
-                before = conn.execute(
-                    """SELECT permissions,expires_at FROM memory.scope_member
-                       WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s"""
-                    + row_lock,
-                    identity,
-                ).fetchone()
-                clock = conn.execute("SELECT clock_timestamp() AS at").fetchone()
-                if clock is None:
-                    raise ScopeAccessError("admin_database_error")
-                at = clock["at"]
-                configured = [p for p in PERMISSIONS if before and p in before["permissions"]]
-                expiry = before["expires_at"] if before else None
-                changed = False
-                after = before
-                if request.operation == "set":
-                    expires_at = request.expires_at.astimezone(UTC) if request.expires_at else None
-                    if expires_at is not None and expires_at <= at:
-                        raise ScopeAccessError("invalid_expiration")
-                    permissions = [p for p in PERMISSIONS if p in (request.permissions or ())]
-                    changed = before is None or permissions != configured or expires_at != expiry
-                    after = {"permissions": permissions, "expires_at": expires_at}
-                elif request.operation == "revoke":
-                    changed, after = before is not None, None
-                if changed:
-                    if epoch == MAX_EPOCH:
-                        raise ScopeAccessError("access_epoch_exhausted")
-                    if after is None:
-                        conn.execute(
-                            """DELETE FROM memory.scope_member
-                               WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s""",
-                            identity,
-                        )
-                    else:
-                        conn.execute(
-                            """INSERT INTO memory.scope_member
-                               (tenant_id,scope_id,principal_id,permissions,expires_at)
-                               VALUES (%s,%s,%s,%s,%s)
-                               ON CONFLICT (tenant_id,scope_id,principal_id)
-                               DO UPDATE SET permissions=excluded.permissions,
-                                             expires_at=excluded.expires_at""",
-                            (*identity, after["permissions"], after["expires_at"]),
-                        )
-                    epoch += 1
-                    conn.execute(
-                        "UPDATE memory.tenant SET access_epoch=%s WHERE id=%s",
-                        (epoch, request.tenant_id),
-                    )
-                    conn.execute(
-                        """INSERT INTO memory_ops.scope_access_event
-                           (tenant_id,scope_id,principal_id,access_epoch,operation,
-                            previous_permissions,previous_expires_at,permissions,expires_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                        (
-                            *identity,
-                            epoch,
-                            request.operation,
-                            before["permissions"] if before else None,
-                            expiry,
-                            after["permissions"] if after else None,
-                            after["expires_at"] if after else None,
-                        ),
-                    )
-                configured = [p for p in PERMISSIONS if after and p in after["permissions"]]
-                expiry = after["expires_at"] if after else None
-                effective = [] if expiry is not None and expiry <= at else configured
-                result = ScopeAccessResult(
-                    operation=request.operation,
-                    tenant_id=request.tenant_id,
-                    scope_id=request.scope_id,
-                    principal_id=request.principal_id,
-                    access_epoch=epoch,
-                    changed=changed,
-                    membership_exists=after is not None,
-                    permissions=configured,
-                    expires_at=expiry,
-                    effective_permissions=list(PERMISSIONS) if "admin" in effective else effective,
-                    evaluated_at=at,
-                )
-                commit_attempted = changed
+                result = apply_scope_access(conn, request)
+                commit_attempted = result.changed
             yield result
     except psycopg.Error as exc:
         raise admin_failure(exc, commit_attempted) from None

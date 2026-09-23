@@ -1,4 +1,4 @@
-"""Offline M3 packaging contracts, not native, resource, or model qualification."""
+"""Current pilot packaging and frozen M3 history, not runtime qualification."""
 
 import asyncio
 import hashlib
@@ -22,7 +22,7 @@ from pg_agmemory import __version__, age_graph, api, database
 from pg_agmemory.database import RuntimeValidationError, Settings
 from pg_agmemory.deletion_history import DeletionHistory
 from pg_agmemory.graph_artifact import GraphArtifact
-from pg_agmemory.graph_generation import INPUT_TABLES, GraphInput
+from pg_agmemory.graph_generation import INPUT_TABLES, GraphInput, input_digest
 from pg_agmemory.processing_recovery import (
     TABLES,
     ProcessingRecoverySnapshot,
@@ -33,7 +33,8 @@ from pg_agmemory.recovery_apply import CONTENT_TABLES, ROW_TABLES, RecoveryBundl
 
 ROOT = Path(__file__).resolve().parents[1]
 AGE_COMMIT = "72707aab7ce982bf13cad3d102bd869dab07d64b"
-PROFILE_DIGEST = "37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d"
+PROFILE_DIGEST = "44455f45baa2ed8b2c297c51457dc925b32dc8dd9e6df7e41e1459bcc1f33af9"
+M3_PROFILE_DIGEST = "37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d"
 PRE_RELEASE_PROFILE_DIGEST = "c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212"
 CASE_DIMENSIONS = (
     ("chain-small", "chain", 12, 1, "outgoing"),
@@ -55,7 +56,7 @@ def fingerprints(tables):
     return tuple(StateFingerprint(table=table, rows=0, digest="a" * 64) for table in tables)
 
 
-def connection(*, role=None, versions=range(1, 21)):
+def connection(*, role=None, versions=range(1, 22)):
     conn = MagicMock()
     conn.__aenter__ = AsyncMock(return_value=conn)
     conn.__aexit__ = AsyncMock(return_value=False)
@@ -98,14 +99,14 @@ def test_release_version_matches_project_and_editable_lock_root():
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
     roots = [package for package in lock["package"] if package["name"] == "pg-agmemory"]
     assert project["name"] == "pg-agmemory" and len(roots) == 1
-    assert __version__ == project["version"] == roots[0]["version"] == "0.2.0"
+    assert __version__ == project["version"] == roots[0]["version"] == "0.3.0.dev1"
     assert roots[0]["source"] == {"editable": "."}
 
 
-def test_schema_twenty_is_a_packaged_migration_ledger_not_an_age_install(monkeypatch):
-    assert database.SCHEMA_VERSION == len(database.MIGRATIONS) == 20
-    assert tuple(int(name.split("_", 1)[0]) for name in database.MIGRATIONS) == tuple(range(1, 21))
-    assert database.MIGRATIONS[-1] == "020_age_projection.sql"
+def test_schema_twenty_one_is_a_packaged_migration_ledger_not_an_age_install(monkeypatch):
+    assert database.SCHEMA_VERSION == len(database.MIGRATIONS) == 21
+    assert tuple(int(name.split("_", 1)[0]) for name in database.MIGRATIONS) == tuple(range(1, 22))
+    assert database.MIGRATIONS[-1] == "021_source_access.sql"
     statements = tuple(
         files("pg_agmemory").joinpath("storage", name).read_text()
         for name in database.MIGRATIONS
@@ -124,11 +125,11 @@ def test_schema_twenty_is_a_packaged_migration_ledger_not_an_age_install(monkeyp
     calls = conn.execute.call_args_list
     assert [call.args[1] for call in calls if call.args[0].startswith(
         "INSERT INTO public.pgag_schema_migration"
-    )] == [(version,) for version in range(1, 21)]
+    )] == [(version,) for version in range(1, 22)]
     assert [call.args[0] for call in calls if call.args[0] in statements] == list(statements)
 
 
-def test_runtime_requires_the_entire_schema_twenty_ledger(monkeypatch):
+def test_runtime_requires_the_entire_schema_twenty_one_ledger(monkeypatch):
     valid = connection()
     monkeypatch.setattr(database, "connect", AsyncMock(return_value=valid))
     asyncio.run(database.validate_runtime("unused-offline"))
@@ -136,7 +137,7 @@ def test_runtime_requires_the_entire_schema_twenty_ledger(monkeypatch):
     assert "SELECT version FROM public.pgag_schema_migration ORDER BY version" in queries
     assert database.VECTOR_QUERY in queries
     assert not any("ag_catalog" in query or "extname='age'" in query for query in queries)
-    for versions in (range(1, 20), range(1, 22), (*range(1, 19), 20), (20,)):
+    for versions in (range(1, 20), range(1, 21), range(1, 23), (*range(1, 20), 21), (21,)):
         conn = connection(versions=versions)
         monkeypatch.setattr(database, "connect", AsyncMock(return_value=conn))
         with pytest.raises(RuntimeValidationError) as error:
@@ -162,7 +163,7 @@ def test_default_sql_and_strict_age_opt_in_survive_release(monkeypatch):
             replace(settings, graph_backend=invalid)
 
 
-def test_api_v1_reports_m3_mvp_without_changing_backend_readiness(monkeypatch):
+def test_api_v1_reports_m4_pilot_without_changing_backend_readiness(monkeypatch):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public = key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -177,19 +178,25 @@ def test_api_v1_reports_m3_mvp_without_changing_backend_readiness(monkeypatch):
         capabilities = asyncio.run(endpoint())
         assert tuple(capabilities[key] for key in (
             "api_version", "service_version", "schema_version", "stage", "graph_backend",
-        )) == ("v1", "0.2.0", 20, "m3-graph-mvp", backend)
+        )) == ("v1", "0.3.0.dev1", 21, "m4-integration-pilot", backend)
         assert {"graph_expand", "entities", "structured_relations"} <= set(capabilities["features"])
         administration = capabilities["age_projection_administration"]
         assert administration["required_age_commit"] == AGE_COMMIT
         assert administration["fallback"] == "explicit_sql_configuration_only"
         assert administration["isolated_recovery"]["automatic_reactivation"] is False
+        source = capabilities["source_access_administration"]
+        assert source["transport"] == "admin-cli" and source["command"] == "source-access"
+        assert source["recovery"] == "exact_content_only"
+        assert source["automatic_reactivation"] is False
+        assert source["post_restore_revalidation"] == "explicit"
         with TestClient(app) as client:
             response = client.get("/readyz")
             assert response.status_code == 200 and response.json() == {"status": "ready"}
             assert response.headers["cache-control"] == "no-store"
             schema = client.get("/openapi.json").json()
-            assert schema["info"]["version"] == "0.2.0"
+            assert schema["info"]["version"] == "0.3.0.dev1"
             assert "/v1/graph/expand" in schema["paths"]
+            assert not any("source-access" in path for path in schema["paths"])
             assert client.get("/v1/capabilities").status_code == 401
         assert core.await_count == 2
         assert native.await_count == (2 if backend == "age" else 0)
@@ -237,13 +244,15 @@ def test_native_distribution_pins_remain_exact_not_just_matching_labels():
     )}
 
 
-def test_release_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profile, benchmark):
+def test_pilot_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profile, benchmark):
     assert (profile["name"], profile["service_version"], profile["format"]) == (
-        "M3-bounded-native-graph-v2", "0.2.0", "pgag-graph-resource-profile-v1",
+        "M4-bounded-native-graph-v3", "0.3.0.dev1", "pgag-graph-resource-profile-v1",
     )
     assert digest(profile) == benchmark.FROZEN_PROFILE_DIGEST == PROFILE_DIGEST
     assert benchmark.load_profile(ROOT / "examples/graph-resource-profile.json") == profile
     for changes in (
+        {"name": "M3-bounded-native-graph-v2", "service_version": "0.2.0",
+         "schema_version": 20},
         {"name": "M3-bounded-native-graph-v1", "service_version": "0.1.3"},
         {"name": "M3-bounded-native-graph-v1"}, {"service_version": "0.1.3"},
         {"gate": {**profile["gate"], "end_to_end_p95_ms_exclusive": 1501}},
@@ -252,10 +261,18 @@ def test_release_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profil
             benchmark.validate_profile(profile | changes)
 
 
-def test_profile_changes_only_release_identity_and_preserves_workload_dimensions(profile):
+def test_frozen_m3_profile_retains_its_historical_identity(profile):
+    historical = json.loads((ROOT / "examples/graph-resource-profile-m3-v2.json").read_text())
+    assert digest(historical) == M3_PROFILE_DIGEST
+    assert historical == profile | {
+        "name": "M3-bounded-native-graph-v2", "service_version": "0.2.0", "schema_version": 20,
+    }
     # Captured from 37f9c21; packaged tests do not need a Git checkout.
-    original = profile | {"name": "M3-bounded-native-graph-v1", "service_version": "0.1.3"}
+    original = historical | {"name": "M3-bounded-native-graph-v1", "service_version": "0.1.3"}
     assert digest(original) == PRE_RELEASE_PROFILE_DIGEST
+
+
+def test_pilot_profile_preserves_workload_dimensions_and_thresholds(profile):
     assert tuple(tuple(case[field] for field in (
         "id", "shape", "nodes_per_scope", "seed_count", "direction",
     )) for case in profile["cases"]) == CASE_DIMENSIONS
@@ -278,7 +295,7 @@ def test_profile_changes_only_release_identity_and_preserves_workload_dimensions
     }
 
 
-def test_recovery_v1_schema_twenty_artifacts_never_authorize_restore(snapshot):
+def test_recovery_v1_schema_twenty_one_artifacts_never_authorize_restore(snapshot):
     history = DeletionHistory(
         tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1, records=(),
     )
@@ -297,11 +314,11 @@ def test_recovery_v1_schema_twenty_artifacts_never_authorize_restore(snapshot):
         assert parsed == artifact and parsed.format == expected_format
         assert parsed.restore_authorized is False
         schema = value["reference"] if isinstance(artifact, RecoveryBundle) else value
-        assert schema["schema_version"] == 20
+        assert schema["schema_version"] == 21
         for change in ({"restore_authorized": True}, {"format": expected_format[:-1] + "2"}):
             with pytest.raises(ValidationError):
                 model.model_validate_json(json.dumps(value | change))
-        schema["schema_version"] = 19
+        schema["schema_version"] = 20
         with pytest.raises(ValidationError):
             model.model_validate_json(json.dumps(value))
     check = compare_processing_state(snapshot, snapshot)
@@ -313,7 +330,7 @@ def test_recovery_v1_schema_twenty_artifacts_never_authorize_restore(snapshot):
     assert all(table.table in CONTENT_TABLES for table in snapshot.tables[-3:])
 
 
-def test_graph_recovery_artifacts_keep_v1_schema_twenty_and_require_publication(snapshot):
+def test_graph_recovery_artifacts_keep_v1_schema_twenty_one_and_require_publication(snapshot):
     graph_input = GraphInput(
         tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1,
         tables=fingerprints(INPUT_TABLES),
@@ -328,7 +345,7 @@ def test_graph_recovery_artifacts_keep_v1_schema_twenty_and_require_publication(
         (GraphArtifact, artifact, "pgag-graph-artifact-v1"),
     ):
         parsed = model.model_validate_json(value.model_dump_json())
-        assert parsed == value and parsed.format == expected_format and parsed.schema_version == 20
+        assert parsed == value and parsed.format == expected_format and parsed.schema_version == 21
     assert artifact.serving_enabled is False and artifact.permission_filter_required is True
     for changes in ({"serving_enabled": True}, {"permission_filter_required": False}):
         with pytest.raises(ValidationError):
@@ -342,6 +359,23 @@ def test_graph_recovery_artifacts_keep_v1_schema_twenty_and_require_publication(
     )
     assert check.differences == ("memory_ops.age_projection",)
     assert check.processing_state_matches is False and check.restore_authorized is False
+
+
+@pytest.mark.parametrize("schema", [19, 20])
+def test_historical_graph_inputs_remain_readable_without_becoming_current(snapshot, schema):
+    current = GraphInput(
+        tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1,
+        tables=fingerprints(INPUT_TABLES),
+    )
+    historical = GraphInput.model_validate_json(json.dumps(
+        current.model_dump(mode="json") | {"schema_version": schema},
+    ))
+    assert historical.schema_version == schema and current.schema_version == 21
+    assert historical.tables == current.tables
+    assert input_digest(historical, b"historical-test-key") != input_digest(
+        current, b"historical-test-key",
+    )
+    assert GraphInput.model_validate_json(historical.model_dump_json()) == historical
 
 
 def test_sql_runtime_still_rejects_superuser_bypassrls_and_ownership(monkeypatch):

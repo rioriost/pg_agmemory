@@ -510,6 +510,35 @@ def database():
         assert admin.execute(
             "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
         ).fetchone() == age_before
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:20])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    with psycopg.connect(url) as admin:
+        previous_guard = admin.execute(
+            "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
+        ).fetchone()[0]
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_source_access_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (21,):
+                raise RuntimeError("simulated source access migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_source_access_ledger)
+        with pytest.raises(RuntimeError, match="simulated source access migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 20
+        assert admin.execute(
+            "SELECT to_regclass('memory_ops.source_access_state'),"
+            "to_regclass('memory_ops.source_access_event')"
+        ).fetchone() == (None, None)
+        assert admin.execute(
+            "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
+        ).fetchone()[0] == previous_guard
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:

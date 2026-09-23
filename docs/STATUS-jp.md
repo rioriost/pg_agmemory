@@ -2,7 +2,45 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M4開発: 明示external-source snapshot
+## M4開発: durable source-access coordination
+
+現行開発は**0.3.0.dev1 / API v1 / schema 21**、
+stageは`m4-integration-pilot`です。v0.3 releaseではありません。
+管理者専用bindingと通知台帳で一つのsource readerを管理します。
+read-only leaseを申告された認可確認時刻から最大300秒に制限し、
+同一通知の再送でgrantを更新しません。
+sequence欠落・無効leaseは原子的に拒否へ遷移し、
+source削除はbindingのterminal状態です。
+membership、access audit、通知state/historyを同一transactionにします。
+通常`scope-access set`による管理対象の迂回を拒否し、
+緊急revokeと無関係なscopeは維持します。
+
+[coordinator契約](operations/README-jp.md#m4-durable-source-access-coordinator)は、
+信頼する上流認証と安定したtarget/sequence対応を前提にします。
+local管理commandであり、webhookや上流署名検証器ではありません。
+dataset全targetの発見、通知による物理purge、tool実行、
+shared business dataの自動長期保存は追加しません。M4全体の受入れは未完です。
+
+upgradeにはmigration021と同一versionのcomponentが必要です。
+旧graph世代履歴は読めますがstaleになり、AGE再選択前にschema21 artifactを再構築します。
+source state/event両tableは復元時の一致必須fingerprintで、可変import対象ではありません。
+backup後にsource authorityが変わっていたら復元を拒否します。
+任意通知replay、自動再開、source system全体の災害復旧とは扱いません。
+公開済みv0.2.0 tagとschema20資源証跡は変更しません。
+
+local Linux arm64で**coordinator/SDK/統合/復元の限定940件**、
+Ruff、source/usageのstrict型確認が成功しました。
+core/hook/sdk/providers/LangGraphの個別installと、SDK依存なしの管理CLIも確認しました。
+schema21の実backup/通常復元と、修正AGEのcanonical-only復元が成功しています。
+修正AGEの**enabled214件**と非root実HTTP smokeも成功し、
+旧schema20 receiptのstale拒否とschema21再構築を含みます。
+別途**runner/復元契約57件**でruntimeの明示再利用とcaller所有imageの保持を確認しました。
+local builderがallowlist contextを転送できなかったため、package入力がbyte単位で同一の
+別staging contextからruntimeを構築しました。native CIの既定build経路は変更しません。
+source履歴差分を両方向で拒否し、不変lease/cursorをgrant更新なしで保持します。
+限定local結果であり、上流認証、新しい資源時間測定、M4全体の両native受入れではありません。
+
+## 以前のM4 increment: 明示external-source snapshot
 
 次の限定incrementは、version付き過去source結果envelope用のNative SDK adapterです。
 source system/dataset/subject、semantic revision、query ID、
@@ -30,7 +68,14 @@ tombstoneのidentityを保持し、失効済みcheckpoint headと不可視object
 依存追加なしでcore/hook/sdk/providers/LangGraphの個別install確認も成功しました。
 限定local結果であり、上流connectorやこの新incrementのnative全配布認定ではありません。
 
-## M4開発: 明示LangGraph pilot
+その後、固定**`e7e644f9175b209124bff09d74319f838729191d`**の
+[run35816137319](https://github.com/rioriost/pg_agmemory/actions/runs/35816137319)が
+全4 native jobで成功しました。core amd64/arm64は各**2,483件/optional 113 skips**、
+製品smokeと隔離復元、修正AGEは各profile84件とenabled207件、
+探索確認とcanonical-only復元が成功しました。
+これはschema20 snapshot incrementの認定であり、新しいschema21 coordinatorの結果ではありません。
+
+## 以前のM4 increment: 明示LangGraph pilot
 
 最初の連携incrementは、Native SDK上の任意LangGraph 1.2.11 safe-boundary bridgeです。
 信頼する一つのscope/run/branch、許可済みdataの明示capture、予算付きrecall、
@@ -42,7 +87,7 @@ node/tool/承認を実行しません。汎用LangGraph checkpoint saverやsched
 
 通常service runtimeにextraを追加せず、既存lock package、
 API v1/schema 20、M3 releaseの動作を維持します。
-開発packageのversionはまだ0.2.0であり、この差分は新releaseやM4全体の認定ではありません。
+当時の開発packageは0.2.0であり、その差分は新releaseやM4全体の認定ではありません。
 外部source connector/freshness伝播と後続の統合受入れは未完です。
 `82149e5`のv0.2.0 tagは変更せず、publication workflow
 35810379994/35810381591はcore/AGEの全4 native jobが成功しました。

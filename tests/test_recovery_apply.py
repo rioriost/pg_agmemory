@@ -1,5 +1,7 @@
 import asyncio
 import json
+from datetime import timedelta
+from uuid import uuid4
 
 import psycopg
 import pytest
@@ -15,6 +17,7 @@ from pg_agmemory.processing import Processing
 from pg_agmemory.processing_recovery import capture_processing_state
 from pg_agmemory.recovery_apply import (
     CONTENT_TABLES,
+    REPLACE_TABLES,
     ROW_TABLES,
     RecoveryBundle,
     apply_bundle,
@@ -23,7 +26,166 @@ from pg_agmemory.recovery_apply import (
     main,
     secret_for,
     signature,
+    table_rows,
 )
+
+SOURCE_ACCESS_TABLES = ("memory_ops.source_access_state", "memory_ops.source_access_event")
+
+
+@pytest.mark.parametrize("table", SOURCE_ACCESS_TABLES)
+def test_source_authority_is_exact_content_never_replaced_or_imported(table):
+    from pg_agmemory.processing_recovery import TABLES
+
+    assert table in TABLES and table in CONTENT_TABLES
+    assert table not in REPLACE_TABLES and table not in ROW_TABLES
+    assert TABLES[table] == (
+        "scope_id,principal_id,sequence" if table.endswith("_event") else "scope_id,principal_id"
+    )
+
+
+@pytest.mark.parametrize("table", SOURCE_ACCESS_TABLES)
+@pytest.mark.parametrize("section", ["content", "reference", "rows"])
+def test_source_authority_fingerprints_cannot_be_omitted_or_imported(table, section):
+    from test_processing_recovery import snapshot
+
+    from pg_agmemory.processing_recovery import StateFingerprint
+
+    bundle = RecoveryBundle(
+        reference=snapshot(),
+        content=tuple(StateFingerprint(table=t, rows=0, digest="c" * 64) for t in CONTENT_TABLES),
+        rows={t: [] for t in ROW_TABLES}, signature="d" * 64,
+    ).model_dump(mode="json")
+    if section == "rows":
+        bundle["rows"][table] = []
+    else:
+        fingerprints = bundle["content"] if section == "content" else bundle["reference"]["tables"]
+        fingerprints[:] = [row for row in fingerprints if row["table"] != table]
+    with pytest.raises(ValidationError):
+        RecoveryBundle.model_validate_json(json.dumps(bundle))
+
+
+@pytest.mark.parametrize("table", SOURCE_ACCESS_TABLES)
+@pytest.mark.parametrize("section", ["content", "reference"])
+def test_source_authority_fingerprint_tampering_is_authenticated(env, table, section):
+    bundle = export_bundle(env.admin_url, env.tenants[0])
+    value = bundle.model_dump(mode="json")
+    fingerprints = value["content"] if section == "content" else value["reference"]["tables"]
+    next(row for row in fingerprints if row["table"] == table)["digest"] = "0" * 64
+    forged = RecoveryBundle.model_validate_json(json.dumps(value))
+    with pytest.raises(AdminError, match="^recovery_bundle_authentication_failed$"):
+        apply_bundle(env.admin_url, bundle.reference, forged, isolated=True)
+    assert capture_processing_state(env.admin_url, env.tenants[0]) == bundle.reference
+
+
+def bind_source_authority(env):
+    from pg_agmemory.source_access import SourceAccessRequest, SourceIdentity, source_access
+
+    principal = uuid4()
+    with psycopg.connect(env.admin_url) as conn:
+        conn.execute(
+            "INSERT INTO memory.principal(tenant_id,id,external_subject) VALUES (%s,%s,%s)",
+            (env.tenants[0], principal, "recovery-source-" + principal.hex),
+        )
+        epoch = conn.execute(
+            "SELECT access_epoch FROM memory.tenant WHERE id=%s", (env.tenants[0],),
+        ).fetchone()[0]
+    source = SourceIdentity(
+        source_system="synthetic-recovery", dataset_id="fixture", source_subject=principal.hex,
+    )
+    request = SourceAccessRequest(
+        operation="bind", tenant_id=env.tenants[0], scope_id=env.scopes[0],
+        principal_id=principal, expected_access_epoch=epoch, source=source,
+    )
+    with source_access(env.admin_url, request) as result:
+        return request, result
+
+
+def source_authority_rows(env):
+    with psycopg.connect(env.admin_url, row_factory=dict_row) as conn:
+        return {table: table_rows(conn, env.tenants[0], table) for table in SOURCE_ACCESS_TABLES}
+
+
+@pytest.mark.parametrize("incoming", ["older", "newer"])
+def test_changed_source_authority_is_not_reset_or_imported_by_authenticated_recovery(env, incoming):
+    from pg_agmemory.source_access import SourceAccessRequest, SourceNotice, source_access
+
+    request, bound = bind_source_authority(env)
+    old = export_bundle(env.admin_url, env.tenants[0])
+    original = source_authority_rows(env)
+    with source_access(env.admin_url, SourceAccessRequest(
+        operation="apply", tenant_id=request.tenant_id, scope_id=request.scope_id,
+        principal_id=request.principal_id, expected_access_epoch=bound.access_epoch,
+        notice=SourceNotice(
+            source=request.source, sequence=1, decision="deny", reason="revoked",
+        ),
+    )) as denied:
+        assert denied.sequence == 1 and denied.access_epoch == bound.access_epoch
+    latest = export_bundle(env.admin_url, env.tenants[0])
+    if incoming == "newer":
+        # Model the exact older logical dump, including original timestamps and cursor.
+        with psycopg.connect(env.admin_url, row_factory=dict_row) as conn:
+            for table in SOURCE_ACCESS_TABLES:
+                conn.execute(psycopg.sql.SQL("ALTER TABLE {} DISABLE TRIGGER {}").format(
+                    psycopg.sql.Identifier(*table.split(".")),
+                    psycopg.sql.Identifier("guard_" + table.split(".")[1]),
+                ))
+            conn.execute(
+                "DELETE FROM memory_ops.source_access_event WHERE tenant_id=%s",
+                (env.tenants[0],),
+            )
+            conn.execute(
+                "DELETE FROM memory_ops.source_access_state WHERE tenant_id=%s",
+                (env.tenants[0],),
+            )
+            for table in SOURCE_ACCESS_TABLES:
+                insert_rows(conn, table, original[table])
+                conn.execute(psycopg.sql.SQL("ALTER TABLE {} ENABLE TRIGGER {}").format(
+                    psycopg.sql.Identifier(*table.split(".")),
+                    psycopg.sql.Identifier("guard_" + table.split(".")[1]),
+                ))
+        expected, bundle = old.reference, latest
+    else:
+        expected, bundle = latest.reference, old
+    assert capture_processing_state(env.admin_url, env.tenants[0]) == expected
+    before = source_authority_rows(env)
+    with pytest.raises(AdminError, match="^recovery_content_mismatch$"):
+        apply_bundle(env.admin_url, expected, bundle, isolated=True)
+    assert capture_processing_state(env.admin_url, env.tenants[0]) == expected
+    assert source_authority_rows(env) == before
+
+
+def test_unchanged_source_lease_and_cursor_survive_without_revalidation_or_refresh(
+    env, monkeypatch,
+):
+    from pg_agmemory.source_access import SourceAccessRequest, SourceNotice, source_access
+
+    request, bound = bind_source_authority(env)
+    with psycopg.connect(env.admin_url) as conn:
+        now = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+    with source_access(env.admin_url, SourceAccessRequest(
+        operation="apply", tenant_id=request.tenant_id, scope_id=request.scope_id,
+        principal_id=request.principal_id, expected_access_epoch=bound.access_epoch,
+        notice=SourceNotice(
+            source=request.source, sequence=1, decision="allow", reason="authorized",
+            acl_version="lease-one", verified_at=now, valid_until=now + timedelta(seconds=120),
+        ),
+    )) as allowed:
+        assert allowed.effective_permissions == ["read"]
+    bundle = export_bundle(env.admin_url, env.tenants[0])
+    before = source_authority_rows(env)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("recovery must not invoke the source coordinator")
+
+    monkeypatch.setattr("pg_agmemory.source_access._apply_source_access", forbidden)
+    assert apply_bundle(env.admin_url, bundle.reference, bundle, isolated=True) == bundle.reference
+    assert source_authority_rows(env) == before
+    with psycopg.connect(env.admin_url) as conn:
+        assert conn.execute(
+            """SELECT expires_at FROM memory.scope_member
+               WHERE tenant_id=%s AND scope_id=%s AND principal_id=%s""",
+            (request.tenant_id, request.scope_id, request.principal_id),
+        ).fetchone() == (allowed.expires_at,)
 
 
 def test_graph_generation_metadata_is_verified_but_never_imported():
@@ -35,7 +197,7 @@ def test_graph_generation_metadata_is_verified_but_never_imported():
     assert tables.isdisjoint(ROW_TABLES)
 
 
-@pytest.mark.parametrize("schema", [18, 19])
+@pytest.mark.parametrize("schema", [18, 19, 20])
 def test_previous_schema_bundle_requires_matching_version(env, schema):
     bundle = export_bundle(env.admin_url, env.tenants[0]).model_dump(mode="json")
     bundle["reference"]["schema_version"] = schema

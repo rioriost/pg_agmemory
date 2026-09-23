@@ -2,7 +2,49 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M4 development: explicit external-source snapshots
+## M4 development: durable source-access coordination
+
+Current development is **0.3.0.dev1 / API v1 / schema 21**, stage
+`m4-integration-pilot`, not a v0.3 release. A private administrator-managed
+binding and notification ledger now coordinate one source reader's access:
+read-only leases are limited to 300 seconds from the asserted verification time,
+exact duplicate notices do not renew grants, sequence gaps/invalid leases deny
+access atomically, and source deletion is terminal for the binding.
+Membership, access audit and notification state/history share one transaction.
+Ordinary `scope-access set` cannot bypass a bound target; emergency revoke and
+unrelated scopes remain supported.
+
+The [coordinator contract](operations/README.md#m4-durable-source-access-coordinator)
+requires trusted upstream authentication and stable target/sequence mapping.
+This is a local admin command, not a webhook or upstream signature verifier.
+It does not discover dataset-wide targets, physically purge on a notification,
+execute tools or enable automatic shared-business retention.
+Full M4 integration acceptance remains open.
+
+The upgrade requires migration 021 and matching components. Old graph-generation
+history remains readable but stale; rebuild schema-21 artifacts before opting
+into AGE. Source state and event tables are exact recovery fingerprints, not
+new mutable import surfaces: recovery refuses changed source authority since a
+backup. This bounded policy must not be described as arbitrary notification
+replay, automatic reactivation or general source-system disaster recovery.
+The published v0.2.0 tag and its schema-20 resource evidence remain unchanged.
+
+Local Linux arm64 passes **940 focused coordinator/SDK/integration/recovery
+cases**, Ruff and strict source/usage typing. Separate core/hook/sdk/providers/
+LangGraph installations pass, including the administrator CLI without SDK
+dependencies. Actual ordinary backup/restore and canonical-only patched-AGE
+restore pass with schema 21. Patched AGE passes **214 enabled cases** and the
+real non-root HTTP smoke, including explicit stale schema-20 receipt refusal
+and schema-21 rebuild. Another **57 runner/recovery contracts** cover explicit
+runtime reuse and caller-owned image preservation. The local runtime used
+an independently staged build context with byte-identical package inputs after
+the local builder failed to transfer the allowlisted context; the default
+native-CI build path is unchanged. Source-history drift is rejected in both directions;
+unchanged source leases/cursors are preserved without grant refresh. These are
+bounded local results, not upstream authentication, a new resource timing
+qualification or complete dual-native M4 acceptance.
+
+## Previous M4 increment: explicit external-source snapshots
 
 The next bounded increment adds a Native SDK adapter for a versioned historical
 source-result envelope: source system/dataset/subject, semantic revision, query
@@ -31,7 +73,15 @@ Separate core/hook/sdk/providers/LangGraph installation checks pass without a ne
 dependency. These are focused local results, not upstream connector or full
 native distribution qualification of this newer increment.
 
-## M4 development: explicit LangGraph pilot
+Frozen **`e7e644f9175b209124bff09d74319f838729191d`**
+[run35816137319](https://github.com/rioriost/pg_agmemory/actions/runs/35816137319)
+subsequently passed all four native jobs: core amd64/arm64 each passed
+**2,483 cases / 113 optional skips**, packaged smokes and isolated recovery;
+patched AGE each passed 84 profile cases and 207 enabled cases, plus traversal
+checks and canonical-only recovery. This qualifies the schema-20 snapshot
+increment, not the newer schema-21 coordinator.
+
+## Previous M4 increment: explicit LangGraph pilot
 
 The first integration increment is an optional LangGraph 1.2.11 safe-boundary
 bridge over the Native SDK. One trusted scope/run/branch, explicit admitted
@@ -44,7 +94,7 @@ records partial outcomes, identity, source freshness and retry limits.
 
 The extra is absent from the ordinary service runtime. Existing locked packages,
 API v1/schema 20 and M3 release semantics are unchanged. The development package
-still identifies as 0.2.0; this source increment is not a new release or complete
+at that checkpoint identified as 0.2.0; that increment was not a new release or complete
 M4 qualification. External-source connectors/freshness propagation and further
 integration acceptance remain open. The v0.2.0 tag at `82149e5` is unchanged;
 both publication workflows 35810379994 and 35810381591 passed all four native

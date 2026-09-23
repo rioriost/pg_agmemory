@@ -244,7 +244,7 @@ def test_request_is_frozen_and_exact_revision_bounds_are_accepted():
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("schema", [18, 19])
+@pytest.mark.parametrize("schema", [18, 19, 20])
 def test_previous_schema_receipt_requires_matching_generation_version(env, schema):
     current = record(env, begin(env))
     with psycopg.connect(env.admin_url) as conn:
@@ -275,7 +275,7 @@ def test_empty_get_is_stable_private_and_does_not_create_ledger(env):
     assert empty.revision == 0 and empty.head is None and empty.building is None
     assert not empty.changed
     assert empty.current_input.format == "pgag-graph-input-v1"
-    assert empty.current_input.schema_version == 20
+    assert empty.current_input.schema_version == 21
     assert empty.current_input.tenant_id == env.tenants[0]
     assert empty.current_input.access_epoch == empty.current_input.deletion_epoch == 1
     assert tuple(row.table for row in empty.current_input.tables) == INPUT_TABLES

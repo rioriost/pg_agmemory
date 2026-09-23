@@ -299,7 +299,7 @@ def test_history_closed_binding_rejects_gaps_unknowns_and_scope_contracts(env):
     original = export_deletions(env.admin_url, env.tenants[0]).model_dump(mode="json")
     for field, value in (
         ("deletion_epoch", 5), ("schema_version", 13), ("schema_version", 18),
-        ("schema_version", 19),
+        ("schema_version", 19), ("schema_version", 20),
         ("restore_authorized", True),
         ("includes_acl_policy_and_call_accounting", True), ("records", []),
     ):

@@ -33,7 +33,7 @@ def snapshot():
 
 @pytest.mark.parametrize("case", [
     "missing", "duplicate", "reordered", "unknown", "schema", "previous_schema",
-    "schema18", "authority",
+    "schema18", "schema20", "authority",
 ])
 def test_snapshot_requires_complete_versioned_state(case):
     value = snapshot().model_dump(mode="json")
@@ -51,6 +51,8 @@ def test_snapshot_requires_complete_versioned_state(case):
         value["schema_version"] = 19
     elif case == "schema18":
         value["schema_version"] = 18
+    elif case == "schema20":
+        value["schema_version"] = 20
     else:
         value["restore_authorized"] = True
     with pytest.raises(ValidationError):
@@ -85,7 +87,7 @@ def test_other_tenant_or_recreated_lineage_is_not_comparable(field, value):
 def test_capture_is_read_only_deterministic_private_and_admin_only(env):
     env.observe(content="PRIVATE_SOURCE_MUST_NOT_APPEAR")
     before = capture_processing_state(env.admin_url, env.tenants[0])
-    assert before.schema_version == 20 and len(before.tables) == 24
+    assert before.schema_version == 21 and len(before.tables) == 26
     assert {row.table: row.rows for row in before.tables[-3:]} == {
         "memory_ops.graph_generation": 0, "memory_ops.graph_generation_state": 0,
         "memory_ops.age_projection": 0,

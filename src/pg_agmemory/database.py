@@ -30,6 +30,7 @@ MIGRATIONS = (
     "018_tombstone_read_set.sql",
     "019_graph_generation.sql",
     "020_age_projection.sql",
+    "021_source_access.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"

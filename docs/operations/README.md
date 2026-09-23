@@ -8,6 +8,115 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M4 durable source-access coordinator
+
+The development identity is **0.3.0.dev1 / API v1 / schema 21**, stage
+`m4-integration-pilot`, not a v0.3 release or complete M4 qualification.
+`pg-agmemory source-access` is an administrator-only, local command for a
+**trusted upstream coordinator**. It accepts already-authenticated source
+decisions; it is not a public webhook, signature verifier, source-query client
+or grant inferred from snapshot metadata. Keep the admin DSN and target
+tenant/scope/principal mapping outside source messages, readers and planners.
+
+Migration 021 stores an immutable source binding, a monotonic notification
+cursor and append-only application records in private `memory_ops` tables.
+Runtime roles cannot read or write them. A binding manages one reader principal
+in one scope; it does not revoke other members or discover every principal
+using the same external dataset. A separate restricted maintenance identity
+retains capture/deletion access. Audit that identity and any other grants:
+this is not a substitute for the dedicated-scope deployment boundary.
+
+```bash
+# Trusted administrative configuration, never values selected by source text.
+pg-agmemory source-access bind \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" \
+  --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --source-subject "$SOURCE_SUBJECT"
+pg-agmemory source-access get \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID"
+pg-agmemory source-access apply \
+  --tenant-id "$TENANT_ID" --scope-id "$SOURCE_SCOPE_ID" --principal-id "$READER_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --notice-file "$VERIFIED_NOTICE_FILE"
+```
+
+Binding starts denied and removes an existing read-only grant atomically.
+It refuses to repurpose a principal with write/delete/admin permissions.
+Binding the same identity again neither resets the cursor nor revokes a newer
+valid grant; changing that identity is refused. Once bound, ordinary
+`scope-access set` refuses the managed target. `get` and emergency `revoke`
+remain available. Notifications and administrative grants for unrelated scopes
+are unaffected.
+
+The bounded JSON notice format is `pgag-source-access-notice-v1`. It contains
+`source` (`source_system`, `dataset_id`, `source_subject`), positive integer
+`sequence`, `decision` (`allow`/`deny`), `reason`, and optional `acl_version`,
+`verified_at`, `valid_until`. An allow requires reason `authorized` and all
+three authorization fields. A denial uses `revoked`, `unavailable` or `deleted`
+and no lease timestamps. The notice's source identity must match the binding.
+The source connector must maintain the per-binding sequence durably; it must
+not generate a fresh sequence merely to retry a failed delivery.
+
+For an allow, database time must satisfy
+`verified_at <= now < valid_until <= verified_at + 300 seconds`.
+The resulting membership is **read only**, with exactly that expiry. Invalid
+lease times fail closed by recording a denial, not by leaving a previous grant
+active. A sequence gap similarly records a denial and advances the cursor;
+missing notifications are never presumed to authorize access. A later,
+contiguous, freshly verified allow can explicitly reopen a non-deleted binding.
+Source deletion is terminal for the binding, even across gaps or later denial
+messages. It blocks reads but does **not** claim physical payload purge; retain
+the source-to-memory mapping and use the existing Native deletion workflow.
+
+An exact repeat of the latest normalized notice is a no-op: no grant, lease
+extension, epoch bump or second audit record. It reports current effective
+permissions, including expiry or an emergency manual revocation. An older
+sequence, changed payload under the same sequence, mismatched identity or stale
+new-event access-epoch CAS is refused. Membership, ordinary access audit,
+source state and source audit commit in one transaction under the tenant
+barrier. A failed transaction cannot publish half an authorization change.
+On uncertain commit results, inspect state and resend only the same verified
+notice; never assume delivery failed or blindly obtain a new cursor.
+
+Effective membership changes use the existing tenant access epoch. They can
+invalidate epoch-bound processing, working snapshots and AGE projections just
+like ordinary ACL edits; this command does not silently refresh or reexecute
+them. Metadata-only notices need not allocate another access epoch.
+
+`source_authorization_verified:false` is intentional: pg_agmemory verifies its
+local contract, ordering and lease bounds, not the source system's credentials
+or signatures. Grant expiry bounds coordinator outages; it does not make an
+undelivered upstream revocation instantaneous. Do not automatically retain
+shared business data until the real upstream authentication/notification path
+and its target mapping have been connected and qualified.
+
+### Schema 21 upgrade and recovery boundary
+
+Stop/drain API, workers and coordinators before migration and retain the old
+source/component identity with protected backups. Apply the complete 1–21
+ledger using the new administrator CLI, then use matching new components.
+Source rollback alone cannot downgrade the database. SQL remains default.
+Existing schema-19/20 graph-generation history remains readable but stale;
+schema-20 AGE projection receipts/artifacts cannot authorize serving under
+schema 21. Explicitly disable the old projection and build/record/publish a
+current schema-21 artifact before opting back into AGE. Never modify the
+published M3 tag, old migration files or historical qualification artifacts.
+
+Processing/recovery fingerprints include both source-access tables. This first
+increment treats their complete state/history as exact canonical recovery
+content: **changed source authority since a backup is not imported by
+`recovery-apply`**. An old backup with a different cursor, binding or application
+record is refused rather than regressing an authorization sequence. Unchanged
+state can round-trip with existing isolated recovery, but does not authorize
+automatic startup or upstream lease renewal. Keep serving stopped until current
+source authorization and deletion obligations have been independently
+reconciled. General source-authority history replay remains separate work.
+
+The new schema-21 graph resource recipe has a new development identity and no
+new qualification claim. The frozen M3 v2 recipe is retained separately as
+`examples/graph-resource-profile-m3-v2.json`; old measurements still belong to
+their old commit/schema/profile, not the new development build.
+
 ## M4 external-source snapshot pilot
 
 The optional Python SDK adapter `pg_agmemory.external_source` stores **explicit,
@@ -41,13 +150,15 @@ continues to return the historical JSON as untrusted episode content.
 
 ### Source authorization leases and revocation
 
-The bounded deployment profile reuses **server-enforced, expiring scope
+The snapshot-only deployment profile reuses **server-enforced, expiring scope
 membership**, not a client-only check. A trusted coordinator validates source
 authorization and maps it to a read-only Memory principal grant. Use a separate,
 restricted maintenance identity for capture/deletion; never give that identity's
 token or the administrator DSN to the serving reader or planner. Audit every
 grant in this dedicated scope and remove permanent/broader reader grants.
 Do not mix unrelated task memory into a source-bound scope.
+
+For an **unbound** snapshot-only target, the existing manual procedure is:
 
 ```bash
 # Privileged coordinator only; all IDs/epoch/expiry come from trusted configuration.
@@ -58,6 +169,9 @@ pg-agmemory scope-access set \
   --expected-access-epoch "$ACCESS_EPOCH" --permissions read \
   --expires-at "$SOURCE_LEASE_END"
 ```
+
+For a schema-21 managed binding, use `source-access apply` above instead;
+ordinary `scope-access set` is deliberately refused.
 
 Choose `SOURCE_LEASE_END` no later than the verified source authorization's
 expiry and the operator's short freshness bound. This adapter does not enforce
@@ -406,6 +520,14 @@ recovery-key/canonical identity, quarantines the enabled receipt, checks disable
 HTTP refusal and explicitly rebuilds before current/historical native-SQL
 comparison and purge/ACL negative checks. Dumps, credentials and private fixture
 files are removed; content-free reports retain source identity and exclusions.
+
+The enabled and recovery helpers accept `PGAG_AGE_RUNTIME_IMAGE` for an explicitly
+selected, trusted non-root runtime built from the matching source. Without it,
+they build the runtime themselves. Both record the selected image identity;
+caller-supplied runtime images are never removed by cleanup. This also permits
+an independently built runtime when a local container builder cannot transfer
+the repository's allowlisted build context. Do not substitute an older image
+merely because its service version matches.
 
 ## Native graph resource profile
 

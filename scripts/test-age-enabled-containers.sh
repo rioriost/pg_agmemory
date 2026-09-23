@@ -5,7 +5,7 @@ if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
     echo "Usage: $0 [container|docker]"
     echo "Build pinned patched AGE72707aa and run native adapter/publication/HTTP checks."
     echo "Uses two fresh owned clusters; never changes the default SQL deployment."
-    echo "PGAG_AGE_PATCHED_IMAGE and PGAG_AGE_TEST_IMAGE may reuse explicit local images."
+    echo "PGAG_AGE_PATCHED_IMAGE, PGAG_AGE_TEST_IMAGE and PGAG_AGE_RUNTIME_IMAGE may reuse explicit local images."
     echo "Private evidence remains in .review-artifacts; no live model calls."
     exit 0
 fi
@@ -24,7 +24,7 @@ mkdir -p .review-artifacts
 mkdir "$directory"
 age_image="${PGAG_AGE_PATCHED_IMAGE:-pg-agmemory-age:$run_id}"
 test_image="${PGAG_AGE_TEST_IMAGE:-pg-agmemory-test:$run_id}"
-runtime_image="pg-agmemory-runtime:$run_id"
+runtime_image="${PGAG_AGE_RUNTIME_IMAGE:-pg-agmemory-runtime:$run_id}"
 network=default
 network_created=false
 containers=()
@@ -88,9 +88,12 @@ if [[ -z "${PGAG_AGE_TEST_IMAGE:-}" ]]; then
     build_image "$directory/test-build.log" --target test -t "$test_image" .
     images+=("$test_image")
 fi
-build_image "$directory/runtime-build.log" --target runtime -t "$runtime_image" .
-images+=("$runtime_image")
+if [[ -z "${PGAG_AGE_RUNTIME_IMAGE:-}" ]]; then
+    build_image "$directory/runtime-build.log" --target runtime -t "$runtime_image" .
+    images+=("$runtime_image")
+fi
 "$engine" image inspect "$age_image" > "$directory/age-image.json"
+"$engine" image inspect "$runtime_image" > "$directory/runtime-image.json"
 git rev-parse HEAD > "$directory/git-sha.txt"
 git status --porcelain=v1 --untracked-files=all > "$directory/git-status.txt"
 

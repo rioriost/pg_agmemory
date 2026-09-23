@@ -7,6 +7,7 @@ if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
     echo "Excludes AGE extension/catalog/owned physical schemas; not full AGE catalog restore."
     echo "Builds a packaged non-root runtime; mounts only the smoke and private evidence."
     echo "PGAG_AGE_PATCHED_IMAGE may select an existing trusted patched-72707aa image."
+    echo "PGAG_AGE_RUNTIME_IMAGE may select a matching packaged non-root runtime."
     echo "Deletes owned source before restore; removes credentials, dumps and fixture payloads."
     echo "Keeps only content-free reports/build evidence in .review-artifacts."
     exit 0
@@ -26,7 +27,7 @@ directory=".review-artifacts/$run_id"
 mkdir -p .review-artifacts
 mkdir "$directory" "$directory/private"
 age_image="${PGAG_AGE_PATCHED_IMAGE:-pg-agmemory-age:$run_id}"
-runtime_image="pg-agmemory-runtime:$run_id"
+runtime_image="${PGAG_AGE_RUNTIME_IMAGE:-pg-agmemory-runtime:$run_id}"
 source_db="$run_id-source"
 restore_db="$run_id-restored"
 source_removed=false
@@ -94,8 +95,10 @@ if [[ -z "${PGAG_AGE_PATCHED_IMAGE:-}" ]]; then
     "$engine" build -f Dockerfile.age-patched -t "$age_image" . \
         > "$directory/age-build.log" 2>&1
 fi
-images+=("$runtime_image")
-"$engine" build --target runtime -t "$runtime_image" . > "$directory/runtime-build.log" 2>&1
+if [[ -z "${PGAG_AGE_RUNTIME_IMAGE:-}" ]]; then
+    images+=("$runtime_image")
+    "$engine" build --target runtime -t "$runtime_image" . > "$directory/runtime-build.log" 2>&1
+fi
 "$engine" image inspect "$age_image" > "$directory/age-image.json"
 "$engine" image inspect "$runtime_image" > "$directory/runtime-image.json"
 age_image_id="$(jq -er '.[0].Id // .[0].id' "$directory/age-image.json")"

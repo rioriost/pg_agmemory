@@ -126,8 +126,8 @@ def measured(result, expected, **overrides):
 def test_frozen_profile_has_six_bounded_native_strata(profile):
     assert profile["postgres_version_num"] == 180006
     assert VECTOR_VERSION == "0.8.6" and bench.validate_runtime is validate_runtime
-    assert profile["name"] == "M3-bounded-native-graph-v2"
-    assert profile["schema_version"] == 20 and profile["service_version"] == "0.2.0"
+    assert profile["name"] == "M4-bounded-native-graph-v3"
+    assert profile["schema_version"] == 21 and profile["service_version"] == "0.3.0.dev1"
     assert profile["age_commit"] == "72707aab7ce982bf13cad3d102bd869dab07d64b"
     assert profile["resources"] == {
         "database": {"vcpus": 6, "memory_gib": 24},
@@ -145,14 +145,14 @@ def test_frozen_profile_has_six_bounded_native_strata(profile):
     assert profile["fixture"]["providers"] == 0
 
 
-def test_release_profile_preserves_historical_workload_without_reclassifying_it(profile):
+def test_pilot_profile_preserves_historical_workload_without_reclassifying_it(profile):
     historical = deepcopy(profile)
-    historical.update(name="M3-bounded-native-graph-v1", service_version="0.1.3")
+    historical.update(name="M3-bounded-native-graph-v1", service_version="0.1.3", schema_version=20)
     assert bench.digest(historical) == (
         "c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212"
     )
     assert bench.digest(profile) == (
-        "37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d"
+        "44455f45baa2ed8b2c297c51457dc925b32dc8dd9e6df7e41e1459bcc1f33af9"
     )
     with pytest.raises(bench.BenchmarkError, match="profile_not_frozen"):
         bench.validate_profile(historical)
@@ -701,7 +701,7 @@ def test_helper_rejects_invalid_modes_engines_and_external_paths(tmp_path):
         assert result.returncode == 2
 
 
-@pytest.mark.parametrize("field,value", [("__version__", "0.1.4"), ("SCHEMA_VERSION", 21)])
+@pytest.mark.parametrize("field,value", [("__version__", "0.2.0"), ("SCHEMA_VERSION", 20)])
 def test_runtime_version_mismatch_rejects_before_database_access(
     profile, tmp_path, monkeypatch, field, value,
 ):

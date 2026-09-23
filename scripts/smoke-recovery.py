@@ -1,4 +1,4 @@
-"""Disposable schema-20 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-21 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
@@ -171,7 +171,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 21)], "schema20 required")
+        require(versions == [{"version": n} for n in range(1, 22)], "schema21 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -183,7 +183,7 @@ def snapshot(url):
         counts = {f"memory.{r['tablename']}": fingerprint(conn, "memory", r["tablename"])
                   for r in tables}
         for table in ("job", "job_input", "job_identity", "extraction_candidate",
-                      "model_call", "source_event"):
+                      "model_call", "source_event", "source_access_state", "source_access_event"):
             counts[f"memory_ops.{table}"] = fingerprint(conn, "memory_ops", table)
         result = {
             "format": "pgag-isolated-purge-drill-v7",
@@ -262,7 +262,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 20, "schema20 required")
+        require(evidence["schema_version"] == 21, "schema21 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -270,6 +270,7 @@ def validate_evidence(before, latest):
             require(evidence["canonical"][table]["count"] == 0,
                     "model processing must remain disabled")
         histories.append(deletion_history(evidence))
+    validate_source_authority(before, latest)
     old, new = before["tenant"][0], latest["tenant"][0]
     require(old["id"] == new["id"], "tenant lineage mismatch")
     try:
@@ -334,10 +335,18 @@ def validate_evidence(before, latest):
     return suffix_receipts, suffix, principals
 
 
+def validate_source_authority(before, latest):
+    for table in ("memory_ops.source_access_state", "memory_ops.source_access_event"):
+        require(table in before["canonical"] and table in latest["canonical"]
+                and before["canonical"][table] == latest["canonical"][table],
+                "source authority requires exact matching content")
+
+
 def validate_application_evidence(before, latest):
     require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v7",
             "application evidence v7 required")
-    require(before["schema_version"] == latest["schema_version"] == 20, "schema20 required")
+    require(before["schema_version"] == latest["schema_version"] == 21, "schema21 required")
+    validate_source_authority(before, latest)
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
             "changed identities or anchors unsupported")
@@ -989,8 +998,11 @@ async def recover(admin_url, directory):
         "status": "passed",
         "m2_qualified": False,
         "m3_qualified": False,
-        "scope": "schema20-derived-memory-operational-state-application-v7",
-        "schema_version": 20,
+        "scope": "schema21-derived-memory-operational-state-application-v7",
+        "schema_version": 21,
+        "source_authority_recovery": "exact_content_only",
+        "source_authority_revalidation": "explicit",
+        "automatic_source_grant_refresh": False,
         "build_identity": build_identity(),
         "architecture": platform.machine(),
         "database": final["database"],
@@ -1053,7 +1065,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 20, "this bounded smoke is pinned to schema20")
+    require(SCHEMA_VERSION == 21, "this bounded smoke is pinned to schema21")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

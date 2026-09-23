@@ -6,14 +6,22 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**M4 development:** an optional LangGraph safe-boundary pilot uses the Native SDK
+**M4 development: 0.3.0.dev1 / schema 21.** An administrator-only
+[source-access coordinator](docs/operations/README.md#m4-durable-source-access-coordinator)
+adds durable notification ordering and atomic read-lease updates. Duplicate
+notices cannot renew access; gaps fail closed. This requires migration 021 and
+matching components, including rebuilt graph artifacts before AGE reactivation.
+It is not a v0.3 release or full M4 qualification.
+
+An optional LangGraph safe-boundary pilot uses the Native SDK
 for explicit capture, recall and typed checkpoint/restore. It is not a general
 LangGraph checkpointer, does not execute side effects, and is not M4 completion.
 See the [pilot contract](docs/operations/README.md#m4-langgraph-safe-boundary-pilot).
 The next [external-source snapshot pilot](docs/operations/README.md#m4-external-source-snapshot-pilot)
 adds historical provenance envelopes and explicit partial capture outcomes,
 using dedicated scope leases and Native deletion rather than client-only access
-checks. Upstream coordination and automatic shared-business retention remain off.
+checks. Upstream authentication/notification adapters and automatic
+shared-business retention remain unqualified and off.
 The published M3 release below remains unchanged.
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20

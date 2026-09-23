@@ -93,7 +93,7 @@ def evidence():
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
         "format": "pgag-isolated-purge-drill-v3",
-        "schema_version": 20,
+        "schema_version": 21,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
         "objects": [{"tenant_id": "tenant", "id": "object", "scope_id": "scope",
@@ -106,6 +106,7 @@ def evidence():
         "canonical": {table: {"count": 0} for table in (
             "memory.scope_synthesis_policy", "memory.scope_capture_policy", "memory_ops.model_call",
             "memory.working_snapshot", "memory_ops.extraction_candidate",
+            "memory_ops.source_access_state", "memory_ops.source_access_event",
         )},
     }
     latest = deepcopy(before)
@@ -305,7 +306,7 @@ def test_application_rejects_new_suppress_and_old_recipe(old_format):
 
 
 @pytest.mark.parametrize("application", [False, True])
-@pytest.mark.parametrize("schema", [18, 19])
+@pytest.mark.parametrize("schema", [18, 19, 20])
 def test_previous_schema_artifacts_require_matching_recovery_version(application, schema):
     before, latest = evidence()
     if application:
@@ -313,7 +314,27 @@ def test_previous_schema_artifacts_require_matching_recovery_version(application
             value["format"] = "pgag-isolated-purge-drill-v7"
     before["schema_version"] = schema
     validate = drill.validate_application_evidence if application else drill.validate_evidence
-    with pytest.raises(drill.DrillError, match="schema20 required"):
+    with pytest.raises(drill.DrillError, match="schema21 required"):
+        validate(before, latest)
+
+
+@pytest.mark.parametrize("application", [False, True])
+@pytest.mark.parametrize("table", [
+    "memory_ops.source_access_state", "memory_ops.source_access_event",
+])
+@pytest.mark.parametrize("missing", [False, True])
+def test_source_authority_cannot_be_omitted_or_changed_during_restore(application, table, missing):
+    before, latest = evidence()
+    if application:
+        for value in (before, latest):
+            value["format"] = "pgag-isolated-purge-drill-v7"
+    if missing:
+        del before["canonical"][table]
+        del latest["canonical"][table]
+    else:
+        latest["canonical"][table] = {"count": 1, "sha256": "a" * 64}
+    validate = drill.validate_application_evidence if application else drill.validate_evidence
+    with pytest.raises(drill.DrillError, match="source authority requires exact matching content"):
         validate(before, latest)
 
 

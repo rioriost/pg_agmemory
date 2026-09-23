@@ -151,6 +151,7 @@ def test_publish_verified_artifact_serves_real_native_paths_equal_to_sql(env, ar
     assert receipt.node_count == 3 and receipt.edge_revision_count == 2
     assert receipt.captured_access_epoch == current.head.input_snapshot.access_epoch
     assert receipt.captured_deletion_epoch == current.head.input_snapshot.deletion_epoch
+    assert receipt.captured_schema_version == 21
     assert all(rls and forced for _, _, rls, forced, _ in physical_graphs(env)[receipt.graph_name])
     assert_native_matches(env, graph, current.head.id)
     metadata = operate(env)
@@ -406,10 +407,10 @@ def generation_row(env, identifier):
         ).fetchone()
 
 
-def seed_authenticated_schema19_generation(env, *, recorded):
+def seed_authenticated_old_generation(env, *, recorded, schema):
     current = execute(env)
     snapshot = generation.GraphInput.model_validate_json(json.dumps(
-        current.current_input.model_dump(mode="json") | {"schema_version": 19},
+        current.current_input.model_dump(mode="json") | {"schema_version": schema},
     ))
     identifier = uuid4()
     with psycopg.connect(env.admin_url, row_factory=dict_row) as conn:
@@ -441,12 +442,13 @@ def seed_authenticated_schema19_generation(env, *, recorded):
     return generation_row(env, identifier)
 
 
-def test_authenticated_schema19_building_can_be_read_abandoned_and_rebuilt(env, artifact_dir):
+@pytest.mark.parametrize("schema", [19, 20])
+def test_authenticated_old_building_can_be_read_abandoned_and_rebuilt(env, artifact_dir, schema):
     graph_fixture(env)
-    old = seed_authenticated_schema19_generation(env, recorded=False)
+    old = seed_authenticated_old_generation(env, recorded=False, schema=schema)
     current = execute(env)
-    assert current.current_input.schema_version == 20
-    assert current.building.input_snapshot.schema_version == 19
+    assert current.current_input.schema_version == 21
+    assert current.building.input_snapshot.schema_version == schema
     assert current.building.input_digest == old["input_digest"]
     assert current.building.source_matches is False
     assert generation_row(env, old["id"]) == old
@@ -456,23 +458,24 @@ def test_authenticated_schema19_building_can_be_read_abandoned_and_rebuilt(env, 
     abandoned = abandon(env, current)
     assert abandoned.building is None and abandoned.head is None
     newer, path = prepared(env, artifact_dir)
-    assert newer.head.input_snapshot.schema_version == 20 and newer.head.parent_id is None
+    assert newer.head.input_snapshot.schema_version == 21 and newer.head.parent_id is None
     assert publish(env, newer, path).serving_enabled
     history = generation_row(env, old["id"])
     assert history["state"] == "abandoned" and history["finished_at"] is not None
-    assert history["input_snapshot"]["schema_version"] == 19
+    assert history["input_snapshot"]["schema_version"] == schema
     for key in old.keys() - {"state", "abandon_reason", "finished_at"}:
         assert history[key] == old[key]
 
 
-def test_authenticated_schema19_head_stays_immutable_and_requires_new20_publication(
-    env, artifact_dir, monkeypatch,
+@pytest.mark.parametrize("schema", [19, 20])
+def test_authenticated_old_head_stays_immutable_and_requires_new21_publication(
+    env, artifact_dir, monkeypatch, schema,
 ):
     graph = graph_fixture(env)
-    old = seed_authenticated_schema19_generation(env, recorded=True)
+    old = seed_authenticated_old_generation(env, recorded=True, schema=schema)
     current = execute(env)
-    assert current.head.input_snapshot.schema_version == 19
-    assert current.head.source_matches is False and current.current_input.schema_version == 20
+    assert current.head.input_snapshot.schema_version == schema
+    assert current.head.source_matches is False and current.current_input.schema_version == 21
     assert generation_row(env, old["id"]) == old
     before = physical_graphs(env)
     with forbid_graph_ddl(monkeypatch):
@@ -498,7 +501,64 @@ def test_authenticated_schema19_head_stays_immutable_and_requires_new20_publicat
             )
     assert operate(env).projection is None and generation_row(env, old["id"]) == old
     newer, path = prepared(env, artifact_dir)
-    assert newer.head.input_snapshot.schema_version == 20 and newer.head.parent_id == old["id"]
+    assert newer.head.input_snapshot.schema_version == 21 and newer.head.parent_id == old["id"]
     assert publish(env, newer, path).serving_enabled
     assert_native_matches(env, graph, newer.head.id)
     assert generation_row(env, old["id"]) == old
+
+
+def test_existing_enabled_schema20_receipt_is_stale_until_explicit_disable_and_rebuild(
+    env, artifact_dir, monkeypatch,
+):
+    graph = graph_fixture(env)
+    current, path = prepared(env, artifact_dir)
+    published = publish(env, current, path)
+    old_input = generation.GraphInput.model_validate_json(json.dumps(
+        current.head.input_snapshot.model_dump(mode="json") | {"schema_version": 20},
+    ))
+    with psycopg.connect(env.admin_url, row_factory=dict_row) as conn:
+        digest = generation.input_digest(old_input, secret_for(conn, env.tenants[0]))
+        # Model immutable rows and a physical projection carried through an old-schema restore.
+        conn.execute(
+            "ALTER TABLE memory_ops.graph_generation DISABLE TRIGGER guard_graph_generation"
+        )
+        conn.execute("ALTER TABLE memory_ops.age_projection DISABLE TRIGGER guard_age_projection")
+        conn.execute(
+            """UPDATE memory_ops.graph_generation SET input_snapshot=%s,input_digest=%s
+               WHERE tenant_id=%s AND id=%s""",
+            (Jsonb(old_input.model_dump(mode="json")), digest,
+             env.tenants[0], current.head.id),
+        )
+        conn.execute(
+            """UPDATE memory_ops.age_projection SET input_digest=%s,captured_schema_version=20
+               WHERE tenant_id=%s""",
+            (digest, env.tenants[0]),
+        )
+        conn.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        conn.execute(
+            "ALTER TABLE memory_ops.graph_generation ENABLE TRIGGER guard_graph_generation"
+        )
+        conn.execute("ALTER TABLE memory_ops.age_projection ENABLE TRIGGER guard_age_projection")
+    old = generation_row(env, current.head.id)
+    graphs = physical_graphs(env)
+    stale = operate(env)
+    assert stale.projection.enabled and stale.revision == published.revision
+    assert stale.projection.captured_schema_version == 20
+    assert not stale.serving_enabled and not stale.changed
+    assert execute(env).head.source_matches is False
+    with pytest.raises(MemoryError, match="^graph_projection_stale$"):
+        asyncio.run(read_graph(env, graph.request(["source"]), AgeGraph))
+    assert asyncio.run(read_graph(env, graph.request(["source"]), SqlGraph))["paths"]
+    with forbid_graph_ddl(monkeypatch):
+        with pytest.raises(AdminError, match="^graph_projection_stale$"):
+            publish(env, current, path, expected_revision=stale.revision)
+    assert operate(env) == stale and physical_graphs(env) == graphs
+    disabled = operate(env, "disable", expected_revision=stale.revision)
+    assert not disabled.projection.enabled and not disabled.serving_enabled
+    assert disabled.projection.captured_schema_version == 20
+    newer, new_path = prepared(env, artifact_dir)
+    assert newer.head.input_snapshot.schema_version == 21
+    assert newer.head.parent_id == current.head.id
+    assert publish(env, newer, new_path, expected_revision=disabled.revision).serving_enabled
+    assert_native_matches(env, graph, newer.head.id)
+    assert generation_row(env, current.head.id) == old

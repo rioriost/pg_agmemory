@@ -7,14 +7,21 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**M4開発:** 任意のLangGraph safe-boundary pilotでNative SDKを使い、
+**M4開発: 0.3.0.dev1 / schema 21。**
+管理者専用[source-access coordinator](docs/operations/README-jp.md#m4-durable-source-access-coordinator)で、
+通知順序を永続管理し、read leaseを原子的に更新します。
+再送で権限を更新せず、通知欠落時はfail closedにします。
+migration021と同一versionのcomponentが必要で、AGE再開前にgraph artifactを再構築します。
+v0.3 releaseやM4全体の認定ではありません。
+
+任意のLangGraph safe-boundary pilotでNative SDKを使い、
 明示capture/recallと型付きcheckpoint/restoreを接続します。
 汎用LangGraph checkpointerではなく、副作用を実行せず、M4完了も主張しません。
 [pilot契約](docs/operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
 続く[外部source snapshot pilot](docs/operations/README-jp.md#m4-external-source-snapshot-pilot)では、
 履歴provenance envelopeと保存の部分結果を追加し、
 client側checkだけでなく専用scope leaseとNative削除を使います。
-上流coordinator接続とshared business dataの自動長期保存は無効のままです。
+上流認証/通知adapter接続とshared business dataの自動長期保存は未認定・無効のままです。
 以下の公開済みM3 releaseは変更しません。
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20

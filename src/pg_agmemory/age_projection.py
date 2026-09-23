@@ -17,6 +17,7 @@ from pydantic import StrictBool, ValidationError, model_validator
 
 from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, admin_failure
 from pg_agmemory.age_graph import AGE_COMMIT, AGE_VERSION, LABELS, label_policy
+from pg_agmemory.database import SCHEMA_VERSION
 from pg_agmemory.deletion_history import HistoryContract
 from pg_agmemory.graph_artifact import GraphArtifact, GraphArtifactRequest, current_artifact
 from pg_agmemory.graph_generation import AdminConnection, Revision, _state
@@ -62,6 +63,7 @@ class AgeProjection(HistoryContract):
     input_digest: Digest
     captured_access_epoch: Epoch
     captured_deletion_epoch: Epoch
+    captured_schema_version: Literal[20, 21]
     age_commit: Literal["72707aab7ce982bf13cad3d102bd869dab07d64b"]
     node_count: int
     edge_revision_count: int
@@ -170,6 +172,9 @@ def _publish(
     conn: AdminConnection, request: AgeProjectionRequest, previous: AgeProjection | None,
 ) -> None:
     validate_build(conn)
+    if (previous is not None and previous.enabled
+            and previous.captured_schema_version != SCHEMA_VERSION):
+        raise AdminError("graph_projection_stale")
     state = _state(conn, request.tenant_id)
     if state["head_id"] != request.generation_id:
         raise AdminError("graph_generation_unavailable")
@@ -276,7 +281,9 @@ def age_projection(
                     operation=request.operation, tenant_id=request.tenant_id,
                     revision=final.revision if final else 0, projection=final, changed=changed,
                     artifact_verified=request.operation == "publish",
-                    serving_enabled=final.enabled if final else False,
+                    serving_enabled=bool(
+                        final and final.enabled and final.captured_schema_version == SCHEMA_VERSION
+                    ),
                     rebuilt_missing_projection=request.rebuild_missing,
                 )
                 commit_attempted = changed

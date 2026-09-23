@@ -30,6 +30,8 @@ TABLES = {
     "memory_ops.scope_access_event": "access_epoch",
     "memory_ops.capture_policy_event": "access_epoch",
     "memory_ops.synthesis_policy_event": "access_epoch",
+    "memory_ops.source_access_state": "scope_id,principal_id",
+    "memory_ops.source_access_event": "scope_id,principal_id,sequence",
     "memory_ops.model_call": "job_id",
     "memory_ops.job_identity": "scope_id,principal_id,input_digest",
     "memory_ops.job": "id",
@@ -60,7 +62,7 @@ class StateFingerprint(HistoryContract):
 
 class ProcessingRecoverySnapshot(HistoryContract):
     format: Literal["pgag-processing-recovery-v1"] = "pgag-processing-recovery-v1"
-    schema_version: Literal[20] = 20
+    schema_version: Literal[21] = 21
     tenant_id: UUID
     lineage: Digest
     access_epoch: Epoch
@@ -131,7 +133,7 @@ def fingerprint_tables(
 def capture_processing_connection(
     conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID,
 ) -> ProcessingRecoverySnapshot:
-    if SCHEMA_VERSION != 20:
+    if SCHEMA_VERSION != 21:
         raise AdminError("schema_version_mismatch")
     conn.execute("SET LOCAL timezone='UTC'")
     tenant = conn.execute(
