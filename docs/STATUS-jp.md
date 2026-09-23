@@ -2,12 +2,36 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M4最終実装: 明示source削除と統合pilot
+## M4 integration pilot: v0.3.0
 
-candidateを**service 0.3.0 / API v1 / schema 21**、
-stage `m4-integration-pilot`へ昇格しました。schema/依存の追加変更はありません。
-最終native配布、隔離復元、新v4 graph資源認定の完了後にtagを公開します。
-直前のfeature checkpointは`2ef4539`で、過去の測定結果は改名しません。
+**原計画の明示保持integration pilotの範囲でM4を完了しました。**
+serviceは**0.3.0 / API v1 / schema 21**、stageは`m4-integration-pilot`です。
+version昇格によるschema/固定依存の追加変更はありません。
+固定**`a86962994249bfd3678405bc7f8f7aa682540160`**の
+[run35848700066](https://github.com/rioriost/pg_agmemory/actions/runs/35848700066)が
+全4 native jobで成功しました。core amd64/arm64は各**3,159件/optional 116 skips**、
+製品統合smokeと実隔離復元、修正AGEは各profile84件とenabled214件、
+元の探索確認、実HTTP、canonical-only復元/再構築が成功しました。
+公開引き継ぎは文書だけの変更で、runtime source、依存lock、build script、
+tests、examples、workflowはこの認定済みcheckpointと同一です。
+
+固定commit自身の新v4 graph runは六つの層すべてで成功し、
+**396 samples、semantic probe36件、error0件**です。
+AGE p95は**111.21–941.50 ms**で、変更していない厳密な**1,500 ms未満**を満たします。
+SQL p95は**30.11–85.65 ms**です。recipe digest:
+`cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55`。
+raw result SHA-256:
+`2a4e96ca8dd9fc46717862bf7371a54051509b04b5ec9f70a03a78022c0886fb`。
+共有host上のDB 6 CPU/24 GiB、application 2 CPU/8 GiBと、各VMで別記録したoverhead CPU一つによる
+warm・静止時service呼出しであり、
+HTTP、cold、同時実行、一般capacityの認定ではありません。
+planner/JIT/timeout設定や閾値は緩めていません。
+
+先行する`dfe5d47`の固定run二つは、chain-mediumの管理artifact export準備で失敗し、
+他の層が成功していても**未認定**として保持します。独立diagnosticでは原因を再現できませんでした。
+最終checkpointは許可リスト式の管理error診断とtestだけを追加し、
+推測によるruntime修正は行っていません。新しい成功runをstartup reliability SLOや、
+先行失敗の改名として扱いません。
 
 最終feature incrementで、管理者がsnapshotを発見・計画し、
 Native provenance purgeで削除する経路を追加しました。
@@ -24,9 +48,12 @@ purgeの100/101/107 roots/bindings、32/33 scopes、role/permission、
 古いplan、rollback、commit不明、応答barrierも確認しました。
 Ruff、source50 files/usage3件のstrict型確認、全個別package profileも成功し、
 coreへのSDK依存は追加していません。
-[原計画のM4受入れinventory](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ認定中)で、
+[原計画のM4受入れinventory](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ)で、
 この明示保持pilotを任意postgresem配置やshared business data自動保持から分離します。
-release認定は引き続き未完です。
+実source固有の本番transport、outbox運用、HA/PITR/RPO/RTO、backup保持期限強制は認定しません。
+信頼する公開側harnessとlease付きreaderを分け、single-scope checkpointと
+operator所有の上流認可を明示的な境界にしています。
+次はM5のproduction candidateであり、M4 release gateの残作業ではありません。
 
 ## 以前のM4 increment: signed source-notice ingress
 

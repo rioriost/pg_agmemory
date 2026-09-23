@@ -2,13 +2,39 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M4 closure: explicit source deletion and composed pilot
+## M4 integration pilot: v0.3.0
 
-The candidate is now **service 0.3.0 / API v1 / schema 21**, stage
-`m4-integration-pilot`. Promotion adds no schema or dependency changes.
-Final native distribution, isolated recovery and fresh v4 graph-resource
-qualification must finish before tag publication. The preceding feature
-checkpoint is `2ef4539`; no prior raw measurements are relabeled.
+**M4 is complete within the original explicit-retention integration-pilot
+scope:** service **0.3.0 / API v1 / schema 21**, stage `m4-integration-pilot`.
+Version promotion adds no schema or locked dependency changes.
+Frozen **`a86962994249bfd3678405bc7f8f7aa682540160`**
+[run35848700066](https://github.com/rioriost/pg_agmemory/actions/runs/35848700066)
+passed all four native jobs. Core amd64/arm64 each passed **3,159 cases /
+116 optional skips**, packaged integration smokes and actual isolated recovery;
+patched AGE each passed 84 profile cases and 214 enabled cases, original
+traversal checks, real HTTP and canonical-only restore/rebuild.
+The publication handoff changes documentation only; runtime source, dependency
+lock, build scripts, tests, examples and workflows match that qualified checkpoint.
+
+Its fresh exact-commit v4 graph run passes all six strata: **396 samples,
+36 semantic probes, zero errors**, with AGE p95 **111.21–941.50 ms**, below the
+unchanged strict **1,500 ms** target; SQL p95 is **30.11–85.65 ms**.
+Recipe digest:
+`cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55`.
+Raw result SHA-256:
+`2a4e96ca8dd9fc46717862bf7371a54051509b04b5ec9f70a03a78022c0886fb`.
+These are warm quiescent service calls with DB 6 CPU/24 GiB and application
+2 CPU/8 GiB, plus one separately recorded overhead CPU per VM, on a shared host.
+These are not HTTP, cold, concurrent or general capacity
+qualification. No planner/JIT/timeout setting or threshold was relaxed.
+
+Two earlier exact runs on `dfe5d47` failed the chain-medium administrative
+artifact-export setup and therefore remain **unqualified**, despite passing
+other strata. Standalone diagnostics did not reproduce their cause. The final
+checkpoint adds only allowlisted administrative error reporting and tests,
+not a speculative runtime fix; the failure evidence is retained. The successful
+fresh run is not a claim of a startup reliability SLO or a relabeling of those
+earlier results.
 
 The final feature increment adds administrator-planned snapshot discovery and
 Native provenance purge. All registered readers must first be terminal-deleted,
@@ -26,9 +52,13 @@ outcomes and source purge. Source-purge cases exercise 100/101/107 roots/binding
 32/33 scopes, role/permission boundaries, stale plans, rollback, uncertain
 commit and response barriers. Ruff, 50-source/three-usage strict typing and
 all isolated package profiles pass without adding SDK dependencies to core.
-The [original M4 acceptance inventory](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance-qualification-in-progress)
+The [original M4 acceptance inventory](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance)
 separates this explicit-retention pilot from optional postgresem deployment and
-automatic shared-business retention. Release qualification is still pending.
+automatic shared-business retention. Real source-specific production transport,
+outbox operation, HA/PITR/RPO/RTO and backup-retention enforcement are not
+claimed. The trusted publishing harness and lease-bound reader are distinct;
+single-scope checkpoints and operator-owned source authorization remain explicit.
+M5 is the next production-candidate phase, not an unfinished M4 release gate.
 
 ## Previous M4 increment: signed source-notice ingress
 

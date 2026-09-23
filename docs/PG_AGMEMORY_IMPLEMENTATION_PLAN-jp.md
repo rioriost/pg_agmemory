@@ -2,11 +2,13 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.5 / M4 signed source-notice ingress、2026-09-23
+- 文書版: 1.6 / M4 v0.3.0 release引き継ぎ、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: M3 v0.2.0/APIv1/schema20を宣言範囲で完了。固定4204892が両native architectureと新graph資源v2 runを通過し、公開差分は認定文書だけ。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。v0.2.0引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
+- 状態: M4 v0.3.0/APIv1/schema21を明示保持integration pilotの範囲で完了。固定a869629が両native architecture、通常/AGE復元、新graph資源v4を通過。SQLは既定、修正AGE72707aaはopt-in、復元は明示的な再照合/再開を要求する。次はM5 production candidate。公開済みM2/M3と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
+
+### 過去のM4実装経過
 
 M4は任意LangGraph 1.2.11 safe-boundary pilotから開始します。
 [運用契約](operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
@@ -836,12 +838,12 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 | M1 / walking skeleton | PostgreSQL schema/RLS、observe、structured remember、basic recall/explain/forget、idempotency、typed checkpoint、SQL graph oracle | 2 tenantsのE2Eで保存→検索→説明→訂正→復旧→削除が成功。漏洩・再出現0 | 3〜4週 |
 | M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の制限内でv0.1.0として完了 |
 | M3 / graph MVP v0.2 | 修正AGE72707aa opt-in、上限付き時間探索、検証済み世代、canonical-only再構築 | 固定4204892のnative/資源認定とv0.2.0 source引き継ぎを宣言範囲で完了 | 完了 |
-| M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | core/graphの依存完了後 |
+| M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | 下記の明示保持pilotとしてv0.3.0で完了 |
 | M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
 
 M2はgraph要件を満たす最終版ではない。早期利用可能なcore MVPと、要求されたAGE/SQL/PGQを含むM3のgraph MVPを明確に区別する。SQL/PGQの安定版採用はPostgreSQLの公開状況と実測次第であり、M3のAGE経路の完了を待たせない。
 
-### M4明示保持pilotの受入れ（認定中）
+### M4明示保持pilotの受入れ
 
 原計画のM4は統合**pilot**であり、本番connector配置やshared business dataの
 自動保持許可ではありません。対応する構成はLangGraph 1.2.11、Native API v1、
@@ -862,8 +864,9 @@ pg_agmemoryはそれらの判断を捏造しません。postgresem専用adapter�
 `tests/test_m4_integration.py`は実Native HTTPでlifecycleを接続し、
 独立unit testの集合を統合済み配置の代用にしません。
 `tests/test_source_purge.py`は削除上限と障害分離を扱います。
-最終実装・release candidateのgateが記録付きで成功するまでは認定中であり、
-このinventoryだけで成功を主張しません。
+固定`a869629`が全4 native core/AGE job、実隔離復元、新v4 graph資源runを通過しました。
+[STATUS](STATUS-jp.md#m4-integration-pilot-v030)に正確な件数、source対応、保持した失敗を記録し、
+このinventoryで実行証跡を代用しません。
 HA/PITR/RPO/RTO、本番transport/outbox運用、backup保持期限の強制、広いcapacityはM5です。
 任意scheduler永続化、tool自動replay、全AGE catalog復元、無制限dataset purgeは
 宣言したarchitectureの範囲外です。

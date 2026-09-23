@@ -7,12 +7,13 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**M4 release candidate: 0.3.0 / API v1 / schema 21。**
+**M4 integration pilot: v0.3.0 / API v1 / schema 21。**
 管理者専用[source-access coordinator](docs/operations/README-jp.md#m4-durable-source-access-coordinator)で、
 通知順序を永続管理し、read leaseを原子的に更新します。
 再送で権限を更新せず、通知欠落時はfail closedにします。
 migration021と同一versionのcomponentが必要で、AGE再開前にgraph artifactを再構築します。
-最終native/復元認定は未完で、v0.3.0 tagはまだ公開していません。
+宣言した明示保持pilotの範囲でM4を完了しました。
+[release証跡と制限](docs/STATUS-jp.md#m4-integration-pilot-v030)を参照してください。
 
 [署名付き通知receiver](docs/operations/README-jp.md#signed-source-notice-receiver)は、
 管理者が固定した公開鍵とsource/reader対応でRS256通知を検証してからcoordinatorへ渡します。
@@ -33,7 +34,7 @@ client側checkだけでなく専用scope leaseとNative削除を使います。
 [計画付きsource purge](docs/operations/README-jp.md#planned-source-snapshot-purge)は、
 terminal通知とcapture停止後に物理snapshot rootを発見し、
 toolを再実行せずNative provenance closureを削除します。
-[M4受入れinventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ認定中)で
+[M4受入れinventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ)で
 明示保持pilotを定義します。source固有の本番connector、自動長期保持、
 M5のHA/PITRはこのreleaseの範囲外です。
 以下の公開済みM3 releaseは変更しません。

@@ -6,12 +6,13 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**M4 release candidate: 0.3.0 / API v1 / schema 21.** An administrator-only
+**M4 integration pilot: v0.3.0 / API v1 / schema 21.** An administrator-only
 [source-access coordinator](docs/operations/README.md#m4-durable-source-access-coordinator)
 adds durable notification ordering and atomic read-lease updates. Duplicate
 notices cannot renew access; gaps fail closed. This requires migration 021 and
 matching components, including rebuilt graph artifacts before AGE reactivation.
-Final native/recovery qualification is pending; the v0.3.0 tag is not yet published.
+M4 is complete within its declared explicit-retention pilot.
+See the [release evidence and limits](docs/STATUS.md#m4-integration-pilot-v030).
 
 The [signed-notice receiver](docs/operations/README.md#signed-source-notice-receiver)
 verifies bounded RS256 deliveries against one operator-configured public key
@@ -33,7 +34,7 @@ using dedicated scope leases and Native deletion rather than client-only access
 checks. [Planned source purge](docs/operations/README.md#planned-source-snapshot-purge)
 discovers the physical snapshot roots after terminal notices and capture
 shutdown, then deletes their Native provenance closure without replaying tools.
-The [M4 acceptance inventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance-qualification-in-progress)
+The [M4 acceptance inventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance)
 defines the explicit-retention pilot. Source-specific production connectors,
 automatic shared-business retention and M5 HA/PITR remain outside this release.
 The published M3 release below remains unchanged.

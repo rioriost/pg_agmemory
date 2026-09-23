@@ -2,11 +2,13 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.5 / M4 signed source-notice ingress, 2026-09-23
+- Document version: 1.6 / M4 v0.3.0 release handoff, 2026-09-23
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: M3 v0.2.0/APIv1/schema20 is complete within its declared scope. Frozen4204892 passes both native architectures and its fresh graph-resource v2 run; publication changes qualification documents only. SQL remains default, patched AGE72707aa opt-in, and canonical-only recovery requires explicit rebuild. M4 follows the v0.2.0 handoff. Published M2v0.1.0 and historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M4 v0.3.0/APIv1/schema21 is complete within the explicit-retention integration-pilot contract. Frozen a869629 passes both native architectures, ordinary/AGE recovery and fresh graph-resource v4. SQL remains default, patched AGE72707aa opt-in, and recovery requires explicit revalidation/restart. M5 production-candidate work follows. Published M2/M3 and historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
+
+### Historical M4 implementation sequence
 
 M4 begins with the optional LangGraph 1.2.11 safe-boundary pilot described in
 [operations](operations/README.md#m4-langgraph-safe-boundary-pilot).
@@ -860,12 +862,12 @@ good model benchmark to bypass failed safety gates.
 | M1 / walking skeleton | PostgreSQL schema/RLS, observe, structured remember, basic recall/explain/forget, idempotency, typed checkpoints, SQL graph oracle | Store → retrieve → explain → correct → recover → delete succeeds in a two-tenant E2E test. Zero leakage or resurrection | 3–4 weeks |
 | M2 / core MVP v0.1 | Reliable core API/SDK/MCP/hook, declared generation/embedding interfaces, hybrid retrieval, non-destructive compaction, isolated logical restore | Section 18 core contract/resource gates; complete supported-history restore and call-accounting reconciliation; one reference benchmark with no semantic pass score | Complete as v0.1.0 within the limits below |
 | M3 / graph MVP v0.2 | Patched AGE72707aa opt-in, bounded temporal traversal, verified generations and canonical-only rebuild | Frozen4204892 native/resource qualification and v0.2.0 source handoff complete within declared limits | Complete |
-| M4 / integration pilot v0.3 | One agent/harness integration, optional postgresem adapter, external-source revocation/freshness; optional rerank adapter only for a declared integration need | Versioned schemas, delegated identity, explicit restore/refresh, source deletion and partial-failure propagation; no unconditional side-effect replay | After core/graph dependencies |
+| M4 / integration pilot v0.3 | One agent/harness integration, optional postgresem adapter, external-source revocation/freshness; optional rerank adapter only for a declared integration need | Versioned schemas, delegated identity, explicit restore/refresh, source deletion and partial-failure propagation; no unconditional side-effect replay | Complete as v0.3.0 within the explicit-retention pilot below |
 | M5 / production candidate | Capacity/HA/PITR, operational monitoring, upgrades, embedding-space migration and backup retention | Declared load/RPO/RTO/retention verified, compatibility and rollback/roll-forward contracts; model migration preserves identity/isolation, not a model-quality competition | After pilot |
 
 M2 is not the final version satisfying the graph requirement. Clearly distinguish the early usable core MVP from the M3 graph MVP containing the requested AGE/SQL/PGQ functionality. Stable SQL/PGQ adoption depends on PostgreSQL's public release status and measurements; it must not delay completion of M3's AGE path.
 
-### M4 explicit-retention pilot acceptance (qualification in progress)
+### M4 explicit-retention pilot acceptance
 
 The original M4 gate is an integration **pilot**, not a production connector
 deployment or permission to retain shared business data automatically. The
@@ -888,8 +890,10 @@ the original roadmap and are not claimed as implemented.
 `tests/test_m4_integration.py` composes the lifecycle through real Native HTTP
 rather than treating independent unit tests as a connected deployment.
 `tests/test_source_purge.py` covers deletion bounds and failure isolation.
-Qualification remains pending until the final implementation and release
-candidate pass their recorded gates; the inventory alone is not a pass claim.
+Frozen `a869629` passes all four native core/AGE jobs, actual isolated recovery
+and its new v4 graph-resource run. [STATUS](STATUS.md#m4-integration-pilot-v030)
+records exact counts, source bindings and retained failures; this inventory
+does not substitute for those executable results.
 M5 retains HA/PITR/RPO/RTO, production transport/outbox operations, backup
 retention enforcement and broader capacities. Arbitrary scheduler persistence,
 automatic tool replay, full AGE catalog restore and unbounded dataset purge

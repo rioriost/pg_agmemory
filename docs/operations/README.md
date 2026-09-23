@@ -10,8 +10,9 @@ databases or real user histories.
 
 ## M4 durable source-access coordinator
 
-The release-candidate identity is **0.3.0 / API v1 / schema 21**, stage
-`m4-integration-pilot`. Final distribution qualification precedes publication.
+The release identity is **0.3.0 / API v1 / schema 21**, stage
+`m4-integration-pilot`. The explicit-retention pilot is qualified at `a869629`;
+see [release evidence](../STATUS.md#m4-integration-pilot-v030).
 `pg-agmemory source-access` is an administrator-only, local command for a
 **trusted upstream coordinator**. It accepts already-authenticated source
 decisions; it is not a public webhook, signature verifier, source-query client
@@ -199,9 +200,10 @@ administrator role and normalized notice digest, not the signing key or JWT.
 Secure transport, private delivery-file retention and signer audit are the
 operator's responsibility; signatures do not encrypt files.
 
-This closes the local signature/routing boundary only. A real source connector,
-reliable upstream delivery, complete source-to-memory deletion mapping, and
-full M4 acceptance remain open. Automatic shared-business retention stays off.
+This receiver closes the local signature/routing boundary. Source-specific
+production connectors and reliable transport/outbox operation are not supplied.
+The supported explicit-retention pilot uses the bounded source-purge path below,
+not arbitrary global source discovery. Automatic shared-business retention stays off.
 
 ### Registered dataset readers
 
@@ -274,6 +276,7 @@ transactions: if one fails, keep clients stopped and reconcile it; no command
 pretends the preparation is a cross-database atomic operation.
 
 ```bash
+umask 077
 pg-agmemory source-purge plan \
   --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
   --maintenance-principal-id "$MAINTENANCE_ID" > "$PRIVATE_PLAN_RESULT"
@@ -330,7 +333,21 @@ deletion manifest handles the supported unchanged-authority purge history before
 any explicit service restart. This is the bounded pilot, not arbitrary
 source-system disaster recovery or automatic shared-business retention.
 
+The composed pilot keeps the **trusted publishing harness** separate from the
+lease-bound reader. Maintenance may author source-scope checkpoints for readers;
+its SDK client/credentials must never be exposed to those readers or an
+untrusted planner. Reader grants remain read only. Independent agent task
+checkpoints use that agent's own task scope. Native checkpoint references and
+the LangGraph bridge remain single-scope; the pilot does not weaken this
+boundary or claim arbitrary cross-scope checkpoint composition.
+
 ### Schema 21 upgrade and recovery boundary
+
+Build from tag `v0.3.0` and use matching service, SDK, CLI, MCP, hook and worker
+components. The default runtime remains framework-free; install `[langgraph]`
+only in the trusted harness. The supported pins remain Python 3.12.14,
+PostgreSQL 18.6, pgvector 0.8.6 and optional patched AGE `72707aa`.
+This is a source release, not a hosted service or a published PyPI/registry image.
 
 Stop/drain API, workers and coordinators before migration and retain the old
 source/component identity with protected backups. Apply the complete 1–21
@@ -359,7 +376,15 @@ historical measurements are relabeled. The release recipe is
 its workloads and thresholds are unchanged. Qualification requires its own
 exact-commit run. The frozen M3 v2 recipe is retained separately as
 `examples/graph-resource-profile-m3-v2.json`; old measurements still belong to
-their old commit/schema/profile, not the new development build.
+their old commit/schema/profile, not the new release build.
+
+For rollback, the feature checkpoint is `2ef4539`, the versioned candidate
+`dfe5d47`, and the qualified implementation `a869629`. Keep protected pre-upgrade
+backups and their matching components, but never serve an old backup until
+current deletion/source obligations are reconciled. Schema-20 components must
+not be pointed at schema 21. Roll forward with matching components after a
+schema upgrade; source checkout alone is not a database downgrade or restored
+authorization. No release command resumes clients or replays external effects.
 
 ## M4 external-source snapshot pilot
 

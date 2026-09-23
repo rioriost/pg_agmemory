@@ -9,8 +9,9 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## M4 durable source-access coordinator
 
-release candidateは**0.3.0 / API v1 / schema 21**、
-stageは`m4-integration-pilot`です。最終配布認定後に公開します。
+release identityは**0.3.0 / API v1 / schema 21**、
+stageは`m4-integration-pilot`です。明示保持pilotは`a869629`で認定済みです。
+[release証跡](../STATUS-jp.md#m4-integration-pilot-v030)を参照してください。
 `pg-agmemory source-access`は、**信頼する上流coordinator**用の管理者専用local commandです。
 認証済みのsource判断を受け取り、公開webhook、署名検証器、source照会client、
 snapshot metadataからの権限推測は提供しません。
@@ -184,9 +185,9 @@ commit結果不明は既存分類を維持し、stateを確認して有効な認
 DB監査は管理roleと正規化notice digestを記録し、署名鍵やJWTは永続保存しません。
 安全な配送、非公開delivery fileの保持、signer監査はoperator責務です。署名は暗号化ではありません。
 
-これはlocal署名/routing境界の実装です。実source connector、確実な上流配送、
-sourceに対応する全memoryの削除mapping、M4全体の受入れは未完で、
-shared business dataの自動長期保存は無効に保ちます。
+これはlocal署名/routing境界の実装です。source固有の本番connector、
+確実なtransport/outbox運用は提供しません。明示保持pilotでは下記の限定source-purgeを使い、
+任意の全source発見は主張しません。shared business dataの自動長期保存は無効に保ちます。
 
 ### Registered dataset readers
 
@@ -252,6 +253,7 @@ source producerを停止し、各専用scopeのcapture policyを
 準備全体が分散transactionであると扱わないでください。
 
 ```bash
+umask 077
 pg-agmemory source-purge plan \
   --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
   --maintenance-principal-id "$MAINTENANCE_ID" > "$PRIVATE_PLAN_RESULT"
@@ -301,7 +303,20 @@ backup期限、複製/export済みpayload、上流storageはoperator責務です
 serviceを明示再開します。限定pilotであり、任意sourceの災害復旧や
 shared business dataの自動長期保存ではありません。
 
+統合pilotは**信頼する公開側harness**とlease付きreaderを分離します。
+maintenanceはreader向けsource-scope checkpointを作成できますが、
+そのSDK client/credentialをreaderや信頼しないplannerへ渡してはいけません。
+reader grantはread onlyのままです。独立したagent task checkpointにはそのagent自身の
+task scopeを使います。Native checkpoint参照とLangGraph bridgeはsingle-scopeを維持し、
+統合のためにこの境界を緩めたり、任意cross-scope checkpoint対応を主張したりしません。
+
 ### Schema 21 upgradeと復元境界
+
+tag `v0.3.0`からbuildし、service/SDK/CLI/MCP/hook/workerを同一versionに揃えます。
+既定runtimeはframework非依存のまま、`[langgraph]`は信頼するharness側だけに導入します。
+対応pinはPython 3.12.14、PostgreSQL 18.6、pgvector 0.8.6、
+任意の修正AGE `72707aa`です。source releaseであり、
+hosted serviceやPyPI/registry imageの公開ではありません。
 
 migration前にAPI/worker/coordinatorを停止・drainし、旧source/component identityと保護backupを保持します。
 新管理CLIでledger 1–21全体を適用し、新しい同一versionのcomponentを使います。
@@ -325,6 +340,13 @@ digestは`cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55`で�
 負荷と閾値は変えず、この固定commit自身のrunで認定します。
 固定M3 v2 recipeは`examples/graph-resource-profile-m3-v2.json`に別保存し、
 旧計測は旧commit/schema/profileに属したままで、新buildへ読み替えません。
+
+rollback用のfeature checkpointは`2ef4539`、version付きcandidateは`dfe5d47`、
+認定済み実装は`a869629`です。保護したupgrade前backupと対応componentを保持しますが、
+現行の削除/source義務を照合するまで旧backupを公開しないでください。
+schema20 componentをschema21へ接続してはいけません。
+schema upgrade後は対応componentでroll forwardし、source checkoutだけを
+DB downgradeや認可復元と扱わないでください。release操作によるclient再開や外部effect replayは行いません。
 
 ## M4 external-source snapshot pilot
 
