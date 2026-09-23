@@ -2,7 +2,28 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M4開発: signed source-notice ingress
+## M4最終実装: 明示source削除と統合pilot
+
+最終feature incrementで、管理者がsnapshotを発見・計画し、
+Native provenance purgeで削除する経路を追加しました。
+全登録readerのterminal削除と全専用scopeのcapture無効化が前提です。
+全episodeの物理scope/source/時刻/本文を照合し、混在scopeや上限超過を拒否して、
+plan/epoch完全一致を要求します。実際の非owner `pgag_runtime` maintenance identityで削除し、
+管理者RLS bypassは使いません。receiptを再照合でき、captureは無効のまま、
+backup保持はoperator管理です。
+
+local Linux arm64で**関連922件**が成功しました。
+うち4つの実HTTP統合scenarioでsnapshot、署名通知、compiled LangGraph、
+checkpoint/effect照合、task分離、capture部分結果、source purgeを接続しています。
+purgeの100/101/107 roots/bindings、32/33 scopes、role/permission、
+古いplan、rollback、commit不明、応答barrierも確認しました。
+Ruff、source50 files/usage3件のstrict型確認、全個別package profileも成功し、
+coreへのSDK依存は追加していません。
+[原計画のM4受入れinventory](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ認定中)で、
+この明示保持pilotを任意postgresem配置やshared business data自動保持から分離します。
+release認定は引き続き未完です。
+
+## 以前のM4 increment: signed source-notice ingress
 
 今回は、上限付きRS256 delivery用のlocal `source-notice apply`を追加します。
 信頼する一つのprofileでsigner/公開鍵、issuer/audience/subjectの完全一致、
@@ -25,6 +46,13 @@ Ruff、source48 filesとusage3件のstrict型確認も成功しました。
 5種類の個別package profileすべてで、メモリ内の一時RSA鍵による実署名を検証し、
 coreはSDK/HTTPXに依存しません。限定local結果であり、
 実上流配送やM4全体の認定ではありません。service/API/schemaは0.3.0.dev1/v1/21のままです。
+
+固定**`7ba2bc716b034731919efaf7e8f7a9f02be789fc`**の
+[run35837311344](https://github.com/rioriost/pg_agmemory/actions/runs/35837311344)は
+全4 native jobで成功しました。core amd64/arm64は各**3,020件/optional 116 skips**、
+製品smokeと通常復元、修正AGEは各profile84件とenabled214件、
+実HTTPとcanonical-only復元が成功しました。
+これは署名通知checkpointの認定で、新しいpurge/統合pilot差分の結果ではありません。
 
 ## 以前のM4 increment: datasetとsource-access coordination
 

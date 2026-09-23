@@ -270,8 +270,9 @@ def create_app(
         version=__version__,
         lifespan=lifespan,
         description=(
-            "M3 graph MVP with SQL by default and optional pinned AGE. "
-            "Bounded graph qualification only; not generally production qualified."
+            "M4 explicit-retention integration pilot with Native memory and source snapshots. "
+            "SQL graph by default and optional pinned AGE. Bounded planned-root purge only; "
+            "not a global dataset tombstone or generally production qualified."
         ),
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
@@ -595,6 +596,29 @@ def create_app(
                     "physical_purge": False,
                     "durable_dataset_block": False,
                     "automatic_retry": False,
+                },
+                "source_purge": {
+                    "command": "source-purge",
+                    "operations": ["plan", "apply"],
+                    "coverage": "planned_source_snapshot_roots",
+                    "max_bindings": 100,
+                    "max_scopes": 32,
+                    "max_roots": 100,
+                    "requirements": [
+                        "terminal_deleted_bindings", "dedicated_source_scopes",
+                        "explicitly_disabled_capture", "maintenance_read_delete_permissions",
+                    ],
+                    "compare_and_swap": [
+                        "tenant_access_epoch", "tenant_deletion_epoch", "plan_digest",
+                    ],
+                    "execution": "native_forget_runtime_role",
+                    "retry": "historical_native_receipt",
+                    "capture_reenabled": False,
+                    "source_authorization_verified": False,
+                    "durable_dataset_block": False,
+                    "backup_status": "operator_managed",
+                    "automatic_retry": False,
+                    "automatic_reactivation": False,
                 },
             },
             "health_probes": {

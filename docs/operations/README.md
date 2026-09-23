@@ -257,6 +257,79 @@ protocol or cross-database transaction. Physical source-to-memory discovery,
 terminal dataset deletion/purge fanout and authenticated upstream notification
 transport remain separate work; automatic shared-business retention stays off.
 
+### Planned source snapshot purge
+
+`source-purge` closes the **explicit-retention pilot's** deletion path without
+inventing source events or interpreting a dataset revocation as permission to
+delete arbitrary task memory. It is an administrator command using existing
+schema-21 canonical rows, capture policies, source bindings and Native deletion.
+It does not require a new migration or an SDK dependency in the core package.
+
+Before planning, apply genuine terminal `deleted` source notices to every
+registered reader in the dataset. Stop the source producer and explicitly set
+each dedicated scope's capture policy to `enabled:false` with `scope-capture`;
+retain its other policy fields. Ordinary dataset emergency `revoke` is not a
+substitute for terminal source deletion. These preparation steps are separate
+transactions: if one fails, keep clients stopped and reconcile it; no command
+pretends the preparation is a cross-database atomic operation.
+
+```bash
+pg-agmemory source-purge plan \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --maintenance-principal-id "$MAINTENANCE_ID" > "$PRIVATE_PLAN_RESULT"
+jq '.plan' "$PRIVATE_PLAN_RESULT" > "$PRIVATE_PLAN"
+pg-agmemory source-purge apply \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --maintenance-principal-id "$MAINTENANCE_ID" --plan-file "$PRIVATE_PLAN"
+```
+
+Use private regular files and `PGAG_ADMIN_DATABASE_URL`; plans contain memory
+identifiers and digests, not snapshot text. The maintenance principal must
+currently have read/delete permission on every selected scope. Administrative
+discovery does not bypass that deletion boundary: execution switches the same
+connection to the actual `pgag_runtime` role and binds the maintenance identity
+before using `MemoryService.forget`. The tenant response barrier spans discovery,
+runtime-role checks, deletion, commit and result delivery.
+
+The entire operation is bounded to **100 registered reader bindings, 32 scopes
+and 100 snapshot roots**. Each scope must represent one exact source identity
+and have an explicitly disabled capture policy. Every canonical episode in
+those scopes must be an `external-snapshot-v1` snapshot whose envelope agrees
+with its physical scope, source identity, observation time and content digest.
+Mixed, malformed or unrelated episodes cause an explicit refusal; they are not
+silently skipped or deleted. This physical-scope check is stronger than
+`ExternalSourceMemory.read_snapshot`, whose Native explanation alone cannot
+prove scope. Too many targets fail without partial application. An empty set
+of registered scopes is an error; registered scopes with no remaining episodes
+produce an explicit empty plan, not a fabricated deletion receipt.
+
+Application requires the exact deterministic plan, both tenant epochs and its
+binding/root inventory to match current state. Capture stays disabled, so normal
+Native observe cannot race a new snapshot into a completed inventory. Changes
+to grants, source bindings, deletion state or payload identity require a fresh
+plan. Existing Native provenance closure removes dependent assertions, graph
+evidence, checkpoints, working state and effects within its own bounded deletion
+contract. It retains object identities, tombstones, source-event fences, audit
+and the Native deletion receipt; it does not execute a tool or a model.
+
+The plan digest derives a stable Native idempotency key. After an uncertain
+commit, explicitly retry the **same plan** to reconcile the original receipt;
+do not synthesize a new plan/key and treat it as the missing operation. A replay
+reports the historical planned roots, not proof that every possible future
+dataset scope is empty. The result reports `coverage:"planned_source_snapshot_roots"`,
+`capture_reenabled:false` and `backup_status:"operator_managed"`.
+No path automatically reopens capture, source grants, clients or restored
+checkpoints. New dataset scopes outside the registered inventory are not
+globally prohibited; the trusted source producer must honor terminal deletion.
+
+Backup expiration, copied/exported payloads and upstream storage remain operator
+responsibilities. Recovery still requires exact source-binding/history equality:
+an older backup whose source authority differs from the signed latest reference
+is refused, not repaired by replaying notifications. An authenticated Native
+deletion manifest handles the supported unchanged-authority purge history before
+any explicit service restart. This is the bounded pilot, not arbitrary
+source-system disaster recovery or automatic shared-business retention.
+
 ### Schema 21 upgrade and recovery boundary
 
 Stop/drain API, workers and coordinators before migration and retain the old

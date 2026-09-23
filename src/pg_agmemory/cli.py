@@ -46,6 +46,11 @@ def main() -> None:
 
         source_dataset_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["source-purge"]:
+        from pg_agmemory.source_purge import main as source_purge_main
+
+        source_purge_main(sys.argv[2:])
+        return
     if sys.argv[1:2] == ["scope-capture"]:
         from pg_agmemory.capture_policy import main as capture_main
 
@@ -101,6 +106,7 @@ def main() -> None:
             "source-access",
             "source-notice",
             "source-dataset",
+            "source-purge",
             "scope-capture",
             "scope-synthesis",
             "deletion-history",
@@ -138,6 +144,8 @@ def main() -> None:
         parser.error("source-notice must precede its arguments; use source-notice --help")
     elif args.command == "source-dataset":
         parser.error("source-dataset must precede its arguments; use source-dataset --help")
+    elif args.command == "source-purge":
+        parser.error("source-purge must precede its arguments; use source-purge --help")
     elif args.command == "scope-capture":
         parser.error("scope-capture must precede its arguments; use scope-capture --help")
     elif args.command == "scope-synthesis":

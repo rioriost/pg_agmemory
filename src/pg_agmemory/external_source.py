@@ -14,20 +14,15 @@ non-secret, and snapshot text must be approved for retention. No heuristic secre
 detection is performed.
 """
 
-import hashlib
 import json
 from dataclasses import KW_ONLY, dataclass, field
-from typing import Annotated, Final, Literal, Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import (
-    AwareDatetime,
     BaseModel,
     ConfigDict,
-    Field,
-    StringConstraints,
     ValidationError,
-    field_validator,
     model_validator,
 )
 from pydantic_core import PydanticSerializationError
@@ -35,17 +30,21 @@ from pydantic_core import PydanticSerializationError
 # Import the SDK first so its optional-dependency error names the existing extra.
 from pg_agmemory import sdk
 from pg_agmemory.models import (
-    Contract,
     EpisodeExplanation,
     Explain,
     Observe,
     ObserveResult,
-    ShortText,
 )
 from pg_agmemory.native_client import MAX_REQUEST_BYTES, AdapterError, failure
+from pg_agmemory.source_snapshot import (
+    SOURCE_FORMAT,
+    SOURCE_NAMESPACE,
+    ExternalSnapshot,
+    SnapshotEnvelope,
+    SourceBinding,
+)
+from pg_agmemory.source_snapshot import snapshot_digest as _snapshot_digest
 
-SOURCE_FORMAT: Final = "pgag-external-snapshot-v1"
-SOURCE_NAMESPACE: Final = "external-snapshot-v1"
 _MISMATCH = "External source snapshot mismatch"
 
 __all__ = [
@@ -66,66 +65,10 @@ def snapshot_digest(text: str) -> str:
     Whitespace, line endings, and Unicode code points are preserved. Invalid
     UTF-8 input is rejected without including the text in the SDK error.
     """
-    if not isinstance(text, str):
-        raise failure("invalid_request")
     try:
-        encoded = text.encode("utf-8")
-    except UnicodeError:
+        return _snapshot_digest(text)
+    except ValueError:
         raise failure("invalid_request") from None
-    return hashlib.sha256(encoded).hexdigest()
-
-
-class SourceBinding(Contract):
-    """Operator-bound opaque provenance; source_subject is never an access token."""
-
-    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
-
-    scope_id: UUID
-    source_system: ShortText
-    dataset_id: ShortText
-    source_subject: ShortText
-
-
-class ExternalSnapshot(Contract):
-    """A caller-supplied historical observation that always requires source refresh."""
-
-    model_config = ConfigDict(hide_input_in_errors=True)
-
-    semantic_revision: ShortText
-    query_id: ShortText
-    observed_at: AwareDatetime
-    acl_version: ShortText
-    snapshot_text: Annotated[
-        str, StringConstraints(min_length=1, max_length=32768, strip_whitespace=False)
-    ]
-    result_digest: Annotated[
-        str,
-        StringConstraints(strip_whitespace=False),
-        Field(pattern=r"^[0-9a-f]{64}$"),
-    ]
-    requires_refresh: Literal[True] = True
-    source_authority: Literal["external_observation"] = "external_observation"
-
-    @field_validator("requires_refresh", mode="before")
-    @classmethod
-    def require_refresh(cls, value: object) -> object:
-        if value is not True:
-            raise ValueError("External snapshots require source refresh")
-        return value
-
-    @model_validator(mode="after")
-    def valid_digest(self) -> Self:
-        if self.result_digest != snapshot_digest(self.snapshot_text):
-            raise ValueError("External snapshot digest mismatch")
-        return self
-
-
-class SnapshotEnvelope(Contract):
-    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
-
-    format: Literal["pgag-external-snapshot-v1"]
-    source: SourceBinding
-    snapshot: ExternalSnapshot
 
 
 class SourceCaptureOutcome(BaseModel):

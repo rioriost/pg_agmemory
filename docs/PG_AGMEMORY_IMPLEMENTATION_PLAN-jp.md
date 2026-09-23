@@ -841,6 +841,33 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 
 M2はgraph要件を満たす最終版ではない。早期利用可能なcore MVPと、要求されたAGE/SQL/PGQを含むM3のgraph MVPを明確に区別する。SQL/PGQの安定版採用はPostgreSQLの公開状況と実測次第であり、M3のAGE経路の完了を待たせない。
 
+### M4明示保持pilotの受入れ（認定中）
+
+原計画のM4は統合**pilot**であり、本番connector配置やshared business dataの
+自動保持許可ではありません。対応する構成はLangGraph 1.2.11、Native API v1、
+明示external snapshot、固定signerのlocal通知receiver、管理者のsource削除計画です。
+実business query、現行ACL判断、通知sequence永続化、配送はsource producerが所有し、
+pg_agmemoryはそれらの判断を捏造しません。postgresem専用adapterとrerankerは
+原計画から任意項目であり、実装済みとは主張しません。
+
+| 原計画のgate | 実装surfaceと受入れ証跡 |
+|---|---|
+| version付きschema・認証委譲 | Native JWT audience/subjectとRLS scope確認、version付きsnapshot/notice/profile/plan、固定signerとsource/reader対応。coreはSDK/LangGraph/postgresemから独立 |
+| harness一つ・明示restore | 実compiled LangGraphのrecall/planner/checkpoint、recall参照のcheckpoint依存への統合。restoreは照合・effect状態を返すだけでtoolを実行しない |
+| refresh・失効 | 過去snapshotを現行値に使うにはsource再照会が必須。署名通知で期限付きread lease、欠落拒否、重複で延長しない。task memoryは独立 |
+| source削除 | terminal通知とcapture無効化後、物理scopeを確認してsnapshotを上限付き発見。plan/epoch完全一致でNative provenance purge、tombstone/receipt保持で復活を防ぐ |
+| 部分障害 | source照会成功とcapture失敗/commit不明を分離。同一入力照合でidentity/sequenceを作り直さず、tool/配送の自動retryをしない |
+| 復元・配布 | source authorityの完全一致と認証済みNative削除履歴を明示再開前に確認。不整合backupは拒否。同一releaseのnative amd64/arm64 core・任意AGE・隔離復元が必要 |
+
+`tests/test_m4_integration.py`は実Native HTTPでlifecycleを接続し、
+独立unit testの集合を統合済み配置の代用にしません。
+`tests/test_source_purge.py`は削除上限と障害分離を扱います。
+最終実装・release candidateのgateが記録付きで成功するまでは認定中であり、
+このinventoryだけで成功を主張しません。
+HA/PITR/RPO/RTO、本番transport/outbox運用、backup保持期限の強制、広いcapacityはM5です。
+任意scheduler永続化、tool自動replay、全AGE catalog復元、無制限dataset purgeは
+宣言したarchitectureの範囲外です。
+
 ### M2受入れとrelease状態（2026-09-21）
 
 固定release実装`af878fc51fa50cefecca69de2df22edfef2a321b`は、

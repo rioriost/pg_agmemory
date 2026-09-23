@@ -2,7 +2,29 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M4 development: signed source-notice ingress
+## M4 closure: explicit source deletion and composed pilot
+
+The final feature increment adds administrator-planned snapshot discovery and
+Native provenance purge. All registered readers must first be terminal-deleted,
+and every dedicated scope must have capture disabled. Discovery verifies actual
+scope/source/time/content identity for every episode, refuses mixed scopes and
+oversized inventories, and requires exact plan/epoch equality. Deletion executes
+as the actual non-owner `pgag_runtime` maintenance identity, not with an
+administrator RLS bypass. Its receipt is replayable, capture stays disabled,
+and backup retention remains operator-owned.
+
+Local Linux arm64 passes **922 combined cases**, including four composed
+real-HTTP integration scenarios connecting snapshots, signed notices, compiled
+LangGraph, checkpoint/effect reconciliation, task isolation, partial capture
+outcomes and source purge. Source-purge cases exercise 100/101/107 roots/bindings,
+32/33 scopes, role/permission boundaries, stale plans, rollback, uncertain
+commit and response barriers. Ruff, 50-source/three-usage strict typing and
+all isolated package profiles pass without adding SDK dependencies to core.
+The [original M4 acceptance inventory](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance-qualification-in-progress)
+separates this explicit-retention pilot from optional postgresem deployment and
+automatic shared-business retention. Release qualification is still pending.
+
+## Previous M4 increment: signed source-notice ingress
 
 The current increment adds a local `source-notice apply` receiver for bounded
 RS256 deliveries. One trusted profile pins the signer/public key, exact
@@ -28,6 +50,14 @@ contracts pass. All five isolated package profiles verify an actual signature
 using an ephemeral in-memory RSA key; core needs neither SDK nor HTTPX.
 These are bounded local results, not real upstream delivery or full M4
 qualification. Service/API/schema remain 0.3.0.dev1/v1/21.
+
+Frozen **`7ba2bc716b034731919efaf7e8f7a9f02be789fc`**
+[run35837311344](https://github.com/rioriost/pg_agmemory/actions/runs/35837311344)
+passed all four native jobs: core amd64/arm64 each passed **3,020 cases /
+116 optional skips**, packaged smokes and ordinary recovery; patched AGE each
+passed 84 profile cases and 214 enabled cases, real HTTP and canonical-only
+recovery. This qualifies the signed-notice checkpoint, not the newer purge
+and composed pilot increment.
 
 ## Previous M4 increment: dataset and source-access coordination
 

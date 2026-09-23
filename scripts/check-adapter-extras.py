@@ -21,12 +21,14 @@ from pg_agmemory.source_notice import (
     SourceNoticeProfile,
     verify_source_notice,
 )
+from pg_agmemory.source_purge import MAX_SOURCE_PURGE_ROOTS, SourcePurgeRequest
 
 profile = sys.argv[1]
 assert MAX_SOURCE_LEASE_SECONDS == 300
 assert SourceIdentity(source_system="synthetic", dataset_id="data", source_subject="reader")
 assert MAX_DATASET_TARGETS == 100 and callable(SourceDatasetRequest)
 assert MAX_SIGNED_NOTICE_BYTES == 16384 and callable(verify_source_notice)
+assert MAX_SOURCE_PURGE_ROOTS == 100 and callable(SourcePurgeRequest)
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
@@ -51,6 +53,12 @@ notice_help = subprocess.run(
 )
 assert notice_help.returncode == 0 and "delivery-file" in notice_help.stdout
 assert "Traceback" not in notice_help.stderr
+purge_help = subprocess.run(
+    ["pg-agmemory", "source-purge", "--help"],
+    capture_output=True, text=True, timeout=15,
+)
+assert purge_help.returncode == 0 and "plan-file" in purge_help.stdout
+assert "Traceback" not in purge_help.stderr
 signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 notice_profile = SourceNoticeProfile(
     issuer="synthetic-source", audience="synthetic-notices", subject="synthetic-coordinator",

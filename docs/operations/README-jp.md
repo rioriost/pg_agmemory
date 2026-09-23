@@ -237,6 +237,70 @@ commit結果不明時は現行membershipと既存access監査を照合してか�
 sourceに対応する全memoryの発見、datasetのterminal削除/purge fanout、
 認証済み上流通知transportは別途必要で、shared business dataの自動長期保存は無効です。
 
+### Planned source snapshot purge
+
+`source-purge`は**明示保持pilot**の削除経路です。
+source通知を捏造せず、dataset失効を任意task memoryの削除権限とも解釈しません。
+schema21のcanonical rows、capture policy、source binding、Native削除を利用する管理commandで、
+新migrationやcoreへのSDK依存追加はありません。
+
+計画前に、datasetの全登録readerへ真正なterminal `deleted`通知を適用します。
+source producerを停止し、各専用scopeのcapture policyを
+`scope-capture`で明示的に`enabled:false`へ変更してください。他のpolicy fieldは保持します。
+緊急`source-dataset revoke`だけではterminal source削除の代用になりません。
+準備は別transactionです。途中で失敗したらclientを停止したまま照合し、
+準備全体が分散transactionであると扱わないでください。
+
+```bash
+pg-agmemory source-purge plan \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --maintenance-principal-id "$MAINTENANCE_ID" > "$PRIVATE_PLAN_RESULT"
+jq '.plan' "$PRIVATE_PLAN_RESULT" > "$PRIVATE_PLAN"
+pg-agmemory source-purge apply \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --maintenance-principal-id "$MAINTENANCE_ID" --plan-file "$PRIVATE_PLAN"
+```
+
+非公開の通常fileと`PGAG_ADMIN_DATABASE_URL`を使用します。
+planはmemory IDとdigestを含みますがsnapshot本文は含みません。
+maintenance principalは全対象scopeに現行read/delete権限が必要です。
+管理者による発見で削除の権限境界を迂回せず、同一connectionを実際の`pgag_runtime`へ切り替え、
+maintenance identityを設定してから`MemoryService.forget`を使います。
+tenant response barrierを発見、runtime権限確認、削除、commit、結果出力まで維持します。
+
+上限は操作全体で**登録reader100 bindings、32 scopes、snapshot roots100件**です。
+各scopeは一つの正確なsource identityに対応し、capture policyが明示無効でなければなりません。
+対象scopeの全canonical episodeについて`external-snapshot-v1`であること、
+envelopeが物理scope・source identity・観測時刻・本文digestと一致することを確認します。
+混在、不正形式、無関係なepisodeは明示拒否し、黙って除外/削除しません。
+Native explainだけではscopeを証明できない`ExternalSourceMemory.read_snapshot`と異なり、
+ここでは物理scopeも確認します。上限超過は部分適用しません。
+登録scopeがなければerror、登録scope内のepisodeが0件なら空planとし、
+架空の削除receiptは作りません。
+
+適用時に決定論的plan、両tenant epoch、binding/root inventoryの現行一致を要求します。
+captureを無効のまま保つため、通常Native observeで新snapshotがinventoryへ割り込めません。
+grant、binding、削除状態、payload identityが変われば再計画が必要です。
+既存Native provenance closureにより、宣言された削除上限内で派生assertion、graph evidence、
+checkpoint、working state、effectを削除します。object identity、tombstone、
+source-event fence、監査、Native削除receiptは保持し、tool/modelは実行しません。
+
+plan digestから安定したNative idempotency keyを導きます。
+commit結果不明時は**同一plan**で元receiptを照合し、新plan/keyを未完操作の代用にしません。
+replayは過去の計画対象を報告し、将来の全dataset scopeが空であることは証明しません。
+応答は`coverage:"planned_source_snapshot_roots"`、`capture_reenabled:false`、
+`backup_status:"operator_managed"`を明示します。
+capture、source grant、client、復元checkpointを自動再開する経路はありません。
+登録inventory外の新dataset scopeを全体的に禁止する仕組みではなく、
+信頼するproducerもterminal削除を守る必要があります。
+
+backup期限、複製/export済みpayload、上流storageはoperator責務です。
+復元時はsource binding/historyの完全一致を要求し、古いbackupのauthorityが
+署名付き最新referenceと異なる場合は拒否します。通知replayで修復しません。
+対応するauthority不変のpurge履歴は、認証済みNative削除manifestで反映してから
+serviceを明示再開します。限定pilotであり、任意sourceの災害復旧や
+shared business dataの自動長期保存ではありません。
+
 ### Schema 21 upgradeと復元境界
 
 migration前にAPI/worker/coordinatorを停止・drainし、旧source/component identityと保護backupを保持します。

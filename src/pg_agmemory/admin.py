@@ -1,5 +1,5 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -7,7 +7,7 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import Field
 
-from pg_agmemory.database import SCHEMA_VERSION, VECTOR_QUERY, VECTOR_VERSION
+from pg_agmemory.database import SCHEMA_VERSION, VECTOR_QUERY, VECTOR_VERSION, Connection, connect
 
 MAX_EPOCH = 9223372036854775807
 Epoch = Annotated[int, Field(ge=1, le=MAX_EPOCH, strict=True)]
@@ -46,6 +46,36 @@ def admin_connection(url: str, tenant_id: UUID) -> Iterator[psycopg.Connection[d
             raise AdminError("extension_version_mismatch")
         # Keep the API/worker barrier through commit and administrative output delivery.
         conn.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(tenant_id),))
+        yield conn
+
+
+@asynccontextmanager
+async def async_admin_connection(url: str, tenant_id: UUID) -> AsyncIterator[Connection]:
+    async with await connect(url) as conn:
+        role = await (
+            await conn.execute(
+                "SELECT rolsuper OR rolbypassrls AS allowed "
+                "FROM pg_roles WHERE rolname=current_user"
+            )
+        ).fetchone()
+        if not role or not role["allowed"]:
+            raise AdminError("admin_role_required")
+        versions = await (
+            await conn.execute(
+                "SELECT version FROM public.pgag_schema_migration ORDER BY version"
+            )
+        ).fetchall()
+        if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
+            raise AdminError("schema_version_mismatch")
+        if await (await conn.execute(VECTOR_QUERY)).fetchone() != {
+            "extversion": VECTOR_VERSION,
+            "nspname": "public",
+        }:
+            raise AdminError("extension_version_mismatch")
+        # A session lock survives commit and administrative output delivery.
+        await conn.execute(
+            "SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(tenant_id),)
+        )
         yield conn
 
 

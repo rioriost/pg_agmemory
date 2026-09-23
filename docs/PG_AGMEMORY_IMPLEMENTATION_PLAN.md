@@ -865,6 +865,36 @@ good model benchmark to bypass failed safety gates.
 
 M2 is not the final version satisfying the graph requirement. Clearly distinguish the early usable core MVP from the M3 graph MVP containing the requested AGE/SQL/PGQ functionality. Stable SQL/PGQ adoption depends on PostgreSQL's public release status and measurements; it must not delay completion of M3's AGE path.
 
+### M4 explicit-retention pilot acceptance (qualification in progress)
+
+The original M4 gate is an integration **pilot**, not a production connector
+deployment or permission to retain shared business data automatically. The
+supported composition is LangGraph 1.2.11, Native API v1, explicit external
+snapshots, a pinned-signer local notice receiver, and administrator-planned
+source deletion. The source producer owns real business queries, current ACL
+decisions, durable notice sequences and delivery; pg_agmemory never invents
+those decisions. A postgresem-specific adapter and reranker were optional in
+the original roadmap and are not claimed as implemented.
+
+| Original gate | Implemented surface and acceptance evidence |
+|---|---|
+| Versioned schemas and delegated identity | Native JWT audience/subject and RLS scope checks; versioned snapshot/notice/profile/plan contracts; fixed signer and source-to-reader mapping. Core remains independent of SDK/LangGraph/postgresem |
+| One harness and explicit restore | Real compiled LangGraph recall/planner/checkpoint flow; recalled references join checkpoint dependencies; restore returns reconciliation and effect status without executing a tool |
+| Refresh and revocation | Historical snapshots always require fresh source queries for current values; signed notices apply bounded read leases, gaps deny, duplicate deliveries do not renew, and task memory remains independent |
+| Source deletion | Terminal reader notices and disabled capture precede bounded physical-scope snapshot discovery; exact plan/epochs gate Native provenance purge, retained tombstones/receipts prevent resurrection |
+| Partial failures | Source-query success stays separate from capture failure/unknown commit; same-input reconciliation does not allocate new identities or notification sequences; no automatic tool or delivery retry |
+| Recovery and distribution | Exact source-authority fingerprints and authenticated Native deletion history precede explicit restart; incompatible old backups fail closed. Matching release must pass native amd64/arm64 core, optional AGE and isolated recovery |
+
+`tests/test_m4_integration.py` composes the lifecycle through real Native HTTP
+rather than treating independent unit tests as a connected deployment.
+`tests/test_source_purge.py` covers deletion bounds and failure isolation.
+Qualification remains pending until the final implementation and release
+candidate pass their recorded gates; the inventory alone is not a pass claim.
+M5 retains HA/PITR/RPO/RTO, production transport/outbox operations, backup
+retention enforcement and broader capacities. Arbitrary scheduler persistence,
+automatic tool replay, full AGE catalog restore and unbounded dataset purge
+remain outside the declared architecture.
+
 ### M2 Acceptance and Release Status (2026-09-21)
 
 The frozen release implementation at `af878fc51fa50cefecca69de2df22edfef2a321b`
