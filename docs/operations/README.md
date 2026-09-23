@@ -8,6 +8,119 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M5 operational foundations
+
+Development identity: **0.4.0.dev1 / API v1 / schema 21**, stage
+`m5-production-candidate`. This is not M5 completion or production qualification.
+The first increment supplies read-only operator evidence and a SQL-only physical
+PITR lab. Published v0.3.0/M4 evidence retains its original identity.
+
+### Read-only operations status
+
+```bash
+pg-agmemory operations-status --tenant-id "$TENANT_ID"
+```
+
+This command uses `PGAG_ADMIN_DATABASE_URL`, not an agent token. Keep that
+administrator credential outside planners, readers and source messages.
+The connection starts with `default_transaction_read_only=on`, enters one
+repeatable-read/read-only transaction, validates the current schema/pgvector
+pins and uses UTC plus a single database clock value for lease evaluation.
+After the tenant/epoch lookup, one aggregate statement returns fixed-size
+metadata. Connection, statement and lock timeouts are five seconds. The
+connection closes before returning or printing the report.
+
+There is **no tenant advisory barrier, row lock, claim, renewal, purge or
+mutation**. Concurrent operations are not paused for polling; the report is a
+consistent snapshot, not a real-time admission decision. Counts are exact for
+that MVCC snapshot, not sampled/truncated estimates. A timed-out or unavailable
+database returns the usual redacted administrative error, never zero-valued
+success. The current command requires the existing administrator role; it does
+not install a new observer role or expose a public HTTP monitoring endpoint.
+
+| Report section | Meaning and limits |
+|---|---|
+| `jobs` | Fixed state counts, due pending work, expired running leases, active epoch drift and oldest due age. It does not claim/retry jobs |
+| `calls` | Durable unknown/success/failure outcomes, billing unknowns and reserved input/output bounds, even after a job is purged. These are not actual billed cost/tokens |
+| `source` | Stored decisions, terminal/expired states and exact live read leases. Unexpired membership configurations that do not match the recorded lease are counted separately; no source/dataset/subject labels are emitted |
+| `deletions` | Purged/blocked receipts, legacy manifests and target rows. `backup_retention_verified` stays false |
+| `graph` | Registry enabled state and captured epoch/schema equality only. `serving_verified` stays false; canonical/physical AGE completeness is not checked |
+
+The requested tenant ID and service/schema identity are included, but not memory
+text, payloads, credentials, job/principal/scope IDs, source labels, signing keys
+or graph names/digests. Warnings use a fixed vocabulary and return exit 0:
+`standby_snapshot`, `job_lease_expired`, `job_epoch_drift`, `billing_unknown`,
+`source_lease_expired`, `source_grant_mismatch`, `legacy_deletion_manifest`,
+`graph_registry_stale`. They are facts for operator review, not a health verdict.
+Command errors exit 1; malformed arguments or missing administrator URL exit 2.
+`unexpected_grants` is a configuration-mismatch count, including an unexpected
+empty permission array; it is not proof that an unauthorized read occurred.
+
+`primary_snapshot` means only that this PostgreSQL instance was not in recovery
+when queried. It does not prove leader fencing, quorum, current source ACLs or
+safe startup. On a standby, `in_recovery:true` and `primary_snapshot:false`
+make the weaker observation explicit. `restore_authorized`,
+`source_authorization_verified` and `production_qualified` are always false.
+This on-demand report does not persist a metrics history or replace `/readyz`;
+automated collection/retention and production alert policies remain separate work.
+
+### Paused physical PITR lab
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/test-pitr-containers.sh .review-artifacts/m5-pitr-local container
+# On a native Linux Docker host, use docker instead of container.
+```
+
+The output must be a **new, private, project-relative directory** with an
+existing non-symlink parent. External database connection settings are rejected.
+The runner creates only disposable named resources, generates private
+credentials and uses the pinned PostgreSQL 18.6 / pgvector 0.8.6 image.
+`PGAG_PITR_RUNTIME_IMAGE` can select a caller-owned matching runtime image;
+the runner never deletes that image. Otherwise it builds its own runtime.
+All Python and database operations run in Linux containers, not a host venv.
+
+The drill performs `pg_basebackup` and `pg_verifybackup`, writes another
+acknowledged Native episode **after the basebackup**, then creates the named
+restore point. A later episode and terminal source notice intentionally differ
+from that point. It forces a WAL switch and verifies actual archive completion,
+copies/hashes the private physical files, destroys the source primary and starts
+a fresh restore from those files. Recovery must stop at the named point with
+`recovery_target_action=pause`, remain in recovery/read-only, and reject an
+actual write attempt. No Memory API or worker is started and no server is promoted.
+
+Verification requires the older episode/checkpoint and post-backup target
+episode to survive, the post-target episode to be absent, cluster/timeline
+identity and fingerprints to match the target, and the source cursor to differ
+from the later reference. The new operations-status command is also exercised
+against the real paused standby. A historical physical match deliberately keeps
+`restore_authorized:false`: latest source/deletion obligations must be
+reconciled separately before any explicitly approved restart.
+
+Bounds are 512 MiB for the basebackup, 16 WAL segments / 256 MiB for the archive,
+and 90-second archive/target waits. The terminal `pgag-pitr-drill-v1` report
+distinguishes measured success from failure; an unmeasured
+`latest_state_matches` is null, not an invented mismatch. Elapsed phase seconds
+are observations, **not an RTO guarantee**. SQL-only PostgreSQL recovery is the
+scope; physical AGE recovery, promotion, failover/partition fencing and HA are
+not exercised.
+
+The backup and WAL contain database roles, private keys/state and synthetic
+payloads. Keep the whole output directory private; it is **not a release asset**
+or an external metrics upload. The runner removes temporary credential files
+and owned containers/images, but intentionally retains private evidence and
+physical copies for the operator. Their expiration/destruction is not automated.
+Backup, archive and restored server share a host/failure domain in this lab:
+`production_qualified:false` and `host_failure_domain_independent:false` remain
+mandatory. This does not establish production storage durability, RPO/RTO or
+backup-retention enforcement.
+
+M5 still needs a declared production topology/load profile, independent media,
+HA and partition/failover drills, production monitoring/alert retention,
+embedding-space migration, upgrade rehearsal and verified backup expiration.
+The new v5 development graph recipe does not relabel the frozen M4 v4 timings;
+`examples/graph-resource-profile-m4-v4.json` preserves that historical recipe.
+
 ## M4 durable source-access coordinator
 
 The release identity is **0.3.0 / API v1 / schema 21**, stage

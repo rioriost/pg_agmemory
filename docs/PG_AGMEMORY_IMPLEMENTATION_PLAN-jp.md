@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.6 / M4 v0.3.0 release引き継ぎ、2026-09-23
+- 文書版: 1.7 / M5 operational foundations、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: M4 v0.3.0/APIv1/schema21を明示保持integration pilotの範囲で完了。固定a869629が両native architecture、通常/AGE復元、新graph資源v4を通過。SQLは既定、修正AGE72707aaはopt-in、復元は明示的な再照合/再開を要求する。次はM5 production candidate。公開済みM2/M3と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
+- 状態: M5開発を0.4.0.dev1/APIv1/schema21として開始し、read-only運用snapshotとpauseを維持するSQL-only物理PITR labを実装中。本番認定は未完。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -839,9 +839,31 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 | M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の制限内でv0.1.0として完了 |
 | M3 / graph MVP v0.2 | 修正AGE72707aa opt-in、上限付き時間探索、検証済み世代、canonical-only再構築 | 固定4204892のnative/資源認定とv0.2.0 source引き継ぎを宣言範囲で完了 | 完了 |
 | M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | 下記の明示保持pilotとしてv0.3.0で完了 |
-| M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
+| M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | 進行中。下記foundationだけでは本番認定しない |
 
 M2はgraph要件を満たす最終版ではない。早期利用可能なcore MVPと、要求されたAGE/SQL/PGQを含むM3のgraph MVPを明確に区別する。SQL/PGQの安定版採用はPostgreSQLの公開状況と実測次第であり、M3のAGE経路の完了を待たせない。
+
+### M5 foundationと残る本番gate
+
+最初の独立作業は、read-only運用snapshotと物理WAL復元labです。
+`operations-status`は管理者専用read-only repeatable-read snapshot、
+正確なmetadata集約、一つのDB時計を使い、tenant admission barrierを取得しません。
+payload公開、状態変更、metrics永続化、graph serving認定、復元承認は行いません。
+
+PITR harnessは実物理basebackupとWAL archiveを作成し、所有primaryを破棄して
+named pointへ復元し、pause/read-onlyを維持します。過去状態の一致だけでなく、
+最新sourceとの差分も要求し、実paused standbyで運用snapshotを検証します。
+`restore_authorized:false`、`production_qualified:false`を維持し、
+drill時間をRTO保証としません。物理fileは非公開の運用copyであり、
+application indexや公開release assetではありません。
+
+本番gateには引き続きhost/storage failure domain、負荷、RPO/RTO目標の宣言、
+HA/partition fencingとfailover drill、alert/metrics保持、
+互換性/upgrade rehearsal、identity/isolation/coverageを守るembedding-space移行、
+backup/WAL保持期限の強制が必要です。同一hostのSQL labでは代用せず、
+AGE物理復元の認定にも使いません。cloud配置、有料provider呼出し、自動promotion、
+source grant更新、service再開は行いません。
+[運用契約](operations/README-jp.md#m5-operational-foundations)を参照してください。
 
 ### M4明示保持pilotの受入れ
 

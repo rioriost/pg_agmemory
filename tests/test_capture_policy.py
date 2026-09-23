@@ -623,7 +623,7 @@ def test_migration_preserves_legacy_capture_and_caps_are_explicit(env, database)
                 (name,),
             ).fetchone() == (True, True)
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["schema_version"] == 21 and caps["stage"] == "m4-integration-pilot"
+    assert caps["schema_version"] == 21 and caps["stage"] == "m5-production-candidate"
     assert caps["capture_policy"]["replay_revalidated"]
     assert not caps["capture_policy"]["secret_pii_detection"]
     assert not caps["capture_policy"]["provider_egress_control"]

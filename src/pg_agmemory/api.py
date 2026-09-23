@@ -270,9 +270,10 @@ def create_app(
         version=__version__,
         lifespan=lifespan,
         description=(
-            "M4 explicit-retention integration pilot with Native memory and source snapshots. "
+            "M5 production-candidate development with Native memory and source snapshots. "
             "SQL graph by default and optional pinned AGE. Bounded planned-root purge only; "
-            "not a global dataset tombstone or generally production qualified."
+            "not a global dataset tombstone or production qualified. "
+            "Read-only operator metadata is not readiness or recovery authorization."
         ),
         license_info={"name": "MIT", "identifier": "MIT"},
         responses={
@@ -331,7 +332,7 @@ def create_app(
             "api_version": "v1",
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
-            "stage": "m4-integration-pilot",
+            "stage": "m5-production-candidate",
             "features": [
                 "observe",
                 "episode_query",
@@ -359,6 +360,14 @@ def create_app(
                 "working_compaction",
             ],
             "graph_backend": configured.graph_backend,
+            "operations_status_administration": {
+                "command": "operations-status",
+                "transport": "admin-cli",
+                "read_only": True,
+                "tenant_barrier": False,
+                "restore_authorized": False,
+                "production_qualified": False,
+            },
             "age_projection_administration": {
                 "transport": "admin-cli",
                 "command": "age-projection",

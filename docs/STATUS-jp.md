@@ -2,6 +2,34 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## M5開発: 運用foundation
+
+現行開発は**0.4.0.dev1 / API v1 / schema 21**、
+stageは`m5-production-candidate`です。本番認定releaseではありません。
+最初のincrementで、管理者専用read-only運用metadata snapshotと、
+SQL-onlyの物理basebackup/WALによるPITR labを追加します。
+snapshotはtenant admission barrierを取得せず、本文・資格情報・source labelを出力しません。
+labは所有primaryを破棄してnamed pointへ復元し、後続source authorityとの差があるため、
+pause/read-only維持を要求します。server昇格、client/worker起動、
+HA、RPO/RTO、独立failure domain、backup保持期限強制は認定しません。
+
+開発graph recipeは独自v5 identityとし、認定済みM4 v4 recipeを
+`examples/graph-resource-profile-m4-v4.json`へbyte単位で保存しました。
+M4の測定結果や認定を開発versionへ読み替えません。
+local Linux arm64で**focused 662件**、source51 filesのstrict型確認、
+5種類の個別package profileが成功しました。
+pause中復元と運用snapshotを接続した後の最終**PITR契約80件**も別実行で成功しています
+（focused suiteと重複し、加算した合計ではありません）。
+実物理drillでは、検証済みの**53,637,120 bytes**のbasebackupと
+**67,123,200 bytes**のWAL archiveから、primary破棄後にnamed pointへ復元できました。
+backup後のtarget書込みが残り、後続書込みが存在せず、最新source履歴との差分があり、
+実standbyの運用snapshotも非承認のままであることを確認しました。
+観測した全体17秒はruntime image buildを含まず、RTO保証ではありません。
+非公開の物理fileはlocalに保持し、公開しません。
+commit済みcheckpointについて、native core/AGEと新しい並列amd64/arm64 PITR jobの
+認定が別途必要です。
+[M5運用](operations/README-jp.md#m5-operational-foundations)を参照してください。
+
 ## M4 integration pilot: v0.3.0
 
 **原計画の明示保持integration pilotの範囲でM4を完了しました。**

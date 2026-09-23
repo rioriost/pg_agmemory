@@ -2,9 +2,9 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.6 / M4 v0.3.0 release handoff, 2026-09-23
+- Document version: 1.7 / M5 operational foundations, 2026-09-23
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
-- Status: M4 v0.3.0/APIv1/schema21 is complete within the explicit-retention integration-pilot contract. Frozen a869629 passes both native architectures, ordinary/AGE recovery and fresh graph-resource v4. SQL remains default, patched AGE72707aa opt-in, and recovery requires explicit revalidation/restart. M5 production-candidate work follows. Published M2/M3 and historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
+- Status: M5 development is underway as 0.4.0.dev1/APIv1/schema21, beginning with read-only operational snapshots and a paused SQL-only physical PITR lab. Production qualification remains open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
 
@@ -863,9 +863,34 @@ good model benchmark to bypass failed safety gates.
 | M2 / core MVP v0.1 | Reliable core API/SDK/MCP/hook, declared generation/embedding interfaces, hybrid retrieval, non-destructive compaction, isolated logical restore | Section 18 core contract/resource gates; complete supported-history restore and call-accounting reconciliation; one reference benchmark with no semantic pass score | Complete as v0.1.0 within the limits below |
 | M3 / graph MVP v0.2 | Patched AGE72707aa opt-in, bounded temporal traversal, verified generations and canonical-only rebuild | Frozen4204892 native/resource qualification and v0.2.0 source handoff complete within declared limits | Complete |
 | M4 / integration pilot v0.3 | One agent/harness integration, optional postgresem adapter, external-source revocation/freshness; optional rerank adapter only for a declared integration need | Versioned schemas, delegated identity, explicit restore/refresh, source deletion and partial-failure propagation; no unconditional side-effect replay | Complete as v0.3.0 within the explicit-retention pilot below |
-| M5 / production candidate | Capacity/HA/PITR, operational monitoring, upgrades, embedding-space migration and backup retention | Declared load/RPO/RTO/retention verified, compatibility and rollback/roll-forward contracts; model migration preserves identity/isolation, not a model-quality competition | After pilot |
+| M5 / production candidate | Capacity/HA/PITR, operational monitoring, upgrades, embedding-space migration and backup retention | Declared load/RPO/RTO/retention verified, compatibility and rollback/roll-forward contracts; model migration preserves identity/isolation, not a model-quality competition | In progress; foundations below are not production acceptance |
 
 M2 is not the final version satisfying the graph requirement. Clearly distinguish the early usable core MVP from the M3 graph MVP containing the requested AGE/SQL/PGQ functionality. Stable SQL/PGQ adoption depends on PostgreSQL's public release status and measurements; it must not delay completion of M3's AGE path.
+
+### M5 foundations and remaining production gates
+
+The first independent work streams are a read-only operator snapshot and a
+physical WAL recovery lab. `operations-status` uses an administrator-only
+read-only repeatable-read snapshot, exact metadata aggregates and one database
+clock without taking the tenant admission barrier. It does not expose payloads,
+modify state, persist metrics, certify graph serving or authorize recovery.
+
+The PITR harness creates a real physical basebackup, archives WAL, destroys its
+owned primary and restores to a named point while remaining paused/read-only.
+Its positive historical match and negative latest-source comparison are both
+required. Operational snapshots are exercised on that real paused standby.
+Reports retain `restore_authorized:false` and `production_qualified:false`;
+elapsed drill time is not an RTO promise. All physical files are private
+operational copies, not application indexes or public release artifacts.
+
+The production gate still requires declared host/storage failure domains,
+load and RPO/RTO objectives; HA/partition fencing and failover drills; alert and
+metrics retention; compatibility/upgrade rehearsal; embedding-space migration
+with identity/isolation/coverage checks; and enforceable backup/WAL retention.
+The same-host SQL lab cannot substitute for those requirements or qualify AGE
+physical recovery. No cloud deployment, paid provider call, automatic promotion,
+source grant renewal or service restart is implied.
+See [the operational contract](operations/README.md#m5-operational-foundations).
 
 ### M4 explicit-retention pilot acceptance
 

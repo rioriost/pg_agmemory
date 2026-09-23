@@ -662,7 +662,7 @@ async def recover(directory):
 def main():
     try:
         require(sys.platform == "linux" and os.geteuid() != 0, "nonroot_linux_required")
-        require(pg_agmemory.__version__ == "0.3.0", "service_0_3_0_required")
+        require(pg_agmemory.__version__ == "0.4.0.dev1", "service_0_4_0_dev1_required")
         directory = Path(os.environ["PGAG_AGE_RECOVERY_DIRECTORY"]).resolve()
         require(directory.is_dir() and stat.S_IMODE(directory.stat().st_mode) == 0o700,
                 "private_directory_required")

@@ -6,6 +6,12 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
+**M5 development: 0.4.0.dev1 / API v1 / schema 21.** The new
+[operator snapshot and physical PITR lab](docs/operations/README.md#m5-operational-foundations)
+add read-only operational evidence and an isolated named-point WAL rehearsal.
+Neither authorizes startup nor certifies production HA, RPO/RTO or backup retention.
+The published M4 release and its qualification remain unchanged.
+
 **M4 integration pilot: v0.3.0 / API v1 / schema 21.** An administrator-only
 [source-access coordinator](docs/operations/README.md#m4-durable-source-access-coordinator)
 adds durable notification ordering and atomic read-lease updates. Duplicate

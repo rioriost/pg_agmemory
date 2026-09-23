@@ -291,7 +291,15 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
             == 0
         )
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["stage"] == "m4-integration-pilot" and caps["schema_version"] == 21
+    assert caps["stage"] == "m5-production-candidate" and caps["schema_version"] == 21
+    assert caps["operations_status_administration"] == {
+        "command": "operations-status",
+        "transport": "admin-cli",
+        "read_only": True,
+        "tenant_barrier": False,
+        "restore_authorized": False,
+        "production_qualified": False,
+    }
     assert caps["source_access_administration"]["dataset_administration"] == {
         "command": "source-dataset",
         "operations": ["get", "revoke"],

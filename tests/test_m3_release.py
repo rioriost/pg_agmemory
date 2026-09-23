@@ -1,4 +1,4 @@
-"""Current pilot packaging and frozen M3 history, not runtime qualification."""
+"""Current candidate packaging and frozen M3/M4 history, not runtime qualification."""
 
 import asyncio
 import hashlib
@@ -33,7 +33,8 @@ from pg_agmemory.recovery_apply import CONTENT_TABLES, ROW_TABLES, RecoveryBundl
 
 ROOT = Path(__file__).resolve().parents[1]
 AGE_COMMIT = "72707aab7ce982bf13cad3d102bd869dab07d64b"
-PROFILE_DIGEST = "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
+PROFILE_DIGEST = "ecd01f7169e2d19e2c6f46e4b4e19cb3e179f3f2d6b9e82eb05e04b5936350b6"
+M4_PROFILE_DIGEST = "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
 M3_PROFILE_DIGEST = "37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d"
 PRE_RELEASE_PROFILE_DIGEST = "c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212"
 CASE_DIMENSIONS = (
@@ -99,7 +100,7 @@ def test_release_version_matches_project_and_editable_lock_root():
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
     roots = [package for package in lock["package"] if package["name"] == "pg-agmemory"]
     assert project["name"] == "pg-agmemory" and len(roots) == 1
-    assert __version__ == project["version"] == roots[0]["version"] == "0.3.0"
+    assert __version__ == project["version"] == roots[0]["version"] == "0.4.0.dev1"
     assert roots[0]["source"] == {"editable": "."}
 
 
@@ -163,7 +164,7 @@ def test_default_sql_and_strict_age_opt_in_survive_release(monkeypatch):
             replace(settings, graph_backend=invalid)
 
 
-def test_api_v1_reports_m4_pilot_without_changing_backend_readiness(monkeypatch):
+def test_api_v1_reports_m5_candidate_without_changing_backend_readiness(monkeypatch):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public = key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -178,7 +179,7 @@ def test_api_v1_reports_m4_pilot_without_changing_backend_readiness(monkeypatch)
         capabilities = asyncio.run(endpoint())
         assert tuple(capabilities[key] for key in (
             "api_version", "service_version", "schema_version", "stage", "graph_backend",
-        )) == ("v1", "0.3.0", 21, "m4-integration-pilot", backend)
+        )) == ("v1", "0.4.0.dev1", 21, "m5-production-candidate", backend)
         assert {"graph_expand", "entities", "structured_relations"} <= set(capabilities["features"])
         administration = capabilities["age_projection_administration"]
         assert administration["required_age_commit"] == AGE_COMMIT
@@ -194,7 +195,7 @@ def test_api_v1_reports_m4_pilot_without_changing_backend_readiness(monkeypatch)
             assert response.status_code == 200 and response.json() == {"status": "ready"}
             assert response.headers["cache-control"] == "no-store"
             schema = client.get("/openapi.json").json()
-            assert schema["info"]["version"] == "0.3.0"
+            assert schema["info"]["version"] == "0.4.0.dev1"
             assert "/v1/graph/expand" in schema["paths"]
             assert not any("source-access" in path for path in schema["paths"])
             assert client.get("/v1/capabilities").status_code == 401
@@ -246,7 +247,7 @@ def test_native_distribution_pins_remain_exact_not_just_matching_labels():
 
 def test_pilot_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profile, benchmark):
     assert (profile["name"], profile["service_version"], profile["format"]) == (
-        "M4-bounded-native-graph-v4", "0.3.0", "pgag-graph-resource-profile-v1",
+        "M5-bounded-native-graph-v5", "0.4.0.dev1", "pgag-graph-resource-profile-v1",
     )
     assert digest(profile) == benchmark.FROZEN_PROFILE_DIGEST == PROFILE_DIGEST
     assert benchmark.load_profile(ROOT / "examples/graph-resource-profile.json") == profile
@@ -270,6 +271,18 @@ def test_frozen_m3_profile_retains_its_historical_identity(profile):
     # Captured from 37f9c21; packaged tests do not need a Git checkout.
     original = historical | {"name": "M3-bounded-native-graph-v1", "service_version": "0.1.3"}
     assert digest(original) == PRE_RELEASE_PROFILE_DIGEST
+
+
+def test_frozen_m4_profile_retains_its_historical_identity(profile):
+    payload = (ROOT / "examples/graph-resource-profile-m4-v4.json").read_bytes()
+    historical = json.loads(payload)
+    assert hashlib.sha256(payload).hexdigest() == (
+        "d5ecf34b6925822d1951452364cde110683af63b72cfd06253c20c9c50917fa0"
+    )
+    assert digest(historical) == M4_PROFILE_DIGEST
+    assert historical == profile | {
+        "name": "M4-bounded-native-graph-v4", "service_version": "0.3.0",
+    }
 
 
 def test_pilot_profile_preserves_workload_dimensions_and_thresholds(profile):

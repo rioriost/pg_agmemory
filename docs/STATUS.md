@@ -2,6 +2,35 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## M5 development: operational foundations
+
+Current development is **0.4.0.dev1 / API v1 / schema 21**, stage
+`m5-production-candidate`, not a production-qualified release. This first
+increment adds an administrator-only, read-only operational metadata snapshot
+and a SQL-only physical basebackup/WAL point-in-time-recovery lab. The snapshot
+does not take the tenant admission barrier or expose memory text, credentials
+or source labels. The lab destroys its owned primary, restores to a named point,
+and requires recovery to remain paused/read-only because later source authority
+differs. Neither feature promotes a server, starts clients/workers or claims
+HA, RPO/RTO, independent failure domains or backup-retention enforcement.
+
+The new development graph recipe has its own v5 identity; the qualified M4 v4
+recipe is preserved byte-for-byte in `examples/graph-resource-profile-m4-v4.json`.
+No M4 timing result or qualification is relabeled for this development version.
+Local Linux arm64 passes **662 focused cases**, strict typing for 51 source
+files, and all five isolated package profiles. After composing monitoring with
+the paused restore, the final **80 PITR contracts** pass separately (overlapping
+the focused suite, not an additional aggregate total).
+The actual physical drill passes: a verified **53,637,120-byte** basebackup and
+**67,123,200-byte** WAL archive restore the named point after primary destruction.
+It proves the post-backup target write survives, the later write is absent,
+latest source history differs, and the real standby snapshot remains
+non-authorizing. Its observed 17-second total excludes runtime-image construction
+and is not an RTO claim. Private physical files are retained locally, not published.
+Native core/AGE and the new parallel amd64/arm64 PITR jobs must qualify the
+committed checkpoint separately.
+See [M5 operations](operations/README.md#m5-operational-foundations).
+
 ## M4 integration pilot: v0.3.0
 
 **M4 is complete within the original explicit-retention integration-pilot

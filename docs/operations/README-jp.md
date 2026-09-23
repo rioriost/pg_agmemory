@@ -7,6 +7,104 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M5 operational foundations
+
+開発identityは**0.4.0.dev1 / API v1 / schema 21**、
+stageは`m5-production-candidate`です。M5完了や本番認定ではありません。
+最初のincrementでread-only運用証跡とSQL-only物理PITR labを追加します。
+公開済みv0.3.0/M4の証跡は元のidentityを維持します。
+
+### Read-only operations status
+
+```bash
+pg-agmemory operations-status --tenant-id "$TENANT_ID"
+```
+
+agent tokenではなく`PGAG_ADMIN_DATABASE_URL`を使います。
+管理credentialをplanner、reader、source messageから分離してください。
+接続時から`default_transaction_read_only=on`とし、一つのrepeatable-read/read-only
+transaction内でschema/pgvector pinを確認し、UTCと一つのDB時計値でleaseを評価します。
+tenant/epoch取得後、一つの集約statementで固定サイズのmetadataを返します。
+接続・statement・lock timeoutは各5秒で、応答や表示の前にconnectionを閉じます。
+
+**tenant advisory barrier、row lock、claim、更新、purge、mutationは行いません。**
+pollのために並行処理を停止せず、一貫したsnapshotを返すだけで、即時のadmission判定ではありません。
+件数はそのMVCC snapshotの正確な値で、sampleや黙った切捨てではありません。
+timeout/DB障害は既存の秘匿化された管理errorとなり、0件の成功応答で代用しません。
+既存管理roleを要求し、新observer roleや公開HTTP監視endpointは追加しません。
+
+| Report section | 意味と制限 |
+|---|---|
+| `jobs` | 固定state別件数、期限到来pending、期限切れrunning lease、active epoch差分、最古due age。claim/retryはしない |
+| `calls` | job purge後も残るunknown/success/failure、billing unknown、予約input/output上限。実課金額/tokenではない |
+| `source` | 保存済み判断、terminal/期限切れ状態、正確な現行read lease。期限内membership設定と保存leaseの不一致を別計上し、source/dataset/subject labelは出さない |
+| `deletions` | purge/blocked receipt、legacy manifest、target件数。`backup_retention_verified`はfalse |
+| `graph` | registry有効状態とepoch/schema一致だけ。`serving_verified`はfalseで、AGEのcanonical/物理完全性は検査しない |
+
+要求されたtenant IDとservice/schema identityは含みますが、本文、payload、credential、
+job/principal/scope ID、source label、署名鍵、graph名/digestは含みません。
+warning語彙は固定でexit0です：
+`standby_snapshot`、`job_lease_expired`、`job_epoch_drift`、`billing_unknown`、
+`source_lease_expired`、`source_grant_mismatch`、`legacy_deletion_manifest`、
+`graph_registry_stale`。operator確認用の事実であり、health判定ではありません。
+command errorはexit1、引数不正や管理URL未設定はexit2です。
+`unexpected_grants`は想定外の空permission配列も含む設定不一致件数であり、
+不正な読取りが発生した証拠ではありません。
+
+`primary_snapshot`は照会時にそのPostgreSQLがrecovery中でなかったことだけを示します。
+leader fencing、quorum、現行source ACL、安全な起動を証明しません。
+standbyでは`in_recovery:true`、`primary_snapshot:false`を明示します。
+`restore_authorized`、`source_authorization_verified`、`production_qualified`は常にfalseです。
+on-demand reportであり、metrics履歴保存や`/readyz`の代用ではありません。
+自動収集/保持、本番alert policyは別の作業です。
+
+### Paused physical PITR lab
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/test-pitr-containers.sh .review-artifacts/m5-pitr-local container
+# native Linux Docker hostではcontainerをdockerに変更する。
+```
+
+出力は**新規・非公開・project相対directory**で、既存の非symlink親が必要です。
+外部DB接続設定は拒否し、使い捨ての名前付きresourceと非公開credentialだけを生成します。
+PostgreSQL 18.6 / pgvector 0.8.6の固定imageを使用します。
+`PGAG_PITR_RUNTIME_IMAGE`でcaller所有の対応runtimeを指定でき、そのimageは削除しません。
+未指定なら専用runtimeをbuildします。Python/DB処理はLinux container内で行い、
+host venvを使いません。
+
+`pg_basebackup`と`pg_verifybackup`を実行し、**basebackup後**にNative episodeを追加・確定して、
+named restore pointを作成します。後続episodeとterminal source通知で意図的な差分を作り、
+WAL switchと実archive完了を確認します。物理fileを非公開でcopy/hashしてsource primaryを破棄し、
+それらのfileから新しいrestoreを起動します。
+`recovery_target_action=pause`でnamed pointに停止し、recovery/read-onlyを維持し、
+実際の書込み試行を拒否することが必要です。Memory API/workerは起動せず、server昇格もしません。
+
+古いepisode/checkpointとbackup後のtarget episodeが残り、target後のepisodeは存在せず、
+cluster/timeline identityとfingerprintがtargetに一致し、
+source cursorは後続referenceと異なることを確認します。
+新operations-statusも実際のpause中standbyで検証します。
+過去の物理状態が一致しても`restore_authorized:false`を維持します。
+起動前に最新source/削除義務を別途照合し、明示的に承認する必要があります。
+
+上限はbasebackup 512 MiB、WAL 16 segments/256 MiB、archive/target待機各90秒です。
+終端の`pgag-pitr-drill-v1` reportは測定済み成功と失敗を区別し、
+未測定の`latest_state_matches`はnullとして架空の不一致を作りません。
+phase秒数は観測値で、**RTO保証ではありません**。
+SQL-only PostgreSQLが対象であり、物理AGE復元、promotion、failover/partition fencing、HAは扱いません。
+
+backup/WALにはDB role、秘密鍵/state、合成payloadが含まれます。
+出力directory全体を非公開に保ち、**release asset**や外部metrics uploadにしないでください。
+一時credential fileと所有container/imageは削除しますが、非公開証跡/物理copyはoperator用に保持します。
+保持期限と破棄は自動化しません。このlabのbackup/archive/restoreは同一host/failure domainなので、
+`production_qualified:false`、`host_failure_domain_independent:false`が必須です。
+本番storage耐久性、RPO/RTO、backup保持期限強制の認定ではありません。
+
+M5では引き続き、本番topology/load profile、独立media、HA/partition/failover drill、
+監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
+新v5開発graph recipeへM4 v4測定を読み替えず、
+`examples/graph-resource-profile-m4-v4.json`に過去recipeを保存しています。
+
 ## M4 durable source-access coordinator
 
 release identityは**0.3.0 / API v1 / schema 21**、

@@ -20,6 +20,24 @@ class AdminError(Exception):
         super().__init__(code)
 
 
+def _validate_admin_connection(conn: psycopg.Connection[dict[str, Any]]) -> None:
+    role = conn.execute(
+        "SELECT rolsuper OR rolbypassrls AS allowed FROM pg_roles WHERE rolname=current_user"
+    ).fetchone()
+    if not role or not role["allowed"]:
+        raise AdminError("admin_role_required")
+    versions = conn.execute(
+        "SELECT version FROM public.pgag_schema_migration ORDER BY version"
+    ).fetchall()
+    if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
+        raise AdminError("schema_version_mismatch")
+    if conn.execute(VECTOR_QUERY).fetchone() != {
+        "extversion": VECTOR_VERSION,
+        "nspname": "public",
+    }:
+        raise AdminError("extension_version_mismatch")
+
+
 @contextmanager
 def admin_connection(url: str, tenant_id: UUID) -> Iterator[psycopg.Connection[dict[str, Any]]]:
     with psycopg.connect(
@@ -29,24 +47,30 @@ def admin_connection(url: str, tenant_id: UUID) -> Iterator[psycopg.Connection[d
         connect_timeout=5,
         options="-c statement_timeout=5000 -c lock_timeout=5000",
     ) as conn:
-        role = conn.execute(
-            "SELECT rolsuper OR rolbypassrls AS allowed FROM pg_roles WHERE rolname=current_user"
-        ).fetchone()
-        if not role or not role["allowed"]:
-            raise AdminError("admin_role_required")
-        versions = conn.execute(
-            "SELECT version FROM public.pgag_schema_migration ORDER BY version"
-        ).fetchall()
-        if [row["version"] for row in versions] != list(range(1, SCHEMA_VERSION + 1)):
-            raise AdminError("schema_version_mismatch")
-        if conn.execute(VECTOR_QUERY).fetchone() != {
-            "extversion": VECTOR_VERSION,
-            "nspname": "public",
-        }:
-            raise AdminError("extension_version_mismatch")
+        _validate_admin_connection(conn)
         # Keep the API/worker barrier through commit and administrative output delivery.
         conn.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(tenant_id),))
         yield conn
+
+
+@contextmanager
+def read_admin_snapshot(url: str) -> Iterator[psycopg.Connection[dict[str, Any]]]:
+    """Yield an ADMIN metadata snapshot without taking the tenant admission barrier."""
+    with psycopg.connect(
+        url,
+        autocommit=True,
+        row_factory=dict_row,
+        connect_timeout=5,
+        options=(
+            "-c statement_timeout=5000 -c lock_timeout=5000 "
+            "-c default_transaction_read_only=on"
+        ),
+    ) as conn:
+        with conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            conn.execute("SET LOCAL timezone='UTC'")
+            _validate_admin_connection(conn)
+            yield conn
 
 
 @asynccontextmanager

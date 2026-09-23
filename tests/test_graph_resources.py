@@ -150,8 +150,8 @@ def measured(result, expected, **overrides):
 def test_frozen_profile_has_six_bounded_native_strata(profile):
     assert profile["postgres_version_num"] == 180006
     assert VECTOR_VERSION == "0.8.6" and bench.validate_runtime is validate_runtime
-    assert profile["name"] == "M4-bounded-native-graph-v4"
-    assert profile["schema_version"] == 21 and profile["service_version"] == "0.3.0"
+    assert profile["name"] == "M5-bounded-native-graph-v5"
+    assert profile["schema_version"] == 21 and profile["service_version"] == "0.4.0.dev1"
     assert profile["age_commit"] == "72707aab7ce982bf13cad3d102bd869dab07d64b"
     assert profile["resources"] == {
         "database": {"vcpus": 6, "memory_gib": 24},
@@ -176,7 +176,7 @@ def test_pilot_profile_preserves_historical_workload_without_reclassifying_it(pr
         "c89ed11ad1fc31038b2e168a56309c27d01521a627f2fed2e7b4ac6852fb2212"
     )
     assert bench.digest(profile) == (
-        "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
+        "ecd01f7169e2d19e2c6f46e4b4e19cb3e179f3f2d6b9e82eb05e04b5936350b6"
     )
     with pytest.raises(bench.BenchmarkError, match="profile_not_frozen"):
         bench.validate_profile(historical)

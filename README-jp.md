@@ -7,6 +7,12 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
+**M5開発: 0.4.0.dev1 / API v1 / schema 21。**
+新しい[運用snapshotと物理PITR lab](docs/operations/README-jp.md#m5-operational-foundations)で、
+read-onlyの運用証跡と隔離されたnamed-point WAL復元を追加します。
+起動許可、本番HA、RPO/RTO、backup保持期限の認定ではありません。
+公開済みM4 releaseと証跡は変更しません。
+
 **M4 integration pilot: v0.3.0 / API v1 / schema 21。**
 管理者専用[source-access coordinator](docs/operations/README-jp.md#m4-durable-source-access-coordinator)で、
 通知順序を永続管理し、read leaseを原子的に更新します。
