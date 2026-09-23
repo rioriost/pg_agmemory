@@ -2,6 +2,31 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## M4開発: 明示LangGraph pilot
+
+最初の連携incrementは、Native SDK上の任意LangGraph 1.2.11 safe-boundary bridgeです。
+信頼する一つのscope/run/branch、許可済みdataの明示capture、予算付きrecall、
+caller所有のplanner、型付きcheckpoint公開をmodelの判断から分離します。
+restoreは現行effect/reconciliation情報を含む完全なenvelopeを返し、
+node/tool/承認を実行しません。汎用LangGraph checkpoint saverやscheduler再開ではありません。
+部分結果、identity、source freshness、retry制限は
+[運用契約](operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
+
+通常service runtimeにextraを追加せず、既存lock package、
+API v1/schema 20、M3 releaseの動作を維持します。
+開発packageのversionはまだ0.2.0であり、この差分は新releaseやM4全体の認定ではありません。
+外部source connector/freshness伝播と後続の統合受入れは未完です。
+`82149e5`のv0.2.0 tagは変更せず、publication workflow
+35810379994/35810381591はcore/AGEの全4 native jobが成功しました。
+
+このincrementのlocal Linux arm64で**SDK/pilot合計215件**が成功しました。
+実HTTPのgraph/checkpoint/unknown effect復元、source purge後の拒否、
+membership失効、参照union上限、障害伝播を含みます。
+Ruffとsource/usageのstrict型確認も成功しています。
+core/hook/sdk/providers/LangGraphを個別installで確認し、
+non-root本番imageにはLangGraph/LangChain/LangSmithを含めません。
+限定したlocal結果であり、M4全体の両native配布や外部source認定ではありません。
+
 ## M3 v0.2.0 release契約
 
 release identityは**service0.2.0 / APIv1 / schema20**、stageは`m3-graph-mvp`です。

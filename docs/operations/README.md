@@ -8,6 +8,70 @@ Destructive operations—including purge drills, schema resets, and restore
 experiments—must run only against disposable test databases, never business
 databases or real user histories.
 
+## M4 LangGraph safe-boundary pilot
+
+The development branch adds an optional **LangGraph 1.2.11** integration, not a
+new service release or completion of M4. Install from this checkout with
+`uv sync --frozen --extra langgraph`. The ordinary service/runtime and core SDK
+do not install LangGraph. Native API v1/schema 20 and the SQL/AGE choices are
+unchanged.
+
+`pg_agmemory.langgraph.LangGraphMemory` binds an already-open `AsyncMemoryClient`
+to one trusted scope/run/branch. Supply the Native API origin and delegated
+bearer token at process startup, never from prompts, recalled content or graph
+state. `observe` remains an explicit admitted/sanitized capture, not automatic
+conversation logging. `recall` must name exactly the bound scope and retains
+the Native budgets, authorization, coverage and untrusted-context semantics.
+
+`build_turn_graph(memory, planner)` compiles the real LangGraph sequence
+`recall -> plan -> checkpoint`. The caller supplies a **pure, caller-owned**
+async planner accepting `CheckpointState` and `RecallResult`; the pilot chooses
+no model, invokes no external tool and grants no approval. Input includes the
+exact expected checkpoint head, event watermark, memory references and a
+caller-persisted idempotency key. Only typed Native checkpoint state is saved,
+with harness `pg-agmemory-langgraph-pilot` version `1`/state schema `1`.
+The graph conservatively adds every recalled item/revision to the declared
+memory references, deduplicates exact pairs, and refuses a union exceeding the
+Native 100-reference bound before planning. This preserves deletion dependencies
+for recalled inputs without asking a model to judge relevance. Callers still
+declare the provenance of the initial state and any other planner inputs.
+No arbitrary LangGraph channels, messages, callbacks, credentials, serializer
+objects or pending scheduler writes are persisted.
+
+`restore` checks scope/run/harness compatibility before the Native restore
+mutation and returns the complete reauthorized envelope for explicit review.
+Use a never-used target branch and a stable restore idempotency key. It does
+not invoke the graph, change the existing binding, execute `next_actions`, or
+clear pending approvals. Inspect `resume_allowed`, `requires_reconciliation`,
+`untracked_effects` and live `tool_effects`; resolve unknown/dispatched effects
+through the existing ledger before starting any new work. A restored branch
+needs a new explicit binding and the returned checkpoint ID as its head.
+This is **not** `BaseCheckpointSaver`, `Command(resume=...)`, arbitrary graph
+resumption, exactly-once external execution, or replay of a previous node.
+
+Failures propagate without retries or success-shaped defaults. Capture and
+checkpoint are separate transactions: failed recall/planning/checkpointing does
+not undo an earlier observation. On an ambiguous mutation outcome, retain the
+exact payload/key and reconcile through the Native SDK; do not rerun the whole
+graph or blindly call a planner/tool again. Recheck permissions/source freshness
+on subsequent operations and discard already-delivered context after revocation;
+the service cannot revoke a Python object already handed to a caller.
+
+See [`examples/langgraph_memory.py`](../../examples/langgraph_memory.py) for the
+synthetic, deterministic, no-model example. Supply trusted `PGAG_API_URL`,
+`PGAG_API_TOKEN`, `PGAG_SCOPE_ID`, fresh `PGAG_RUN_ID`/`PGAG_BRANCH_ID`, and explicit
+`PGAG_SYNTHETIC_CONSENT=yes`, then run
+`uv run --frozen --extra langgraph python examples/langgraph_memory.py`.
+The token needs read/write access to that preprovisioned disposable scope.
+The example carries the returned reference union into the next turn and uses
+LangGraph's typed `ainvoke(..., version="v2").value` result.
+It disables external LangSmith
+tracing; host applications must likewise review tracing/callback configuration
+before handing memory to a framework. The framework dependency includes its own
+optional tracing clients, but this pilot does not authorize telemetry egress.
+General harness scheduling, automatic triggers, external-source connectors,
+postgresem/reranking and full M4 qualification remain separate work.
+
 ## M3 graph MVP deployment
 
 The M3 source-release contract is **service 0.2.0 / Native API v1 / schema 20**,

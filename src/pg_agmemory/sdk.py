@@ -146,6 +146,16 @@ def _id(value: UUID) -> str:
     return str(value)
 
 
+def _idempotency_key(value: str | None) -> str:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 256
+        or not all(33 <= ord(character) <= 126 for character in value)
+    ):
+        raise failure("invalid_request")
+    return value
+
+
 class AsyncMemoryClient:
     def __init__(self, api_url: str, api_token: str) -> None:
         self._settings = NativeSettings(api_url, api_token)
@@ -198,12 +208,8 @@ class AsyncMemoryClient:
         max_request_bytes: int = MAX_REQUEST_BYTES,
     ) -> R:
         native = self._connection()
-        if mutation and (
-            not isinstance(key, str)
-            or not 1 <= len(key) <= 256
-            or not all(33 <= ord(character) <= 126 for character in key)
-        ):
-            raise failure("invalid_request")
+        if mutation:
+            key = _idempotency_key(key)
         return await native.request(
             path,
             _validated(request, model),

@@ -2,11 +2,19 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.0 / M3 source-release handoff, 2026-09-23
+- Document version: 1.1 / M4 bounded LangGraph pilot, 2026-09-23
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M3 v0.2.0/APIv1/schema20 is complete within its declared scope. Frozen4204892 passes both native architectures and its fresh graph-resource v2 run; publication changes qualification documents only. SQL remains default, patched AGE72707aa opt-in, and canonical-only recovery requires explicit rebuild. M4 follows the v0.2.0 handoff. Published M2v0.1.0 and historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
 - Starting point: The conversation titled “LLM Agent Memory Implementation Explanation.” This is not a reproduction of any existing product's internal implementation.
+
+M4 begins with the optional LangGraph 1.2.11 safe-boundary pilot described in
+[operations](operations/README.md#m4-langgraph-safe-boundary-pilot).
+The current Graph API was checked for this integration; unrelated historical
+specifications below were not reverified. It deliberately uses Native typed
+checkpoints, not arbitrary scheduler persistence. External-source
+revocation/freshness and the remaining integration acceptance are still open.
+This increment does not promote the service to v0.3 or declare M4 complete.
 
 ## 1. Adopted Approach
 

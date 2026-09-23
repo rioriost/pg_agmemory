@@ -6,6 +6,12 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
+**M4 development:** an optional LangGraph safe-boundary pilot uses the Native SDK
+for explicit capture, recall and typed checkpoint/restore. It is not a general
+LangGraph checkpointer, does not execute side effects, and is not M4 completion.
+See the [pilot contract](docs/operations/README.md#m4-langgraph-safe-boundary-pilot).
+The published M3 release below remains unchanged.
+
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20
 
 **Memory infrastructure for agents and LLMs, not a judgment system.** This is the

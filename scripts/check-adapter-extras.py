@@ -9,11 +9,23 @@ from importlib.resources import files
 from pg_agmemory.api import create_app
 
 profile = sys.argv[1]
-assert profile in ("core", "hook", "sdk", "providers")
+assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
 assert (importlib.util.find_spec("httpx") is not None) == (profile != "core")
+assert (importlib.util.find_spec("langgraph") is not None) == (profile == "langgraph")
 assert files("pg_agmemory").joinpath("py.typed").is_file()
+if profile == "langgraph":
+    from pg_agmemory.langgraph import LangGraphMemory, build_turn_graph
+
+    assert callable(LangGraphMemory) and callable(build_turn_graph)
+else:
+    try:
+        importlib.import_module("pg_agmemory.langgraph")
+    except ImportError as exc:
+        assert str(exc) == "LangGraph pilot requires the pg-agmemory[langgraph] extra"
+    else:
+        raise AssertionError("LangGraph pilot imported without its optional dependency")
 if profile == "core":
     try:
         importlib.import_module("pg_agmemory.sdk")

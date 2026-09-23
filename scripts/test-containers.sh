@@ -157,8 +157,8 @@ assert os.geteuid() != 0, "Production image must not run as root"
 assert os.environ.get("SSL_CERT_FILE") == "/etc/ssl/certs/ca-certificates.crt"
 assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
 print("Production system CA smoke passed", file=sys.stderr)
-for package in ("pytest", "ruff", "mypy"):
-    assert importlib.util.find_spec(package) is None, f"Development dependency in runtime: {package}"
+for package in ("pytest", "ruff", "mypy", "langgraph", "langchain_core", "langsmith"):
+    assert importlib.util.find_spec(package) is None, f"Non-runtime dependency present: {package}"
 assert segment("\u6771\u4eac\u90fd").split() == ["\u6771\u4eac", "\u90fd"]
 print("Production Japanese tokenizer smoke passed", file=sys.stderr)
 key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

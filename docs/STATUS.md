@@ -2,6 +2,33 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## M4 development: explicit LangGraph pilot
+
+The first integration increment is an optional LangGraph 1.2.11 safe-boundary
+bridge over the Native SDK. One trusted scope/run/branch, explicit admitted
+capture, bounded recall, caller-owned planning and typed checkpoint publication
+remain separate from model judgment. Restore returns the complete current
+effect/reconciliation envelope and never executes a node, tool or approval.
+It is not a general LangGraph checkpoint saver or scheduler-resume mechanism.
+The [operations contract](operations/README.md#m4-langgraph-safe-boundary-pilot)
+records partial outcomes, identity, source freshness and retry limits.
+
+The extra is absent from the ordinary service runtime. Existing locked packages,
+API v1/schema 20 and M3 release semantics are unchanged. The development package
+still identifies as 0.2.0; this source increment is not a new release or complete
+M4 qualification. External-source connectors/freshness propagation and further
+integration acceptance remain open. The v0.2.0 tag at `82149e5` is unchanged;
+both publication workflows 35810379994 and 35810381591 passed all four native
+core/AGE jobs.
+
+Local Linux arm64 qualification of this increment passes **215 combined
+SDK/pilot cases**, including a real HTTP graph/checkpoint/unknown-effect restore,
+source-purge denial, revoked membership, reference-union limits and failure
+propagation. Ruff and strict source/usage typing pass. Separate isolated-extra
+builds cover core/hook/sdk/providers/LangGraph; the non-root production image
+remains free of LangGraph, LangChain and LangSmith. These are focused local
+results, not full dual-native M4 distribution or external-source qualification.
+
 ## M3 v0.2.0 release contract
 
 The release identity is **service0.2.0 / APIv1 / schema20**, stage

@@ -14,7 +14,7 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
 
 FROM build AS test
-RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers \
+RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers --extra langgraph \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 COPY examples/ ./examples/
@@ -29,7 +29,7 @@ COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/test-age-enabled-containers.sh scripts/smoke-age-recovery.py \
     scripts/test-age-recovery-containers.sh scripts/graph-resource-benchmark.py \
     scripts/measure-graph-resources.sh ./scripts/
-CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py && pytest"]
+CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py tests/typing/langgraph_usage.py && pytest"]
 
 FROM build AS runtime-deps
 RUN uv sync --frozen --no-dev --no-editable --extra mcp --extra hook --extra sdk --extra providers \
@@ -44,7 +44,9 @@ RUN uv sync --frozen --no-dev --no-editable \
     && uv sync --frozen --no-dev --no-editable --extra sdk \
     && python check-adapter-extras.py sdk \
     && uv sync --frozen --no-dev --no-editable --extra providers \
-    && python check-adapter-extras.py providers
+    && python check-adapter-extras.py providers \
+    && uv sync --frozen --no-dev --no-editable --extra langgraph \
+    && python check-adapter-extras.py langgraph
 
 FROM base AS runtime
 RUN groupadd --system --gid 10001 pgag \

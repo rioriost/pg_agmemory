@@ -7,6 +7,12 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
+**M4開発:** 任意のLangGraph safe-boundary pilotでNative SDKを使い、
+明示capture/recallと型付きcheckpoint/restoreを接続します。
+汎用LangGraph checkpointerではなく、副作用を実行せず、M4完了も主張しません。
+[pilot契約](docs/operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
+以下の公開済みM3 releaseは変更しません。
+
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20
 
 **エージェントとLLMの記憶基盤であり、判断システムではありません。**

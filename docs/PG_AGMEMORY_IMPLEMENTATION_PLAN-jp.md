@@ -2,11 +2,18 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.0 / M3 source-release引き継ぎ、2026-09-23
+- 文書版: 1.1 / M4限定LangGraph pilot、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M3 v0.2.0/APIv1/schema20を宣言範囲で完了。固定4204892が両native architectureと新graph資源v2 runを通過し、公開差分は認定文書だけ。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。v0.2.0引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
+
+M4は任意LangGraph 1.2.11 safe-boundary pilotから開始します。
+[運用契約](operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
+この連携のGraph APIは再確認しましたが、無関係な過去の外部仕様は再確認していません。
+任意scheduler永続化ではなく、Nativeの型付きcheckpointを明示利用します。
+外部sourceの失効/freshnessと残る統合受入れは未完です。
+このincrementでserviceをv0.3へ昇格せず、M4完了も宣言しません。
 
 ## 1. 採用方針
 

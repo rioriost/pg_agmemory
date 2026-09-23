@@ -7,6 +7,68 @@
 purge訓練、schema reset、restore実験を含む破壊的操作は、
 使い捨てtest DBだけを対象とし、業務DBや実userの履歴には実行しないでください。
 
+## M4 LangGraph safe-boundary pilot
+
+開発branchに任意の**LangGraph 1.2.11**連携を追加します。
+serviceの新releaseやM4完了ではありません。
+このcheckoutで`uv sync --frozen --extra langgraph`を実行します。
+通常service/runtimeとcore SDKにはLangGraphを導入せず、
+Native API v1/schema 20、SQL/AGEの選択も変更しません。
+
+`pg_agmemory.langgraph.LangGraphMemory`はopen済み`AsyncMemoryClient`を、
+信頼する一つのscope/run/branchへ固定します。
+Native API originと委譲bearer tokenは起動時に渡し、
+prompt、recall本文、graph stateから取得しません。
+`observe`は許可・除去処理済みdataの明示captureで、会話の自動保存ではありません。
+`recall`は固定scopeだけを指定し、Nativeの予算・認可・coverage・非信頼context契約を保ちます。
+
+`build_turn_graph(memory, planner)`は実LangGraphの
+`recall -> plan -> checkpoint`をcompileします。
+callerが`CheckpointState`と`RecallResult`を受ける**副作用のないasync planner**を渡し、
+pilotはmodelを選ばず、外部toolを実行せず、承認を付与しません。
+入力は正確なexpected head、event watermark、memory refs、
+callerが永続保持するidempotency keyを含みます。
+harnessは`pg-agmemory-langgraph-pilot` version `1`、state schema `1`です。
+graphはrecallで返された全item/revisionを宣言済みmemory refsへ保守的に追加し、
+完全一致pairを重複排除します。合計がNative上限100参照を超えたらplanner前に拒否します。
+modelによる関連性判断を挟まず、recall入力の削除依存を保ちます。
+初期stateやその他planner入力の出典は引き続きcallerが宣言します。
+保存するのは型付きNative checkpoint stateだけで、
+任意のLangGraph channel/message、callback、credential、serializer、
+schedulerのpending writeは保存しません。
+
+`restore`はNativeの復元変更前にscope/run/harness互換を確認し、
+再認可された完全なenvelopeを明示確認用に返します。
+未使用のtarget branchと固定restore keyを使ってください。
+graphの実行、既存bindingの変更、`next_actions`の実行、承認の解除は行いません。
+`resume_allowed`、`requires_reconciliation`、`untracked_effects`、
+現行`tool_effects`を確認し、unknown/dispatched effectは既存台帳で照合してから
+新しい作業を開始します。復元先は別途bindingを作成し、返されたcheckpoint IDをheadにします。
+`BaseCheckpointSaver`、`Command(resume=...)`、任意graph再開、
+外部実行のexactly-once、前nodeのreplayには対応しません。
+
+障害をそのまま伝播し、自動retryや成功風fallbackを行いません。
+captureとcheckpointは別transactionで、後段の失敗は先のobserveを取り消しません。
+変更結果不明時は正確なpayload/keyを保持しNative SDKで照合します。
+graph全体やplanner/toolを無条件に再実行してはいけません。
+後続操作で権限/source freshnessを再確認し、
+失効後は既に渡されたcontextをhost側で破棄します。
+serviceはcallerへ渡したPython objectを回収できません。
+
+[`examples/langgraph_memory.py`](../../examples/langgraph_memory.py)は
+合成data・決定的plannerのみでmodelを呼ばない例です。
+信頼する`PGAG_API_URL`、`PGAG_API_TOKEN`、`PGAG_SCOPE_ID`、
+新規`PGAG_RUN_ID`/`PGAG_BRANCH_ID`、明示同意`PGAG_SYNTHETIC_CONSENT=yes`を渡し、
+`uv run --frozen --extra langgraph python examples/langgraph_memory.py`で実行します。
+tokenには事前provision済みの使い捨てscopeに対するread/write権限が必要です。
+例は返された参照unionを次turnへ引き継ぎ、
+型付き`ainvoke(..., version="v2").value`の結果を使います。
+外部LangSmith tracingを無効化し、host applicationもframeworkへmemoryを渡す前に
+tracing/callback設定を点検する必要があります。
+依存関係にはtracing clientが含まれますが、pilotはtelemetry送信を承認しません。
+汎用scheduler、自動trigger、外部source connector、postgresem/rerank、
+M4全体の認定は別の作業です。
+
 ## M3 graph MVP deployment
 
 M3 source releaseの契約は**service 0.2.0 / Native API v1 / schema 20**、
