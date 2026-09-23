@@ -120,9 +120,16 @@ def test_schema_twenty_one_is_a_packaged_migration_ledger_not_an_age_install(mon
     conn.__enter__.return_value = conn
     conn.execute.return_value.fetchall.return_value = []
     conn.execute.return_value.fetchone.return_value = ("0.8.6", "public")
-    monkeypatch.setattr(database.psycopg, "connect", MagicMock(return_value=conn))
+    connector = MagicMock(return_value=conn)
+    boundary = MagicMock()
+    monkeypatch.setattr(database.psycopg, "connect", connector)
+    monkeypatch.setattr(database, "transaction", boundary)
     monkeypatch.setattr(database, "rebuild", MagicMock())
     database.migrate("unused-offline")
+    connector.assert_called_once_with("unused-offline", autocommit=True)
+    boundary.assert_called_once_with(conn)
+    boundary.return_value.__enter__.assert_called_once_with()
+    boundary.return_value.__exit__.assert_called_once_with(None, None, None)
     calls = conn.execute.call_args_list
     assert [call.args[1] for call in calls if call.args[0].startswith(
         "INSERT INTO public.pgag_schema_migration"

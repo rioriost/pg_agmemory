@@ -25,6 +25,15 @@ The main container runner now includes the isolated cancellation stage in both
 native CI architectures; this local evidence is not completed native CI or
 production qualification. No timeout or acceptance threshold was relaxed.
 
+Native [run35924742146](https://github.com/rioriost/pg_agmemory/actions/runs/35924742146)
+at `e5c7d55` passed both HA, PITR and patched AGE jobs, but both core jobs
+failed one offline packaging-ledger test (**3,564 passed / 125 skipped** each).
+Its unconstrained connection mock was mistaken for pipeline mode by the new
+guard; this was not a database failure. The isolated test correction mocks and
+asserts the guarded boundary explicitly while preserving all migration SQL/ledger
+checks. Packaging plus guard contracts pass **100 local cases**. The failed
+native runs did not reach the separate COMMIT-cancellation stage or qualify core.
+
 Lookup and same-key replay can reconcile local receipts, not certify remote
 durability or authorize promotion/restart. Production HA, partition/rejoin,
 independent failure domains and RPO/RTO remain unqualified. Statement timeout

@@ -21,6 +21,14 @@ Ruff、source53 filesと型付きconsumer3 filesのstrict型確認も成功し�
 main container runnerにはnative CI両architectureで実行する隔離cancel stageを追加しましたが、
 このlocal証跡をnative CI完了や本番認定とは扱いません。timeoutや受入れ閾値は緩めていません。
 
+`e5c7d55`のnative [run35924742146](https://github.com/rioriost/pg_agmemory/actions/runs/35924742146)は、
+HA・PITR・修正AGEの各両jobが成功しましたが、core両jobでoffline packaging-ledger test
+一つが失敗しました（各**3,564成功/125 skip**）。無制約connection mockが新guardで
+pipeline modeと判定されたもので、DB障害ではありません。隔離したtest修正ではguard境界を
+明示mockして呼出しをassertし、migration SQL/ledgerの検査は維持します。
+packagingとguard契約のlocal **100件**が成功しています。失敗したnative runは
+別のCOMMIT cancel stageへ到達しておらず、core認定とは扱いません。
+
 照会と同key replayによるlocal receipt照合を、remote durability証明や昇格/再開許可には使いません。
 本番HA、partition/rejoin、独立failure domain、RPO/RTOは未認定です。
 statement timeoutだけでは同期COMMIT待機を確実に制限できず、end-to-end deadlineと
