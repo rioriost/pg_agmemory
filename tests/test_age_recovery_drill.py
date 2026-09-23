@@ -18,7 +18,7 @@ drill = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(drill)
 
 
-@pytest.mark.parametrize("version", ["0.1.3", "0.2.0", "0.2.1", "0.3.0"])
+@pytest.mark.parametrize("version", ["0.1.3", "0.2.0", "0.2.1", "0.3.0.dev1"])
 def test_main_rejects_nonrelease_service_versions_before_reading_private_state(
     monkeypatch, capsys, version,
 ):
@@ -30,7 +30,7 @@ def test_main_rejects_nonrelease_service_versions_before_reading_private_state(
         drill.main()
     assert failure.value.code == 1
     assert json.loads(capsys.readouterr().out) == {
-        "status": "failed", "error": "service_0_3_0_dev1_required",
+        "status": "failed", "error": "service_0_3_0_required",
     }
 
 
@@ -55,7 +55,7 @@ def test_main_accepts_current_release_and_runs_selected_phase(monkeypatch, capsy
     monkeypatch.setattr(drill, "seed", seed)
     drill.main()
     assert json.loads(capsys.readouterr().out) == {
-        "status": "passed", "service_version": "0.3.0.dev1",
+        "status": "passed", "service_version": "0.3.0",
     }
 
 

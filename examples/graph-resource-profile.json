@@ -1,11 +1,11 @@
 {
   "format": "pgag-graph-resource-profile-v1",
-  "name": "M4-bounded-native-graph-v3",
+  "name": "M4-bounded-native-graph-v4",
   "scope": "graph-only paired quiescent warm; not full S, concurrent, cold, HTTP, model, or M3 qualification",
   "age_commit": "72707aab7ce982bf13cad3d102bd869dab07d64b",
   "postgres_version_num": 180006,
   "schema_version": 21,
-  "service_version": "0.3.0.dev1",
+  "service_version": "0.3.0",
   "resources": {
     "database": {"vcpus": 6, "memory_gib": 24},
     "application": {"vcpus": 2, "memory_gib": 8}

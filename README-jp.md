@@ -7,12 +7,12 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**M4開発: 0.3.0.dev1 / schema 21。**
+**M4 release candidate: 0.3.0 / API v1 / schema 21。**
 管理者専用[source-access coordinator](docs/operations/README-jp.md#m4-durable-source-access-coordinator)で、
 通知順序を永続管理し、read leaseを原子的に更新します。
 再送で権限を更新せず、通知欠落時はfail closedにします。
 migration021と同一versionのcomponentが必要で、AGE再開前にgraph artifactを再構築します。
-v0.3 releaseやM4全体の認定ではありません。
+最終native/復元認定は未完で、v0.3.0 tagはまだ公開していません。
 
 [署名付き通知receiver](docs/operations/README-jp.md#signed-source-notice-receiver)は、
 管理者が固定した公開鍵とsource/reader対応でRS256通知を検証してからcoordinatorへ渡します。
@@ -25,12 +25,17 @@ datasetの恒久block、上流削除、物理purgeではありません。
 
 任意のLangGraph safe-boundary pilotでNative SDKを使い、
 明示capture/recallと型付きcheckpoint/restoreを接続します。
-汎用LangGraph checkpointerではなく、副作用を実行せず、M4完了も主張しません。
+汎用LangGraph checkpointerではなく、副作用は実行しません。
 [pilot契約](docs/operations/README-jp.md#m4-langgraph-safe-boundary-pilot)を参照してください。
 続く[外部source snapshot pilot](docs/operations/README-jp.md#m4-external-source-snapshot-pilot)では、
 履歴provenance envelopeと保存の部分結果を追加し、
 client側checkだけでなく専用scope leaseとNative削除を使います。
-上流認証/通知adapter接続とshared business dataの自動長期保存は未認定・無効のままです。
+[計画付きsource purge](docs/operations/README-jp.md#planned-source-snapshot-purge)は、
+terminal通知とcapture停止後に物理snapshot rootを発見し、
+toolを再実行せずNative provenance closureを削除します。
+[M4受入れinventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m4明示保持pilotの受入れ認定中)で
+明示保持pilotを定義します。source固有の本番connector、自動長期保持、
+M5のHA/PITRはこのreleaseの範囲外です。
 以下の公開済みM3 releaseは変更しません。
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20

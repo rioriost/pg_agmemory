@@ -6,12 +6,12 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**M4 development: 0.3.0.dev1 / schema 21.** An administrator-only
+**M4 release candidate: 0.3.0 / API v1 / schema 21.** An administrator-only
 [source-access coordinator](docs/operations/README.md#m4-durable-source-access-coordinator)
 adds durable notification ordering and atomic read-lease updates. Duplicate
 notices cannot renew access; gaps fail closed. This requires migration 021 and
 matching components, including rebuilt graph artifacts before AGE reactivation.
-It is not a v0.3 release or full M4 qualification.
+Final native/recovery qualification is pending; the v0.3.0 tag is not yet published.
 
 The [signed-notice receiver](docs/operations/README.md#signed-source-notice-receiver)
 verifies bounded RS256 deliveries against one operator-configured public key
@@ -25,13 +25,17 @@ emergency operation, not a permanent dataset block, upstream deletion or purge.
 
 An optional LangGraph safe-boundary pilot uses the Native SDK
 for explicit capture, recall and typed checkpoint/restore. It is not a general
-LangGraph checkpointer, does not execute side effects, and is not M4 completion.
+LangGraph checkpointer and does not execute side effects.
 See the [pilot contract](docs/operations/README.md#m4-langgraph-safe-boundary-pilot).
 The next [external-source snapshot pilot](docs/operations/README.md#m4-external-source-snapshot-pilot)
 adds historical provenance envelopes and explicit partial capture outcomes,
 using dedicated scope leases and Native deletion rather than client-only access
-checks. Upstream authentication/notification adapters and automatic
-shared-business retention remain unqualified and off.
+checks. [Planned source purge](docs/operations/README.md#planned-source-snapshot-purge)
+discovers the physical snapshot roots after terminal notices and capture
+shutdown, then deletes their Native provenance closure without replaying tools.
+The [M4 acceptance inventory](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m4-explicit-retention-pilot-acceptance-qualification-in-progress)
+defines the explicit-retention pilot. Source-specific production connectors,
+automatic shared-business retention and M5 HA/PITR remain outside this release.
 The published M3 release below remains unchanged.
 
 ## M3 graph MVP: v0.2.0 / API v1 / schema 20

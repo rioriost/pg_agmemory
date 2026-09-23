@@ -4,6 +4,12 @@
 
 ## M4 closure: explicit source deletion and composed pilot
 
+The candidate is now **service 0.3.0 / API v1 / schema 21**, stage
+`m4-integration-pilot`. Promotion adds no schema or dependency changes.
+Final native distribution, isolated recovery and fresh v4 graph-resource
+qualification must finish before tag publication. The preceding feature
+checkpoint is `2ef4539`; no prior raw measurements are relabeled.
+
 The final feature increment adds administrator-planned snapshot discovery and
 Native provenance purge. All registered readers must first be terminal-deleted,
 and every dedicated scope must have capture disabled. Discovery verifies actual

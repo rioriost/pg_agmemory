@@ -54,7 +54,7 @@ from pg_agmemory.service import MemoryService, bind_identity, principal_connecti
 
 FORMAT = "pgag-graph-resource-result-v1"
 AGE_COMMIT = "72707aab7ce982bf13cad3d102bd869dab07d64b"
-FROZEN_PROFILE_DIGEST = "44455f45baa2ed8b2c297c51457dc925b32dc8dd9e6df7e41e1459bcc1f33af9"
+FROZEN_PROFILE_DIGEST = "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
 ACTIVE = ContextVar("graph_resource_sample", default=None)
 ERROR_CODES = frozenset({
     "administrative_command_failed", "administrative_result_invalid",
@@ -162,7 +162,7 @@ def validate_profile(profile):
     require(profile["age_commit"] == AGE_COMMIT, "profile_age_commit")
     require(same_typed_value(profile["postgres_version_num"], 180006)
             and same_typed_value(profile["schema_version"], 21)
-            and profile["service_version"] == "0.3.0.dev1", "profile_versions")
+            and profile["service_version"] == "0.3.0", "profile_versions")
     require(same_typed_value(profile["resources"], {
         "database": {"vcpus": 6, "memory_gib": 24},
         "application": {"vcpus": 2, "memory_gib": 8},

@@ -10,8 +10,8 @@ databases or real user histories.
 
 ## M4 durable source-access coordinator
 
-The development identity is **0.3.0.dev1 / API v1 / schema 21**, stage
-`m4-integration-pilot`, not a v0.3 release or complete M4 qualification.
+The release-candidate identity is **0.3.0 / API v1 / schema 21**, stage
+`m4-integration-pilot`. Final distribution qualification precedes publication.
 `pg-agmemory source-access` is an administrator-only, local command for a
 **trusted upstream coordinator**. It accepts already-authenticated source
 decisions; it is not a public webhook, signature verifier, source-query client
@@ -352,8 +352,12 @@ automatic startup or upstream lease renewal. Keep serving stopped until current
 source authorization and deletion obligations have been independently
 reconciled. General source-authority history replay remains separate work.
 
-The new schema-21 graph resource recipe has a new development identity and no
-new qualification claim. The frozen M3 v2 recipe is retained separately as
+The schema-21 graph resource recipe has a new release identity and no
+historical measurements are relabeled. The release recipe is
+`M4-bounded-native-graph-v4`, digest
+`cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55`;
+its workloads and thresholds are unchanged. Qualification requires its own
+exact-commit run. The frozen M3 v2 recipe is retained separately as
 `examples/graph-resource-profile-m3-v2.json`; old measurements still belong to
 their old commit/schema/profile, not the new development build.
 

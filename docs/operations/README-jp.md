@@ -9,8 +9,8 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## M4 durable source-access coordinator
 
-開発identityは**0.3.0.dev1 / API v1 / schema 21**、
-stageは`m4-integration-pilot`です。v0.3 releaseやM4全体の認定ではありません。
+release candidateは**0.3.0 / API v1 / schema 21**、
+stageは`m4-integration-pilot`です。最終配布認定後に公開します。
 `pg-agmemory source-access`は、**信頼する上流coordinator**用の管理者専用local commandです。
 認証済みのsource判断を受け取り、公開webhook、署名検証器、source照会client、
 snapshot metadataからの権限推測は提供しません。
@@ -319,7 +319,10 @@ cursor/binding/適用記録が異なる旧backupは、認可sequenceを後退さ
 現行source認可と削除義務を別途照合するまでservingを停止してください。
 汎用source authority履歴replayは別の作業です。
 
-schema21 graph資源recipeは新しい開発identityで、新たな認定を主張しません。
+schema21 graph資源recipeは新しいrelease identityで、過去測定の改名はしません。
+release recipeは`M4-bounded-native-graph-v4`、
+digestは`cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55`です。
+負荷と閾値は変えず、この固定commit自身のrunで認定します。
 固定M3 v2 recipeは`examples/graph-resource-profile-m3-v2.json`に別保存し、
 旧計測は旧commit/schema/profileに属したままで、新buildへ読み替えません。
 

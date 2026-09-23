@@ -4,6 +4,11 @@
 
 ## M4最終実装: 明示source削除と統合pilot
 
+candidateを**service 0.3.0 / API v1 / schema 21**、
+stage `m4-integration-pilot`へ昇格しました。schema/依存の追加変更はありません。
+最終native配布、隔離復元、新v4 graph資源認定の完了後にtagを公開します。
+直前のfeature checkpointは`2ef4539`で、過去の測定結果は改名しません。
+
 最終feature incrementで、管理者がsnapshotを発見・計画し、
 Native provenance purgeで削除する経路を追加しました。
 全登録readerのterminal削除と全専用scopeのcapture無効化が前提です。
