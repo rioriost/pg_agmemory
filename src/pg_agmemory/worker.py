@@ -11,6 +11,7 @@ from pg_agmemory.jobs import job_transaction
 from pg_agmemory.lexical import TokenizerUnavailable
 from pg_agmemory.models import JobError, Remember
 from pg_agmemory.service import MemoryError
+from pg_agmemory.transactions import CommitOutcomeUnknown
 
 logger = logging.getLogger("pg_agmemory.worker")
 MODEL_HEARTBEAT_SECONDS = 20
@@ -169,6 +170,9 @@ async def run(
     while True:
         try:
             result = await run_once(url, subject, profile=profile)
+        except CommitOutcomeUnknown:
+            logger.error("worker_commit_outcome_unknown reconciliation_required=true")
+            raise
         except (psycopg.OperationalError, psycopg.errors.QueryCanceled) as exc:
             logger.warning("worker_dependency_unavailable type=%s", type(exc).__name__)
             if once:

@@ -100,6 +100,7 @@ from pg_agmemory.models import (
 )
 from pg_agmemory.processing import Processing
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
+from pg_agmemory.transactions import CommitOutcomeUnknown, async_transaction
 
 logger = logging.getLogger("pg_agmemory")
 READINESS_TIMEOUT_SECONDS = 5.0
@@ -196,7 +197,7 @@ class TransactionBoundary:
             ):
                 if clock is not None:
                     clock.connection_acquired = perf_counter_ns()
-                async with conn.transaction():
+                async with async_transaction(conn):
                     await bind_identity(conn, subject, identity)
                     scope["state"]["service"] = MemoryService(conn, identity)
                     if clock is not None:
@@ -215,6 +216,9 @@ class TransactionBoundary:
             error = MemoryError("unauthenticated", 401)
         except MemoryError as exc:
             error = exc
+        except CommitOutcomeUnknown:
+            logger.error("commit_outcome_unknown request_id=%s", request_id)
+            error = MemoryError("commit_outcome_unknown", 503)
         except (
             psycopg.OperationalError,
             psycopg.errors.QueryCanceled,
@@ -232,7 +236,8 @@ class TransactionBoundary:
             return
         response = JSONResponse(
             ErrorBody(
-                code=error.code, request_id=request_id, retryable=error.status == 503
+                code=error.code, request_id=request_id,
+                retryable=error.status == 503 and error.code != "commit_outcome_unknown",
             ).model_dump(),
             status_code=error.status,
             headers={

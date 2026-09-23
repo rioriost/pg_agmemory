@@ -575,7 +575,7 @@ def test_commit_failure_or_lost_response_requires_get_not_automatic_replay(env, 
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", interrupted)
-        with pytest.raises(AdminError, match="^admin_database_unavailable$") as failed:
+        with pytest.raises(AdminError, match="^commit_outcome_unknown$") as failed:
             begin(env, snapshot=current, generation_id=generation_id)
         assert failed.value.outcome_unknown
     inspected = execute(env)

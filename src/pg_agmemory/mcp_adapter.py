@@ -191,7 +191,9 @@ def create_server(native: NativeClient) -> Server[None]:
         except AdapterFailure as exc:
             logger.warning("tool_error code=%s", exc.error.code)
             text = exc.error.code
-            if exc.error.outcome_unknown:
+            if exc.error.code == "commit_outcome_unknown":
+                text += ": operator reconciliation required; local state is not replication proof."
+            elif exc.error.outcome_unknown:
                 text += ": outcome unknown; retry only with the same idempotency_key and request."
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=text)],

@@ -17,6 +17,7 @@ from pg_agmemory.admin import (
     admin_failure,
 )
 from pg_agmemory.admin import AdminError as ScopeAccessError
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 Permission = Literal["read", "write", "delete", "admin"]
 PERMISSIONS: tuple[Permission, ...] = ("read", "write", "delete", "admin")
@@ -184,11 +185,11 @@ def scope_access(url: str, request: ScopeAccessRequest) -> Iterator[ScopeAccessR
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 result = apply_scope_access(conn, request)
                 commit_attempted = result.changed
             yield result
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

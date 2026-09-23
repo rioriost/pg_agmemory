@@ -43,6 +43,15 @@ schema ledger is unavailable, while `/healthz` stays live; readiness recovers
 after restoration without an API restart. Keep the read-only, bounded probe
 separate from liveness and resource authorization; see
 [ADR 0014](docs/adr/0014-runtime-readiness.md).
+The COMMIT cancellation stage uses a separate owned PostgreSQL primary started
+with a missing synchronous standby and a `local` default. Only target test
+transactions select `remote_apply`; no shared cluster configuration is changed.
+`tests/test_commit_outcomes.py` observes actual `SyncRep`, cancels the exact
+test backend, and verifies local persistence without success receipts or worker
+retry. It also covers warning-suppressing session defaults and pre-COMMIT
+rollback. Ordinary database runs skip the missing-standby cases; the main
+container runner executes them separately on both CI architectures.
+See [the uncertainty contract](docs/operations/README.md#unconfirmed-commit-outcomes).
 Schema 10 adds terminal job cancellation. Its smoke uses the SDK to enqueue,
 cancel, replay, confirm worker idleness, and purge the source dependency. Preserve
 state/attempt CAS, owner/current-access checks, atomic audit/receipt writes, and

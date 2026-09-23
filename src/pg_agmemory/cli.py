@@ -12,10 +12,22 @@ import psycopg
 import uvicorn
 
 from pg_agmemory.database import migrate, reindex_lexical
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 from pg_agmemory.worker import run
 
 
 def main() -> None:
+    try:
+        _main()
+    except CommitOutcomeUnknown:
+        print(
+            json.dumps({"error": {"code": "commit_outcome_unknown", "outcome_unknown": True}}),
+            flush=True,
+        )
+        raise SystemExit(1) from None
+
+
+def _main() -> None:
     if sys.argv[1:2] == ["infer"]:
         try:
             from pg_agmemory.inference import main as inference_main
@@ -236,7 +248,10 @@ def main() -> None:
         if not args.subject or not 1 <= len(args.subject) <= 256:
             parser.error("provision requires --subject with 1 to 256 characters")
         tenant, principal, scope = uuid4(), uuid4(), uuid4()
-        with psycopg.connect(os.environ["PGAG_ADMIN_DATABASE_URL"]) as conn:
+        with (
+            psycopg.connect(os.environ["PGAG_ADMIN_DATABASE_URL"], autocommit=True) as conn,
+            transaction(conn),
+        ):
             conn.execute(
                 "INSERT INTO memory.tenant(id, dedup_secret) VALUES (%s, %s)",
                 (tenant, secrets.token_bytes(32)),

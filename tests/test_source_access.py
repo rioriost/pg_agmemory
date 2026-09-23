@@ -844,7 +844,7 @@ def test_uncertain_commit_is_not_retried_or_misreported_as_a_rollback(env, monke
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", lost_commit_response)
-        with pytest.raises(AdminError, match="^admin_database_unavailable$") as failure:
+        with pytest.raises(AdminError, match="^commit_outcome_unknown$") as failure:
             apply_notice(env, notice, epoch=bound.access_epoch)
         assert failure.value.outcome_unknown
         assert "DO_NOT_ECHO" not in str(failure.value)

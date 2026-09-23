@@ -7,6 +7,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from pg_agmemory.lexical import rebuild
+from pg_agmemory.transactions import transaction
 
 Connection = psycopg.AsyncConnection[dict[str, Any]]
 MIGRATIONS = (
@@ -127,7 +128,7 @@ async def validate_runtime(url: str) -> None:
 
 
 def migrate(url: str) -> None:
-    with psycopg.connect(url) as conn:
+    with psycopg.connect(url, autocommit=True) as conn, transaction(conn):
         conn.execute("SET LOCAL lock_timeout = '5s'")
         conn.execute("SELECT pg_advisory_xact_lock(742091830)")
         conn.execute(
@@ -159,7 +160,7 @@ def migrate(url: str) -> None:
 
 
 def reindex_lexical(url: str) -> dict[str, str | int]:
-    with psycopg.connect(url) as conn:
+    with psycopg.connect(url, autocommit=True) as conn, transaction(conn):
         conn.execute("SET LOCAL lock_timeout = '5s'")
         conn.execute("SELECT pg_advisory_xact_lock(742091830)")
         versions = conn.execute(

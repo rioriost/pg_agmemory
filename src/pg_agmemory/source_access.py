@@ -26,6 +26,7 @@ from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, ad
 from pg_agmemory.human_review import load_json
 from pg_agmemory.models import ShortText
 from pg_agmemory.scope_access import Permission, ScopeAccessRequest, apply_scope_access
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 MAX_SOURCE_LEASE_SECONDS = 300
 MAX_NOTICE_BYTES = 32768
@@ -372,11 +373,11 @@ def source_access(url: str, request: SourceAccessRequest) -> Iterator[SourceAcce
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 result = _apply_source_access(conn, request)
                 commit_attempted = result.changed
             yield result
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

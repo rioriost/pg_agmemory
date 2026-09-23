@@ -174,6 +174,46 @@ timeout/cancelをrollbackやremote durabilityの証明にしてはいけませ�
 application全体のtimeout/cancel、network partition、応答喪失、rejoinは未認定です。
 `remote_apply`やこのdrill成功から、本番RPOゼロを推論しないでください。
 
+### Unconfirmed COMMIT outcomes
+
+Native mutation、workerのclaim/reservation/heartbeat/publication、管理変更、
+recovery apply、migration、lexical rebuild、provisionの書込み境界は、
+共通の同期/非同期COMMIT guardを使います。psycopg notice callback内では例外を投げず、
+COMMIT中の安全な診断fieldだけを記録します。COMMIT直前にtransaction-localでWARNING配信を
+有効にし、warningを隠すsession既定値による検出回避を防ぎます。PostgreSQL 18のcancel warningは
+汎用SQLSTATE `01000`の場合があるため、翻訳された本文には依存せず、
+COMMIT中の汎用WARNINGを保守的にfail closedで扱います。同期待機cancelは**local commit後**に
+warningで返る場合があり、そのとき成功receiptを渡しません。
+通常のtransaction本文の失敗はrollbackします。task cancelはcancelとして伝播し、
+成功やrollback保証へ読み替えません。
+nested savepointは独立したdurability境界ではありません。guard対象connectionの並行共有や
+手動COMMITは禁止し、診断をCOMMITへ安全に対応付けられないpipeline modeは拒否します。
+
+Native APIはbuffered応答を破棄し、
+`503 {"code":"commit_outcome_unknown","request_id":"...","retryable":false}`を返します。
+SDK/MCP等のNative mutation adapterは`outcome_unknown:true`、
+`retryable:false`を返し、SQL、notice本文、接続情報はechoしません。
+管理mutation CLIはexit 1と
+`{"error":{"code":"commit_outcome_unknown","outcome_unknown":true}}`を返します。
+read-only snapshotは観測のままで、不明なmutationとしては扱いません。
+
+workerは結果不明のclaim/reservation後にproviderを呼ばず、publication後に補償的な
+job失敗を書かず、daemon retry loopも継続せず停止します。heartbeat失敗時に既に動作中の
+providerはlocal cancelしますが、外部実行や課金が止まった証拠ではありません。
+このerrorによるlease、source権限、service再開の自動承認はありません。
+照合が完了するまで、外部supervisorの自動再起動も停止してください。
+
+元のoperation identity、正確なpayload、idempotency keyを照合用に保持してください。
+明示的な復旧を判断する前に、正当なprimaryのreceipt/job/source cursorを確認します。
+local行や同key replayはlocal状態の証拠にすぎません。read-only replayはWALを生成せず、
+過去のcancel済みcommitの同期durabilityを再確立しない場合があります。
+key変更、migration/provisionのblind再実行、effect再実行、昇格安全性の推論はしません。
+複製policy、fencing、復旧先には別途証拠が必要です。本guardは本番RPO/RTOを認定せず、
+HA labの`commit_timeout_qualified:false`も変更しません。
+statement timeoutだけではPostgreSQLの同期COMMIT待機時間を確実に制限できません。
+隔離回帰は`SyncRep`を観測してから対象backendだけをcancelします。
+client deadline/cancelと結果照合は引き続き必要で、guardによるtimeout延長/無効化はありません。
+
 M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
 新v5開発graph recipeへM4 v4測定を読み替えず、

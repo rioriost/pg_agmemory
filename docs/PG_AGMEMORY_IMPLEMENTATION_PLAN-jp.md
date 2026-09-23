@@ -2,9 +2,9 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.8 / M5 replicationと所有HA、2026-09-24
+- 文書版: 1.9 / M5 COMMIT結果guard、2026-09-24
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: M5開発を0.4.0.dev1/APIv1/schema21で継続し、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。本番認定には同期待機cancelやpartitionの扱いも残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
+- 状態: M5開発を0.4.0.dev1/APIv1/schema21で継続し、COMMIT結果guard、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。同期待機cancelをrollbackや複製成功とは扱わないが、本番HAとpartitionの認定は残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -864,6 +864,12 @@ fencing前の拒否、primary破棄後の明示昇格、確定fixture/effect状�
 partition、rejoin、独立storage、同期COMMIT timeout/cancelを認定しません。
 PostgreSQLは同期待機cancel時にlocal commit後でもwarningを返す場合があり、
 本番の損失上限を宣言する前にapplication全体の結果分類を別途認定する必要があります。
+
+次のincrementでは共通の書込みCOMMIT guardを追加します。同期待機cancelや応答喪失を
+成功/rollbackと扱わず、`commit_outcome_unknown`を返します。Native mutationと管理commandは
+不明状態を維持し、workerは補償書込みや自動retryをせず照合のため停止します。
+local receipt/replayはremote durabilityの証拠ではありません。
+application側の結果処理であり、本番HA gate完了とは扱いません。
 
 本番gateには引き続きhost/storage failure domain、負荷、RPO/RTO目標の宣言、
 HA/partition fencingとfailover drill、alert/metrics保持、

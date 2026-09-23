@@ -2,7 +2,32 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 複製観測と所有HA
+## M5開発: COMMIT結果不明の扱い
+
+**0.4.0.dev1 / API v1 / schema 21**で、同期/非同期の書込みtransaction終了を保護します。
+local commit後の同期複製cancel warningやCOMMIT応答喪失があれば、
+buffered成功応答を送らず、Native APIは秘匿化した
+`503 commit_outcome_unknown`、`retryable:false`を返します。
+mutation adapterは`outcome_unknown:true`を維持し、管理mutationも同じcodeと不明flagを返します。
+workerは失敗状態の追加書込み、次のmodel呼出し、loop自動retryを行わず停止します。
+migration、lexical rebuild、provisionも対象で、read-only運用snapshotの非変更契約は維持します。
+
+local Linux arm64/PostgreSQL 18.6で**重点1,474件/optional AGE・logical-slot 26 skip**、
+別のmissing同期standby構成の所有primaryで**実COMMIT結果10件**が成功しました。
+`SyncRep`を観測して名前で限定したtest backendだけをcancelし、local永続化、
+成功receipt抑止、worker停止、COMMIT前の通常rollbackを確認しています。
+warningを隠すsession既定値と、local状態だけを返す同key replayも対象です。
+Ruff、source53 filesと型付きconsumer3 filesのstrict型確認も成功しました。
+main container runnerにはnative CI両architectureで実行する隔離cancel stageを追加しましたが、
+このlocal証跡をnative CI完了や本番認定とは扱いません。timeoutや受入れ閾値は緩めていません。
+
+照会と同key replayによるlocal receipt照合を、remote durability証明や昇格/再開許可には使いません。
+本番HA、partition/rejoin、独立failure domain、RPO/RTOは未認定です。
+statement timeoutだけでは同期COMMIT待機を確実に制限できず、end-to-end deadlineと
+応答喪失/partition復旧には別途認定が必要です。
+[COMMIT契約](operations/README-jp.md#unconfirmed-commit-outcomes)を参照してください。
+
+## 以前のM5 increment: 複製観測と所有HA
 
 次の**0.4.0.dev1 / API v1 / schema 21** incrementで`replication-status`と
 2-node SQL-only HA rehearsalを追加します。physical/logical senderを区別し、

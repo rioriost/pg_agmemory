@@ -28,6 +28,7 @@ from pg_agmemory.processing_recovery import (
     fingerprint_tables,
 )
 from pg_agmemory.synthesis_policy import SynthesisPolicy
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 CONTENT_TABLES = dict.fromkeys((
     "memory.principal", "memory.scope", "memory.object", "memory.episode",
@@ -262,7 +263,7 @@ def apply_bundle(
     commit_attempted = False
     try:
         with admin_connection(url, tenant) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 other = conn.execute(
                     """SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
                        AND pid<>pg_backend_pid() AND backend_type='client backend' LIMIT 1"""
@@ -340,7 +341,7 @@ def apply_bundle(
                     final = quarantine_projection(conn, active_projection, final, bundle, secret)
                 commit_attempted = True
             return final
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

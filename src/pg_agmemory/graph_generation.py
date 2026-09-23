@@ -23,6 +23,7 @@ from pg_agmemory.deletion_history import HistoryContract
 from pg_agmemory.models import Digest, ShortText
 from pg_agmemory.processing_recovery import StateFingerprint, fingerprint_tables
 from pg_agmemory.recovery_apply import secret_for
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 Revision = Annotated[int, Field(ge=0, le=MAX_EPOCH, strict=True)]
 MAX_GENERATIONS = 10000
@@ -256,7 +257,7 @@ def graph_generation(
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 conn.execute(
                     "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
                     + (" READ ONLY" if request.operation == "get" else "")
@@ -320,7 +321,7 @@ def graph_generation(
             yield result
     except ValidationError:
         raise AdminError("graph_generation_invalid") from None
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

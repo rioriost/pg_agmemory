@@ -22,6 +22,7 @@ from pg_agmemory.deletion_history import HistoryContract
 from pg_agmemory.graph_artifact import GraphArtifact, GraphArtifactRequest, current_artifact
 from pg_agmemory.graph_generation import AdminConnection, Revision, _state
 from pg_agmemory.models import Digest
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 
 class AgeProjectionRequest(HistoryContract):
@@ -249,7 +250,7 @@ def age_projection(
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 conn.execute(
                     "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
                     + (" READ ONLY" if request.operation == "get" else "")
@@ -290,7 +291,7 @@ def age_projection(
             yield result
     except ValidationError:
         raise AdminError("graph_projection_invalid") from None
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

@@ -31,6 +31,7 @@ SAFE_NATIVE_CODES = {
     "relation_invalidated",
     "dependency_unavailable",
     "database_error",
+    "commit_outcome_unknown",
 }
 
 
@@ -166,7 +167,10 @@ class NativeHTTPClient:
                             ) from None
                         raise failure(
                             native.code if native.code in self.safe_codes else "native_api_error",
-                            retryable=response.status_code in (429, 503),
+                            retryable=(
+                                response.status_code in (429, 503)
+                                and native.code != "commit_outcome_unknown"
+                            ),
                             unknown=mutation and response.status_code >= 500,
                             status=response.status_code,
                             request_id=request_id,

@@ -42,6 +42,13 @@ readiness smokeでは`/readyz`の200、使い捨てDBのschema台帳を一時利
 readinessが回復することを確認します。読取り専用・時間制限付きprobeを
 livenessやresource認可と混同しないでください。
 [ADR 0014](docs/adr/0014-runtime-readiness-jp.md)を参照してください。
+COMMIT cancel検査では、存在しない同期standbyと`local`既定値で起動した
+別の所有PostgreSQL primaryを使い、対象transactionだけ`remote_apply`にします。
+共有clusterの設定は変更しません。`tests/test_commit_outcomes.py`は実際の`SyncRep`を観測し、
+そのtest backendだけをcancelして、local永続化と成功receipt/worker retryの抑止を確認します。
+warningを隠すsession既定値とCOMMIT前rollbackも対象です。通常DBでは
+missing-standby caseをskipしますが、main container runnerはCI両architectureで別途実行します。
+[結果不明の契約](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を参照してください。
 schema 10はjobの終端状態`cancelled`を追加します。smokeではSDKによるenqueue、
 cancel、再送、workerのidle確認、source依存先のpurgeを検査します。
 state/attempt CAS、所有者と現在の権限、audit/receiptの原子的更新、

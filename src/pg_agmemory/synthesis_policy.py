@@ -14,6 +14,7 @@ from pydantic import Field, ValidationError, model_validator
 
 from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, admin_failure
 from pg_agmemory.models import Contract, Digest, Predicate, ShortText
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 RECIPES = {
     "extract": "source-extraction-v1",
@@ -110,7 +111,7 @@ def synthesis_policy(
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 row = conn.execute(
                     """SELECT t.access_epoch FROM memory.tenant t JOIN memory.scope s
                        ON s.tenant_id=t.id AND s.id=%s WHERE t.id=%s"""
@@ -163,7 +164,7 @@ def synthesis_policy(
             yield result
     except ValidationError:
         raise AdminError("synthesis_policy_invalid") from None
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

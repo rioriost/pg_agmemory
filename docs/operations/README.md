@@ -202,6 +202,54 @@ pause below one second; it does not qualify application-wide timeout/cancel,
 network partition, lost-acknowledgement or rejoin semantics. Do not infer a
 production RPO-zero contract from `remote_apply` or from this passing drill.
 
+### Unconfirmed COMMIT outcomes
+
+All application write boundaries use a shared synchronous/asynchronous COMMIT
+guard, including Native mutations, worker claim/reservation/heartbeat/publication,
+administrative changes, recovery apply, migrations, lexical rebuild and
+provisioning. The guard records safe diagnostic fields during COMMIT rather
+than raising from psycopg's notice callback. It enables transaction-local WARNING
+delivery immediately before COMMIT, so warning-suppressing session defaults
+cannot bypass detection. PostgreSQL 18's cancellation warning can use generic
+SQLSTATE `01000`; generic COMMIT warnings conservatively fail closed rather
+than relying on localized message matching. A canceled synchronous wait can
+return a warning **after local commit**; it must not release a success receipt.
+Normal transaction-body errors still roll back. Task cancellation still
+propagates cancellation, not a success or a promise of rollback.
+Nested savepoints are not independent durability boundaries. Guarded connections
+must not be shared concurrently or committed manually; pipeline mode is rejected
+because queued diagnostics cannot be attributed safely to COMMIT.
+
+Native API suppresses its buffered response and returns
+`503 {"code":"commit_outcome_unknown","request_id":"...","retryable":false}`.
+SDK/MCP/other Native mutation adapters report `outcome_unknown:true` and
+`retryable:false`, without echoing SQL, notice text or connection details.
+Administrative mutation CLIs exit 1 with
+`{"error":{"code":"commit_outcome_unknown","outcome_unknown":true}}`.
+Read-only snapshots remain observations, not uncertain mutations.
+
+Workers stop on an unconfirmed commit: they do not dispatch a provider after
+an uncertain claim/reservation, record a compensating job failure after uncertain
+publication, or continue the daemon retry loop. A provider already in flight
+when its heartbeat fails is canceled locally; this does **not** prove external
+execution or billing stopped. No lease, source permission or service restart
+is automatically authorized by this error. Keep any external supervisor's
+automatic restart disabled until reconciliation is complete.
+
+Keep the original operation identity, exact payload and idempotency key for
+operator reconciliation. Inspect the authoritative primary's receipt/job/source
+cursor before deciding on any explicit recovery. A local row or same-key replay
+only proves local state: a read-only replay may generate no WAL and does not
+re-establish synchronous durability for an earlier canceled commit. Do not
+change keys, blindly rerun migrations/provisioning, execute effects again, or
+infer that promotion is safe. Replication policy, fencing and the chosen recovery
+target require separate evidence. This guard does not establish production
+RPO/RTO or change the HA lab's `commit_timeout_qualified:false`.
+Statement timeout alone is not a reliable bound on PostgreSQL's synchronous
+COMMIT wait; the isolated regression explicitly observes `SyncRep` before
+canceling its target backend. Client deadlines/cancellation and reconciliation
+remain necessary; no timeout is increased or disabled by the guard.
+
 M5 still needs a declared production topology/load profile, independent media,
 production partition/failover and commit-outcome handling, monitoring/alert retention,
 embedding-space migration, upgrade rehearsal and verified backup expiration.

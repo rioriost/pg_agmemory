@@ -369,7 +369,7 @@ def test_uncertain_commit_is_not_reported_as_rollback(env, monkeypatch):
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", lost_commit_response)
-        with pytest.raises(ScopeAccessError, match="admin_database_unavailable") as error:
+        with pytest.raises(ScopeAccessError, match="commit_outcome_unknown") as error:
             execute(env, "revoke", expected_access_epoch=1)
         assert error.value.outcome_unknown
     current = execute(env)

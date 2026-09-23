@@ -463,9 +463,10 @@ def test_native_error_catalog_preserves_only_safe_codes(monkeypatch, code):
     [
         ("capture_policy_denied", 403, False, False),
         ("capture_policy_invalid", 503, True, True),
+        ("commit_outcome_unknown", 503, False, True),
     ],
 )
-def test_capture_policy_errors_preserve_native_uncertainty(
+def test_native_errors_preserve_retry_and_uncertainty(
     monkeypatch, code, status, retryable, unknown
 ):
     _, calls = mock_client(

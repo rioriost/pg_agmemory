@@ -10,6 +10,7 @@ from psycopg.types.json import Jsonb
 
 from pg_agmemory.models import CancelJob, EnqueueJob, JobError, QueryJobs, Remember
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
+from pg_agmemory.transactions import async_transaction
 
 RECIPE = "structured-remember-v1"
 
@@ -17,7 +18,7 @@ RECIPE = "structured-remember-v1"
 @asynccontextmanager
 async def job_transaction(url: str, subject: str) -> AsyncIterator["Jobs"]:
     async with principal_connection(url, subject) as (conn, identity):
-        async with conn.transaction():
+        async with async_transaction(conn):
             await bind_identity(conn, subject, identity)
             yield Jobs(MemoryService(conn, identity))
 

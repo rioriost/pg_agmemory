@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, admin_failure
 from pg_agmemory.models import Contract, Observe, ShortText
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 PolicyList = Annotated[list[ShortText], Field(max_length=64)]
 POLICY_COLUMNS = "enabled,source_namespaces,consent_references,max_content_bytes"
@@ -95,7 +96,7 @@ def capture_policy(url: str, request: CapturePolicyRequest) -> Iterator[CaptureP
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 target = conn.execute(
                     """SELECT t.access_epoch FROM memory.tenant t
                        JOIN memory.scope s ON s.tenant_id=t.id AND s.id=%s WHERE t.id=%s"""
@@ -165,7 +166,7 @@ def capture_policy(url: str, request: CapturePolicyRequest) -> Iterator[CaptureP
             yield result
     except ValidationError:
         raise AdminError("capture_policy_invalid") from None
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

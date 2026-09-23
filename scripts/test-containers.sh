@@ -39,8 +39,10 @@ test_image="pg-agmemory-test:${run_id}"
 runtime_image="pg-agmemory-runtime:${run_id}"
 extras_image="pg-agmemory-extras:${run_id}"
 test_db="${run_id}-test-db"
+commit_db="${run_id}-commit-db"
 smoke_db="${run_id}-smoke-db"
 test_name="${run_id}-tests"
+commit_name="${run_id}-commit-tests"
 migrate_name="${run_id}-migrate"
 key_name="${run_id}-key"
 api_name="${run_id}-api"
@@ -48,7 +50,7 @@ probe_name="${run_id}-probe"
 provision_name="${run_id}-provision"
 worker_name="${run_id}-worker"
 containers=("$worker_name" "$provision_name" "$probe_name" "$api_name" "$key_name"
-            "$migrate_name" "$test_name" "$smoke_db" "$test_db")
+            "$migrate_name" "$test_name" "$commit_name" "$smoke_db" "$test_db" "$commit_db")
 network=default
 network_created=false
 password="${run_id}-${RANDOM}"
@@ -67,7 +69,8 @@ cleanup() {
     trap - EXIT INT TERM
     set +e
     if [[ $status -ne 0 ]]; then
-        for name in "$test_name" "$api_name" "$worker_name" "$smoke_db" "$test_db"; do
+        for name in "$test_name" "$commit_name" "$api_name" "$worker_name" \
+            "$smoke_db" "$test_db" "$commit_db"; do
             "$engine" logs "$name" >&2 2>/dev/null
         done
     fi
@@ -101,20 +104,22 @@ container_host() {
 }
 
 start_database() {
-    "$engine" run -d --name "$1" --network "$network" \
+    local name="$1"
+    shift
+    "$engine" run -d --name "$name" --network "$network" \
         --tmpfs /var/lib/postgresql \
         -e "POSTGRES_PASSWORD=$password" -e POSTGRES_DB=pgag_test \
-        "$postgres_image" >/dev/null
+        "$postgres_image" "$@" >/dev/null
     for ((attempt = 0; attempt < 90; attempt++)); do
-        if "$engine" exec "$1" pg_isready -h 127.0.0.1 -U postgres -d pgag_test \
+        if "$engine" exec "$name" pg_isready -h 127.0.0.1 -U postgres -d pgag_test \
             >/dev/null 2>&1; then
-            test "$("$engine" exec "$1" psql -U postgres -d pgag_test -Atc \
+            test "$("$engine" exec "$name" psql -U postgres -d pgag_test -Atc \
                 'SHOW server_version_num')" = 180006
             return 0
         fi
         sleep 1
     done
-    echo "PostgreSQL did not become ready: $1" >&2
+    echo "PostgreSQL did not become ready: $name" >&2
     return 1
 }
 
@@ -127,6 +132,19 @@ echo "Running containerized lint, type checks, and PostgreSQL tests..."
     -e "PGAG_TEST_DATABASE_URL=postgresql://postgres:${password}@${test_host}:5432/pgag_test" \
     "$test_image"
 remove_container "$test_db"
+
+echo "Checking canceled synchronous COMMIT on a separate owned primary..."
+start_database "$commit_db" postgres \
+    -c synchronous_standby_names=pgag_missing -c synchronous_commit=local
+test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
+    'SHOW synchronous_standby_names')" = pgag_missing
+test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
+    'SHOW synchronous_commit')" = local
+commit_host="$(container_host "$commit_db")"
+"$engine" run --name "$commit_name" --network "$network" \
+    -e "PGAG_TEST_DATABASE_URL=postgresql://postgres:${password}@${commit_host}:5432/pgag_test" \
+    "$test_image" timeout 120s pytest -q tests/test_commit_outcomes.py
+remove_container "$commit_db"
 
 echo "Building and running the non-root production image..."
 "$engine" build --target adapter-extras-check --tag "$extras_image" .

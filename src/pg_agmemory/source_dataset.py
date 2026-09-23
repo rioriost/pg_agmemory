@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from pg_agmemory.admin import MAX_EPOCH, AdminError, Epoch, admin_connection, admin_failure
 from pg_agmemory.scope_access import Permission, ScopeAccessRequest, apply_scope_access
 from pg_agmemory.source_access import SourceDatasetIdentity, SourceReason
+from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 
 MAX_DATASET_TARGETS = 100
 
@@ -175,11 +176,11 @@ def source_dataset(url: str, request: SourceDatasetRequest) -> Iterator[SourceDa
     commit_attempted = False
     try:
         with admin_connection(url, request.tenant_id) as conn:
-            with conn.transaction():
+            with transaction(conn):
                 result = _apply_source_dataset(conn, request)
                 commit_attempted = bool(result.changed_targets)
             yield result
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

@@ -2,7 +2,37 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: replication observations and owned HA
+## M5 development: unconfirmed COMMIT outcomes
+
+**0.4.0.dev1 / API v1 / schema 21** now guards write-capable synchronous and
+asynchronous transaction exits. A synchronous-replication cancellation warning
+after local commit or a lost COMMIT acknowledgement cannot release a buffered
+success response. Native API returns sanitized `503 commit_outcome_unknown`
+with `retryable:false`; mutation adapters retain `outcome_unknown:true`.
+Administrative mutations use the same error and uncertainty flag.
+Workers stop without compensating failure writes, another model dispatch or
+automatic loop retry. Migration, lexical rebuild and provisioning are covered;
+read-only operator snapshots retain their non-mutating contract.
+
+Local Linux arm64/PostgreSQL 18.6 passes **1,474 focused cases / 26 optional
+AGE/logical-slot skips**, plus **10 separate real COMMIT-outcome cases** on an
+owned primary configured with a missing synchronous standby. These observe
+`SyncRep`, cancel only the named test backend, and confirm local persistence,
+suppressed success receipts, worker stopping and ordinary pre-COMMIT rollback.
+Warning-suppressing session defaults and local-only same-key replay are covered.
+Ruff, strict typing for 53 source files and three typed consumers pass.
+The main container runner now includes the isolated cancellation stage in both
+native CI architectures; this local evidence is not completed native CI or
+production qualification. No timeout or acceptance threshold was relaxed.
+
+Lookup and same-key replay can reconcile local receipts, not certify remote
+durability or authorize promotion/restart. Production HA, partition/rejoin,
+independent failure domains and RPO/RTO remain unqualified. Statement timeout
+alone does not reliably bound synchronous COMMIT waiting; end-to-end deadlines
+and lost-acknowledgement/partition recovery still need separate qualification.
+See [the COMMIT contract](operations/README.md#unconfirmed-commit-outcomes).
+
+## Previous M5 increment: replication observations and owned HA
 
 The next **0.4.0.dev1 / API v1 / schema 21** increment adds `replication-status`
 and a two-node SQL-only HA rehearsal. The observer distinguishes physical and

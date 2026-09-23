@@ -467,7 +467,7 @@ def test_commit_response_loss_is_unknown_and_readback_resolves(env, monkeypatch)
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", lost)
-        with pytest.raises(AdminError, match="admin_database_unavailable") as failure:
+        with pytest.raises(AdminError, match="commit_outcome_unknown") as failure:
             set_policy(env, policy(enabled=False), epoch=1)
         assert failure.value.outcome_unknown
     assert execute(env).access_epoch == 2 and not execute(env).policy.enabled

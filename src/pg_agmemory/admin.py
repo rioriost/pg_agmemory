@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from pydantic import Field
 
 from pg_agmemory.database import SCHEMA_VERSION, VECTOR_QUERY, VECTOR_VERSION, Connection, connect
+from pg_agmemory.transactions import CommitOutcomeUnknown
 
 MAX_EPOCH = 9223372036854775807
 Epoch = Annotated[int, Field(ge=1, le=MAX_EPOCH, strict=True)]
@@ -103,7 +104,11 @@ async def async_admin_connection(url: str, tenant_id: UUID) -> AsyncIterator[Con
         yield conn
 
 
-def admin_failure(exc: psycopg.Error, commit_attempted: bool) -> AdminError:
+def admin_failure(
+    exc: psycopg.Error | CommitOutcomeUnknown, commit_attempted: bool,
+) -> AdminError:
+    if isinstance(exc, CommitOutcomeUnknown):
+        return AdminError("commit_outcome_unknown", outcome_unknown=True)
     if isinstance(exc, (psycopg.errors.UndefinedTable, psycopg.errors.InvalidSchemaName)):
         code = "schema_unavailable"
     elif isinstance(exc, psycopg.errors.InsufficientPrivilege):

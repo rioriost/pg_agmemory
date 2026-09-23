@@ -948,7 +948,7 @@ def test_lost_commit_response_uses_native_idempotent_receipt_without_new_writes(
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.AsyncConnection, "transaction", lost_response)
-        with pytest.raises(AdminError, match="^admin_database_unavailable$") as failure:
+        with pytest.raises(AdminError, match="^commit_outcome_unknown$") as failure:
             apply(env, plan)
     assert failure.value.outcome_unknown and PRIVATE not in str(failure.value)
     assert len(commits) == 1

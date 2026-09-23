@@ -517,6 +517,7 @@ def test_uncertain_mutations_never_claim_success_or_retry_automatically(fault):
         (404, "not_found"),
         (409, "idempotency_conflict"),
         (503, "database_error"),
+        (503, "commit_outcome_unknown"),
         (500, "DO_NOT_ECHO"),
     ],
 )
@@ -551,7 +552,10 @@ def test_native_errors_are_safe_and_distinguish_ambiguous_writes(status, code):
                 assert result.is_error and error["native_status"] == status
                 assert error["request_id"] == request_id
                 assert error["outcome_unknown"] == (status >= 500)
-                assert error["retryable"] == (status == 503)
+                assert error["retryable"] == (status == 503 and code != "commit_outcome_unknown")
+                if code == "commit_outcome_unknown":
+                    assert "operator reconciliation required" in result.content[0].text
+                    assert "retry only" not in result.content[0].text
                 assert "DO_NOT_ECHO" not in result.model_dump_json()
 
     asyncio.run(scenario())

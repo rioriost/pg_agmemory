@@ -11,6 +11,9 @@
 新しい[運用foundation](docs/operations/README-jp.md#m5-operational-foundations)に、
 read-only運用/複製観測、pauseを維持するPITR、所有primaryのfencingを確認するHA rehearsalを含めます。
 reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定ではありません。
+書込み境界では[COMMIT結果不明](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を拒否します。
+同期待機cancel後のlocal commitをrollbackや複製完了とは扱わず、
+workerは再試行せず照合のため停止します。
 公開済みM4 releaseと証跡は変更しません。
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21。**

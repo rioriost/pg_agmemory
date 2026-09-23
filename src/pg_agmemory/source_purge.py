@@ -27,6 +27,7 @@ from pg_agmemory.models import DeletionResult, Forget, Identity, ShortText
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity
 from pg_agmemory.source_access import SourceDatasetIdentity
 from pg_agmemory.source_snapshot import SOURCE_NAMESPACE, SnapshotEnvelope, snapshot_digest
+from pg_agmemory.transactions import CommitOutcomeUnknown, async_transaction
 
 MAX_SOURCE_PURGE_BINDINGS = 100
 MAX_SOURCE_PURGE_SCOPES = 32
@@ -377,7 +378,7 @@ async def source_purge(
     commit_attempted = False
     try:
         async with async_admin_connection(url, request.tenant_id) as conn:
-            async with conn.transaction():
+            async with async_transaction(conn):
                 result = await _apply_source_purge(conn, request)
                 commit_attempted = result.changed
             yield result
@@ -385,7 +386,7 @@ async def source_purge(
         raise AdminError(exc.code) from None
     except (ValidationError, TypeError, ValueError, OverflowError, RecursionError):
         raise AdminError("source_purge_invalid") from None
-    except psycopg.Error as exc:
+    except (psycopg.Error, CommitOutcomeUnknown) as exc:
         raise admin_failure(exc, commit_attempted) from None
 
 

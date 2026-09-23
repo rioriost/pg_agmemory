@@ -1056,7 +1056,7 @@ def test_signed_ingress_preserves_uncertain_actual_commit_without_retry(
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", lost_response)
-        with pytest.raises(AdminError, match="^admin_database_unavailable$") as failure:
+        with pytest.raises(AdminError, match="^commit_outcome_unknown$") as failure:
             receive(env, profile, delivery, bound.access_epoch)
         assert failure.value.outcome_unknown and SENSITIVE not in str(failure.value)
     assert len(commits) == 1 and len(event_rows(env)) == 1

@@ -1060,7 +1060,7 @@ def test_uncertain_batch_commit_is_redacted_not_retried_and_durably_all_or_nothi
 
     with monkeypatch.context() as patch:
         patch.setattr(psycopg.Connection, "transaction", lost_response)
-        with pytest.raises(AdminError, match="^admin_database_unavailable$") as failure:
+        with pytest.raises(AdminError, match="^commit_outcome_unknown$") as failure:
             revoke(env, discovered)
     assert failure.value.outcome_unknown and "DO_NOT_ECHO" not in str(failure.value)
     assert len(commits) == 1
