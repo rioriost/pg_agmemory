@@ -56,6 +56,14 @@ FORMAT = "pgag-graph-resource-result-v1"
 AGE_COMMIT = "72707aab7ce982bf13cad3d102bd869dab07d64b"
 FROZEN_PROFILE_DIGEST = "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
 ACTIVE = ContextVar("graph_resource_sample", default=None)
+ADMIN_ERROR_CODES = frozenset({
+    "admin_database_error", "admin_database_unavailable", "admin_privilege_required",
+    "admin_role_required", "schema_unavailable", "schema_version_mismatch",
+    "extension_version_mismatch", "graph_artifact_timeout", "graph_artifact_limit",
+    "graph_artifact_invalid", "graph_artifact_file_invalid", "graph_artifact_output_failed",
+    "graph_artifact_cleanup_failed", "graph_revision_conflict", "graph_generation_unavailable",
+    "graph_input_changed",
+})
 ERROR_CODES = frozenset({
     "administrative_command_failed", "administrative_result_invalid",
     "hidden_canary_fixture_empty", "hidden_path_oracle_not_empty",
@@ -71,7 +79,7 @@ ERROR_CODES = frozenset({
     "revision_conflict", "revision_limit_exceeded", "idempotency_conflict", "invalid_evidence",
     "oracle_mismatch", "paired_read_failed",
     "run_not_completed",
-})
+}) | ADMIN_ERROR_CODES
 
 
 class BenchmarkError(RuntimeError):
@@ -528,7 +536,17 @@ def cli(arguments, *, request=None):
         ["pg-agmemory", *arguments], input=None if request is None else json.dumps(request),
         capture_output=True, text=True, timeout=180, check=False,
     )
-    require(result.returncode == 0, "administrative_command_failed")
+    if result.returncode != 0:
+        try:
+            value = json.loads(result.stdout) if len(result.stdout) <= 65536 else None
+        except (ValueError, RecursionError):
+            value = None
+        error = value.get("error") if isinstance(value, dict) else None
+        code = error.get("code") if isinstance(error, dict) else None
+        raise BenchmarkError(
+            code if isinstance(code, str) and code in ADMIN_ERROR_CODES
+            else "administrative_command_failed"
+        )
     value = json.loads(result.stdout)
     require(isinstance(value, dict) and "error" not in value, "administrative_result_invalid")
     return value
@@ -959,7 +977,10 @@ def main():
     print(json.dumps({
         "report": "result.json", "resource_qualified": report["resource_qualified"],
         "m3_qualified": False, "mode": report["mode"],
-        "completed_cases": len(report["cases"]), "failures": len(report["failures"]),
+        "completed_cases": len(report["cases"]),
+        "failures": len(report["failures"]) + sum(
+            len(case["failures"]) for case in report["cases"]
+        ),
     }), flush=True)
     raise SystemExit(0 if report["resource_qualified"] else 1)
 

@@ -32,6 +32,30 @@ def profile():
     return bench.load_profile(PROFILE)
 
 
+@pytest.mark.parametrize("code", sorted(bench.ADMIN_ERROR_CODES))
+def test_admin_setup_reports_only_allowlisted_error_codes(monkeypatch, code):
+    monkeypatch.setattr(bench.subprocess, "run", lambda *a, **k: SimpleNamespace(
+        returncode=1, stdout=json.dumps({"error": {"code": code, "detail": "PRIVATE"}}),
+        stderr="PRIVATE credential or query",
+    ))
+    with pytest.raises(bench.BenchmarkError) as caught:
+        bench.cli(["graph-artifact", "export"])
+    assert str(caught.value) == code
+    assert bench.sanitized_error(caught.value)["code"] == code
+
+
+@pytest.mark.parametrize("stdout", [
+    "PRIVATE", "x" * 65537, "[]", '{"error": "PRIVATE"}',
+    '{"error": {"code": "PRIVATE"}}', '{"error": {"code": ["PRIVATE"]}}',
+])
+def test_admin_setup_never_echoes_unrecognized_output(monkeypatch, stdout):
+    monkeypatch.setattr(bench.subprocess, "run", lambda *a, **k: SimpleNamespace(
+        returncode=1, stdout=stdout, stderr="PRIVATE",
+    ))
+    with pytest.raises(bench.BenchmarkError, match="^administrative_command_failed$"):
+        bench.cli(["graph-artifact", "export"])
+
+
 def complete_case(profile, index=0):
     samples = []
     for phase, count in (("warmup", 3), ("measured", 30)):
