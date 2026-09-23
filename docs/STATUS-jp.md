@@ -9,8 +9,25 @@ release identityは**service0.2.0 / APIv1 / schema20**、stageは`m3-graph-mvp`�
 queryの意味、schema、依存pin、AGE sourceは変えません。
 graph資源v2 digestは`37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`で、
 v1から変えるのはprofile名/service versionだけです。
-tag公開前に固定release buildのnative配布と新しいrunを要求し、
+tag公開前に固定release buildのnative配布と新しい資源runが成功し、
 旧raw artifactの改名や認定flag変更は行いません。
+
+固定**`4204892fa90fb93a62a24f78545ef89a14abbc2e`**の
+[run35807408792](https://github.com/rioriost/pg_agmemory/actions/runs/35807408792)は全4 native job成功です。
+core amd64/arm64は各**2,394件/optional 113 skips**、全製品smokeと通常v7復元、
+AGEは各profile84契約・元の59確認・enabled207件・実HTTP・完全一致canonical-only復元が成功しました。
+core pytestは1655.75/1408.79秒、AGE対象は368.62/372.59秒です。
+通常復元はcanonical35 table、拒否20件、予約11件を維持します。
+AGE復元は意図した投影差分以外のcanonical35/運用24 fingerprint、旧世代/復旧鍵系統、
+registry1→2→3、purge/ACL/履歴controlを維持し、自動起動/model callは0です。
+
+別のexact release資源runは六層・396 samples・意味契約probe36件すべて成功し、
+AGE p95は**116.54–1,018.09 ms**で、従来の厳密な1,500 ms未満を達成しました。
+SQL p95は28.14–89.64 msです。宣言したwarm・静止graph専用profileであり、
+高速化や全量S/cold/同時容量の保証ではありません。
+公開checkpointの固定commitからの差分は認定文書だけで、
+runtime/package/build/test/example/workflow入力は完全一致です。
+`v0.2.0` source tag/releaseをM3引き継ぎとし、以後のM4実装は別development branchで進めます。
 
 昇格前の**`37f9c21b2b118c4bdc22bdd3147042179ba74e4c`**の
 [run35743467738](https://github.com/rioriost/pg_agmemory/actions/runs/35743467738)は全4 jobが成功しました。
@@ -24,7 +41,7 @@ M3の宣言範囲はcanonical正本に基づくgraph探索、上限付きの順�
 検証済みartifact/世代CAS、鮮度不明時の拒否、
 canonical-only隔離復元後の明示再構築です。SQLは既定のままです。
 全AGE catalog復元、任意の新本文、自動再起動、拡大/全量同居/同時/cold graph費用、
-本番HA/PITRは範囲外とし、release引き継ぎ完了後にM4へ進みます。
+本番HA/PITRは範囲外です。この宣言範囲でM3を完了とします。
 
 ## 旧v0.1.3 graph資源recipeと鮮度管理の判断
 

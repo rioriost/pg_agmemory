@@ -4,7 +4,7 @@
 
 - 文書版: 1.0 / M3 source-release引き継ぎ、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
-- 状態: M3 v0.2.0/APIv1/schema20として認定済み限定graph実装を昇格し、query/schemaは変更しない。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。tag公開前にrelease identity自身のnative/資源gateを通し、その引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
+- 状態: M3 v0.2.0/APIv1/schema20を宣言範囲で完了。固定4204892が両native architectureと新graph資源v2 runを通過し、公開差分は認定文書だけ。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。v0.2.0引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
 - 起点: 「LLMエージェント記憶実装説明」の会話。既存製品の内部実装を再現するものではない。
 
@@ -660,7 +660,7 @@ upstreamの脆弱性調査は別projectで行います。本projectでは同じd
 | M3-A | 再現可能な固定AGE buildと使い捨てPG18上の実runtime-role探索/RLS probe | 別固定72707aa source treeでnative/direct 19件・固定40件が全成功。旧rc0の6失敗と固定hop費用証跡は改名せず保持 |
 | M3-B | 独立したtopology/time/認可/予算fixture、次いでAGE対SQLのcanonical ID・revision・順序付きpath完全一致 | 実修正VLE adapterが独立17件oracle、制約/鮮度確認、実HTTP SQL一致を通過。任意AGE profileでhost側固定hop BFS迂回策は使わない |
 | M3-C | 世代CAS、現行source鮮度、stale/rebuild処理、隔離復元 | schema 20の限定lifecycle認定済み。原子的公開、epoch/全可視topology照合、拒否型read、変更のないenabled baselineのcanonical-only復元/無効化/明示再構築。M3は完全照合を維持し、速度だけのcounter追加はしない。変更済み世代取込みと全AGE catalog復元は黙って許容せず範囲外とする |
-| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | core/AGE/canonical-only復元は5a21728で両architecture成功。exact d1b894dのgraph専用六層は製品query変更なしで厳密なp95 1500ms未満を通過。拡大/全量同居/同時/cold graph負荷は未認定で、v0.2 release引継ぎは未了 |
+| M3-D | 上限付きgraph資源例、native amd64/arm64 distribution、日英配置制限とv0.2引き継ぎ | 固定4204892で完了。両architectureのcore/AGE/復元と新v2六層資源profileの厳密なp95 1500ms未満が成功し、v0.2.0公開でbuild入力を保持。拡大/全量同居/同時/cold graph負荷は範囲外 |
 
 世代metadataの入力captureは上限付きrepeatable-readのcanonical fingerprintであり、
 timestamp cursorや実装済みの定数時間変更counterではありません。
@@ -804,7 +804,7 @@ feature flagや良いmodel benchmarkで安全性gateの不合格を回避して�
 | M0 / 設計固定 | ADR、API/schema、脅威モデル、fixture、version matrix、AGE/SQL/PGQ小規模spike | 二時点・scope・削除契約のgolden例が合意され、対応artifactを取得・起動できる | 1〜2週 |
 | M1 / walking skeleton | PostgreSQL schema/RLS、observe、structured remember、basic recall/explain/forget、idempotency、typed checkpoint、SQL graph oracle | 2 tenantsのE2Eで保存→検索→説明→訂正→復旧→削除が成功。漏洩・再出現0 | 3〜4週 |
 | M2 / core MVP v0.1 | 信頼できるcore API/SDK/MCP/hook、明示したgeneration/embedding interface、hybrid検索、非破壊圧縮、隔離logical restore | 18章の本体契約/資源gate、対応履歴全体の復旧と呼出し会計照合、意味的合格点なしの参考benchmark一つ | 下記の制限内でv0.1.0として完了 |
-| M3 / graph MVP v0.2 | 修正AGE72707aa opt-in、上限付き時間探索、検証済み世代、canonical-only再構築 | 宣言graph/time/ACL/復元gateは昇格前に認定済み。公開前に固定0.2.0のnative/資源認定を要求 | Release引き継ぎ |
+| M3 / graph MVP v0.2 | 修正AGE72707aa opt-in、上限付き時間探索、検証済み世代、canonical-only再構築 | 固定4204892のnative/資源認定とv0.2.0 source引き継ぎを宣言範囲で完了 | 完了 |
 | M4 / 統合pilot v0.3 | agent/harness一つとの連携、任意postgresem adapter、外部source失効/freshness。rerank adapterは明示した連携要求がある場合のみ任意追加 | version付きschema、認証委譲、明示restore/refresh、source削除と部分障害の伝播。副作用の無条件再実行なし | core/graphの依存完了後 |
 | M5 / 本番候補 | 容量/HA/PITR、運用監視、upgrade、embedding空間の移行、backup retention | 宣言load/RPO/RTO/retentionの検証、互換性とrollback/roll-forward契約。model移行はidentity/分離を守り、品質競争はしない | pilot後 |
 

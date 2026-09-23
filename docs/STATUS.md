@@ -9,9 +9,29 @@ The release identity is **service0.2.0 / APIv1 / schema20**, stage
 identity, not query semantics, schema, dependency pins or the selected AGE source.
 The graph resource v2 digest is
 `37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`;
-only profile name/service version differ from v1. The exact release build must
-pass native distribution and a new run before tag publication. No previous raw
+only profile name/service version differ from v1. The exact release build passed native distribution and a new resource run before
+tag publication. No previous raw
 artifact is relabeled or given new qualification flags.
+
+Frozen **`4204892fa90fb93a62a24f78545ef89a14abbc2e`**
+[run35807408792](https://github.com/rioriost/pg_agmemory/actions/runs/35807408792)
+passed all four native jobs. Core amd64/arm64 each passed **2,394 cases /
+113 optional skips**, all packaged smokes and ordinary v7 restore; patched AGE
+each passed84 profile contracts, all59 original checks,207 enabled cases, real
+HTTP and exact canonical-only recovery. Core pytest took1655.75/1408.79 seconds;
+AGE cases368.62/372.59. Both ordinary restores retain35 canonical tables,
+20 denials and11 reservations. Both AGE restores retain35 canonical/24 operational
+fingerprints apart from the intended projection delta, old generation/key lineage,
+registry1→2→3, purge/ACL/history controls and zero automatic activation/model calls.
+
+The separate exact release resource run passes all six strata,396 samples and
+36 semantic probes, with AGE p95 **116.54–1,018.09 ms** below the unchanged
+strict1,500 ms target. SQL p95 is28.14–89.64 ms. It remains a declared warm,
+quiescent graph-only profile, not a speedup or full-S/cold/concurrent capacity claim.
+The publication checkpoint changes only qualification documents from the tested
+commit; all runtime/package/build/test/example/workflow inputs are identical.
+The `v0.2.0` source tag and release are the M3 handoff; M4 implementation follows
+on a separate development branch.
 
 The last pre-release **`37f9c21b2b118c4bdc22bdd3147042179ba74e4c`**
 [run35743467738](https://github.com/rioriost/pg_agmemory/actions/runs/35743467738)
@@ -28,7 +48,7 @@ ordering/time/authorization, verified artifacts/generation CAS, fail-closed
 freshness, and isolated canonical-only restore followed by explicit rebuild.
 SQL remains default. Full AGE catalog restoration, arbitrary newer content,
 automatic reactivation, larger/co-resident/concurrent/cold graph costs and
-production HA/PITR are excluded. M4 starts only after the release handoff.
+production HA/PITR are excluded. M3 is complete within that declared scope.
 
 ## Historical v0.1.3 graph resource recipe and freshness decision
 

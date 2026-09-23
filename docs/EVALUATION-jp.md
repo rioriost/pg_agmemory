@@ -7,8 +7,34 @@
 release profileは`M3-bounded-native-graph-v2`、digestは
 `37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`です。
 v1との差は名前/service versionだけで、六つの負荷、warmup/sample数、割当、
-厳密な1500ms閾値は維持します。新しいexact0.2.0 runを要求し、
+厳密な1500ms閾値は維持し、新しいexact0.2.0 runが以下のとおり完了しました。
 以下のv0.1.3結果は元の実装/profile bindingとM3全体flag=falseを変更しません。
+
+固定**`4204892fa90fb93a62a24f78545ef89a14abbc2e`**の
+[native run35807408792](https://github.com/rioriost/pg_agmemory/actions/runs/35807408792)は両architectureで成功しました。
+core2,394/optional113 skips、全製品smoke/通常復元、修正AGE84+59+207確認、
+実HTTPとcanonical-only復元を含みます。
+独立したexact release資源runは396 samples/probe36件、error0で、
+`resource_qualified:true`、意図どおり`m3_qualified:false`です。
+
+| Shape / 可視node | SQL p95 ms | AGE p95 ms |
+|---|---:|---:|
+| Chain / 12 | 28.14 | 116.54 |
+| Fanout / 12 | 36.30 | 140.71 |
+| Multiseed / 12 | 83.66 | 146.98 |
+| Chain / 64 | 29.00 | 238.18 |
+| Fanout / 64 | 89.64 | 1,018.09 |
+| Multiseed / 64 | 78.09 | 464.18 |
+
+完全照合は有効なまま（AGE wall timeの24.3–61.8%）で、native path queryは33.4–61.7%です。
+製品CLI/照合/構築/ANALYZE/commitを含む公開は542.01–1,037.13 ms、
+投影1,466,368 bytes、DB12,244,671→22,943,423 bytes、生成WAL15,658,840 bytesでした。
+新しい観測であり、version metadataの変更が探索を高速化したとは主張しません。
+共有native ARM host、workload6/2 CPUs＋VMごとoverhead1 CPU、24/8 GiBと、
+warm/静止/非HTTPの宣言制限を維持します。
+非公開証跡は`.review-artifacts/graph-resource-v0.2.0-4204892/`です。
+releaseは独立した認定契約を集約しますが、
+旧/現行artifactのM3全体flagを起動許可へ書き換えません。
 
 ## 旧v0.1.3 native graph資源profile
 

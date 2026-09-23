@@ -8,8 +8,35 @@ The release profile is `M3-bounded-native-graph-v2`, digest
 `37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d`.
 Relative to v1 it changes only name/service version; all six workloads, warmup/
 sample counts, allocations and strict1500ms threshold remain unchanged.
-A new exact0.2.0 run is required. The v0.1.3 results below retain their original
+A new exact0.2.0 run completed below. The v0.1.3 results retain their original
 implementation/profile bindings and false whole-M3 flags.
+
+Frozen **`4204892fa90fb93a62a24f78545ef89a14abbc2e`** passes
+[native run35807408792](https://github.com/rioriost/pg_agmemory/actions/runs/35807408792)
+on both architectures: core2,394/113 optional skips, all packaged smokes/ordinary
+restore, patched AGE84+59+207 checks, real HTTP and canonical-only recovery.
+The independent exact release resource run has396 samples/36 probes, zero errors,
+`resource_qualified:true` and deliberately `m3_qualified:false`.
+
+| Shape / visible nodes | SQL p95 ms | AGE p95 ms |
+|---|---:|---:|
+| Chain / 12 | 28.14 | 116.54 |
+| Fanout / 12 | 36.30 | 140.71 |
+| Multiseed / 12 | 83.66 | 146.98 |
+| Chain / 64 | 29.00 | 238.18 |
+| Fanout / 64 | 89.64 | 1,018.09 |
+| Multiseed / 64 | 78.09 | 464.18 |
+
+The proof remains enabled (24.3–61.8% of measured AGE wall time); native path
+queries account for33.4–61.7%. Publication including packaged CLI/check/build/
+ANALYZE/commit takes542.01–1,037.13 ms. Projection storage is1,466,368 bytes;
+database12,244,671→22,943,423 bytes; generated WAL15,658,840 bytes.
+These are fresh observations, not a claim that version metadata made traversal
+faster. The shared native ARM host,6/2 workload CPUs plus1 overhead CPU per VM,
+24/8 GiB and all warm/quiescent/non-HTTP limitations remain as declared.
+Private evidence is `.review-artifacts/graph-resource-v0.2.0-4204892/`.
+The release aggregates independently qualified contracts; it does not edit
+historical or current per-artifact whole-M3 flags into activation authority.
 
 ## Historical v0.1.3 native graph resource profile
 
