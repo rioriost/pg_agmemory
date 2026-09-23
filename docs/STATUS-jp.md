@@ -4,6 +4,23 @@
 
 ## M4開発: durable source-access coordination
 
+今回のschema維持incrementで、管理者用`source-dataset get/revoke`を追加します。
+最大100件の登録済みreaderを発見し、tenant epochと正確な対象集合の両CASを照合して
+membershipを原子的に失効します。0件/上限超過は明示エラーで、対象を黙って切り捨てません。
+source通知cursor/履歴と無関係なgrantは変更しません。
+恒久dataset block、source認証、payload purgeではなく、後続の有効allowや新bindingは可能です。
+[登録済みreaderの運用](operations/README-jp.md#registered-dataset-readers)を参照してください。
+
+local Linux arm64で**dataset/source/scope/復元/readiness/snapshotの349件**が成功し、
+新dataset92件を含みます。実際の100/101/107 bindingsで、
+discoveryの取得が最大101行であり、上限超過を部分適用しないことを確認しました。
+同epochでのtarget差分、transaction/epoch枯渇rollback、並行更新と応答barrier、
+commit結果不明、実HTTP拒否、source不変の署名付き復元、
+通知の完全一致再送と後続allowによる明示再開を含みます。
+Ruff、source/usageのstrict型確認、core/hook/sdk/providers/LangGraphの個別installも成功し、
+core管理commandはSDKに依存しません。M4全体や上流連携の受入れではありません。
+service/API/schemaは0.3.0.dev1/v1/21のままです。
+
 現行開発は**0.3.0.dev1 / API v1 / schema 21**、
 stageは`m4-integration-pilot`です。v0.3 releaseではありません。
 管理者専用bindingと通知台帳で一つのsource readerを管理します。
@@ -28,7 +45,8 @@ backup後にsource authorityが変わっていたら復元を拒否します。
 任意通知replay、自動再開、source system全体の災害復旧とは扱いません。
 公開済みv0.2.0 tagとschema20資源証跡は変更しません。
 
-local Linux arm64で**coordinator/SDK/統合/復元の限定940件**、
+前incrementのreader単位coordinatorは、local Linux arm64で
+**coordinator/SDK/統合/復元の限定940件**、
 Ruff、source/usageのstrict型確認が成功しました。
 core/hook/sdk/providers/LangGraphの個別installと、SDK依存なしの管理CLIも確認しました。
 schema21の実backup/通常復元と、修正AGEのcanonical-only復元が成功しています。
@@ -39,6 +57,14 @@ local builderがallowlist contextを転送できなかったため、package入�
 別staging contextからruntimeを構築しました。native CIの既定build経路は変更しません。
 source履歴差分を両方向で拒否し、不変lease/cursorをgrant更新なしで保持します。
 限定local結果であり、上流認証、新しい資源時間測定、M4全体の両native受入れではありません。
+
+その後、前coordinator checkpointの固定
+**`ab4de8889a26ed7bd89275c46d5b34f6362309d8`**、
+[run35818645092](https://github.com/rioriost/pg_agmemory/actions/runs/35818645092)が
+全4 native jobで成功しました。core amd64/arm64は各**2,655件/optional 116 skips**、
+製品smokeと通常復元、修正AGEは各profile84件とenabled214件、
+実HTTPとcanonical-only復元が成功しました。
+これはそのschema21 coordinator checkpointの認定であり、上記の新dataset管理差分の結果ではありません。
 
 ## 以前のM4 increment: 明示external-source snapshot
 

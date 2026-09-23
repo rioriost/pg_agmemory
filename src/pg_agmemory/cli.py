@@ -36,6 +36,11 @@ def main() -> None:
 
         source_access_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["source-dataset"]:
+        from pg_agmemory.source_dataset import main as source_dataset_main
+
+        source_dataset_main(sys.argv[2:])
+        return
     if sys.argv[1:2] == ["scope-capture"]:
         from pg_agmemory.capture_policy import main as capture_main
 
@@ -89,6 +94,7 @@ def main() -> None:
             "recall-hook",
             "scope-access",
             "source-access",
+            "source-dataset",
             "scope-capture",
             "scope-synthesis",
             "deletion-history",
@@ -122,6 +128,8 @@ def main() -> None:
         parser.error("scope-access must precede its arguments; use scope-access --help")
     elif args.command == "source-access":
         parser.error("source-access must precede its arguments; use source-access --help")
+    elif args.command == "source-dataset":
+        parser.error("source-dataset must precede its arguments; use source-dataset --help")
     elif args.command == "scope-capture":
         parser.error("scope-capture must precede its arguments; use scope-capture --help")
     elif args.command == "scope-synthesis":

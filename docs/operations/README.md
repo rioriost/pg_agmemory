@@ -90,6 +90,60 @@ undelivered upstream revocation instantaneous. Do not automatically retain
 shared business data until the real upstream authentication/notification path
 and its target mapping have been connected and qualified.
 
+### Registered dataset readers
+
+`pg-agmemory source-dataset` provides bounded **administrator-only** discovery
+and emergency revocation for an exact tenant/source-system/dataset. It uses
+existing schema-21 bindings and grants; there is no new migration, background
+fanout, source authenticator or Native reader endpoint.
+
+```bash
+pg-agmemory source-dataset get \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID"
+# Inspect all targets; copy access_epoch and target_digest from that result.
+pg-agmemory source-dataset revoke \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --expected-target-digest "$TARGET_DIGEST"
+```
+
+Use `PGAG_ADMIN_DATABASE_URL` and trusted configuration, never routing values
+chosen by a prompt or unverified source message. Identifiers retain the binding's
+whitespace normalization and case-sensitive equality. Discovery includes every
+registered subject/scope for that dataset, ordered by scope/principal, up to
+**100 bindings**. An empty match reports `source_dataset_not_bound`; more than
+100 reports `source_dataset_target_limit`, without truncation or partial writes.
+This is not a claim to discover unregistered readers or every retained snapshot.
+
+The target digest binds the tenant, dataset and complete ordered binding
+identities, not a wall-clock time or permission snapshot. New denied bindings
+can change that set without changing the access epoch, so **both** the digest
+and epoch must match before any revocation. A mismatch requires a fresh
+inspection, not an automatic retry. The digest is a consistency token, not a
+signature or authorization credential. Membership removal, per-target access
+audit and epoch changes share one transaction and tenant response barrier.
+Each removed membership advances the epoch once; absent memberships do not.
+An expired but still configured grant is removed. A failure on a later target,
+including epoch exhaustion, rolls back earlier changes too.
+
+Only registered reader memberships are affected; maintenance identities,
+unregistered members and other datasets/tenants remain untouched. Audit those
+other grants separately. Source decision/cursor/event history is **unchanged**:
+an old stored `allow` may coexist with empty current effective permissions.
+The result explicitly reports `coverage:"registered_readers_only"`,
+`source_notices_changed:false`, `physical_purge:false`,
+`durable_dataset_block:false` and `source_authorization_verified:false`.
+An exact replay of the last source notice cannot restore the removed grant,
+but a later valid contiguous allow **can**, including an already in-flight
+notice with an unexpired lease. Pause upstream coordinators if the emergency
+denial must persist. This command does not pause them or fabricate a terminal
+source-deletion notice. New bindings are not blocked.
+
+On an uncertain commit, inspect current memberships and ordinary access audit
+before deciding on another explicit operation. There is no batch receipt/retry
+protocol or cross-database transaction. Physical source-to-memory discovery,
+terminal dataset deletion/purge fanout and authenticated upstream notification
+transport remain separate work; automatic shared-business retention stays off.
+
 ### Schema 21 upgrade and recovery boundary
 
 Stop/drain API, workers and coordinators before migration and retain the old

@@ -86,6 +86,55 @@ lease満了でcoordinator停止時のstalenessを制限しますが、未配送�
 実際の上流認証/通知経路とtarget mappingを接続・認定するまで、
 shared business dataを自動長期保存しないでください。
 
+### Registered dataset readers
+
+`pg-agmemory source-dataset`は、tenant/source-system/datasetが完全一致する
+登録済みreaderを発見し、緊急失効する**管理者専用**commandです。
+schema21の既存binding/grantを利用し、migration、背景fanout、
+source認証器、Native reader用endpointは追加しません。
+
+```bash
+pg-agmemory source-dataset get \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID"
+# 全targetを確認し、応答のaccess_epochとtarget_digestを使用します。
+pg-agmemory source-dataset revoke \
+  --tenant-id "$TENANT_ID" --source-system "$SOURCE_SYSTEM" --dataset-id "$DATASET_ID" \
+  --expected-access-epoch "$ACCESS_EPOCH" --expected-target-digest "$TARGET_DIGEST"
+```
+
+`PGAG_ADMIN_DATABASE_URL`と信頼する設定を使い、promptや未認証source通知に
+targetを選ばせません。bindingと同じ空白正規化・大文字小文字を区別する一致規則です。
+同datasetに登録した全subject/scopeをscope/principal順で返し、上限は**100 bindings**です。
+0件は`source_dataset_not_bound`、101件以上は`source_dataset_target_limit`とし、
+切捨てや部分的な変更を行いません。未登録readerや全snapshotの発見は保証しません。
+
+target digestはtenant、dataset、順序付きの全binding identityを表し、
+現在時刻やpermission snapshotではありません。拒否状態の新bindingは
+access epochを変えずに追加できるため、変更前に**digestとepochの両方**を照合します。
+不一致時は再確認が必要で、自動retryはしません。digestは整合性照合用であり、
+署名や認可credentialではありません。
+membership削除、targetごとのaccess監査、epoch更新は同一transactionと
+tenant response barrier内で処理します。削除したmembershipごとにepochを一つ進め、
+元から存在しない場合は進めません。期限切れでも設定が残るgrantは削除します。
+後続targetの失敗やepoch枯渇でも、先行targetを含む全変更をrollbackします。
+
+対象は登録済みreader membershipのみです。maintenance identity、未登録member、
+別dataset/tenantは変更しないため、それらのgrantも別途監査してください。
+sourceのdecision/cursor/event履歴は**変更しません**。
+保存済みdecisionが`allow`でも現行effective permissionsは空になり得ます。
+応答は`coverage:"registered_readers_only"`、`source_notices_changed:false`、
+`physical_purge:false`、`durable_dataset_block:false`、
+`source_authorization_verified:false`を明示します。
+直前通知の完全一致再送では再付与しませんが、次の連続した有効allowでは再付与できます。
+有効leaseを持つ配送中の通知も含むため、拒否を持続させる必要があれば
+上流coordinatorを停止してください。本commandはその停止やterminalな削除通知の生成を行わず、
+新規bindingも禁止しません。
+
+commit結果不明時は現行membershipと既存access監査を照合してから、
+次の明示操作を判断します。batch receipt/retry protocolや分散transactionではありません。
+sourceに対応する全memoryの発見、datasetのterminal削除/purge fanout、
+認証済み上流通知transportは別途必要で、shared business dataの自動長期保存は無効です。
+
 ### Schema 21 upgradeと復元境界
 
 migration前にAPI/worker/coordinatorを停止・drainし、旧source/component identityと保護backupを保持します。

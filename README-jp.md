@@ -14,6 +14,11 @@
 migration021と同一versionのcomponentが必要で、AGE再開前にgraph artifactを再構築します。
 v0.3 releaseやM4全体の認定ではありません。
 
+[dataset管理command](docs/operations/README-jp.md#registered-dataset-readers)で
+最大100件の登録済みreaderを発見し、対象集合digestとtenant access epochを照合して
+membershipを原子的に失効できます。緊急操作であり、
+datasetの恒久block、上流削除、物理purgeではありません。
+
 任意のLangGraph safe-boundary pilotでNative SDKを使い、
 明示capture/recallと型付きcheckpoint/restoreを接続します。
 汎用LangGraph checkpointerではなく、副作用を実行せず、M4完了も主張しません。

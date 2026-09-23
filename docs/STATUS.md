@@ -4,6 +4,26 @@
 
 ## M4 development: durable source-access coordination
 
+The current schema-preserving increment adds administrator-only
+`source-dataset get/revoke`: discover at most 100 registered readers and revoke
+their memberships atomically using both tenant-epoch and exact target-set CAS.
+Empty/oversized matches are explicit errors; no target list is silently
+truncated. It leaves source notification cursors/history and unrelated grants
+unchanged. It is not a durable dataset block, source authentication or payload
+purge: later valid source allows and new bindings remain possible.
+See [registered reader operations](operations/README.md#registered-dataset-readers).
+
+Local Linux arm64 passes **349 dataset/source/scope/recovery/readiness/snapshot
+cases**, including 92 new dataset cases. The bound is exercised with 100, 101 and
+107 actual bindings, checking that discovery fetches at most 101 rows and never
+applies a partial oversized batch. Coverage includes same-epoch target drift,
+transaction/epoch-exhaustion rollback, concurrent mutation and response barriers,
+uncertain commit, real HTTP denial, unchanged-source signed recovery, exact
+notice replay and explicit later reopening. Ruff, strict source/usage typing and
+isolated core/hook/sdk/providers/LangGraph installs pass; the core administrator
+command needs no SDK. These results do not claim full M4 or upstream integration
+acceptance. Service/API/schema remain 0.3.0.dev1/v1/21.
+
 Current development is **0.3.0.dev1 / API v1 / schema 21**, stage
 `m4-integration-pilot`, not a v0.3 release. A private administrator-managed
 binding and notification ledger now coordinate one source reader's access:
@@ -29,7 +49,8 @@ backup. This bounded policy must not be described as arbitrary notification
 replay, automatic reactivation or general source-system disaster recovery.
 The published v0.2.0 tag and its schema-20 resource evidence remain unchanged.
 
-Local Linux arm64 passes **940 focused coordinator/SDK/integration/recovery
+For the preceding per-reader coordinator increment, local Linux arm64 passes
+**940 focused coordinator/SDK/integration/recovery
 cases**, Ruff and strict source/usage typing. Separate core/hook/sdk/providers/
 LangGraph installations pass, including the administrator CLI without SDK
 dependencies. Actual ordinary backup/restore and canonical-only patched-AGE
@@ -43,6 +64,15 @@ native-CI build path is unchanged. Source-history drift is rejected in both dire
 unchanged source leases/cursors are preserved without grant refresh. These are
 bounded local results, not upstream authentication, a new resource timing
 qualification or complete dual-native M4 acceptance.
+
+The preceding coordinator checkpoint
+**`ab4de8889a26ed7bd89275c46d5b34f6362309d8`**
+[run35818645092](https://github.com/rioriost/pg_agmemory/actions/runs/35818645092)
+subsequently passed all four native jobs. Core amd64/arm64 each passed
+**2,655 cases / 116 optional skips**, packaged smokes and ordinary recovery;
+patched AGE each passed 84 profile cases and 214 enabled cases, real HTTP and
+canonical-only recovery. This qualifies that schema-21 coordinator checkpoint,
+not the newer dataset-administration increment above.
 
 ## Previous M4 increment: explicit external-source snapshots
 

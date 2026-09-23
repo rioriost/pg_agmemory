@@ -34,21 +34,24 @@ SourceReason = Literal[
 ]
 
 
-class SourceIdentity(BaseModel):
+class SourceDatasetIdentity(BaseModel):
     model_config = ConfigDict(
         extra="forbid", frozen=True, revalidate_instances="always", str_strip_whitespace=True
     )
     source_system: ShortText
     dataset_id: ShortText
-    source_subject: ShortText
 
-    @field_validator("source_system", "dataset_id", "source_subject")
+    @field_validator("*")
     @classmethod
     def database_text(cls, value: str) -> str:
         value.encode("utf-8")
         if "\x00" in value:
             raise ValueError("Invalid source identity")
         return value
+
+
+class SourceIdentity(SourceDatasetIdentity):
+    source_subject: ShortText
 
 
 class SourceNotice(BaseModel):

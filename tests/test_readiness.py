@@ -292,6 +292,19 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
         )
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
     assert caps["stage"] == "m4-integration-pilot" and caps["schema_version"] == 21
+    assert caps["source_access_administration"]["dataset_administration"] == {
+        "command": "source-dataset",
+        "operations": ["get", "revoke"],
+        "coverage": "registered_readers_only",
+        "max_targets": 100,
+        "compare_and_swap": ["tenant_access_epoch", "target_digest"],
+        "revocation": "emergency",
+        "source_authorization_verified": False,
+        "source_notices_changed": False,
+        "physical_purge": False,
+        "durable_dataset_block": False,
+        "automatic_retry": False,
+    }
     assert caps["health_probes"] == {
         "liveness": "/healthz",
         "readiness": "/readyz",

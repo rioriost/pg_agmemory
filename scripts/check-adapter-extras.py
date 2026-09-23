@@ -8,10 +8,12 @@ from importlib.resources import files
 
 from pg_agmemory.api import create_app
 from pg_agmemory.source_access import MAX_SOURCE_LEASE_SECONDS, SourceIdentity
+from pg_agmemory.source_dataset import MAX_DATASET_TARGETS, SourceDatasetRequest
 
 profile = sys.argv[1]
 assert MAX_SOURCE_LEASE_SECONDS == 300
 assert SourceIdentity(source_system="synthetic", dataset_id="data", source_subject="reader")
+assert MAX_DATASET_TARGETS == 100 and callable(SourceDatasetRequest)
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None
@@ -24,6 +26,12 @@ source_help = subprocess.run(
 )
 assert source_help.returncode == 0 and "notice-file" in source_help.stdout
 assert "Traceback" not in source_help.stderr
+dataset_help = subprocess.run(
+    ["pg-agmemory", "source-dataset", "--help"],
+    capture_output=True, text=True, timeout=15,
+)
+assert dataset_help.returncode == 0 and "expected-target-digest" in dataset_help.stdout
+assert "Traceback" not in dataset_help.stderr
 if profile == "langgraph":
     from pg_agmemory.langgraph import LangGraphMemory, build_turn_graph
 

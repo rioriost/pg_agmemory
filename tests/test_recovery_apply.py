@@ -197,6 +197,74 @@ def test_graph_generation_metadata_is_verified_but_never_imported():
     assert tables.isdisjoint(ROW_TABLES)
 
 
+def test_dataset_emergency_revocation_restores_without_replaying_source_notices(env, monkeypatch):
+    from pg_agmemory.source_access import (
+        SourceAccessRequest,
+        SourceDatasetIdentity,
+        SourceNotice,
+        source_access,
+    )
+    from pg_agmemory.source_dataset import SourceDatasetRequest, source_dataset
+
+    for _ in range(2):
+        request, bound = bind_source_authority(env)
+        with psycopg.connect(env.admin_url) as conn:
+            now = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+        with source_access(env.admin_url, SourceAccessRequest(
+            operation="apply", tenant_id=request.tenant_id, scope_id=request.scope_id,
+            principal_id=request.principal_id, expected_access_epoch=bound.access_epoch,
+            notice=SourceNotice(
+                source=request.source, sequence=1, decision="allow", reason="authorized",
+                acl_version="dataset-lease", verified_at=now,
+                valid_until=now + timedelta(seconds=120),
+            ),
+        )) as allowed:
+            assert allowed.effective_permissions == ["read"]
+    old = export_bundle(env.admin_url, env.tenants[0])
+    source_before = source_authority_rows(env)
+    inspection = SourceDatasetRequest(
+        operation="get", tenant_id=env.tenants[0],
+        dataset=SourceDatasetIdentity(source_system="synthetic-recovery", dataset_id="fixture"),
+    )
+    with source_dataset(env.admin_url, inspection) as plan:
+        assert plan.matched_targets == 2
+    with source_dataset(env.admin_url, SourceDatasetRequest(
+        operation="revoke", tenant_id=inspection.tenant_id, dataset=inspection.dataset,
+        expected_access_epoch=plan.access_epoch, expected_target_digest=plan.target_digest,
+    )) as revoked:
+        assert revoked.changed_targets == 2
+        assert revoked.access_epoch == old.reference.access_epoch + 2
+    latest = export_bundle(env.admin_url, env.tenants[0])
+    assert source_authority_rows(env) == source_before
+
+    # Model loading only the changed operational rows from the older isolated dump.
+    with psycopg.connect(env.admin_url, row_factory=dict_row) as conn:
+        conn.execute("SET LOCAL pgag.recovery_apply='on'")
+        for table in ("memory_ops.scope_access_event", "memory.scope_member"):
+            conn.execute(psycopg.sql.SQL("DELETE FROM {} WHERE tenant_id=%s").format(
+                psycopg.sql.Identifier(*table.split(".")),
+            ), (env.tenants[0],))
+            insert_rows(conn, table, old.rows[table])
+        conn.execute(
+            "UPDATE memory.tenant SET access_epoch=%s WHERE id=%s",
+            (old.reference.access_epoch, env.tenants[0]),
+        )
+    assert capture_processing_state(env.admin_url, env.tenants[0]) == old.reference
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("recovery must not consume or replay source notifications")
+
+    monkeypatch.setattr("pg_agmemory.source_access._apply_source_access", forbidden)
+    assert apply_bundle(env.admin_url, old.reference, latest, isolated=True) == latest.reference
+    assert source_authority_rows(env) == source_before
+    with source_dataset(env.admin_url, inspection) as recovered:
+        assert recovered.access_epoch == revoked.access_epoch
+        assert recovered.target_digest == plan.target_digest
+        assert all(target.decision == "allow" and target.sequence == 1
+                   and not target.membership_exists and not target.effective_permissions
+                   for target in recovered.targets)
+
+
 @pytest.mark.parametrize("schema", [18, 19, 20])
 def test_previous_schema_bundle_requires_matching_version(env, schema):
     bundle = export_bundle(env.admin_url, env.tenants[0]).model_dump(mode="json")

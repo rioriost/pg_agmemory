@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.3 / M4 durable source-access coordination、2026-09-23
+- 文書版: 1.4 / M4 registered-dataset revocation、2026-09-23
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M3 v0.2.0/APIv1/schema20を宣言範囲で完了。固定4204892が両native architectureと新graph資源v2 runを通過し、公開差分は認定文書だけ。SQLは既定、修正AGE72707aaはopt-in、canonical-only復元は明示再構築を要求する。v0.2.0引き継ぎ後にM4へ進む。公開済みM2v0.1.0と過去証跡は変更しない。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -26,6 +26,11 @@ read-only leaseの原子的適用、重複/欠落制御、source削除のtermina
 実際の上流認証器/通知transport、dataset全体のmapping、統合受入れ全体は未完です。
 [coordinator契約](operations/README-jp.md#m4-durable-source-access-coordinator)を参照してください。
 この開発versionはv0.3 releaseではなく、M4完了も宣言しません。
+続くschema維持incrementで、登録済みdataset readerの限定発見と原子的な緊急失効を追加します。
+対象集合digestとepochのCASを要求し、source通知番号の消費、
+将来のbinding/allowの禁止、payload purgeは行いません。
+完全なsource-to-memory mapping、datasetのterminal削除、認証済み通知transportは未完です。
+[登録済みreader](operations/README-jp.md#registered-dataset-readers)を参照してください。
 
 ## 1. 採用方針
 

@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.3 / M4 durable source-access coordination, 2026-09-23
+- Document version: 1.4 / M4 registered-dataset revocation, 2026-09-23
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M3 v0.2.0/APIv1/schema20 is complete within its declared scope. Frozen4204892 passes both native architectures and its fresh graph-resource v2 run; publication changes qualification documents only. SQL remains default, patched AGE72707aa opt-in, and canonical-only recovery requires explicit rebuild. M4 follows the v0.2.0 handoff. Published M2v0.1.0 and historical evidence remain unchanged. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
@@ -29,6 +29,12 @@ from an old backup. The real upstream authenticator/notification transport,
 dataset-wide mapping and complete integration acceptance remain open.
 See the [coordinator contract](operations/README.md#m4-durable-source-access-coordinator).
 This development version is not the v0.3 release and does not declare M4 complete.
+The next schema-preserving increment adds bounded registered-dataset reader
+discovery and atomic emergency revocation, with target-set digest plus epoch
+CAS. It does not consume source sequence numbers, block future bindings/allows
+or purge payloads. Complete source-to-memory mapping, terminal dataset deletion
+and authenticated notification transport remain open. See
+[registered readers](operations/README.md#registered-dataset-readers).
 
 ## 1. Adopted Approach
 
