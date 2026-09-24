@@ -454,6 +454,22 @@ def create_app(
                 "promotion_authorized": False,
                 "production_qualified": False,
             },
+            "embedding_migration_administration": {
+                "command": "embedding-migration",
+                "transport": "admin-cli",
+                "read_only": True,
+                "automatic_inference": False,
+                "automatic_cutover": False,
+                "production_qualified": False,
+            },
+            "monitoring_export_administration": {
+                "command": "monitoring-export",
+                "transport": "admin-cli",
+                "database_read_only": True,
+                "statistics_atomic": False,
+                "automatic_remediation": False,
+                "production_qualified": False,
+            },
             "age_projection_administration": {
                 "transport": "admin-cli",
                 "command": "age-projection",

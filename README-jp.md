@@ -9,6 +9,9 @@
 
 **M5開発: 0.4.0.dev1 / API v1 / schema 22。**
 新しい[運用foundation](docs/operations/README-jp.md#m5-operational-foundations)に、
+明示的なread-only embedding移行確認とone-shot監視exportを追加します。
+[実装と配置先受入れは別](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m5実装と配置先受入れの区別)であり、
+本番保持期限、capacity、RPO/RTOには対象環境とpolicyの指定が必要です。同じfoundationは
 read-only運用/複製観測、pauseを維持するPITR、所有primaryのfencingを確認するHA rehearsalを含めます。
 reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定ではありません。
 v2 HA rehearsalではreplay停止中のCOMMIT期限超過を別途観測し、

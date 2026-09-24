@@ -276,6 +276,59 @@ print("Production readiness smoke passed: ready, schema unavailable, live, recov
 provisioned="$("$engine" run --name "$provision_name" --network "$network" \
     -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
     "$runtime_image" pg-agmemory provision --subject "${run_id}-worker")"
+"$engine" exec -i \
+    -e "PGAG_ADMIN_DATABASE_URL=postgresql://postgres:${password}@${smoke_host}:5432/pgag_test" \
+    "$api_name" python - "$provisioned" <<'PY'
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+identity = json.loads(sys.argv[1])
+result = subprocess.run(
+    ["pg-agmemory", "embedding-migration",
+     "--tenant-id", identity["tenant_id"], "--principal-id", identity["principal_id"],
+     "--scope-id", identity["scope_id"], "--source-name", "smoke-source",
+     "--source-revision", "v1", "--target-name", "smoke-target", "--target-revision", "v1"],
+    check=True, capture_output=True, text=True, timeout=30,
+)
+report = json.loads(result.stdout)
+assert report["format"] == "pgag-embedding-migration-v1"
+assert report["status"] == "empty" and report["eligible_revisions"] == 0
+assert report["issues"] == [] and report["blockers"] == []
+assert not report["cutover_authorized"] and not report["rollback_authorized"]
+assert not report["production_qualified"]
+print("Production embedding migration smoke passed: empty is not cutover authority")
+with tempfile.TemporaryDirectory(prefix="pgag-monitoring-") as scratch:
+    directory = Path(scratch)
+    (directory / "output").mkdir(mode=0o700)
+    policy = directory / "policy.json"
+    policy.write_text(json.dumps({"format": "pgag-monitoring-policy-v1", "rules": []}))
+    command = [
+        "pg-agmemory", "monitoring-export", "--tenant-id", identity["tenant_id"],
+        "--policy-file", "policy.json", "--output", "output/tenant.prom",
+    ]
+    exported = subprocess.run(
+        command, cwd=directory, check=True, capture_output=True, text=True, timeout=30,
+    )
+    json.loads(exported.stdout)
+    metrics = directory / "output/tenant.prom"
+    samples = metrics.read_text().splitlines()
+    assert any(line.startswith("pgag_collection_success") and line.endswith(" 1")
+               for line in samples)
+    assert metrics.stat().st_mode & 0o777 == 0o600
+    policy.write_text("{}")
+    failed = subprocess.run(
+        command, cwd=directory, capture_output=True, text=True, timeout=30,
+    )
+    assert failed.returncode == 1 and "Traceback" not in failed.stderr
+    samples = metrics.read_text().splitlines()
+    assert any(line.startswith("pgag_collection_success") and line.endswith(" 0")
+               for line in samples)
+    assert not any(line.startswith("pgag_alert") for line in samples)
+print("Production monitoring smoke passed: private atomic export and explicit collection failure")
+PY
 "$engine" run --name "$worker_name" --network "$network" \
     -e "PGAG_DATABASE_URL=postgresql://pgag_smoke:${runtime_password}@${smoke_host}:5432/pgag_test" \
     "$runtime_image" python -c '

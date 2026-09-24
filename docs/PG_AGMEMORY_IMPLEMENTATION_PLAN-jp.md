@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.16 / M5 制御した複製接続断、2026-09-24
+- 文書版: 1.17 / M5 運用実装の完結範囲、2026-09-24
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M5開発を0.4.0.dev1/APIv1/schema22で継続し、revision遅延検査の再走査削減、COMMIT結果guard、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。同期待機cancelをrollbackや複製成功とは扱わないが、本番HAとpartitionの認定は残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -901,6 +901,25 @@ backup/WAL保持期限の強制が必要です。同一hostのSQL labでは代�
 AGE物理復元の認定にも使いません。cloud配置、有料provider呼出し、自動promotion、
 source grant更新、service再開は行いません。
 [運用契約](operations/README-jp.md#m5-operational-foundations)を参照してください。
+
+### M5実装と配置先受入れの区別
+
+repository実装と本番受入れは別の成果物です。残る運用作業では明示的なembedding-space準備確認、
+時間/出力を限定した監視export、既存upgrade/PITR回帰の補強を行います。
+新しいglobal model selector、自動backfill、backup削除service、failover controllerは作りません。
+
+| gate | repository実装 | 配置先から引き続き必要な証跡 |
+|---|---|---|
+| COMMIT/request上限・HA/PITR | 共通guard、累積HTTP期限、所有物理復旧/HA lab | topology、独立failure domain、通信障害、admission/fencing、RPO/RTO |
+| embedding-space移行 | 明示model登録/upload/query identity、read-only移行準備確認 | target model/provider、最新coverage、application切替/切戻し、承認済み費用・model評価 |
+| 監視 | read-only snapshotとone-shot運用export | collector/scheduler管理、alert配送、freshness検出、履歴保持、incident対応 |
+| upgrade | transactional migration、厳密ledger互換性、失敗rollback、schema22 AGE guard/constraint検査 | 配置先backup、対応する新旧deployment、maintenance window、隔離rollback/roll-forward rehearsal |
+| backup/WAL保持 | 検証済み物理復元、必要WAL連続性preflight、最新authority差分の拒否 | storage backend/inventory、復元window、expiry/legal hold、独立保護した最新deletion/source authority |
+| capacity | 境界付き実行可能resource recipeとversion付き過去測定 | workload、同時数、host/storage profile、現versionの受入れ測定 |
+
+実装完遂の依頼から保持期間、本番SLO、有料推論予算、配置先、削除権限を推測しません。
+これらの指定なしにM5本番gateは閉じず、ローカルtest、metadata snapshot、
+過去時点への復元成功を本番認定の代用にしません。
 
 ### M4明示保持pilotの受入れ
 

@@ -1,11 +1,13 @@
 """Offline PITR contracts: no PostgreSQL, container engine, network, or scratch files."""
 
+import hashlib
 import importlib.util
 import io
 import json
 import os
 import stat
 import subprocess
+import tarfile
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,7 +35,7 @@ def references():
     target_id, after_id = uuid4(), uuid4()
     control = drill.Control(system_identifier="1234567890123456789", timeline=1, lsn="0/100")
     point = drill.RestorePoint(
-        lsn="0/410", wal_file="0" * 23 + "1",
+        lsn="0/410", wal_file="000000010000000000000000",
         before=control.model_copy(update={"lsn": "0/400"}),
         after=control.model_copy(update={"lsn": "0/410"}),
     )
@@ -285,13 +287,187 @@ def test_missing_truncated_unexpected_or_excess_wal_fails_closed(files, code):
         drill.validate_archive_files(files, "1" * 24, "1" * 24)
 
 
-def test_archive_wait_requires_actual_done_marker_not_elapsed_guess(monkeypatch):
-    _, target, _, _ = references()
+def wal_files(*segments, timeline=1):
+    return {
+        drill.wal_segment_name(timeline, segment): drill.WAL_SEGMENT_BYTES
+        for segment in segments
+    }
+
+
+def wal_context(start=0x1000000, end=0x3000000, target=0x5000010, timeline=1):
+    def lsn(value):
+        return f"{value >> 32:X}/{value & 0xFFFFFFFF:X}"
+
+    _, reference, _, original = references()
+    backup = original.model_copy(update={
+        "start_lsn": lsn(start), "end_lsn": lsn(end), "timeline": timeline,
+    })
+    control = reference.control.model_copy(update={"timeline": timeline, "lsn": lsn(target)})
+    point = drill.RestorePoint(
+        lsn=lsn(target),
+        wal_file=drill.wal_segment_name(timeline, (target - 1) // drill.WAL_SEGMENT_BYTES),
+        before=control, after=control,
+    )
+    return backup, point
+
+
+@pytest.mark.parametrize("bundled,archived", [
+    ((1, 2), (3, 4, 5)),
+    ((1,), (2, 3, 4, 5)),
+    ((), (1, 2, 3, 4, 5)),
+])
+def test_manifest_range_can_use_verified_backup_bundled_wal(bundled, archived):
+    backup, point = wal_context()
+    drill.validate_wal_coverage(wal_files(*archived), backup, point, wal_files(*bundled))
+
+
+@pytest.mark.parametrize("missing", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("wrong_timeline", [False, True])
+def test_manifest_interval_cannot_skip_middle_or_missing_endpoints(missing, wrong_timeline):
+    backup, point = wal_context()
+    files, bundled = wal_files(3, 4, 5), wal_files(1, 2)
+    location = bundled if missing < 3 else files
+    del location[drill.wal_segment_name(1, missing)]
+    if wrong_timeline:
+        location.update(wal_files(missing, timeline=2))
+    with pytest.raises(drill.DrillError, match="required_wal_missing"):
+        drill.validate_wal_coverage(files, backup, point, bundled)
+
+
+def test_extra_wal_and_backup_history_are_allowed_without_changing_required_range():
+    backup, point = wal_context()
+    files = wal_files(0, 3, 4, 5, 6) | wal_files(4, timeline=2)
+    files["000000010000000000000001.00000028.backup"] = 256
+    drill.validate_archive_files(files, drill.wal_segment_name(1, 6), point.wal_file)
+    drill.validate_wal_coverage(files, backup, point, wal_files(1, 2, 7))
+    del files[drill.wal_segment_name(1, 4)]
+    with pytest.raises(drill.DrillError, match="required_wal_missing"):
+        drill.validate_wal_coverage(files, backup, point, wal_files(1, 2, 7))
+
+
+@pytest.mark.parametrize("end,target,bundled,archived", [
+    (0x2000000, 0x3000000, (1,), (2,)),
+    (0x2000010, 0x3000000, (1, 2), (2,)),
+    (0x2000010, 0x3000010, (1, 2), (2, 3)),
+    (0x1000020, 0x1000030, (1,), (1,)),
+])
+def test_exclusive_backup_and_restore_point_boundaries(end, target, bundled, archived):
+    backup, point = wal_context(start=0x1000010, end=end, target=target)
+    drill.validate_wal_coverage(wal_files(*archived), backup, point, wal_files(*bundled))
+    files = wal_files(*archived)
+    del files[drill.wal_segment_name(1, end // drill.WAL_SEGMENT_BYTES)]
+    with pytest.raises(drill.DrillError, match="required_wal_missing"):
+        drill.validate_wal_coverage(files, backup, point, wal_files(*bundled))
+
+
+def test_manifest_end_prevents_treating_full_sized_bundled_padding_as_later_wal():
+    backup, point = wal_context()
+    with pytest.raises(drill.DrillError, match="required_wal_missing"):
+        drill.validate_wal_coverage(wal_files(5), backup, point, wal_files(1, 2, 3, 4))
+
+
+def test_wal_segment_number_rolls_at_32_bit_lsn_boundary_not_hex_filename_increment():
+    assert drill.wal_segment_name(1, 255) == "0000000100000000000000FF"
+    assert drill.wal_segment_name(1, 256) == "000000010000000100000000"
+    backup, point = wal_context(start=0xFE000010, end=0x100000000, target=0x101000000)
+    assert point.wal_file == "000000010000000100000000"
+    drill.validate_wal_coverage(wal_files(256), backup, point, wal_files(254, 255))
+    with pytest.raises(drill.DrillError, match="required_wal_missing"):
+        drill.validate_wal_coverage(
+            {"000000010000000000000100": drill.WAL_SEGMENT_BYTES},
+            backup, point, wal_files(254, 255),
+        )
+
+
+@pytest.mark.parametrize("change,code", [
+    ({"timeline": 2}, "backup_timeline_mismatch"),
+    ({"wal_file": "000000020000000000000005"}, "target_wal_mismatch"),
+    ({"wal_file": "000000010000000000000006"}, "target_wal_mismatch"),
+])
+def test_coverage_binds_the_named_target_and_manifest_timeline(change, code):
+    backup, point = wal_context()
+    if "timeline" in change:
+        backup = backup.model_copy(update=change)
+    else:
+        point = point.model_copy(update=change)
+    with pytest.raises(drill.DrillError, match=code):
+        drill.validate_wal_coverage(wal_files(1, 2, 3, 4, 5, 6), backup, point, {})
+
+
+@pytest.mark.parametrize("start,end,target", [
+    (0, 0x3000000, 0x5000010),
+    (0x3000000, 0x3000000, 0x5000010),
+    (0x4000000, 0x3000000, 0x5000010),
+    (0x1000000, 0x5000010, 0x5000010),
+    (0x1000000, 0x6000000, 0x5000010),
+])
+def test_invalid_manifest_ranges_fail_before_inventory_can_hide_them(start, end, target):
+    backup, point = wal_context(start, end, target)
+    with pytest.raises(drill.DrillError, match="invalid_backup_wal_range"):
+        drill.validate_wal_coverage(wal_files(1, 2, 3, 4, 5, 6), backup, point, {})
+
+
+@pytest.mark.parametrize("timeline,segment,code", [
+    (0, 1, "invalid_wal_timeline"),
+    (0x100000000, 1, "invalid_wal_timeline"),
+    (True, 1, "invalid_wal_timeline"),
+    (1, -1, "invalid_wal_segment"),
+    (1, 0x10000000000, "invalid_wal_segment"),
+    (1, True, "invalid_wal_segment"),
+])
+def test_wal_names_have_bounded_timeline_and_segment_numbers(timeline, segment, code):
+    with pytest.raises(drill.DrillError, match=code):
+        drill.wal_segment_name(timeline, segment)
+
+
+def test_coverage_refuses_unbounded_interval_before_enumeration():
+    backup, point = wal_context(target=0xFFFFFFFFFFFFFFFF)
+    with pytest.raises(drill.DrillError, match="wal_coverage_limit"):
+        drill.validate_wal_coverage({}, backup, point, {})
+
+
+@pytest.mark.parametrize("bundled,code", [
+    ({"../escape": 16 * 1024 * 1024}, "invalid_bundled_wal"),
+    ({"000000010000000000000001": True}, "incomplete_bundled_wal"),
+    ({"000000010000000000000001": 1024}, "incomplete_bundled_wal"),
+    (wal_files(*range(33)), "backup_wal_limit"),
+])
+def test_bundled_inventory_is_also_bounded_and_full_sized(bundled, code):
+    backup, point = wal_context()
+    with pytest.raises(drill.DrillError, match=code):
+        drill.validate_wal_coverage(wal_files(1, 2, 3, 4, 5), backup, point, bundled)
+
+
+@pytest.mark.parametrize("segment_bytes", [1024 * 1024, 32 * 1024 * 1024, None, True])
+def test_archive_measures_and_rejects_non_default_wal_size_before_checkpoint(
+    monkeypatch, segment_bytes,
+):
+    _, target, _, backup = references()
     queries = []
 
     class Connection:
         def execute(self, query, params=None):
             queries.append(query)
+            return SimpleNamespace(fetchone=lambda: {"bytes": segment_bytes})
+
+    monkeypatch.setattr(drill, "read", lambda directory, name, model: {
+        "target.json": target, "backup.json": backup,
+    }[name])
+    monkeypatch.setattr(drill.psycopg, "connect", lambda *args, **kwargs: nullcontext(Connection()))
+    with pytest.raises(drill.DrillError, match="unsupported_wal_segment_size"):
+        drill.archive(Path("/drill"), "owned-url")
+    assert queries == ["SELECT pg_size_bytes(current_setting('wal_segment_size')) AS bytes"]
+
+
+def test_archive_wait_requires_actual_done_marker_not_elapsed_guess(monkeypatch):
+    _, target, _, backup = references()
+    queries = []
+
+    class Connection:
+        def execute(self, query, params=None):
+            queries.append(query)
+            if "wal_segment_size" in query:
+                return SimpleNamespace(fetchone=lambda: {"bytes": drill.WAL_SEGMENT_BYTES})
             if "pg_walfile_name" in query:
                 return SimpleNamespace(fetchone=lambda: {"name": target.restore_point.wal_file})
             if "pg_switch_wal" in query:
@@ -300,11 +476,124 @@ def test_archive_wait_requires_actual_done_marker_not_elapsed_guess(monkeypatch)
 
     clock = iter((0.0, 91.0))
     monkeypatch.setattr(drill.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(drill, "read", lambda *args: target)
+    monkeypatch.setattr(drill, "read", lambda directory, name, model: {
+        "target.json": target, "backup.json": backup,
+    }[name])
     monkeypatch.setattr(drill.psycopg, "connect", lambda *args, **kwargs: nullcontext(Connection()))
     with pytest.raises(drill.DrillError, match="required_wal_not_archived"):
         drill.archive(Path("/drill"), "owned-url")
     assert any("pg_stat_file" in query for query in queries)
+
+
+@pytest.mark.parametrize("missing", [None, "bundled", "archive"])
+def test_live_archive_checks_bundled_and_archived_wal_before_writing_evidence(monkeypatch, missing):
+    backup, point = wal_context()
+    _, target, _, _ = references()
+    target = target.model_copy(update={"restore_point": point})
+    files, bundled = wal_files(3, 4, 5, 6), wal_files(1, 2)
+    if missing == "bundled":
+        del bundled[drill.wal_segment_name(1, 1)]
+    if missing == "archive":
+        del files[drill.wal_segment_name(1, 4)]
+    writes = []
+
+    class Connection:
+        def execute(self, query, params=None):
+            if "wal_segment_size" in query:
+                return SimpleNamespace(fetchone=lambda: {"bytes": drill.WAL_SEGMENT_BYTES})
+            if "pg_walfile_name" in query:
+                return SimpleNamespace(fetchone=lambda: {"name": drill.wal_segment_name(1, 6)})
+            if "pg_switch_wal" in query:
+                return SimpleNamespace(fetchone=lambda: {"lsn": "0/7000000"})
+            if "pg_ls_dir" in query:
+                source = bundled if "/owned/base/pg_wal" in query else files
+                return SimpleNamespace(fetchall=lambda: [
+                    {"name": name, "size": size} for name, size in source.items()
+                ])
+            return SimpleNamespace(fetchone=lambda: {"size": 0})
+
+    monkeypatch.setattr(drill, "read", lambda directory, name, model: {
+        "target.json": target, "backup.json": backup,
+    }[name])
+    monkeypatch.setattr(drill.psycopg, "connect", lambda *args, **kwargs: nullcontext(Connection()))
+    monkeypatch.setattr(drill, "write_new", lambda *args: writes.append(args))
+    if missing is None:
+        drill.archive(Path("/drill"), "owned-url")
+        assert len(writes) == 1 and writes[0][1] == "archive.json"
+        assert writes[0][2].files == files
+    else:
+        with pytest.raises(drill.DrillError, match="required_wal_missing"):
+            drill.archive(Path("/drill"), "owned-url")
+        assert not writes
+
+
+@pytest.mark.parametrize("missing", [None, "bundled", "archive"])
+def test_artifact_preflight_rechecks_the_actual_copied_wal_inventories(monkeypatch, missing):
+    backup, point = wal_context()
+    _, target, _, _ = references()
+    target = target.model_copy(update={"restore_point": point})
+    files, bundled = wal_files(3, 4, 5, 6), wal_files(1, 2)
+    if missing == "bundled":
+        del bundled[drill.wal_segment_name(1, 1)]
+    if missing == "archive":
+        del files[drill.wal_segment_name(1, 4)]
+    archive = drill.Archive(
+        required_wal=drill.wal_segment_name(1, 6), target_wal=point.wal_file,
+        switch_lsn="0/7000000", required_archive_done=True, target_archive_done=True,
+        files=files, bytes=sum(files.values()), elapsed_seconds=0.5,
+    )
+    documents = {"archive.json": archive, "backup.json": backup, "target.json": target}
+    monkeypatch.setattr(drill, "read", lambda directory, name, model: documents[name])
+    inspected = []
+
+    def inspect(path, maximum, expected_files=None, *, inventory=None):
+        inspected.append(path.name)
+        if path.name == "basebackup.tar":
+            assert maximum == drill.MAX_BACKUP_BYTES and inventory is not None
+            inventory.update({f"pg_wal/{name}": size for name, size in bundled.items()})
+        else:
+            assert path.name == "wal-archive.tar" and expected_files == files
+        return artifacts().basebackup
+
+    monkeypatch.setattr(drill, "inspect_tar", inspect)
+    if missing is None:
+        assert drill.artifact_state(Path("/drill")) == artifacts()
+    else:
+        with pytest.raises(drill.DrillError, match="required_wal_missing"):
+            drill.artifact_state(Path("/drill"))
+    assert inspected == ["basebackup.tar", "wal-archive.tar"]
+
+
+def test_shared_tar_inspector_keeps_ha_return_contract_and_optionally_captures_inventory(
+    monkeypatch,
+):
+    class FileBytes(io.BytesIO):
+        def fileno(self):
+            return 42
+
+    content = {
+        "PG_VERSION": b"18", "backup_label": b"label", "backup_manifest": b"manifest",
+        "global/pg_control": b"control", "pg_wal/000000010000000000000001": b"wal",
+    }
+    packed = io.BytesIO()
+    with tarfile.open(fileobj=packed, mode="w") as output:
+        for name, value in content.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(value)
+            output.addfile(member, io.BytesIO(value))
+    payload = packed.getvalue()
+    monkeypatch.setattr(drill.os, "open", lambda *args: 42)
+    monkeypatch.setattr(drill.os, "fdopen", lambda *args: nullcontext(FileBytes(payload)))
+    monkeypatch.setattr(drill.os, "fstat", lambda *args: SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o600, st_size=len(payload),
+    ))
+    expected = drill.Artifact(bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
+    assert drill.inspect_tar(Path("/drill/basebackup.tar"), drill.MAX_BACKUP_BYTES) == expected
+    inventory = {}
+    assert drill.inspect_tar(
+        Path("/drill/basebackup.tar"), drill.MAX_BACKUP_BYTES, inventory=inventory,
+    ) == expected
+    assert inventory == {name: len(value) for name, value in content.items()}
 
 
 def mocked_verifier(monkeypatch, status_change=None, accept_write=False, operations_change=None):

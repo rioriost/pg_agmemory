@@ -8,6 +8,10 @@ and service are `pg_agmemory`. Run the commands below from that local checkout.
 
 **M5 development: 0.4.0.dev1 / API v1 / schema 22.** The new
 [operational foundations](docs/operations/README.md#m5-operational-foundations)
+include explicit read-only embedding-migration assessment and one-shot monitoring
+export. [Implementation and deployment acceptance remain separate](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m5-implementation-versus-deployment-acceptance):
+production retention, capacity and RPO/RTO require a declared target and policy.
+The same foundations also
 include read-only operator/replication observations, paused PITR and an explicitly
 fenced owned HA rehearsal. Reports do not authorize service startup or certify
 production HA, RPO/RTO or backup retention.

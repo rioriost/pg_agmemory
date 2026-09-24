@@ -2,7 +2,43 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 制御した複製接続断
+## M5開発: 移行・監視・復旧検査の運用実装
+
+**0.4.0.dev1 / API v1 / schema 22**でcore-only管理command二つを追加します。
+出荷済みmigration、依存package、runtime vector選択、serving authorityは変更しません。
+
+| surface | 実装契約 |
+|---|---|
+| `embedding-migration` | 指定principalのruntime RLSでsource/target model-spaceのrevision/input-digest完全coverageをread-only評価。`ready`、`incomplete`、`blocked`、`empty`を区別し、空集合や件数一致をcutover承認にしない |
+| `monitoring-export` | 既存snapshotからone-shot Prometheus textfileと明示policy alertを生成。private atomic公開、不明状態、失敗専用出力を扱い、外部freshness確認を必須にする |
+| schema21→22 upgrade | canonical validatorに加え、AGE projection guard/captured-schema制約のrollback/retry、grant、RLS、triggerを検査 |
+| 物理PITR | backup/target LSNから必要WAL連続性を導き、timeline/segment境界・backup内WAL制限を検査し、所有primary破棄前にも再確認 |
+
+移行checkerは推論、model登録/削除、caller切替、rollback承認を行いません。
+投入・選択は既存の明示embedding upload/queryで行います。
+監視はscheduler、公開endpoint、incident対応、履歴保持store、自動修復を追加しません。
+新commandはいずれもDBを変更しません。upgradeはmaintenance時の実行であり、
+in-place downgradeは提供せず、検証済み隔離backupと対応する旧codeを要求します。
+
+固定したローカルApple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6で、
+**core 4,476 passed / optional 134 skipped**、Ruff、
+**57 source module + 3利用側**のstrict型検査、その後別途**18 COMMIT case**と
+**13 request deadline case**に成功しました。全optional-install profileとnon-root
+packaged lifecycle/recoveryも成功し、移行commandのempty-not-ready、
+監視のprivate atomic成功/失敗出力も含みます。別の実物理PITRと全HA v5 labも、
+共通WAL inspector補強後に成功しました。先行するfocused件数とは重複するため加算しません。
+この運用incrementのnative CI認定は実行待ちです。
+
+**これらのtoolでM5本番受入れまで完了したとは扱いません。**
+配置先の負荷/同時数、host/storage failure domain、RPO/RTO、backup backend/inventory、
+復元/保持window、legal hold、独立保護した最新deletion/source authority、
+collector/alert/履歴の管理責任を指定する必要があります。
+その後にbackend固有の保持期限強制と本番復旧/upgrade受入れを実装・実測できます。
+本番storage削除、cloud配置、有料推論、任意network partition認定、再開は行いません。
+[実装/受入れmatrix](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m5実装と配置先受入れの区別)と
+[運用契約](operations/README-jp.md#m5-operational-foundations)を参照してください。
+
+## 以前のM5 increment: 制御した複製接続断
 
 **0.4.0.dev1 / API v1 / schema 22**で、同期再構成後に制御した接続断caseを追加します。
 所有昇格先のHBAで複製roleだけを一時拒否し、その置換sender一件だけを切断します。
@@ -28,7 +64,12 @@ pending証跡をclient成功receiptへ変えません。effect実行なしに最
 Ruff、55 moduleのstrict型検査、**915 targeted passed / 既存live-DB依存25 skipped**に成功しました。
 pending/完了の区別、書込み前の隔離、COMMIT中の隔離喪失、cleanup/cancel、
 retryなしの完全照合、HBA/PID/復元失敗を対象にしています。
-service/schema/依存package/timeoutの変更はありません。v5のnative CI認定はまだ記録していません。
+service/schema/依存package/timeoutの変更はありません。実装`123d0ec`はその後、
+[run35977080118](https://github.com/rioriost/pg_agmemory/actions/runs/35977080118)で
+native **全8ジョブ**（amd64/arm64のcore、HA、PITR、patched AGE）に成功しました。
+各coreは**4,262 passed / 134 skipped**、別途**18 COMMIT case**と**13 request case**、
+全install/packaged recovery lifecycleに成功しています。宣言した接続断labの証跡であり、
+任意network partitionの認定ではありません。
 
 ## 以前のM5 increment: 隔離環境での同期再構成
 
@@ -55,8 +96,11 @@ renewal後referenceの完全一致と永続v4 reportを検証しています。
 元の不明性、以前の非同期証跡、effect状態は変更せず、host fence再確認も両方成功しました。
 Ruff、55 moduleのstrict型検査、**767 targeted passed / 既存live-DB依存25 skipped**に成功しました。
 service/schema/依存packageの変更やtimeout緩和はありません。
-記録時点で`4895ca6`の[run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055)は
-amd64/arm64のHA、PITR、AGEが成功し、core 2ジョブは実行中のため、v4全体のnative認定はまだ記録していません。
+実装`4895ca6`はその後、
+[run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055)で
+native **全8ジョブ**に成功しました。各coreは**4,114 passed / 134 skipped**、
+別途**18 COMMIT case**と**13 request case**、全install/packaged recovery lifecycleに成功し、
+HA、PITR、patched AGEも両architectureで成功しています。
 
 ## 以前のM5 increment: 新しい置換standbyの構築
 

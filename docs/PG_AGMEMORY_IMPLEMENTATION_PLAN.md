@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.16 / M5 controlled replication connection loss, 2026-09-24
+- Document version: 1.17 / M5 operator implementation closure, 2026-09-24
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M5 development continues as 0.4.0.dev1/APIv1/schema22 with bounded revision validation, COMMIT outcome guards, operational/replication observations, paused SQL-only PITR and an explicitly fenced owned HA rehearsal. Application handling of canceled synchronous waits no longer implies rollback or replication success; production HA and partition qualification remain open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
@@ -938,6 +938,28 @@ The same-host SQL lab cannot substitute for those requirements or qualify AGE
 physical recovery. No cloud deployment, paid provider call, automatic promotion,
 source grant renewal or service restart is implied.
 See [the operational contract](operations/README.md#m5-operational-foundations).
+
+### M5 implementation versus deployment acceptance
+
+Repository implementation and production acceptance are separate deliverables.
+The remaining operator work adds explicit embedding-space readiness checks and
+bounded monitoring export, and tightens the existing upgrade/PITR regressions.
+It does not create a new global model selector, automatic model backfill,
+backup-deletion service or failover controller.
+
+| Gate | Repository implementation | Evidence still required from the target deployment |
+|---|---|---|
+| COMMIT/request bounds and HA/PITR | Shared guards, cumulative HTTP deadlines, owned physical recovery/HA labs | Declared topology, independent failure domains, transport faults, admission/fencing, RPO/RTO |
+| Embedding-space migration | Existing explicit model registration/upload/query identity; read-only migration readiness | Chosen target model/provider, current coverage, application switch/reversal, approved cost and model evaluation |
+| Monitoring | Read-only snapshots and one-shot operator export | Collector/scheduler ownership, alert routing, freshness detection, history retention and incident response |
+| Upgrade | Transactional migration, exact ledger compatibility, rollback-on-failure, schema22 AGE guard/constraint checks | Target backup and matched old/new deployments, maintenance window, isolated rollback/roll-forward rehearsal |
+| Backup/WAL retention | Verified physical restore and contiguous required WAL preflight, latest-authority mismatch rejection | Storage backend/inventory, recovery window, expiration and legal-hold rules, independently protected current deletion/source authority |
+| Capacity | Bounded executable resource recipes and versioned historical measurements | Chosen workload, concurrency, host/storage profile and current-version acceptance measurements |
+
+No default retention period, production SLO, paid inference budget, deployment
+target or deletion authority is inferred from a request to finish implementation.
+Without these inputs the M5 production-candidate gate remains open; local tests,
+metadata snapshots and a successful historical restore cannot certify it.
 
 ### M4 explicit-retention pilot acceptance
 

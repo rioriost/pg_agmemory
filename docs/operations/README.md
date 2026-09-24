@@ -39,6 +39,103 @@ source/deletion state. There is no in-place downgrade; rollback requires an
 isolated schema-21 backup and matching components, not deletion of migration
 ledger rows. The published schema-21 M4 qualification does not qualify schema 22.
 
+The upgrade regression checks rollback and successful replacement of both the
+canonical validators and the AGE projection guard/captured-schema constraint,
+including function identity, invoker security, grants, RLS and triggers.
+The physical PITR preflight additionally requires contiguous WAL from the
+manifest-backed backup interval through the named target, not just two endpoint
+files. It measures the lab's 16 MiB segment size, handles timeline/segment
+boundaries, and cannot substitute bundled backup WAL for post-backup bytes.
+PostgreSQL's actual recovery remains the final replay check.
+
+These checks are not backup retention enforcement. Before implementing expiry
+against a deployment, specify its storage backend/inventory, recovery window,
+legal holds and independently protected latest deletion/source authority.
+Deleting WAL from an otherwise valid backup can make its recovery window
+unusable; file age or a metadata receipt alone cannot establish safe deletion.
+
+### Embedding-space migration readiness
+
+```bash
+pg-agmemory embedding-migration \
+  --tenant-id "$TENANT_ID" --principal-id "$PRINCIPAL_ID" --scope-id "$SCOPE_ID" \
+  --source-name "$SOURCE_MODEL" --source-revision "$SOURCE_REVISION" \
+  --target-name "$TARGET_MODEL" --target-revision "$TARGET_REVISION"
+```
+
+This administrator-only, read-only assessment uses `PGAG_ADMIN_DATABASE_URL`
+and evaluates the explicitly selected principal/scopes under runtime RLS.
+It does not generate vectors, call a provider, register/delete a model, switch
+application configuration or authorize cutover. Existing embedding upload and
+recall already select exact model identities; no global model pointer is added.
+
+The `pgag-embedding-migration-v1` report compares exact eligible revision and
+input-digest coverage in both spaces. It accounts for temporal selection,
+current authorization, epochs, model capacity and target write access, rather
+than treating equal embedding counts as equivalent coverage. Use repeated
+`--scope-id` values for the intended scope set; optional `--as-of`, `--known-at`
+and expected-epoch pairs make the requested snapshot explicit. Input formats
+are declared independently for source/target. Revision work is bounded to at
+most 10,000 and issue samples to at most 100.
+
+`ready` requires a nonempty eligible set and complete exact coverage in both
+spaces; `incomplete` means projections are missing, `blocked` identifies
+unsupported/stale or non-writable conditions, and `empty` never means ready.
+Exit 0 means the assessment was produced, not approval to change serving.
+Output may include bounded authorized reference IDs and must remain private.
+An unavailable database fails explicitly, never as zero/complete coverage.
+
+For migration, preserve the old model identity and projections, obtain approved
+target embeddings using the existing explicit upload path, then assess the same
+principal/scope/temporal selection again. Switch caller configuration only after
+current authorization, coverage and model behavior have been reviewed. Keep old
+configuration/projections for an explicitly controlled reversal; an old report
+cannot authorize rollback after revocation, deletion or revision/epoch changes.
+Model quality, provider attestation, inference cost, retirement and production
+deployment acceptance remain separately owned decisions.
+
+### One-shot monitoring export
+
+`pg-agmemory monitoring-export` composes the existing read-only operations and
+replication observations into a Prometheus textfile. It neither installs a
+daemon/HTTP endpoint nor holds the tenant admission barrier. The two snapshots
+are **not atomic together**, and replication statistics retain their existing
+observational limitations.
+
+Create an operator-owned private working directory and an explicit JSON policy,
+for example this **collection-only** policy, which defines no alert thresholds:
+
+```json
+{"format":"pgag-monitoring-policy-v1","rules":[]}
+```
+
+```bash
+pg-agmemory monitoring-export --tenant-id "$TENANT_ID" \
+  --policy-file monitoring-policy.json --output metrics/tenant.prom
+```
+
+Use `PGAG_ADMIN_DATABASE_URL`; keep it outside model/planner environments.
+The policy and output are local relative paths without traversal or symlinks.
+The output directory must already exist, be privately owned, and permit secure
+atomic replacement. The published file is mode `0600`; explicitly arrange
+authorized collector access instead of making operator metadata world-readable.
+Nonempty policy rules specify a supported fixed code, comparison operator,
+numeric threshold and severity. There are no fabricated production thresholds.
+Unknown observations remain unknown rather than zero or a healthy alert.
+
+Successful collection publishes atomically and exits 0, including when an alert
+is firing or unknown. Policy/database failures publish a failure-only file with
+`pgag_collection_success=0`, omit observation/alert samples, and exit 1.
+Publication failure exits 1 and can leave the previous file; argument errors
+or a missing administrator URL exit 2 and can also leave previous output.
+The caller must monitor exit status, collection success **and freshness**.
+Do not interpret an old successful file as current health.
+
+Use a nonoverlapping external scheduler. The deployment owns collector history,
+retention, unknown/freshness alerts, routing and incident response. The exporter
+does not acknowledge external side effects, change grants, retry jobs, promote
+a replica, authorize service restart or prove backup expiration.
+
 ### Read-only operations status
 
 ```bash

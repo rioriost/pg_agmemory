@@ -2,7 +2,49 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: controlled replication connection loss
+## M5 development: operator migration, monitoring and recovery checks
+
+**0.4.0.dev1 / API v1 / schema 22** adds two core-only administrator commands,
+without changing shipped migrations, dependencies, runtime vector selection or
+serving authority:
+
+| Surface | Implemented contract |
+|---|---|
+| `embedding-migration` | Read-only exact revision/input-digest coverage for declared source/target model spaces under the selected principal's runtime RLS. `ready`, `incomplete`, `blocked` and `empty` are distinct; neither an empty set nor equal row counts authorize cutover |
+| `monitoring-export` | One-shot Prometheus textfile and explicit operator-policy alerts using existing snapshots. Private atomic publication, unknown states and failure-only output prevent zero-valued/stale success claims; external freshness checks remain mandatory |
+| Schema21→22 upgrade | Rollback/retry assertions now cover AGE projection guard and captured-schema constraint as well as canonical validators, grants, RLS and triggers |
+| Physical PITR | Required WAL continuity is derived from backup/target LSNs with timeline/segment boundaries and bundled-WAL limits, then checked again before owned-primary destruction |
+
+The migration checker does not perform inference, register/delete models,
+switch callers or authorize rollback. Explicit existing embedding upload/query
+flows remain responsible for population and selection. Monitoring does not
+create a scheduler, public endpoint, incident response, historical retention
+store or automatic remediation. Neither new command mutates database state.
+The existing upgrade contract remains maintenance-only with no in-place
+downgrade; a verified isolated backup and matching old code are required.
+
+Frozen local Apple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6 evidence:
+**4,476 core cases passed / 134 optional skips**, Ruff, strict typing for
+**57 source modules + 3 consumers**, then **18 separate COMMIT cases** and
+**13 request-deadline cases**. All optional-install profiles and non-root
+packaged lifecycle/recovery checks pass, including the new migration command's
+empty-not-ready result and monitoring's private atomic success/failure output.
+The separate actual physical PITR and complete HA v5 labs both pass with the
+tightened shared WAL inspector. Earlier focused counts overlap this suite and
+must not be added. Native CI qualification of this operator increment is pending.
+
+**M5 production acceptance remains open, not silently implemented by these
+tools.** The target deployment must supply load/concurrency, host/storage
+failure domains, RPO/RTO, backup backend/inventory, recovery/retention windows,
+legal holds, independently protected latest deletion/source authority, and
+collector/alert/history ownership. Only then can backend-specific retention
+enforcement and production recovery/upgrade acceptance be implemented and
+measured. No production storage deletion, cloud deployment, paid inference,
+arbitrary network-partition qualification or restart is performed.
+See the [implementation/acceptance matrix](PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m5-implementation-versus-deployment-acceptance)
+and [operator contracts](operations/README.md#m5-operational-foundations).
+
+## Previous M5 increment: controlled replication connection loss
 
 **0.4.0.dev1 / API v1 / schema 22** adds a controlled connection-loss case after
 synchronous renewal. Only the owned replication role is temporarily rejected
@@ -36,7 +78,12 @@ Ruff, strict typing for 55 modules and **915 targeted cases / 25 existing
 live-DB skips** pass. Tests cover pending/final separation, pre-write isolation,
 lost isolation during COMMIT, cleanup/cancellation, exact no-retry reconciliation
 and scoped HBA/PID/restore failure paths. No service/schema/dependency or timeout
-change is introduced. Native CI qualification of v5 is not yet recorded.
+change is introduced. The exact implementation `123d0ec` subsequently passes
+**all eight native jobs** in [run35977080118](https://github.com/rioriost/pg_agmemory/actions/runs/35977080118):
+core, HA, PITR and patched AGE on amd64/arm64. Each core passes **4,262 cases /
+134 skips**, followed by **18 separate COMMIT** and **13 request** cases and
+the installation/packaged recovery lifecycle. This qualifies the declared
+controlled connection-loss lab, not arbitrary network partitions.
 
 ## Previous M5 increment: isolated synchronous renewal
 
@@ -68,9 +115,11 @@ v4 report validate. Original uncertainty, earlier asynchronous evidence and
 effect state remain unchanged, and both host fence rechecks succeed.
 Ruff, strict typing for 55 modules and **767 targeted cases / 25 existing
 live-DB skips** pass. No service/schema/dependency change or timeout relaxation
-is introduced. At recording time, [run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055)
-at `4895ca6` passes both native HA, PITR and AGE jobs, while the two core jobs
-remain running; full v4 native qualification is not yet recorded.
+is introduced. The exact implementation `4895ca6` subsequently passes
+**all eight native jobs** in [run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055).
+Each core architecture passes **4,114 cases / 134 skips**, the separate
+**18 COMMIT** and **13 request** cases and the installation/packaged recovery
+lifecycle; HA, PITR and patched AGE pass on both architectures.
 
 ## Previous M5 increment: fresh replacement standby
 

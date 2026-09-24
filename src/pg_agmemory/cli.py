@@ -113,6 +113,16 @@ def _main() -> None:
 
         replication_status_main(sys.argv[2:])
         return
+    if sys.argv[1:2] == ["embedding-migration"]:
+        from pg_agmemory.embedding_migration import main as embedding_migration_main
+
+        embedding_migration_main(sys.argv[2:])
+        return
+    if sys.argv[1:2] == ["monitoring-export"]:
+        from pg_agmemory.monitoring import main as monitoring_main
+
+        monitoring_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="pg-agmemory")
     parser.add_argument(
         "command",
@@ -139,6 +149,8 @@ def _main() -> None:
             "age-projection",
             "operations-status",
             "replication-status",
+            "embedding-migration",
+            "monitoring-export",
             "infer",
         ],
     )
@@ -192,6 +204,12 @@ def _main() -> None:
         parser.error("operations-status must precede its arguments; use operations-status --help")
     elif args.command == "replication-status":
         parser.error("replication-status must precede its arguments; use replication-status --help")
+    elif args.command == "embedding-migration":
+        parser.error(
+            "embedding-migration must precede its arguments; use embedding-migration --help"
+        )
+    elif args.command == "monitoring-export":
+        parser.error("monitoring-export must precede its arguments; use monitoring-export --help")
     elif args.command == "infer":
         parser.error("infer must precede its arguments; use infer --help")
     elif args.command == "recall-hook":

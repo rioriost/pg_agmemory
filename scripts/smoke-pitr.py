@@ -2,6 +2,8 @@
 
 Physical copies remain private. A matching historical snapshot is deliberately
 not authorization to serve it: the later terminal source denial is missing.
+The lab measures and requires 16 MiB WAL segments; interval preflight does not
+replace PostgreSQL's backup verification or actual recovery.
 """
 
 import argparse
@@ -56,6 +58,8 @@ MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_BACKUP_BYTES = 512 * 1024 * 1024
 MAX_ARCHIVE_FILES = 32
 MAX_SEGMENTS = 16
+WAL_SEGMENT_BYTES = 16 * 1024 * 1024
+MAX_BACKUP_SEGMENTS = MAX_BACKUP_BYTES // WAL_SEGMENT_BYTES
 MAX_JSON_BYTES = 131072
 SOURCE = SourceIdentity(
     source_system="synthetic-pitr", dataset_id="owned-drill", source_subject=READER,
@@ -537,7 +541,7 @@ def validate_archive_files(files, required_wal, target_wal):
     for name, size in files.items():
         require(type(size) is int and size > 0, "invalid_archive_size")
         if re.fullmatch(r"[0-9A-F]{24}", name):
-            require(size == 16 * 1024 * 1024, "incomplete_wal_segment")
+            require(size == WAL_SEGMENT_BYTES, "incomplete_wal_segment")
             segments += 1
         else:
             require(re.fullmatch(r"[0-9A-F]{24}\.[0-9A-F]{8}\.backup", name)
@@ -547,12 +551,54 @@ def validate_archive_files(files, required_wal, target_wal):
     require(required_wal in files and target_wal in files, "required_wal_missing")
 
 
+def wal_segment_name(timeline, segment):
+    require(type(timeline) is int and 0 < timeline <= 0xFFFFFFFF, "invalid_wal_timeline")
+    per_log = (1 << 32) // WAL_SEGMENT_BYTES
+    require(type(segment) is int and 0 <= segment < (1 << 32) * per_log,
+            "invalid_wal_segment")
+    return f"{timeline:08X}{segment // per_log:08X}{segment % per_log:08X}"
+
+
+def validate_wal_coverage(files, backup, point, bundled):
+    require(point is not None and backup.timeline == point.before.timeline == point.after.timeline,
+            "backup_timeline_mismatch")
+    start, end, target_lsn = (
+        lsn_number(backup.start_lsn), lsn_number(backup.end_lsn), lsn_number(point.lsn)
+    )
+    require(0 < start < end < target_lsn, "invalid_backup_wal_range")
+    first = start // WAL_SEGMENT_BYTES
+    last = (target_lsn - 1) // WAL_SEGMENT_BYTES
+    require(last - first + 1 <= MAX_BACKUP_SEGMENTS + MAX_SEGMENTS, "wal_coverage_limit")
+    require(point.wal_file == wal_segment_name(backup.timeline, last),
+            "target_wal_mismatch")
+    require(len(bundled) <= MAX_BACKUP_SEGMENTS, "backup_wal_limit")
+    for name, size in bundled.items():
+        require(re.fullmatch(r"[0-9A-F]{24}", name) is not None,
+                "invalid_bundled_wal")
+        require(type(size) is int and size == WAL_SEGMENT_BYTES, "incomplete_bundled_wal")
+    # A full-sized bundled file can have padding after the manifest's exclusive
+    # end LSN. Post-backup replay requires archived bytes, not assumed padding.
+    archive_first = end // WAL_SEGMENT_BYTES
+    for segment in range(first, last + 1):
+        name = wal_segment_name(backup.timeline, segment)
+        if files.get(name) == WAL_SEGMENT_BYTES:
+            continue
+        require(segment < archive_first and bundled.get(name) == WAL_SEGMENT_BYTES,
+                "required_wal_missing")
+
+
 def archive(directory, url):
     target_state = read(directory, "target.json", Reference)
+    backup = read(directory, "backup.json", Backup)
     require(target_state.restore_point is not None, "restore_point_missing")
     target_wal = target_state.restore_point.wal_file
     started = time.monotonic()
     with psycopg.connect(url, row_factory=dict_row, autocommit=True) as conn:
+        segment_bytes = conn.execute(
+            "SELECT pg_size_bytes(current_setting('wal_segment_size')) AS bytes"
+        ).fetchone()["bytes"]
+        require(type(segment_bytes) is int and segment_bytes == WAL_SEGMENT_BYTES,
+                "unsupported_wal_segment_size")
         conn.execute("CHECKPOINT")
         required = conn.execute(
             "SELECT pg_walfile_name(pg_current_wal_insert_lsn()) AS name"
@@ -571,8 +617,17 @@ def archive(directory, url):
             "SELECT name,(pg_stat_file('/owned/archive/' || name)).size AS size "
             "FROM pg_ls_dir('/owned/archive') AS name LIMIT 33"
         ).fetchall()
+        bundled_rows = conn.execute(
+            "SELECT name,(pg_stat_file('/owned/base/pg_wal/' || name)).size AS size "
+            "FROM pg_ls_dir('/owned/base/pg_wal') AS name "
+            "WHERE name ~ '^[0-9A-F]{24}$' LIMIT 33"
+        ).fetchall()
     files = {row["name"]: row["size"] for row in rows}
     validate_archive_files(files, required, target_wal)
+    validate_wal_coverage(
+        files, backup, target_state.restore_point,
+        {row["name"]: row["size"] for row in bundled_rows},
+    )
     write_new(directory, "archive.json", Archive(
         required_wal=required, target_wal=target_wal, switch_lsn=switch_lsn,
         required_archive_done=True, target_archive_done=True, files=files,
@@ -580,7 +635,7 @@ def archive(directory, url):
     ))
 
 
-def inspect_tar(path, maximum, expected_files=None):
+def inspect_tar(path, maximum, expected_files=None, *, inventory=None):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -611,16 +666,32 @@ def inspect_tar(path, maximum, expected_files=None):
         else:
             require({"PG_VERSION", "backup_label", "backup_manifest", "global/pg_control"}
                     <= files.keys(), "incomplete_basebackup")
+        if inventory is not None:
+            inventory.update(files)
     return Artifact(bytes=info.st_size, sha256=sha)
 
 
 def artifact_state(directory):
     inventory = read(directory, "archive.json", Archive)
+    backup = read(directory, "backup.json", Backup)
+    target_state = read(directory, "target.json", Reference)
+    require(target_state.restore_point is not None
+            and inventory.target_wal == target_state.restore_point.wal_file,
+            "target_wal_mismatch")
+    backup_files = {}
+    basebackup = inspect_tar(
+        directory / "basebackup.tar", MAX_BACKUP_BYTES, inventory=backup_files,
+    )
+    wal_archive = inspect_tar(
+        directory / "wal-archive.tar", MAX_ARCHIVE_BYTES + 1024 * 1024, inventory.files,
+    )
+    validate_wal_coverage(
+        inventory.files, backup, target_state.restore_point,
+        {name.removeprefix("pg_wal/"): size for name, size in backup_files.items()
+         if re.fullmatch(r"pg_wal/[0-9A-F]{24}", name)},
+    )
     return Artifacts(
-        basebackup=inspect_tar(directory / "basebackup.tar", MAX_BACKUP_BYTES),
-        wal_archive=inspect_tar(
-            directory / "wal-archive.tar", MAX_ARCHIVE_BYTES + 1024 * 1024, inventory.files,
-        ),
+        basebackup=basebackup, wal_archive=wal_archive,
     )
 
 

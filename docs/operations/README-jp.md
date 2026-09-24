@@ -34,6 +34,85 @@ serving権限ではありません。復旧証跡も選択schemaと正当なsour
 in-place downgradeはなく、rollbackには隔離したschema21 backupと対応componentを使います。
 migration ledger行の削除では戻せません。公開済みschema21/M4認定はschema22の認定ではありません。
 
+upgrade回帰ではcanonical validatorだけでなく、AGE projection guard/captured-schema制約も
+rollbackと成功時の置換を検査し、関数identity、invoker security、grant、RLS、triggerを確認します。
+物理PITR preflightも端点二つだけでなく、manifestに基づくbackup区間からnamed targetまでの
+WAL連続性を要求します。labの16 MiB segment sizeを測定し、timeline/segment境界を扱い、
+backup内WALをbackup後の必要byteの代用にしません。実PostgreSQL recoveryが最終replay検査です。
+
+これらはbackup保持期限の強制ではありません。配置先でexpiryを実装する前に、
+storage backend/inventory、復元window、legal hold、独立保護した最新deletion/source authorityを指定します。
+WAL削除で有効backupの復元windowを壊す可能性があり、file ageやmetadata receiptだけでは
+安全な削除を証明できません。
+
+### Embedding-space migration readiness
+
+```bash
+pg-agmemory embedding-migration \
+  --tenant-id "$TENANT_ID" --principal-id "$PRINCIPAL_ID" --scope-id "$SCOPE_ID" \
+  --source-name "$SOURCE_MODEL" --source-revision "$SOURCE_REVISION" \
+  --target-name "$TARGET_MODEL" --target-revision "$TARGET_REVISION"
+```
+
+管理者専用read-only確認で`PGAG_ADMIN_DATABASE_URL`を使い、
+指定principal/scopeをruntime RLSで評価します。vector生成、provider呼出し、
+model登録/削除、application設定変更、cutover承認は行いません。
+既存embedding uploadとrecallは明示model identityを選択でき、global model pointerは追加しません。
+
+`pgag-embedding-migration-v1` reportは両spaceの適格revisionとinput digestの完全coverageを比較します。
+時間条件、現在認可、epoch、model上限、targetへの書込み権限を扱い、
+embedding件数の一致だけをcoverage一致とはしません。必要なscopeを`--scope-id`で繰り返し指定し、
+`--as-of`、`--known-at`、expected epochの組でsnapshot条件を明示できます。
+source/targetのinput formatは別々に宣言し、revisionは最大10,000、問題sampleは最大100に制限します。
+
+`ready`は空でない適格集合と両spaceの完全coverageを要求します。
+`incomplete`はprojection欠落、`blocked`は非対応/stale/書込み不可など、`empty`は空でありreadyではありません。
+exit 0は確認結果の生成成功で、serving切替の承認ではありません。
+出力には限定された認可済みreference IDを含むため非公開に保持します。
+DB利用不能をzero/complete coverageとして返しません。
+
+移行では旧model identityとprojectionを保持し、承認済みtarget embeddingを既存明示uploadで投入した後、
+同じprincipal/scope/時間条件を再評価します。最新の認可、coverage、model動作を確認してからcaller設定を変更します。
+明示的な切戻し用に旧設定/projectionを保持しますが、失効・削除・revision/epoch変更後の
+rollbackを古いreportで承認してはいけません。model品質、provider attestation、推論費用、
+retirement、本番受入れは別の所有判断です。
+
+### One-shot monitoring export
+
+`pg-agmemory monitoring-export`は既存read-onlyのoperations/replication観測を
+Prometheus textfileへ出力します。daemon/HTTP endpointは追加せず、tenant admission barrierも取得しません。
+二つのsnapshotは**一体のatomic snapshotではなく**、複製統計も既存の観測上の制約を維持します。
+
+運用者所有のprivate作業directoryと明示JSON policyを用意します。
+例えば次はalert閾値を指定しない**収集専用**policyです。
+
+```json
+{"format":"pgag-monitoring-policy-v1","rules":[]}
+```
+
+```bash
+pg-agmemory monitoring-export --tenant-id "$TENANT_ID" \
+  --policy-file monitoring-policy.json --output metrics/tenant.prom
+```
+
+`PGAG_ADMIN_DATABASE_URL`を使い、model/planner環境から分離してください。
+policy/outputはtraversalやsymlinkのないlocal相対pathです。
+出力directoryは事前に作成し、所有者限定でatomic置換可能にします。出力fileは`0600`で、
+metadataをworld-readableにせず、collectorに必要な読取り権限を明示設定します。
+ruleを指定する場合は対応する固定code、比較operator、数値threshold、severityを宣言します。
+本番閾値は推測せず、不明な観測をzeroや正常alertとは扱いません。
+
+収集成功ではatomic公開してexit 0となり、alert発火/不明の場合も同じです。
+policy/DB失敗では`pgag_collection_success=0`だけの失敗fileへ置換し、
+観測/alert sampleを省いてexit 1となります。公開失敗はexit 1で旧fileが残る場合があり、
+引数不正や管理URL欠落はexit 2で同様に旧出力が残る場合があります。
+callerはexit status、収集成功、**freshness**を監視し、古い成功fileを現在の正常性と解釈しないでください。
+
+重複起動しない外部schedulerを使います。collector履歴・保持期限、
+unknown/freshness alert、配送、incident対応は配置先の責任です。
+exporterは外部effect確定、grant変更、job retry、replica昇格、
+service再開承認、backup expiryの証明を行いません。
+
 ### Read-only operations status
 
 ```bash

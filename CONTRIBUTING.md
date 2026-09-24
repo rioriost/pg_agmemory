@@ -91,6 +91,14 @@ Migration 022 must preserve invoker RLS and all history/evidence/target checks.
 Do not hide regressions with larger timeouts, fixture `ANALYZE`, disabled
 constraints or edits to already-shipped migrations. Check matching schema
 contracts and stale graph artifacts when adding a migration.
+The schema21-to-22 rollback fixture must also preserve the AGE publication
+guard and captured-schema constraint on failure. The physical PITR preflight
+must reject missing middle WAL segments, not just missing endpoint files;
+bundled backup WAL cannot satisfy bytes after backup completion.
+Operator migration/monitoring commands remain core-only and administrator-only.
+Exercise exact eligible revision/digest coverage, current RLS/epochs, empty
+coverage, fixed-cardinality output and explicit collection/publication failures.
+An assessment/export must never grant cutover, rollback, restart or retention authority.
 History-page plan regressions must call the production query under runtime RLS
 and the unchanged statement timeout, including generic and nested-loop-only
 plans. Join only the page plus lookahead to bounded targets and evidence;

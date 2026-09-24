@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import sys
 import tomllib
 from dataclasses import replace
 from importlib.resources import files
@@ -18,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from pg_agmemory import __version__, age_graph, api, database
+from pg_agmemory import __version__, age_graph, api, cli, database
 from pg_agmemory.database import RuntimeValidationError, Settings
 from pg_agmemory.deletion_history import DeletionHistory
 from pg_agmemory.graph_artifact import GraphArtifact
@@ -195,6 +196,16 @@ def test_api_v1_reports_m5_candidate_without_changing_backend_readiness(monkeypa
             "scope": "v1_http", "seconds": 30.0, "error_response_reserve_seconds": 1.0,
             "commit_expiry_outcome": "unknown", "hard_realtime": False,
         }
+        assert capabilities["embedding_migration_administration"] == {
+            "command": "embedding-migration", "transport": "admin-cli", "read_only": True,
+            "automatic_inference": False, "automatic_cutover": False,
+            "production_qualified": False,
+        }
+        assert capabilities["monitoring_export_administration"] == {
+            "command": "monitoring-export", "transport": "admin-cli", "database_read_only": True,
+            "statistics_atomic": False, "automatic_remediation": False,
+            "production_qualified": False,
+        }
         administration = capabilities["age_projection_administration"]
         assert administration["required_age_commit"] == AGE_COMMIT
         assert administration["fallback"] == "explicit_sql_configuration_only"
@@ -215,6 +226,18 @@ def test_api_v1_reports_m5_candidate_without_changing_backend_readiness(monkeypa
             assert client.get("/v1/capabilities").status_code == 401
         assert core.await_count == 2
         assert native.await_count == (2 if backend == "age" else 0)
+
+
+@pytest.mark.parametrize("command,module", [
+    ("embedding-migration", "pg_agmemory.embedding_migration"),
+    ("monitoring-export", "pg_agmemory.monitoring"),
+])
+def test_m5_operator_commands_dispatch_without_runtime_mutations(monkeypatch, command, module):
+    handler = MagicMock()
+    monkeypatch.setattr(importlib.import_module(module), "main", handler)
+    monkeypatch.setattr(sys, "argv", ["pg-agmemory", command, "--help"])
+    cli.main()
+    handler.assert_called_once_with(["--help"])
 
 
 def test_native_distribution_pins_remain_exact_not_just_matching_labels():

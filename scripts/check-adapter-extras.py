@@ -75,6 +75,13 @@ replication_help = subprocess.run(
 )
 assert replication_help.returncode == 0 and "replication" in replication_help.stdout
 assert "Traceback" not in replication_help.stderr
+for command in ("embedding-migration", "monitoring-export"):
+    administration_help = subprocess.run(
+        ["pg-agmemory", command, "--help"],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert administration_help.returncode == 0 and command in administration_help.stdout
+    assert "Traceback" not in administration_help.stderr
 signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 notice_profile = SourceNoticeProfile(
     issuer="synthetic-source", audience="synthetic-notices", subject="synthetic-coordinator",

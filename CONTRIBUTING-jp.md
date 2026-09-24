@@ -79,6 +79,11 @@ assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制�
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で
 退行を隠してはいけません。migration追加時は対応schema契約と旧graph artifactのstale判定も確認します。
+schema21→22の失敗fixtureはAGE publication guardとcaptured-schema制約のrollbackも検査します。
+物理PITR preflightは端点だけでなく途中WAL欠落を拒否し、backup内WALでbackup完了後のbyteを
+代用してはいけません。移行/監視commandはcore-only、管理者専用のまま、
+適格revision/digestの完全coverage、現在RLS/epoch、空集合、固定cardinality、
+収集/出力失敗を検査してください。確認/exportはcutover、rollback、再開、保持期限を承認しません。
 history pageのplan回帰は製品queryをruntime RLSと既存statement timeoutで呼び、
 generic/nested-loop-only planも対象とします。pageとlookaheadだけを限定したtarget/evidenceと
 joinし、経過時間が短いだけで保護された全履歴の再走査を見逃してはいけません。

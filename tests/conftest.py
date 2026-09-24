@@ -548,21 +548,34 @@ def database():
                               pg_get_functiondef(oid)
                        FROM pg_proc WHERE oid IN (
                            'memory.check_assertion_history()'::regprocedure,
-                           'memory.check_relation()'::regprocedure)
+                           'memory.check_relation()'::regprocedure,
+                           'memory_ops.guard_age_projection()'::regprocedure)
                        ORDER BY proname"""
     security_query = """SELECT c.oid,c.relrowsecurity,c.relforcerowsecurity,c.relacl,
                            (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.polname)
                             FROM pg_policy p WHERE p.polrelid=c.oid),
                            (SELECT jsonb_agg(to_jsonb(k) ORDER BY k.conname)
-                            FROM pg_constraint k WHERE k.conrelid=c.oid),
+                            FROM pg_constraint k WHERE k.conrelid=c.oid
+                              AND k.conname <> 'age_projection_captured_schema_version_check'),
                            (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.tgname)
                             FROM pg_trigger t WHERE t.tgrelid=c.oid)
                        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-                       WHERE n.nspname='memory' AND c.relkind='r' ORDER BY c.oid"""
+                       WHERE (n.nspname='memory'
+                              OR c.oid='memory_ops.age_projection'::regclass)
+                         AND c.relkind='r' ORDER BY c.oid"""
+    captured_schema_query = """SELECT to_jsonb(k),pg_get_constraintdef(k.oid)
+                              FROM pg_constraint k
+                              WHERE k.conrelid='memory_ops.age_projection'::regclass
+                                AND k.conname='age_projection_captured_schema_version_check'"""
     with psycopg.connect(url) as admin:
         previous_functions = admin.execute(function_query).fetchall()
         previous_security = admin.execute(security_query).fetchall()
-        assert len(previous_functions) == 2
+        previous_captured_schema = admin.execute(captured_schema_query).fetchone()
+        assert previous_captured_schema is not None
+        assert previous_captured_schema[1] == (
+            "CHECK ((captured_schema_version = ANY (ARRAY[20, 21])))"
+        )
+        assert len(previous_functions) == 3
         assert all(not row[3] and row[4] == ["search_path=pg_catalog"]
                    for row in previous_functions)
     with pytest.MonkeyPatch.context() as patch:
@@ -582,6 +595,7 @@ def database():
         ).fetchone()[0] == 21
         assert admin.execute(function_query).fetchall() == previous_functions
         assert admin.execute(security_query).fetchall() == previous_security
+        assert admin.execute(captured_schema_query).fetchone() == previous_captured_schema
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:
@@ -592,6 +606,19 @@ def database():
         assert all(current[-1] != previous[-1]
                    for current, previous in zip(current_functions, previous_functions, strict=True))
         assert admin.execute(security_query).fetchall() == previous_security
+        current_captured_schema = admin.execute(captured_schema_query).fetchone()
+        assert current_captured_schema is not None
+        assert current_captured_schema[1] == (
+            "CHECK ((captured_schema_version = ANY (ARRAY[20, 21, 22])))"
+        )
+        assert current_captured_schema[0]["oid"] != previous_captured_schema[0]["oid"]
+        assert {
+            key: value for key, value in current_captured_schema[0].items()
+            if key not in ("oid", "conbin")
+        } == {
+            key: value for key, value in previous_captured_schema[0].items()
+            if key not in ("oid", "conbin")
+        }
         assert admin.execute(
             "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
         ).fetchone() == age_before
