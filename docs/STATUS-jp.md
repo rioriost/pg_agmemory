@@ -2,7 +2,36 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 所有HAでのCOMMIT結果不明の照合
+## M5開発: 新しい置換standbyの構築
+
+**0.4.0.dev1 / API v1 / schema 22**で、所有SQL-only HA rehearsalの昇格後に
+新しい非同期置換standbyを構築します。破棄済み旧primaryではなく、昇格先から新しい物理basebackupを取得し、
+作成時・復元時の両方でmanifestを検証します。probe後のmemory、checkpoint、processing、
+source、effect状態を置換先でread-only照合し、元のCOMMIT結果不明の証跡も保持します。
+
+backup以降のstreaming WAL進行と旧primary不在の継続も確認します。
+この構築では旧data directory、`pg_rewind`、same-key replay、application書込み、
+effect実行、daemon起動を使いません。置換先は非同期で、昇格先は同期standby policyを設定しない
+`synchronous_commit=on`を維持し、servingは承認しません。
+report/referenceは`pgag-ha-drill-v3`と`pgag-ha-reference-v3`を使い、
+過去v2証跡をこの追加手順の認定へ読み替えません。
+
+制御された新nodeへの置換であり、**partitionした旧primaryのrejoin、自動failover、
+同期durabilityの再確立、本番RPO/RTOの認定ではありません**。
+[所有HA契約](operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)を参照してください。
+
+ローカルApple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6でv3 lifecycle全体が
+**25秒**で成功しました（観測値でありRTOではありません）。
+新timeline-2 backupは**53,729,280 bytes**で、置換先receive/replayはbackup終端`0/5000120`より先の
+`0/7000000`へ到達しました。元の結果不明とprobe後の完全状態が一致し、senderは非同期のまま、
+最後の旧primary fence確認も成功しています。永続report/reference modelも検証し、
+一時credential/config 3ファイルは削除済みです。
+
+Ruff、55 moduleのstrict型検査、**643 targeted passed / 既存live-DB依存25 skipped**に成功しました。
+空でないdirectory、古い/不一致のbackup・状態・lineage、証跡欠落、timeoutの拒否も対象です。
+service/schema/依存packageは変更していません。このv3 incrementのnative CI認定はまだ記録していません。
+
+## 以前のM5 increment: 所有HAでのCOMMIT結果不明の照合
 
 **0.4.0.dev1 / API v1 / schema 22**でopt-inのSQL-only HA rehearsalに、
 replay停止中のCOMMIT期限超過caseを追加します。制限付きruntime writerは共通guardと
@@ -22,7 +51,12 @@ timeline **1→2**でも元の結果不明とdispatched effect状態を保持し
 clientはreplay再開前に復帰し、drill全体は21秒でしたが、RTOとは扱いません。
 永続reportと照合referenceもv2 modelで検証しています。
 Ruff、55 moduleのstrict型検査、**493 targeted passed / 既存live-DB依存25 skipped**に成功しました。
-このv2 incrementのnative CI認定はまだ記録していません。
+実装`05900a6`はその後、
+[run35968449645](https://github.com/rioriost/pg_agmemory/actions/runs/35968449645)で
+native **全8ジョブ**（amd64/arm64のcore、HA、PITR、patched AGE）に成功しました。
+各coreは**3,840 passed / 134 skipped**、別途**18 COMMIT case**と**13 request case**、
+全install/packaged recovery lifecycleに成功しています。v2 HAは同じ5秒上限と、
+再開・本番認定を許可しない全flagを維持しています。
 
 最初のlive試行はtestの不正な前提でfail closedしました。
 `SyncRep`中はtransaction配列からまだ除去されず、通常のMVCC snapshotでlocal receiptが

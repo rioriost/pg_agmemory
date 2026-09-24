@@ -194,11 +194,25 @@ HTTP service、agent、worker daemonは起動しません。
 昇格先には**新しい同期standbyがない**ためdegradedを明示し、`serving_authorized`はfalseです。
 隔離testの切替であり、汎用自動failover controllerや継続的な損失ゼロ配置ではありません。
 
-終端`pgag-ha-drill-v2` reportは測定した事実と未測定nullを分けます。
+v3 drillは続いて、昇格先の新しいbasebackupから**新しい非同期置換standby**を構築します。
+archive前と新しい所有containerへ展開した後にmanifestを検証し、
+旧primaryのdirectoryや旧timelineのbackupをrejoinの近道として再利用しません。
+probe後のcanonical/processing fingerprint、source cursor、dispatched effectを
+read-only recoveryで完全照合し、物理identity、昇格後timeline、元の結果不明証跡も維持します。
+
+置換先のstreaming開始後、所有昇格先で時間制限付きWAL switchを行い、
+新backupより先の明示的な追従targetを作ります。その位置までのreplayは物理streamingの観測であり、
+新しいmemory mutation、effect再実行、将来のremote durabilityの証明ではありません。
+その後hostは、応答するengineで旧primary不在を再確認します。
+同期policyは復元せず、新senderは非同期、昇格先writer policyは`on`を維持し、
+`serving_authorized`はfalseです。`pg_rewind`、古いdirectory再利用、partitionしたprimaryのrejoin、
+自動failback、独立host/storage failure domainは認定しません。
+
+終端`pgag-ha-drill-v3` reportは測定した事実と未測定nullを分けます。
 backupは512 MiB、readiness待機90秒、昇格待機30秒を上限とし、phase時間をRTOとは扱いません。
 `uncertain_commit_reconciled`には対応する結果不明とreplicaの実測証跡が必要で、
-stage欠落をpassedにはできません。referenceは`pgag-ha-reference-v2`を使い、
-過去v1 reportを追加caseの認定へ読み替えません。
+stage欠落をpassedにはできません。置換backup検証、完全状態証跡、最後のlive fence再確認も必須です。
+referenceは`pgag-ha-reference-v3`を使い、過去v1/v2 reportを追加caseの認定へ読み替えません。
 `production_qualified`、`host_failure_domain_independent`、
 `network_partition_qualified`、`commit_timeout_qualified`、`automatic_failover`、
 `automatic_service_start`、`serving_authorized`、`effect_reexecution`はfalseを維持します。

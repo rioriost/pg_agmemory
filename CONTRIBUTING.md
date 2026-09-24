@@ -73,6 +73,10 @@ then reconciles exact state read-only before fencing and promotion. Keep the
 uncertain operation separate from acknowledged writes, preserve dispatched
 effects, and never use backend cancellation or replay writes to manufacture
 the measured outcome. Historical v1 reports cannot qualify this v2 case.
+The v3 replacement must start from a newly verified backup of the promoted
+timeline, preserve exact state read-only, advance streamed WAL beyond the backup,
+and recheck the original primary's fence. Do not reuse an old data directory or
+turn asynchronous replacement into serving/synchronous-durability authority.
 The exact 1,000-revision assertion/relation tests also exercise real deferred
 constraints inside that five-second budget, including replay and history.
 Migration 022 must preserve invoker RLS and all history/evidence/target checks.

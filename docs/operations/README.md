@@ -228,13 +228,33 @@ synchronous standby** and is explicitly degraded, so `serving_authorized` stays
 false. This is an isolated test transition, not a generally reusable automatic
 failover controller or a continued zero-loss deployment.
 
-The terminal `pgag-ha-drill-v2` report distinguishes measured facts from
+The v3 drill subsequently rebuilds a **fresh asynchronous replacement standby**
+from a new basebackup of the promoted node. It verifies the manifest before
+archiving and again after extraction into the new owned container. The original
+primary's directory and the original-timeline backup are never reused as a
+rejoin shortcut. Exact post-probe canonical/processing fingerprints, source
+cursor and dispatched-effect state must match under read-only recovery, with
+the same physical identity, promoted timeline and original uncertainty evidence.
+
+After the replacement starts streaming, a bounded WAL switch on the owned
+promoted node supplies an explicit catch-up target beyond the new backup.
+Replaying through that target is an observation of physical streaming, not a
+new memory mutation, a replayed tool effect or proof of future remote durability.
+The host then rechecks the original primary's absence with a responsive engine.
+No synchronous policy is restored: the new sender is asynchronous, the promoted
+writer policy stays `on`, and `serving_authorized` remains false.
+This does not qualify `pg_rewind`, stale-directory reuse, partitioned-primary
+rejoin, automatic failback or cross-host/storage failure independence.
+
+The terminal `pgag-ha-drill-v3` report distinguishes measured facts from
 unmeasured nulls. Backup size is bounded to 512 MiB, readiness waits to 90 seconds,
 and promotion wait to 30 seconds. Phase timings are observations, not RTO.
 `uncertain_commit_reconciled` requires the corresponding measured uncertainty
 and replica evidence; a missing stage cannot produce a passing report.
-References use `pgag-ha-reference-v2`; historical v1 reports do not qualify this
-additional case.
+Replacement backup verification, exact state evidence and the final live fence
+recheck are also mandatory for a passing report.
+References use `pgag-ha-reference-v3`; historical v1/v2 reports do not qualify
+the added cases.
 `production_qualified`, `host_failure_domain_independent`,
 `network_partition_qualified`, `commit_timeout_qualified`, `automatic_failover`,
 `automatic_service_start`, `serving_authorized` and `effect_reexecution` remain

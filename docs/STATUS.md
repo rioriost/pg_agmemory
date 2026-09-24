@@ -2,7 +2,42 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: owned HA uncertain-COMMIT reconciliation
+## M5 development: fresh replacement standby
+
+**0.4.0.dev1 / API v1 / schema 22** extends the owned SQL-only HA rehearsal
+after promotion with a fresh asynchronous replacement standby. A new physical
+basebackup comes from the promoted node, not the destroyed original primary.
+Both backup creation and restoration verify the manifest. Exact post-probe
+memory, checkpoint, processing, source and effect state are compared read-only
+on the replacement, preserving the original uncertain-COMMIT evidence.
+
+The lab also checks streaming WAL advancement beyond that backup and rechecks
+that the original primary remains absent. No old data directory, `pg_rewind`,
+same-key replay, application write, effect execution or daemon startup is used
+for this rebuild. The replacement is asynchronous: the promoted node retains
+`synchronous_commit=on` without synchronous standby policy, and serving remains
+unauthorized. New report/reference formats are `pgag-ha-drill-v3` and
+`pgag-ha-reference-v3`; prior v2 evidence does not qualify this additional step.
+
+This is a controlled fresh-node replacement, **not partitioned-primary rejoin,
+automatic failover, renewed synchronous durability or a production RPO/RTO**.
+See [the owned HA contract](operations/README.md#explicitly-fenced-owned-ha-rehearsal).
+
+Local Apple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6 passes the full
+v3 lifecycle in **25 seconds** (observation, not RTO). The fresh timeline-2
+backup is **53,729,280 bytes**; replacement receive/replay reaches `0/7000000`
+beyond backup end `0/5000120`. Original uncertainty and exact post-probe state
+match, the sender remains asynchronous, and the final original-primary fence
+check succeeds. Persisted report/reference models validate, and all three
+temporary credential/config files are removed.
+
+Ruff, strict typing for 55 modules and **643 targeted cases / 25 existing
+live-DB skips** pass, including nonempty-directory rejection, stale/mismatched
+backup/state/lineage, absent evidence and timeout failures. No service/schema/
+dependency change is introduced. Native CI qualification of this v3 increment
+is not yet recorded.
+
+## Previous M5 increment: owned HA uncertain-COMMIT reconciliation
 
 **0.4.0.dev1 / API v1 / schema 22** extends the opt-in SQL-only HA rehearsal
 with a separate replay-pause COMMIT deadline case. Restricted runtime writers
@@ -26,7 +61,12 @@ original uncertainty and dispatched-effect state preserved. The client exits
 before replay resumes; the entire drill takes 21 seconds, not an RTO claim.
 The persisted report and reconciled reference validate against their v2 models.
 Ruff, strict typing for 55 modules and **493 targeted cases / 25 existing live-DB
-skips** pass. Native CI qualification of this v2 increment is not yet recorded.
+skips** pass. The exact implementation `05900a6` subsequently passed **all eight
+native jobs** in [run35968449645](https://github.com/rioriost/pg_agmemory/actions/runs/35968449645):
+core, HA, PITR and patched AGE on amd64 and arm64. Each core passes **3,840 cases /
+134 skips**, followed by the separate **18 COMMIT** and **13 request** cases and
+the complete installation/packaged recovery lifecycle. The v2 HA jobs preserve
+the same five-second deadline and all no-restart/no-production-qualification flags.
 
 The first live attempt correctly failed closed on an invalid test assumption:
 the local receipt is not necessarily visible to an ordinary MVCC snapshot

@@ -5,7 +5,7 @@ import asyncio
 import importlib.util
 import json
 import subprocess
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -127,8 +127,53 @@ def reconcile_reference(reference, evidence):
     })
 
 
+def post_probe_reference():
+    _, promoted = references()
+    probe_id = uuid4()
+    return drill.Reference.model_validate(promoted.model_dump() | {
+        "stage": "post-probe",
+        "fixture": promoted.fixture.model_dump() | {"probe_id": probe_id},
+        "episodes": promoted.episodes + (drill.pitr.Episode(
+            object_id=probe_id, content_sha256="f" * 64,
+        ),),
+    })
+
+
+def replacement_observations():
+    primary = observation("promoted")
+    primary = primary.model_copy(update={
+        "primary_flush_lsn": "0/800",
+        "senders": primary.senders.model_copy(update={"total": 1, "physical_streaming": 1}),
+    })
+    standby = observation("standby").model_copy(update={
+        "received_lsn": "0/800", "replayed_lsn": "0/800",
+    })
+    return primary, standby
+
+
+def replacement_evidence(uncertain_id=None, probe_id=None):
+    primary, standby = replacement_observations()
+    return drill.ReplacementEvidence(
+        replacement_state_matches=True, kind="fresh_basebackup",
+        backup_manifest_verified=True, no_old_primary_reuse=True,
+        fresh_empty_data_directory=True, read_only_recovery=True, canonical_state_matches=True,
+        processing_state_matches=True, source_state_matches=True, effect_state_preserved=True,
+        streaming_wal_advance=True, synchronous_policy_renewed=False,
+        writer_synchronous_commit="on",
+        uncertain_id=uncertain_id or uuid4(), original_outcome_code="commit_outcome_unknown",
+        probe_id=probe_id or uuid4(), system_identifier="1234567890123456789", timeline=2,
+        backup=drill.pitr.Backup(
+            format="pgag-pitr-basebackup-v1", manifest_verified=True,
+            start_lsn="0/600", end_lsn="0/700", timeline=2,
+        ),
+        artifact=drill.pitr.Artifact(bytes=2048, sha256="e" * 64),
+        wal_target_lsn="0/800", primary=primary, standby=standby,
+    )
+
+
 def passed_report():
     reference, _ = references()
+    probe_id = uuid4()
     return drill.Report(
         status="passed", failure_code=None, source_destroyed=True, fencing_verified=True,
         pre_fence_promotion_rejected=True, promotion_executed=True, backup_verified=True,
@@ -136,6 +181,9 @@ def passed_report():
         uncertain_commit_reconciled=True, uncertain=reference.uncertain,
         acknowledged_state_matches=True, effect_state_preserved=True,
         postpromotion_probe_verified=True, timeline_before=1, timeline_after=2,
+        replacement_state_matches=True, original_primary_remains_fenced=True,
+        replacement_backup_verified=True,
+        replacement=replacement_evidence(reference.fixture.uncertain_id, probe_id),
         artifact=drill.pitr.Artifact(bytes=1024, sha256="a" * 64),
         synchronous=drill.SynchronousEvidence(
             writer_policy_verified=True, writer_synchronous_commit="remote_apply",
@@ -150,7 +198,7 @@ def passed_report():
             timeline_before=1, timeline_after=2, promoted=observation("promoted"),
         ),
         probe=drill.ProbeEvidence(
-            postpromotion_probe_verified=True, probe_id=uuid4(), baseline_state_changed=True,
+            postpromotion_probe_verified=True, probe_id=probe_id, baseline_state_changed=True,
             writer_synchronous_commit="on", no_synchronous_standby=True,
         ),
         elapsed_seconds={"total": 17.0},
@@ -159,7 +207,7 @@ def passed_report():
 
 def test_report_pins_schema_and_never_authorizes_general_serving():
     report = passed_report()
-    assert report.format == "pgag-ha-drill-v2"
+    assert report.format == "pgag-ha-drill-v3"
     assert report.service_version == __version__
     assert report.schema_version == 22 and report.api_version == "v1"
     assert report.postgres_version_num == 180006 and report.pgvector_version == "0.8.6"
@@ -182,6 +230,8 @@ def test_failed_report_keeps_unmeasured_facts_null():
         "promotion_executed", "backup_verified", "writer_policy_verified",
         "short_pause_blocked_ack", "uncertain_commit_reconciled",
         "acknowledged_state_matches", "effect_state_preserved", "postpromotion_probe_verified",
+        "replacement_state_matches", "original_primary_remains_fenced",
+        "replacement_backup_verified",
     ):
         assert getattr(report, field) is None
         with pytest.raises(ValidationError):
@@ -190,7 +240,8 @@ def test_failed_report_keeps_unmeasured_facts_null():
 
 @pytest.mark.parametrize("field", [
     "source_destroyed", "fencing_verified", "pre_fence_promotion_rejected", "promotion_executed",
-    "backup_verified", "artifact", "synchronous", "uncertain", "preserved", "probe",
+    "backup_verified", "artifact", "synchronous", "uncertain", "preserved", "probe", "replacement",
+    "original_primary_remains_fenced", "replacement_backup_verified",
 ])
 def test_pass_cannot_omit_its_evidence(field):
     with pytest.raises(ValidationError):
@@ -208,6 +259,7 @@ def test_promotion_observation_without_fencing_never_validates():
 @pytest.mark.parametrize("field", [
     "writer_policy_verified", "short_pause_blocked_ack", "acknowledged_state_matches",
     "effect_state_preserved", "postpromotion_probe_verified", "uncertain_commit_reconciled",
+    "replacement_state_matches",
 ])
 def test_measurement_cannot_be_invented_without_its_proof(field):
     with pytest.raises(ValidationError, match="unmeasured_or_inconsistent_evidence"):
@@ -237,6 +289,26 @@ def test_pass_cannot_skip_the_entire_uncertain_stage():
         })
 
 
+@pytest.mark.parametrize("status", ["passed", "failed"])
+@pytest.mark.parametrize("proof,flag", [(False, True), (True, None), (True, False)])
+def test_replacement_report_measurement_must_match_its_proof(status, proof, flag):
+    report = passed_report().model_dump() | {
+        "status": status, "failure_code": None if status == "passed" else "cleanup_failed",
+        "replacement_state_matches": flag,
+    }
+    if not proof:
+        report["replacement"] = None
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(report)
+
+
+def test_pass_cannot_skip_the_entire_replacement_stage():
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(passed_report().model_dump() | {
+            "replacement": None, "replacement_state_matches": None,
+        })
+
+
 def test_failed_report_can_preserve_measured_uncertainty_without_authority():
     completed = passed_report()
     report = drill.Report(
@@ -249,6 +321,210 @@ def test_failed_report_can_preserve_measured_uncertainty_without_authority():
     assert report.uncertain_commit_reconciled is True
     assert report.promotion_executed is None and report.fencing_verified is None
     assert report.serving_authorized is False and report.effect_reexecution is False
+
+
+@pytest.mark.parametrize("field", [
+    "backup_manifest_verified", "no_old_primary_reuse", "fresh_empty_data_directory",
+    "read_only_recovery", "canonical_state_matches", "processing_state_matches",
+    "source_state_matches", "effect_state_preserved", "streaming_wal_advance",
+    "replacement_state_matches",
+])
+@pytest.mark.parametrize("value", [None, False])
+def test_replacement_cannot_omit_or_negate_required_proof(field, value):
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(replacement_evidence().model_dump() | {
+            field: value,
+        })
+
+
+def test_replacement_requires_every_mandatory_measurement():
+    evidence = replacement_evidence().model_dump()
+    for field, definition in drill.ReplacementEvidence.model_fields.items():
+        if definition.is_required():
+            with pytest.raises(ValidationError):
+                drill.ReplacementEvidence.model_validate({
+                    key: value for key, value in evidence.items() if key != field
+                })
+
+
+@pytest.mark.parametrize("field", [
+    "production_qualified", "network_partition_qualified", "commit_timeout_qualified",
+    "automatic_failover", "automatic_service_start", "serving_authorized", "effect_reexecution",
+    "synchronous_policy_renewed",
+])
+def test_replacement_never_renews_policy_or_authorizes_serving_or_effects(field):
+    evidence = replacement_evidence()
+    assert getattr(evidence, field) is False
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(evidence.model_dump() | {field: True})
+
+
+@pytest.mark.parametrize("change", [
+    {"kind": "rejoin"}, {"kind": "pg_rewind"}, {"writer_synchronous_commit": "remote_apply"},
+    {"original_outcome_code": "committed"}, {"retryable": True},
+])
+def test_replacement_cannot_claim_rejoin_renewed_synchronous_policy_or_commit_success(change):
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(replacement_evidence().model_dump() | change)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("manifest_verified", False), ("timeline", 1), ("end_lsn", "0/800"),
+    ("start_lsn", "0/700"), ("start_lsn", "0/900"),
+])
+def test_replacement_requires_new_manifest_verified_backup_before_wal_target(field, value):
+    evidence = replacement_evidence().model_dump()
+    evidence["backup"][field] = value
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(evidence)
+
+
+@pytest.mark.parametrize("node,field", [
+    ("primary", "primary_flush_lsn"), ("standby", "received_lsn"), ("standby", "replayed_lsn"),
+])
+@pytest.mark.parametrize("lsn", [None, "0/700", "0/7FF"])
+def test_replacement_cannot_claim_wal_progress_before_both_receive_and_replay(node, field, lsn):
+    evidence = replacement_evidence().model_dump()
+    evidence[node][field] = lsn
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(evidence)
+
+
+@pytest.mark.parametrize("field", ["probe_id", "uncertain_id", "timeline"])
+def test_replacement_report_cannot_change_probe_uncertainty_or_promoted_timeline(field):
+    report = passed_report().model_dump()
+    report["replacement"][field] = 3 if field == "timeline" else uuid4()
+    if field == "timeline":
+        report["replacement"]["backup"]["timeline"] = 3
+    with pytest.raises(ValidationError, match="replacement_report_identity_mismatch"):
+        drill.Report.model_validate(report)
+
+
+def test_replacement_report_requires_the_verified_probe_first():
+    report = passed_report().model_dump() | {
+        "probe": None, "postpromotion_probe_verified": None, "replacement_backup_verified": None,
+    }
+    with pytest.raises(ValidationError, match="replacement_before_verified_probe_and_fence"):
+        drill.Report.model_validate(report)
+
+
+def test_replacement_report_cannot_invent_a_live_fence_from_json_evidence():
+    with pytest.raises(ValidationError, match="replacement_fence_not_verified"):
+        drill.Report(
+            status="failed", failure_code="replacement_failed", elapsed_seconds={"total": 1.0},
+            original_primary_remains_fenced=True,
+        )
+
+
+def test_replacement_backup_cannot_be_measured_before_the_verified_probe():
+    with pytest.raises(ValidationError, match="replacement_backup_before_verified_probe"):
+        drill.Report(
+            status="failed", failure_code="replacement_failed", elapsed_seconds={"total": 1.0},
+            replacement_backup_verified=True,
+        )
+
+
+def test_partial_failed_rebuild_retains_only_the_measured_backup_fact():
+    report = drill.Report.model_validate(passed_report().model_dump() | {
+        "status": "failed", "failure_code": "replacement_start_failed",
+        "replacement": None, "replacement_state_matches": None,
+        "original_primary_remains_fenced": None,
+    })
+    assert report.replacement_backup_verified is True
+    assert report.replacement_state_matches is None
+    assert report.original_primary_remains_fenced is None
+    assert not report.serving_authorized and not report.effect_reexecution
+
+
+@pytest.mark.parametrize("field", [
+    "fresh_empty_data_directory", "no_old_primary_reuse",
+])
+def test_replacement_ownership_requires_fresh_data_without_claiming_fence_authority(field):
+    ownership = {
+        "kind": "fresh_basebackup", "fresh_empty_data_directory": True,
+        "no_old_primary_reuse": True,
+    }
+    drill.ReplacementOwnership.model_validate(ownership)
+    with pytest.raises(ValidationError):
+        drill.ReplacementOwnership.model_validate(ownership | {field: False})
+    with pytest.raises(ValidationError):
+        drill.ReplacementOwnership.model_validate({
+            key: value for key, value in ownership.items() if key != field
+        })
+    with pytest.raises(ValidationError):
+        drill.ReplacementOwnership.model_validate(ownership | {
+            "original_primary_remains_fenced": True,
+        })
+
+
+@pytest.mark.parametrize("node,field,value", [
+    ("primary", "synchronous_commit", "remote_apply"),
+    ("primary", "synchronous_standby_configured", True),
+    ("primary", "schema_version", 21),
+    ("standby", "service_version", "0.0.0"),
+    ("standby", "synchronous_standby_configured", True),
+    ("standby", "synchronous_commit", "remote_apply"),
+    ("standby", "replay_paused", True),
+    ("standby", "transaction_read_only", False),
+])
+def test_replacement_observations_cannot_claim_renewed_policy_or_wrong_runtime(node, field, value):
+    evidence = replacement_evidence().model_dump()
+    evidence[node][field] = value
+    with pytest.raises(ValidationError):
+        drill.ReplacementEvidence.model_validate(evidence)
+
+
+@pytest.mark.parametrize("change", [
+    "missing_sender", "logical_sender", "synchronous_sender", "receiver_down", "promoted_receiver",
+])
+def test_replacement_requires_a_physical_asynchronous_streaming_pair(change):
+    primary, standby = replacement_observations()
+    if change in ("missing_sender", "logical_sender", "synchronous_sender"):
+        senders = primary.senders.model_dump()
+        if change == "missing_sender":
+            senders |= {"total": 0, "physical_streaming": 0}
+        elif change == "logical_sender":
+            senders |= {"physical_streaming": 0, "logical": 1}
+        else:
+            senders["physical_synchronous"] = 1
+        primary = primary.model_copy(update={"senders": primary.senders.model_copy(update=senders)})
+    elif change == "receiver_down":
+        standby = standby.model_copy(update={"receiver": standby.receiver.model_copy(
+            update={"streaming": False},
+        )})
+    else:
+        primary = primary.model_copy(update={"receiver": standby.receiver.model_copy()})
+    with pytest.raises(drill.pitr.DrillError):
+        drill.require_replacement_pair(primary, standby)
+
+
+def test_replacement_reference_preserves_probe_and_original_uncertain_state():
+    baseline = post_probe_reference()
+    replacement = drill.Reference.model_validate(baseline.model_dump() | {"stage": "replacement"})
+    assert len(replacement.episodes) == 6
+    assert len(replacement.fixture.acknowledged_ids) == 3
+    assert replacement.fixture.probe_id == baseline.fixture.probe_id
+    assert replacement.uncertain == baseline.uncertain
+    drill.check_preserved(baseline, replacement, promoted=False)
+    for version in (1, 2):
+        with pytest.raises(ValidationError):
+            drill.Reference.model_validate(replacement.model_dump() | {
+                "format": f"pgag-ha-reference-v{version}",
+            })
+
+
+@pytest.mark.parametrize("change", ["missing_probe", "missing_uncertain", "duplicate_probe"])
+def test_replacement_reference_cannot_drop_or_reuse_postprobe_identities(change):
+    baseline = post_probe_reference()
+    document = baseline.model_dump() | {"stage": "replacement"}
+    if change == "missing_probe":
+        document["fixture"]["probe_id"] = None
+    elif change == "missing_uncertain":
+        document["uncertain"] = None
+    else:
+        document["fixture"]["probe_id"] = document["fixture"]["uncertain_id"]
+    with pytest.raises(ValidationError):
+        drill.Reference.model_validate(document)
 
 
 @pytest.mark.parametrize("seconds", [-1.0, float("nan"), float("inf"), 7200.01])
@@ -295,16 +571,20 @@ def test_ha_uses_the_shared_production_commit_guard_without_timeout_override():
     )
 
 
-def test_old_report_format_cannot_claim_uncertain_commit_evidence():
+@pytest.mark.parametrize("version", [1, 2])
+def test_old_report_format_cannot_claim_new_evidence(version):
     with pytest.raises(ValidationError):
-        drill.Report.model_validate(passed_report().model_dump() | {"format": "pgag-ha-drill-v1"})
+        drill.Report.model_validate(passed_report().model_dump() | {
+            "format": f"pgag-ha-drill-v{version}",
+        })
 
 
-def test_old_reference_format_cannot_claim_reconciled_state():
+@pytest.mark.parametrize("version", [1, 2])
+def test_old_reference_format_cannot_claim_reconciled_state(version):
     reference, _ = references()
     with pytest.raises(ValidationError):
         drill.Reference.model_validate(reference.model_dump() | {
-            "format": "pgag-ha-reference-v1",
+            "format": f"pgag-ha-reference-v{version}",
         })
 
 
@@ -413,7 +693,7 @@ def test_uncertainty_cannot_be_reported_before_the_synchronous_stage():
 
 def test_reconciled_reference_keeps_three_acks_and_one_separate_unknown():
     reference, promoted = references()
-    assert reference.format == "pgag-ha-reference-v2"
+    assert reference.format == "pgag-ha-reference-v3"
     assert reference.stage == "reconciled" and len(reference.fixture.acknowledged_ids) == 3
     assert reference.fixture.uncertain_id not in reference.fixture.acknowledged_ids
     assert len(reference.episodes) == 5
@@ -1131,6 +1411,355 @@ def test_reconciled_reference_requires_the_original_separate_uncertain_proof(mon
     ]
 
 
+@pytest.fixture
+def replacement_harness(monkeypatch):
+    def build(mode):
+        baseline = post_probe_reference()
+        proof = replacement_evidence(baseline.fixture.uncertain_id, baseline.fixture.probe_id)
+        completed = passed_report()
+        documents = {
+            "replacement-owned.json": drill.ReplacementOwnership(
+                kind="fresh_basebackup", fresh_empty_data_directory=True,
+                no_old_primary_reuse=True,
+            ),
+            "post-probe.json": baseline,
+            "uncertain.json": baseline.uncertain,
+            "probe.json": completed.probe.model_copy(update={
+                "probe_id": baseline.fixture.probe_id,
+            }),
+            "preserved.json": completed.preserved.model_copy(update={
+                "uncertain_id": baseline.fixture.uncertain_id,
+            }),
+            "replacement-backup.json": proof.backup,
+        }
+        state = SimpleNamespace(
+            events=[], written=[], seconds=0.0, polls=0, inspections=0, primary_captures=0,
+        )
+        if mode == "wrong_stage":
+            documents["post-probe.json"] = references()[1]
+        elif mode == "changed_uncertainty":
+            documents["uncertain.json"] = uncertain_evidence(baseline.fixture.uncertain_id)
+            documents["uncertain.json"] = documents["uncertain.json"].model_copy(update={
+                "commit_wait_seconds": 6.0,
+            })
+        elif mode == "wrong_probe":
+            documents["probe.json"] = documents["probe.json"].model_copy(update={
+                "probe_id": uuid4(),
+            })
+        elif mode == "wrong_backup_timeline":
+            documents["replacement-backup.json"] = proof.backup.model_copy(update={"timeline": 1})
+        elif mode == "stale_backup":
+            documents["replacement-backup.json"] = proof.backup.model_copy(update={
+                "start_lsn": "0/400", "end_lsn": "0/450",
+            })
+        elif mode == "unverified_manifest":
+            documents["replacement-backup.json"] = proof.backup.model_copy(update={
+                "manifest_verified": False,
+            })
+        elif mode == "old_primary_reused":
+            documents["replacement-owned.json"] = documents["replacement-owned.json"].model_copy(
+                update={"no_old_primary_reuse": False},
+            )
+
+        def read(directory, name, model):
+            assert directory == Path("/drill")
+            state.events.append(("read", name))
+            if mode == "missing_backup" and name == "replacement-backup.json":
+                raise FileNotFoundError("synthetic_missing_backup")
+            if mode == "missing_ownership" and name == "replacement-owned.json":
+                raise FileNotFoundError("synthetic_missing_ownership")
+            return model.model_validate(documents[name].model_dump())
+
+        def inspect(path, limit):
+            assert path == Path("/drill/replacement-basebackup.tar")
+            assert limit == drill.pitr.MAX_BACKUP_BYTES
+            state.inspections += 1
+            if mode == "invalid_artifact":
+                raise drill.pitr.DrillError("incomplete_basebackup")
+            if mode == "changed_artifact" and state.inspections == 2:
+                return proof.artifact.model_copy(update={"sha256": "f" * 64})
+            return proof.artifact
+
+        def capture(url, stage, fixture, recovery=False, uncertain=None):
+            assert fixture == baseline.fixture and uncertain == baseline.uncertain
+            state.events.append(("capture", stage, recovery))
+            if stage == "post-probe":
+                assert url == "host=owned-promoted" and not recovery
+                state.primary_captures += 1
+                candidate = baseline
+                if mode == "primary_changed" and state.primary_captures == 2:
+                    candidate = baseline.model_copy(update={"content": ()})
+                return candidate
+            assert url == "host=owned-replacement" and stage == "replacement" and recovery
+            candidate = baseline.model_copy(update={"stage": "replacement"})
+            if mode == "wrong_lineage":
+                candidate = candidate.model_copy(update={
+                    "processing": baseline.processing.model_copy(update={"lineage": "f" * 64}),
+                })
+            elif mode == "wrong_system":
+                candidate = candidate.model_copy(update={"control": baseline.control.model_copy(
+                    update={"system_identifier": "42"},
+                )})
+            elif mode == "wrong_timeline":
+                candidate = candidate.model_copy(update={"control": baseline.control.model_copy(
+                    update={"timeline": 1},
+                )})
+            elif mode == "missing_probe":
+                candidate = candidate.model_copy(update={"episodes": baseline.episodes[:-1]})
+            elif mode == "changed_effect":
+                candidate = candidate.model_copy(update={"effect_status": "confirmed"})
+            elif mode == "changed_source":
+                candidate = candidate.model_copy(update={
+                    "source_cursor": baseline.source_cursor.model_copy(update={"sequence": 2}),
+                })
+            return candidate
+
+        class Connection:
+            def __init__(self, host):
+                self.host = host
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, query, params=None):
+                state.events.append(("sql", self.host, query))
+                if self.host == "owned-replacement":
+                    assert query.startswith("SELECT pg_is_in_recovery()")
+                    assert params == (proof.wal_target_lsn, proof.wal_target_lsn)
+                    state.polls += 1
+                    row = {
+                        "recovering": mode != "not_recovering", "read_only": (
+                            "off" if mode == "writable" else "on"
+                        ), "paused": mode == "paused",
+                        "received": True,
+                        "replayed": not (
+                            mode == "timeout" or mode == "lagging" and state.polls == 1
+                        ),
+                    }
+                elif "pg_stat_replication" in query:
+                    rows = [{
+                        "application_name": drill.REPLACEMENT_APPLICATION, "state": "streaming",
+                        "sync_state": "async",
+                    }]
+                    if mode == "wrong_sender":
+                        rows[0]["application_name"] = drill.APPLICATION
+                    return SimpleNamespace(fetchall=lambda: rows)
+                elif query.startswith("SELECT %s::pg_lsn"):
+                    backup = documents["replacement-backup.json"]
+                    assert params == (
+                        backup.start_lsn, baseline.control.lsn, backup.end_lsn, backup.start_lsn,
+                    )
+                    row = {"fresh": (
+                        drill.pitr.lsn_number(backup.start_lsn)
+                        >= drill.pitr.lsn_number(baseline.control.lsn)
+                        and drill.pitr.lsn_number(backup.end_lsn)
+                        > drill.pitr.lsn_number(backup.start_lsn)
+                    )}
+                elif query in ("CHECKPOINT", "SELECT pg_switch_wal()"):
+                    row = None
+                else:
+                    assert query.startswith("WITH flushed AS MATERIALIZED")
+                    assert params == (proof.backup.end_lsn,)
+                    row = {"lsn": proof.wal_target_lsn, "advanced": mode != "no_wal_advance"}
+                return SimpleNamespace(fetchone=lambda: row)
+
+        def connect(url, **kwargs):
+            params = drill.conninfo_to_dict(url)
+            assert kwargs == {"autocommit": True, "row_factory": drill.dict_row}
+            assert params["host"] in ("owned-promoted", "owned-replacement")
+            if params["host"] == "owned-replacement":
+                assert "default_transaction_read_only=on" in params["options"]
+            state.events.append(("connect", params["host"]))
+            return Connection(params["host"])
+
+        def wait_pair(primary, replacement):
+            assert primary == "host=owned-promoted" and replacement == "host=owned-replacement"
+            state.events.append("physical-pair")
+            return replacement_observations()
+
+        def sleep(seconds):
+            assert seconds == 0.1
+            state.seconds += 30
+
+        monkeypatch.setattr(drill, "read", read)
+        monkeypatch.setattr(drill.pitr, "inspect_tar", inspect)
+        monkeypatch.setattr(drill, "capture", capture)
+        monkeypatch.setattr(drill, "wait_replacement_pair", wait_pair)
+        monkeypatch.setattr(drill, "psycopg", SimpleNamespace(connect=connect))
+        monkeypatch.setattr(drill, "time", SimpleNamespace(
+            monotonic=lambda: state.seconds, sleep=sleep,
+        ))
+        monkeypatch.setattr(drill, "write_new", lambda directory, name, model: state.written.append(
+            (name, model),
+        ))
+        return baseline, state
+
+    return build
+
+
+@pytest.mark.parametrize("mode", ["matched", "lagging"])
+def test_replacement_uses_fresh_backup_then_wal_and_readonly_exact_postprobe_state(
+    replacement_harness, mode,
+):
+    baseline, state = replacement_harness(mode)
+    drill.replacement(Path("/drill"), "host=owned-promoted", "host=owned-replacement")
+    assert [name for name, _ in state.written] == ["replacement-reference.json", "replacement.json"]
+    candidate, evidence = (model for _, model in state.written)
+    assert candidate.uncertain == baseline.uncertain
+    assert candidate.fixture == baseline.fixture and candidate.episodes == baseline.episodes
+    assert evidence.original_outcome_code == "commit_outcome_unknown"
+    assert evidence.writer_synchronous_commit == "on" and not evidence.synchronous_policy_renewed
+    assert not evidence.serving_authorized and not evidence.effect_reexecution
+    assert state.inspections == 2 and state.primary_captures == 2
+    assert state.polls == (2 if mode == "lagging" else 1)
+    commands = [
+        event[2] for event in state.events if isinstance(event, tuple) and event[0] == "sql"
+    ]
+    assert commands.count("CHECKPOINT") == commands.count("SELECT pg_switch_wal()") == 1
+    assert commands.index("CHECKPOINT") < commands.index("SELECT pg_switch_wal()")
+    assert all(command.startswith(("SELECT ", "WITH ")) or command == "CHECKPOINT"
+               for command in commands)
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("missing_ownership", FileNotFoundError, "synthetic_missing_ownership"),
+    ("missing_backup", FileNotFoundError, "synthetic_missing_backup"),
+    ("old_primary_reused", ValidationError, "no_old_primary_reuse"),
+    ("unverified_manifest", ValidationError, "manifest_verified"),
+    ("wrong_stage", drill.pitr.DrillError, "post_probe_reference_required"),
+    ("changed_uncertainty", drill.pitr.DrillError, "original_uncertainty_changed"),
+    ("wrong_probe", drill.pitr.DrillError, "replacement_baseline_identity_mismatch"),
+    ("wrong_backup_timeline", drill.pitr.DrillError, "replacement_backup_timeline_mismatch"),
+    ("stale_backup", drill.pitr.DrillError, "replacement_backup_not_fresh"),
+    ("invalid_artifact", drill.pitr.DrillError, "incomplete_basebackup"),
+    ("changed_artifact", drill.pitr.DrillError, "replacement_backup_artifact_changed"),
+    ("wrong_sender", drill.pitr.DrillError, "owned_replacement_sender_required"),
+    ("no_wal_advance", drill.pitr.DrillError, "replacement_wal_not_advanced"),
+    ("not_recovering", drill.pitr.DrillError, "replacement_read_only_recovery_required"),
+    ("writable", drill.pitr.DrillError, "replacement_read_only_recovery_required"),
+    ("paused", drill.pitr.DrillError, "replacement_read_only_recovery_required"),
+    ("timeout", drill.pitr.DrillError, "replacement_wal_replay_timeout"),
+    ("wrong_lineage", drill.AdminError, "processing_recovery_lineage_mismatch"),
+    ("wrong_system", drill.pitr.DrillError, "physical_cluster_identity_mismatch"),
+    ("wrong_timeline", drill.pitr.DrillError, "timeline_mismatch"),
+    ("missing_probe", drill.pitr.DrillError, "acknowledged_content_mismatch"),
+    ("primary_changed", drill.pitr.DrillError, "acknowledged_content_mismatch"),
+    ("changed_effect", drill.pitr.DrillError, "source_or_effect_state_mismatch"),
+    ("changed_source", drill.pitr.DrillError, "source_or_effect_state_mismatch"),
+])
+def test_replacement_rejects_missing_stale_or_mutated_proof_without_success(
+    replacement_harness, mode, error, code,
+):
+    _, state = replacement_harness(mode)
+    with pytest.raises(error, match=code):
+        drill.replacement(Path("/drill"), "host=owned-promoted", "host=owned-replacement")
+    assert state.written == []
+    assert sum(event == ("sql", "owned-promoted", "SELECT pg_switch_wal()")
+               for event in state.events) <= 1
+
+
+@pytest.mark.parametrize("primary,replacement", [
+    (None, "host=owned-replacement"), ("host=owned-promoted", None),
+    ("host=same-owned-node", "host=same-owned-node"),
+])
+def test_replacement_requires_a_separate_new_node_before_reading_evidence(
+    monkeypatch, primary, replacement,
+):
+    def forbidden_read(*args):
+        raise AssertionError("unowned_replacement_must_not_read_evidence")
+
+    monkeypatch.setattr(drill, "read", forbidden_read)
+    with pytest.raises(drill.pitr.DrillError, match=(
+        "distinct_owned_database_required" if primary == replacement
+        else "owned_replacement_required"
+    )):
+        drill.replacement(Path("/drill"), primary, replacement)
+
+
+@pytest.mark.parametrize("becomes_ready", [False, True])
+def test_replacement_pair_wait_is_bounded_and_requires_a_real_stream(becomes_ready, monkeypatch):
+    primary, standby = replacement_observations()
+    state = SimpleNamespace(seconds=0.0, polls=0)
+
+    def replication_status(url):
+        if url == "owned-replacement":
+            return standby
+        assert url == "owned-promoted"
+        state.polls += 1
+        return primary if becomes_ready and state.polls > 1 else observation("promoted")
+
+    def sleep(seconds):
+        assert seconds == 0.1
+        state.seconds += 30
+
+    monkeypatch.setattr(drill, "replication_status", replication_status)
+    monkeypatch.setattr(drill, "time", SimpleNamespace(
+        monotonic=lambda: state.seconds, sleep=sleep,
+    ))
+    if becomes_ready:
+        assert drill.wait_replacement_pair("owned-promoted", "owned-replacement") == (
+            primary, standby,
+        )
+        assert state.polls == 2
+    else:
+        with pytest.raises(drill.pitr.DrillError, match="replacement_streaming_pair_unavailable"):
+            drill.wait_replacement_pair("owned-promoted", "owned-replacement")
+        assert state.seconds == 60 and state.polls == 3
+
+
+@pytest.mark.parametrize("already_exists", [False, True])
+def test_replacement_config_is_private_create_only_and_targets_the_promoted_node(
+    monkeypatch, already_exists,
+):
+    written = []
+    original_os = drill.os
+
+    def open_file(path, flags, mode):
+        assert path == Path("/drill/.replacement.conf")
+        assert flags == (
+            original_os.O_WRONLY | original_os.O_CREAT | original_os.O_EXCL | original_os.O_NOFOLLOW
+        )
+        assert mode == 0o600
+        if already_exists:
+            raise FileExistsError("synthetic_existing_replacement_config")
+        return 123
+
+    @contextmanager
+    def fdopen(fd, mode):
+        assert fd == 123 and mode == "w"
+        yield SimpleNamespace(write=written.append)
+
+    monkeypatch.setattr(drill, "secret", lambda name: "a" * 64)
+    monkeypatch.setattr(drill, "os", SimpleNamespace(
+        open=open_file, fdopen=fdopen,
+        **{name: getattr(original_os, name)
+           for name in ("O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW")},
+    ))
+    if already_exists:
+        with pytest.raises(FileExistsError):
+            drill.write_replication_config(
+                Path("/drill"), ".replacement.conf", "host=owned-promoted",
+                drill.REPLACEMENT_APPLICATION,
+            )
+        assert written == []
+    else:
+        drill.write_replication_config(
+            Path("/drill"), ".replacement.conf", "host=owned-promoted",
+            drill.REPLACEMENT_APPLICATION,
+        )
+        assert len(written) == 1
+        params = drill.conninfo_to_dict(
+            written[0].removeprefix("primary_conninfo = '").removesuffix("'\n"),
+        )
+        assert params["host"] == "owned-promoted"
+        assert params["user"] == "pgag_ha_replication"
+        assert params["application_name"] == drill.REPLACEMENT_APPLICATION
+        assert params["connect_timeout"] == "5"
+
+
 def guard_script():
     text = RUNNER.read_text()
     return "owned_promote() {" + text.split("owned_promote() {", 1)[1].split(
@@ -1142,6 +1771,7 @@ def guard_script():
     ("allow_owned_promotion=false", 41, 0),
     ("source_destroyed=null; fencing_verified=null", 42, 0),
     ("source_destroyed=null; fencing_verified=null; uncertain_commit_reconciled=true", 42, 0),
+    ("source_destroyed=null; fencing_verified=null; replacement_state_matches=true", 42, 0),
     ("source_destroyed=true; fencing_verified=null", 42, 0),
     ("pre_fence_promotion_rejected=null", 43, 0),
     ("standby=unowned-candidate", 44, 0),
@@ -1240,7 +1870,8 @@ def test_main_dispatches_uncertain_phase_with_only_owned_pair(monkeypatch, capsy
         events.append((directory, primary, standby))
 
     monkeypatch.setattr(
-        drill, "owned_environment", lambda: (Path("/drill"), "owned-primary", "owned-standby"),
+        drill, "owned_environment",
+        lambda: (Path("/drill"), "owned-primary", "owned-standby", None),
     )
     monkeypatch.setattr(drill, "uncertain", uncertain)
     assert drill.main(["uncertain"]) == 0
@@ -1256,7 +1887,8 @@ def test_uncertain_stage_error_is_redacted_and_cannot_write_success(monkeypatch,
         raise RuntimeError("postgresql://private-password@external-host/database")
 
     monkeypatch.setattr(
-        drill, "owned_environment", lambda: (Path("/drill"), "owned-primary", "owned-standby"),
+        drill, "owned_environment",
+        lambda: (Path("/drill"), "owned-primary", "owned-standby", None),
     )
     monkeypatch.setattr(drill, "uncertain", uncertain)
     monkeypatch.setattr(drill, "write_new", lambda *args: records.append(args))
@@ -1265,6 +1897,34 @@ def test_uncertain_stage_error_is_redacted_and_cannot_write_success(monkeypatch,
     output = capsys.readouterr()
     assert output.out == "" and output.err == "ha_stage_failed\n"
     assert "private-password" not in repr(records)
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_main_routes_replacement_from_promoted_node_without_reusing_destroyed_primary(
+    monkeypatch, capsys, failed,
+):
+    events, written = [], []
+
+    def replacement(directory, promoted, fresh):
+        events.append((directory, promoted, fresh))
+        if failed:
+            raise RuntimeError("postgresql://private-password@external-host/database")
+
+    monkeypatch.setattr(
+        drill, "owned_environment",
+        lambda: (
+            Path("/drill"), "forbidden-destroyed-primary", "owned-promoted", "owned-replacement",
+        ),
+    )
+    monkeypatch.setattr(drill, "replacement", replacement)
+    monkeypatch.setattr(drill, "write_new", lambda *args: written.append(args))
+    assert drill.main(["replacement"]) == int(failed)
+    assert events == [(Path("/drill"), "owned-promoted", "owned-replacement")]
+    assert [record[1] for record in written] == (["failure.json"] if failed else [])
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ("ha_stage_failed\n" if failed else "")
+    assert "private-password" not in repr(written)
 
 
 @pytest.mark.parametrize("engine,host", [
@@ -1283,6 +1943,71 @@ def test_helper_rejects_nonowned_or_external_database_hosts(monkeypatch, engine,
         drill.owned_environment()
 
 
+@pytest.fixture
+def replacement_environment(monkeypatch):
+    run = "pgag-ha-1-2-1234567890abcdef"
+    for name in ("PGAG_DATABASE_URL", "PGAG_ADMIN_DATABASE_URL", "PGHOST", "PGSERVICE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(drill.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(Path, "lstat", lambda path: SimpleNamespace(st_mode=0o40700))
+    monkeypatch.setattr(drill, "secret", lambda name: "a" * 64)
+    monkeypatch.setenv("PGAG_HA_OWNED_RUN", run)
+    monkeypatch.setenv("PGAG_HA_ALLOW_OWNED_PROMOTION", "1")
+
+    def configure(engine, host):
+        monkeypatch.setenv("PGAG_HA_ENGINE", engine)
+        monkeypatch.setenv("PGAG_HA_PRIMARY_HOST", run + "-primary" if engine == "docker"
+                           else "10.0.0.2")
+        monkeypatch.setenv("PGAG_HA_STANDBY_HOST", run + "-standby" if engine == "docker"
+                           else "10.0.0.3")
+        monkeypatch.setenv("PGAG_HA_REPLACEMENT_HOST", host)
+
+    return run, configure
+
+
+@pytest.mark.parametrize("engine,host", [
+    ("docker", "unowned-replacement"),
+    ("docker", "pgag-ha-1-2-1234567890abcdef-primary"),
+    ("docker", "pgag-ha-1-2-1234567890abcdef-standby"),
+    ("docker", "pgag-ha-1-2-0000000000000000-replacement"),
+    ("container", "8.8.8.8"), ("container", "127.0.0.1"),
+    ("container", "169.254.1.2"), ("container", "0.0.0.0"),
+    ("container", "224.0.0.1"), ("container", "::1"),
+])
+def test_replacement_host_cannot_target_the_old_primary_or_an_external_host(
+    replacement_environment, engine, host,
+):
+    _, configure = replacement_environment
+    configure(engine, host)
+    with pytest.raises(drill.pitr.DrillError, match="owned_database_required"):
+        drill.owned_environment()
+
+
+@pytest.mark.parametrize("engine", ["docker", "container"])
+def test_replacement_environment_returns_a_separately_owned_database_url(
+    replacement_environment, engine,
+):
+    run, configure = replacement_environment
+    host = run + "-replacement" if engine == "docker" else "10.0.0.4"
+    configure(engine, host)
+    directory, primary, promoted, replacement = drill.owned_environment()
+    assert directory == Path("/drill")
+    assert len({primary, promoted, replacement}) == 3
+    params = drill.conninfo_to_dict(replacement)
+    assert params["host"] == host and params["connect_timeout"] == "5"
+    assert params["options"] == "-c statement_timeout=5000 -c lock_timeout=5000"
+
+
+@pytest.mark.parametrize("host", ["10.0.0.2", "10.0.0.3"])
+def test_private_ip_replacement_cannot_reuse_either_existing_database(
+    replacement_environment, host,
+):
+    _, configure = replacement_environment
+    configure("container", host)
+    with pytest.raises(drill.pitr.DrillError, match="distinct_owned_database_required"):
+        drill.owned_environment()
+
+
 @pytest.mark.parametrize("image_owned", ["false", "true"])
 def test_failed_cleanup_removes_only_recorded_owned_resources(image_owned):
     cleanup = RUNNER.read_text().split("cleanup() {", 1)[1].split(
@@ -1293,12 +2018,14 @@ def test_failed_cleanup_removes_only_recorded_owned_resources(image_owned):
 exec 3>&1
 directory=nonexistent-ha-contract-output
 primary=owned-primary
-containers=(owned-primary owned-standby owned-verify)
+containers=(owned-primary owned-standby owned-verify owned-replacement)
 source_destroyed=true
 fencing_verified=true
 pre_fence_promotion_rejected=true
 promotion_executed=true
 backup_verified=true
+replacement_backup_verified=true
+original_primary_remains_fenced=true
 network_created=false
 image_owned={image_owned}
 image=explicit-owned-image
@@ -1319,18 +2046,22 @@ cleanup
         capture_output=True, text=True, check=False,
     )
     assert result.returncode == 1
-    expected = ["container:owned-standby", "container:owned-verify"]
+    expected = [
+        "container:owned-standby", "container:owned-verify", "container:owned-replacement",
+    ]
     if image_owned == "true":
         expected.append("engine:image rm explicit-owned-image")
     expected += [
         "rm:-f", "rm:--", "rm:nonexistent-ha-contract-output/.credentials.env",
         "rm:nonexistent-ha-contract-output/.standby.conf",
+        "rm:nonexistent-ha-contract-output/.replacement.conf",
     ]
     assert result.stdout.splitlines() == expected
 
 
 @pytest.mark.parametrize("missing", [
-    None, "uncertain", "synchronous", "preserved", "probe", "artifact",
+    None, "uncertain", "synchronous", "preserved", "probe", "artifact", "replacement_evidence",
+    "replacement_backup_verified", "original_primary_remains_fenced",
 ])
 @pytest.mark.parametrize("initial_status", [0, 1])
 def test_terminal_report_gate_requires_uncertain_evidence_and_preserves_failure(
@@ -1347,11 +2078,14 @@ fencing_verified=true
 pre_fence_promotion_rejected=true
 promotion_executed=true
 backup_verified=true
+replacement_backup_verified=true
+original_primary_remains_fenced=true
 synchronous='{{}}'
 uncertain='{{}}'
 preserved='{{}}'
 probe='{{}}'
 artifact='{{}}'
+replacement_evidence='{{}}'
 """
     if missing is not None:
         setup += f"{missing}=null\n"
@@ -1369,9 +2103,14 @@ def test_terminal_report_merges_uncertain_proof_without_promoting_qualification(
     assert 'if [[ -f "$directory/uncertain.json" ]]' in cleanup
     assert '"$directory/uncertain.json")" || status=1' in cleanup
     assert '--argjson uncertain "$uncertain"' in cleanup
-    assert 'format: "pgag-ha-drill-v2"' in cleanup
+    assert 'format: "pgag-ha-drill-v3"' in cleanup
     assert "uncertain_commit_reconciled: $uncertain.uncertain_commit_reconciled" in cleanup
     assert "uncertain: $uncertain" in cleanup
+    assert 'if [[ -f "$directory/replacement.json" ]]' in cleanup
+    assert '"$directory/replacement.json")" || status=1' in cleanup
+    assert '--argjson replacement "$replacement_evidence"' in cleanup
+    assert "replacement_state_matches: $replacement.replacement_state_matches" in cleanup
+    assert "replacement: $replacement" in cleanup
     for flag in (
         "production_qualified", "host_failure_domain_independent", "network_partition_qualified",
         "commit_timeout_qualified", "automatic_failover", "automatic_service_start",
@@ -1398,7 +2137,7 @@ def test_failure_record_write_error_is_explicit_and_redacted(monkeypatch, capsys
     def fail_record(*args):
         raise OSError("private-file-path")
 
-    monkeypatch.setattr(drill, "owned_environment", lambda: (Path("/drill"), "owned", None))
+    monkeypatch.setattr(drill, "owned_environment", lambda: (Path("/drill"), "owned", None, None))
     monkeypatch.setattr(drill, "seed", fail_seed)
     monkeypatch.setattr(drill, "write_new", fail_record)
     assert drill.main(["seed"]) == 1
@@ -1430,3 +2169,109 @@ def test_runner_order_private_credentials_and_owned_only_cleanup():
     assert "source_destroyed=null" in script and "promotion_executed=null" in script
     assert "--publish" not in script and "rm -rf" not in script and "system prune" not in script
     assert "0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167" in script
+
+
+def test_runner_rebuilds_only_after_probe_from_promoted_node_then_rechecks_original_fence():
+    script = RUNNER.read_text()
+    replacement = script.split("phase verify\n", 1)[1]
+    markers = [
+        "failure_code=replacement_basebackup_failed\n",
+        'verify_primary_absent\n', '"$engine" exec "$standby" bash -ceu',
+        "gosu postgres pg_basebackup", "--manifest-checksums=SHA256",
+        "gosu postgres pg_verifybackup", "replacement_backup_verified=true\n",
+        '"$directory/replacement-backup.json"', '"$directory/replacement-basebackup.tar"',
+        'containers+=("$replacement")', 'run -d --name "$replacement"',
+        'contents="$(ls -A "$PGDATA")"', 'test -z "$contents"',
+        "-xf /drill/replacement-basebackup.tar", 'gosu postgres pg_verifybackup "$PGDATA"',
+        'cat /drill/.replacement.conf >> "$PGDATA/postgresql.auto.conf"',
+        'wait_database "$replacement"', '"$directory/replacement-owned.json"',
+        "phase replacement\n",
+        "failure_code=replacement_fence_recheck_failed\n", "original_primary_remains_fenced=true\n",
+    ]
+    positions = [replacement.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    final = replacement.split("phase replacement\n", 1)[1]
+    assert final.index("verify_primary_absent\n") < final.index(
+        "original_primary_remains_fenced=true",
+    )
+    assert '"$engine" exec "$primary"' not in replacement
+    assert 'run -d --name "$primary"' not in replacement
+    assert "pg_rewind" not in replacement and "/drill/basebackup.tar" not in replacement
+    assert '-e "PGAG_HA_REPLACEMENT_HOST=$replacement_host"' in script
+    assert 'replacement="${run_id}-replacement"' in script
+    assert '"$directory/.replacement.conf"' in script.split("cleanup() {", 1)[1]
+
+
+@pytest.mark.parametrize("stage,engine_status", [
+    ("replacement", 0), ("verify", 0), ("replacement", 7),
+])
+def test_phase_helper_never_collides_with_replacement_database_and_propagates_failure(
+    stage, engine_status,
+):
+    script = RUNNER.read_text()
+    phase = "phase() {" + script.split("phase() {", 1)[1].split("\nwait_database() {", 1)[0]
+    result = subprocess.run(
+        ["bash", "-c", f"""
+set -e
+exec 3>&1
+run_id=pgag-ha-1-2-1234567890abcdef
+replacement=$run_id-replacement
+containers=("$replacement")
+engine=fake_engine
+network=owned-network
+directory=synthetic-output
+image=owned-image
+primary_host=
+standby_host=$run_id-standby
+replacement_host=$replacement
+fake_engine() {{
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == --name ]]; then
+            printf 'helper:%s\\n' "$2" >&3
+            return {engine_status}
+        fi
+        shift
+    done
+    return 1
+}}
+record_elapsed() {{ printf 'timed:%s\\n' "$1"; }}
+{phase}
+phase {stage}
+printf 'owned:%s\\n' "${{containers[@]}}"
+"""],
+        capture_output=True, text=True, check=False,
+    )
+    helper = "pgag-ha-1-2-1234567890abcdef-" + (
+        "replacement-check" if stage == "replacement" else stage
+    )
+    assert result.returncode == engine_status and result.stderr == ""
+    expected = [f"helper:{helper}"]
+    if engine_status == 0:
+        expected += [
+            f"timed:{stage}", "owned:pgag-ha-1-2-1234567890abcdef-replacement", f"owned:{helper}",
+        ]
+    assert result.stdout.splitlines() == expected
+
+
+@pytest.mark.parametrize("contents", ["", "PG_VERSION", ".hidden-prior-data"])
+def test_replacement_start_checks_empty_directory_before_extracting_backup(contents):
+    script = RUNNER.read_text().split("failure_code=replacement_start_failed\n", 1)[1]
+    guard = 'contents="$(ls -A "$PGDATA")"' + script.split(
+        'contents="$(ls -A "$PGDATA")"', 1,
+    )[1].split('        chown -R postgres:postgres "$PGDATA"', 1)[0]
+    result = subprocess.run(
+        ["bash", "-c", f"""
+set -e
+PGDATA=synthetic-owned-directory
+ls() {{ printf '%s' '{contents}'; }}
+timeout() {{
+    [[ "$1 $2 $3 $4" == '90s tar --no-same-owner -xf' ]]
+    [[ "$5 $6 $7" == '/drill/replacement-basebackup.tar -C synthetic-owned-directory' ]]
+    printf 'extracted\\n'
+}}
+{guard}
+"""],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == (1 if contents else 0)
+    assert result.stdout == ("" if contents else "extracted\n") and result.stderr == ""

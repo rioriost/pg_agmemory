@@ -13,6 +13,8 @@ fenced owned HA rehearsal. Reports do not authorize service startup or certify
 production HA, RPO/RTO or backup retention.
 The v2 HA rehearsal separately reconciles a replay-pause COMMIT deadline with
 the physical replica before fencing, without retrying the uncertain write.
+The v3 rehearsal additionally rebuilds a fresh asynchronous standby from the
+promoted node; it does not rejoin an old primary or authorize service restart.
 Write boundaries also reject [unconfirmed COMMIT outcomes](docs/operations/README.md#unconfirmed-commit-outcomes):
 local commit after synchronous-wait cancellation is neither rollback nor proof
 of replication. Workers stop for reconciliation instead of retrying.

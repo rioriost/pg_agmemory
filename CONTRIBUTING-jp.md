@@ -66,6 +66,9 @@ opt-inの[所有HA rehearsal](docs/operations/README-jp.md#explicitly-fenced-own
 standby replay再開前に実5秒COMMIT期限超過を測り、fencing/昇格前に完全な状態をread-only照合します。
 不明な操作を確定書込みと分け、dispatched effectを維持し、backend cancelやreplay書込みで
 測定結果を作ってはいけません。過去v1 reportはこのv2 caseを認定しません。
+v3置換先は昇格後timelineの新しい検証済みbackupから起動し、
+read-only完全状態一致、backup以降のstreaming WAL進行、旧primaryのfence再確認を要求します。
+古いdirectoryの再利用や、非同期置換をserving/同期durability承認へ読み替えることは許しません。
 assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制約を通し、
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で

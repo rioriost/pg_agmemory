@@ -8,6 +8,7 @@ usage() {
     echo "Owned two-node synchronous SQL HA laboratory, NOT production HA qualification."
     echo "Explicit opt-in permits promotion only after this harness destroys its own primary."
     echo "No API/worker/service starts; the promoted node is degraded and not serving-authorized."
+    echo "A replacement async standby is rebuilt from the promoted node, never old-primary data."
     echo "Use a NEW project-relative directory with an existing non-symlink parent."
     echo "Private synthetic physical backups remain there, never as release assets."
     echo "PGAG_HA_RUNTIME_IMAGE selects a caller-owned image; otherwise builds the runtime target."
@@ -58,6 +59,7 @@ SECONDS=0
 run_id="pgag-ha-$(date +%s)-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 primary="${run_id}-primary"
 standby="${run_id}-standby"
+replacement="${run_id}-replacement"
 postgres_image="docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a"
 image="${PGAG_HA_RUNTIME_IMAGE:-pg-agmemory-ha:${run_id}}"
 network=default
@@ -68,8 +70,11 @@ fencing_verified=null
 pre_fence_promotion_rejected=null
 promotion_executed=null
 backup_verified=null
+replacement_backup_verified=null
+original_primary_remains_fenced=null
 primary_host=""
 standby_host=""
+replacement_host=""
 system_identifier=""
 timeline_before=null
 failure_code=drill_incomplete
@@ -94,6 +99,7 @@ record_elapsed() {
 cleanup() {
     local status=$? cleanup_started=$SECONDS name failed=false
     local synchronous=null uncertain=null preserved=null probe=null artifact=null
+    local replacement_evidence=null
     trap - EXIT INT TERM
     set +e
     for name in ${containers[@]+"${containers[@]}"}; do
@@ -106,7 +112,8 @@ cleanup() {
     if [[ "$image_owned" == true ]] && ! "$engine" image rm "$image" >/dev/null 2>&1; then
         failed=true
     fi
-    if ! rm -f -- "$directory/.credentials.env" "$directory/.standby.conf"; then failed=true; fi
+    if ! rm -f -- "$directory/.credentials.env" "$directory/.standby.conf" \
+        "$directory/.replacement.conf"; then failed=true; fi
     if [[ "$failed" == true ]]; then
         if [[ $status -eq 0 ]]; then failure_code=owned_cleanup_failed; fi
         status=1
@@ -131,10 +138,15 @@ cleanup() {
     if [[ -f "$directory/artifact.json" ]]; then
         artifact="$(jq -ce . "$directory/artifact.json")" || status=1
     fi
+    if [[ -f "$directory/replacement.json" ]]; then
+        replacement_evidence="$(jq -ce . "$directory/replacement.json")" || status=1
+    fi
     if [[ "$source_destroyed" != true || "$fencing_verified" != true \
           || "$pre_fence_promotion_rejected" != true || "$promotion_executed" != true \
           || "$backup_verified" != true || "$synchronous" == null || "$preserved" == null \
-          || "$uncertain" == null || "$probe" == null || "$artifact" == null ]]; then status=1; fi
+          || "$uncertain" == null || "$probe" == null || "$artifact" == null \
+          || "$replacement_backup_verified" != true || "$original_primary_remains_fenced" != true \
+          || "$replacement_evidence" == null ]]; then status=1; fi
     record_elapsed cleanup "$cleanup_started"
     timings="$(jq -cn --argjson before "$timings" --argjson total "$SECONDS" \
         '$before + {total: $total}')"
@@ -148,8 +160,11 @@ cleanup() {
         --argjson backup "$backup_verified" --argjson timeline "$timeline_before" \
         --argjson synchronous "$synchronous" --argjson uncertain "$uncertain" \
         --argjson preserved "$preserved" \
+        --argjson replacement "$replacement_evidence" \
+        --argjson replacement_backup "$replacement_backup_verified" \
+        --argjson still_fenced "$original_primary_remains_fenced" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
-            format: "pgag-ha-drill-v2", service_version: $version, api_version: "v1",
+            format: "pgag-ha-drill-v3", service_version: $version, api_version: "v1",
             schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
@@ -164,6 +179,10 @@ cleanup() {
             timeline_before: $timeline, timeline_after: $preserved.timeline_after,
             artifact: $artifact, synchronous: $synchronous, uncertain: $uncertain,
             preserved: $preserved, probe: $probe,
+            replacement: $replacement,
+            replacement_backup_verified: $replacement_backup,
+            original_primary_remains_fenced: $still_fenced,
+            replacement_state_matches: $replacement.replacement_state_matches,
             elapsed_seconds: $timings, production_qualified: false,
             host_failure_domain_independent: false, network_partition_qualified: false,
             commit_timeout_qualified: false, automatic_failover: false,
@@ -220,10 +239,11 @@ container_host() {
 }
 
 phase() {
-    local stage="$1" phase_started=$SECONDS
+    local stage="$1" phase_started=$SECONDS helper="${run_id}-${1}"
+    if [[ "$stage" == replacement ]]; then helper="${run_id}-replacement-check"; fi
     failure_code="${stage}_failed"
-    containers+=("${run_id}-${stage}")
-    "$engine" run --name "${run_id}-${stage}" --network "$network" \
+    containers+=("$helper")
+    "$engine" run --name "$helper" --network "$network" \
         --user "$(id -u):$(id -g)" \
         -v "$PWD:/work:ro" -v "$PWD/src:/app/src:ro" -v "$PWD/$directory:/drill" \
         --env-file "$directory/.credentials.env" \
@@ -231,6 +251,7 @@ phase() {
         -e "PGAG_HA_OWNED_RUN=$run_id" -e "PGAG_HA_ENGINE=$engine" \
         -e PGAG_HA_ALLOW_OWNED_PROMOTION=1 \
         -e "PGAG_HA_PRIMARY_HOST=$primary_host" -e "PGAG_HA_STANDBY_HOST=$standby_host" \
+        -e "PGAG_HA_REPLACEMENT_HOST=$replacement_host" \
         "$image" timeout 180s python /work/scripts/smoke-ha.py "$stage" >/dev/null 2>&1
     record_elapsed "$stage" "$phase_started"
 }
@@ -312,6 +333,7 @@ failure_code=standby_start_failed
 started=$SECONDS
 containers+=("$standby")
 "$engine" run -d --name "$standby" --network "$network" \
+    --env-file "$directory/.credentials.env" \
     -v "$PWD/$directory:/drill:ro" -e PGDATA=/var/lib/postgresql/18/ha \
     --entrypoint bash "$postgres_image" -ceu '
         install -d -m 700 -o postgres -g postgres "$PGDATA"
@@ -353,4 +375,57 @@ started=$SECONDS
 owned_promote
 record_elapsed promotion "$started"
 phase verify
+
+failure_code=replacement_basebackup_failed
+started=$SECONDS
+verify_primary_absent
+"$engine" exec "$standby" bash -ceu '
+    install -d -m 700 -o postgres -g postgres /owned /owned/replacement-base
+    export PGPASSWORD="$HA_REPLICATION_PASSWORD"
+    exec timeout 180s gosu postgres pg_basebackup -h 127.0.0.1 -U pgag_ha_replication \
+        -D /owned/replacement-base --format=plain --wal-method=fetch --checkpoint=fast \
+        --manifest-checksums=SHA256
+' >/dev/null 2>&1
+failure_code=replacement_manifest_failed
+"$engine" exec "$standby" timeout 90s gosu postgres pg_verifybackup \
+    /owned/replacement-base >/dev/null 2>&1
+replacement_backup_verified=true
+"$engine" exec "$standby" cat /owned/replacement-base/backup_manifest | jq -e '{
+    format: "pgag-pitr-basebackup-v1", manifest_verified: true,
+    start_lsn: .["WAL-Ranges"][0].["Start-LSN"],
+    end_lsn: .["WAL-Ranges"][0].["End-LSN"], timeline: .["WAL-Ranges"][0].Timeline
+}' > "$directory/replacement-backup.json"
+"$engine" exec "$standby" timeout 90s tar -C /owned/replacement-base -cf - . \
+    > "$directory/replacement-basebackup.tar" 2>/dev/null
+record_elapsed replacement_basebackup "$started"
+
+failure_code=replacement_start_failed
+started=$SECONDS
+containers+=("$replacement")
+"$engine" run -d --name "$replacement" --network "$network" \
+    -v "$PWD/$directory:/drill:ro" -e PGDATA=/var/lib/postgresql/18/ha \
+    --entrypoint bash "$postgres_image" -ceu '
+        install -d -m 700 -o postgres -g postgres "$PGDATA"
+        contents="$(ls -A "$PGDATA")"
+        test -z "$contents"
+        timeout 90s tar --no-same-owner -xf /drill/replacement-basebackup.tar -C "$PGDATA"
+        chown -R postgres:postgres "$PGDATA"
+        chmod 700 "$PGDATA"
+        timeout 90s gosu postgres pg_verifybackup "$PGDATA"
+        cat /drill/.replacement.conf >> "$PGDATA/postgresql.auto.conf"
+        touch "$PGDATA/standby.signal"
+        chown postgres:postgres "$PGDATA/postgresql.auto.conf" "$PGDATA/standby.signal"
+        exec gosu postgres postgres -D "$PGDATA" -c hot_standby=on -c "listen_addresses=*"
+    ' >/dev/null 2>&1
+wait_database "$replacement"
+replacement_host="$(container_host "$replacement")"
+record_elapsed replacement_start "$started"
+failure_code=replacement_ownership_record_failed
+(set -o noclobber; jq -n '{
+    kind: "fresh_basebackup", fresh_empty_data_directory: true, no_old_primary_reuse: true
+}' > "$directory/replacement-owned.json")
+phase replacement
+failure_code=replacement_fence_recheck_failed
+verify_primary_absent
+original_primary_remains_fenced=true
 failure_code=drill_incomplete

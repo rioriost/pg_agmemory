@@ -1,4 +1,4 @@
-"""Owned two-node SQL HA laboratory, never a failover or production promotion tool.
+"""Owned SQL HA laboratory, never a failover or production promotion tool.
 
 The host harness alone owns fencing and promotion. This helper provisions
 synthetic fixtures, observes replication, and checks acknowledged state.
@@ -74,6 +74,7 @@ Contract = pitr.Contract
 WRITER = "synthetic-ha-writer"
 READER = "synthetic-ha-source-reader"
 APPLICATION = "pgag_m5_sync"
+REPLACEMENT_APPLICATION = "pgag_m5_replacement"
 CONTENT_TABLES = pitr.CONTENT_TABLES | {
     "memory.episode_lexical": "episode_id,profile",
     "memory.checkpoint_run": "scope_id,run_id",
@@ -143,10 +144,10 @@ class Fixture(Contract):
 
 
 class Reference(Contract):
-    format: Literal["pgag-ha-reference-v2"] = "pgag-ha-reference-v2"
+    format: Literal["pgag-ha-reference-v3"] = "pgag-ha-reference-v3"
     service_version: str = __version__
     schema_version: Literal[22] = 22
-    stage: Literal["seed", "acknowledged", "reconciled", "promoted", "post-probe"]
+    stage: Literal["seed", "acknowledged", "reconciled", "promoted", "post-probe", "replacement"]
     fixture: Fixture
     control: pitr.Control
     source_cursor: pitr.SourceCursor
@@ -170,13 +171,13 @@ class Reference(Contract):
                 raise ValueError("unexpected_acknowledgements")
         elif len(self.fixture.acknowledged_ids) != 3:
             raise ValueError("three_acknowledgements_required")
-        if self.stage in ("reconciled", "promoted", "post-probe"):
+        if self.stage in ("reconciled", "promoted", "post-probe", "replacement"):
             if self.uncertain is None or self.fixture.uncertain_id != self.uncertain.memory_id:
                 raise ValueError("uncertain_evidence_required")
             expected += (self.fixture.uncertain_id,)
         elif self.fixture.uncertain_id is not None or self.uncertain is not None:
             raise ValueError("unexpected_uncertainty")
-        if self.stage == "post-probe":
+        if self.stage in ("post-probe", "replacement"):
             if self.fixture.probe_id is None:
                 raise ValueError("probe_id_required")
             expected += (self.fixture.probe_id,)
@@ -241,8 +242,66 @@ class ProbeEvidence(Contract):
     effect_reexecution: Literal[False] = False
 
 
+class ReplacementOwnership(Contract):
+    kind: Literal["fresh_basebackup"]
+    fresh_empty_data_directory: Literal[True]
+    no_old_primary_reuse: Literal[True]
+
+
+class ReplacementEvidence(Contract):
+    replacement_state_matches: Literal[True]
+    kind: Literal["fresh_basebackup"]
+    backup_manifest_verified: Literal[True]
+    no_old_primary_reuse: Literal[True]
+    fresh_empty_data_directory: Literal[True]
+    read_only_recovery: Literal[True]
+    canonical_state_matches: Literal[True]
+    processing_state_matches: Literal[True]
+    source_state_matches: Literal[True]
+    effect_state_preserved: Literal[True]
+    streaming_wal_advance: Literal[True]
+    synchronous_policy_renewed: Literal[False]
+    writer_synchronous_commit: Literal["on"]
+    uncertain_id: UUID
+    original_outcome_code: Literal["commit_outcome_unknown"]
+    probe_id: UUID
+    system_identifier: Annotated[str, Field(pattern=r"^[0-9]{1,20}$")]
+    timeline: Annotated[int, Field(ge=2)]
+    backup: pitr.Backup
+    artifact: pitr.Artifact
+    wal_target_lsn: pitr.LSN
+    primary: ReplicationStatus
+    standby: ReplicationStatus
+    production_qualified: Literal[False] = False
+    network_partition_qualified: Literal[False] = False
+    commit_timeout_qualified: Literal[False] = False
+    automatic_failover: Literal[False] = False
+    automatic_service_start: Literal[False] = False
+    serving_authorized: Literal[False] = False
+    effect_reexecution: Literal[False] = False
+
+    @model_validator(mode="after")
+    def matched_async_replacement(self):
+        if self.timeline != self.backup.timeline or self.uncertain_id == self.probe_id:
+            raise ValueError("replacement_identity_mismatch")
+        try:
+            require_replacement_pair(self.primary, self.standby)
+        except pitr.DrillError:
+            raise ValueError("replacement_async_pair_required") from None
+        target = pitr.lsn_number(self.wal_target_lsn)
+        if not (
+            pitr.lsn_number(self.backup.start_lsn) < pitr.lsn_number(self.backup.end_lsn) < target
+            and all(lsn is not None and pitr.lsn_number(lsn) >= target for lsn in (
+                self.primary.primary_flush_lsn, self.standby.received_lsn,
+                self.standby.replayed_lsn,
+            ))
+        ):
+            raise ValueError("replacement_wal_not_advanced")
+        return self
+
+
 class Report(Contract):
-    format: Literal["pgag-ha-drill-v2"] = "pgag-ha-drill-v2"
+    format: Literal["pgag-ha-drill-v3"] = "pgag-ha-drill-v3"
     service_version: str = __version__
     api_version: Literal["v1"] = "v1"
     schema_version: Literal[22] = 22
@@ -261,6 +320,9 @@ class Report(Contract):
     acknowledged_state_matches: Measured = None
     effect_state_preserved: Measured = None
     postpromotion_probe_verified: Measured = None
+    replacement_backup_verified: Measured = None
+    replacement_state_matches: Measured = None
+    original_primary_remains_fenced: Measured = None
     timeline_before: Annotated[int, Field(ge=1)] | None = None
     timeline_after: Annotated[int, Field(ge=2)] | None = None
     artifact: pitr.Artifact | None = None
@@ -268,6 +330,7 @@ class Report(Contract):
     uncertain: UncertainEvidence | None = None
     preserved: PreservedEvidence | None = None
     probe: ProbeEvidence | None = None
+    replacement: ReplacementEvidence | None = None
     elapsed_seconds: dict[str, pitr.Seconds]
     production_qualified: Literal[False] = False
     host_failure_domain_independent: Literal[False] = False
@@ -287,6 +350,7 @@ class Report(Contract):
             (self.uncertain, ("uncertain_commit_reconciled",)),
             (self.preserved, ("acknowledged_state_matches", "effect_state_preserved")),
             (self.probe, ("postpromotion_probe_verified",)),
+            (self.replacement, ("replacement_state_matches",)),
         ):
             if any(getattr(self, field) is not (True if proof is not None else None)
                    for field in fields):
@@ -322,12 +386,32 @@ class Report(Contract):
                 and self.probe.probe_id in self.synchronous.acknowledgements
             ):
                 raise ValueError("probe_identity_reused")
+        if self.original_primary_remains_fenced and not (
+            self.source_destroyed and self.fencing_verified and self.promotion_executed
+        ):
+            raise ValueError("replacement_fence_not_verified")
+        if self.replacement_backup_verified and (
+            not self.promotion_executed or self.probe is None or self.preserved is None
+        ):
+            raise ValueError("replacement_backup_before_verified_probe")
+        if self.replacement is not None:
+            if (self.probe is None or self.preserved is None or self.uncertain is None
+                    or not self.original_primary_remains_fenced
+                    or not self.replacement_backup_verified):
+                raise ValueError("replacement_before_verified_probe_and_fence")
+            if (self.replacement.probe_id != self.probe.probe_id
+                    or self.replacement.uncertain_id != self.uncertain.memory_id
+                    or self.replacement.original_outcome_code != self.uncertain.outcome_code
+                    or self.replacement.timeline != self.timeline_after):
+                raise ValueError("replacement_report_identity_mismatch")
         if self.status == "passed":
             if self.failure_code is not None or not all((
                 self.source_destroyed, self.fencing_verified, self.pre_fence_promotion_rejected,
                 self.promotion_executed, self.backup_verified, self.artifact is not None,
                 self.synchronous is not None, self.uncertain is not None,
                 self.preserved is not None, self.probe is not None,
+                self.replacement is not None, self.original_primary_remains_fenced,
+                self.replacement_backup_verified,
             )):
                 raise ValueError("incomplete_pass_evidence")
         elif self.failure_code is None:
@@ -350,7 +434,11 @@ def owned_environment():
     engine = os.environ.get("PGAG_HA_ENGINE")
     require(engine in ("container", "docker"), "owned_harness_required")
     urls = []
-    for suffix, key in (("primary", "PGAG_HA_PRIMARY_HOST"), ("standby", "PGAG_HA_STANDBY_HOST")):
+    hosts = set()
+    for suffix, key in (
+        ("primary", "PGAG_HA_PRIMARY_HOST"), ("standby", "PGAG_HA_STANDBY_HOST"),
+        ("replacement", "PGAG_HA_REPLACEMENT_HOST"),
+    ):
         host = os.environ.get(key, "")
         if not host:
             urls.append(None)
@@ -363,6 +451,8 @@ def owned_environment():
                     and not address.is_loopback and not address.is_unspecified
                     and not address.is_multicast and not address.is_link_local,
                     "owned_database_required")
+        require(host not in hosts, "distinct_owned_database_required")
+        hosts.add(host)
         urls.append(make_conninfo(
             host=host, port=5432, user="postgres", password=secret("POSTGRES_PASSWORD"),
             dbname="pgag_ha", connect_timeout=5,
@@ -521,13 +611,17 @@ async def seed(directory, url):
             reason="Synthetic metadata only; no external action executed",
         ), "ha-dispatched-effect")
     write_new(directory, "seed.json", capture(url, "seed", Fixture(**ids)))
+    write_replication_config(directory, ".standby.conf", url, APPLICATION)
+
+
+def write_replication_config(directory, name, url, application):
     params = conninfo_to_dict(url)
     replication = make_conninfo(
         host=params["host"], port=5432, user="pgag_ha_replication",
-        password=secret("HA_REPLICATION_PASSWORD"), application_name=APPLICATION, connect_timeout=5,
+        password=secret("HA_REPLICATION_PASSWORD"), application_name=application, connect_timeout=5,
     )
     escaped = replication.replace("\\", "\\\\").replace("'", "''")
-    fd = os.open(directory / ".standby.conf",
+    fd = os.open(directory / name,
                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(f"primary_conninfo = '{escaped}'\n")
@@ -997,17 +1091,139 @@ async def verify(directory, standby_url):
         postpromotion_probe_verified=True, probe_id=probe_id, baseline_state_changed=True,
         writer_synchronous_commit="on", no_synchronous_standby=True,
     ))
+    write_replication_config(
+        directory, ".replacement.conf", standby_url, REPLACEMENT_APPLICATION,
+    )
+
+
+def require_replacement_pair(primary, standby):
+    require_pair(primary, standby, False)
+    require(primary.service_version == standby.service_version == __version__
+            and primary.schema_version == standby.schema_version == SCHEMA_VERSION
+            and primary.synchronous_commit == "on"
+            and not primary.synchronous_standby_configured
+            and primary.senders.physical_synchronous == 0
+            and not primary.receiver.present
+            and standby.synchronous_commit == "on"
+            and not standby.synchronous_standby_configured
+            and standby.senders.total == 0, "replacement_async_pair_required")
+
+
+def wait_replacement_pair(primary_url, replacement_url):
+    deadline = time.monotonic() + 60
+    while True:
+        primary = replication_status(primary_url)
+        standby = replication_status(replacement_url)
+        try:
+            require_replacement_pair(primary, standby)
+            return primary, standby
+        except pitr.DrillError:
+            require(time.monotonic() < deadline, "replacement_streaming_pair_unavailable")
+            time.sleep(0.1)
+
+
+def replacement(directory, primary_url, replacement_url):
+    require(primary_url is not None and replacement_url is not None, "owned_replacement_required")
+    require(conninfo_to_dict(primary_url)["host"] != conninfo_to_dict(replacement_url)["host"],
+            "distinct_owned_database_required")
+    ownership = read(directory, "replacement-owned.json", ReplacementOwnership)
+    baseline = read(directory, "post-probe.json", Reference)
+    require(baseline.stage == "post-probe", "post_probe_reference_required")
+    require(baseline.uncertain == read(directory, "uncertain.json", UncertainEvidence),
+            "original_uncertainty_changed")
+    probe = read(directory, "probe.json", ProbeEvidence)
+    preserved = read(directory, "preserved.json", PreservedEvidence)
+    require(baseline.fixture.probe_id == probe.probe_id
+            and baseline.fixture.uncertain_id == preserved.uncertain_id
+            and baseline.control.timeline == preserved.timeline_after,
+            "replacement_baseline_identity_mismatch")
+    backup = read(directory, "replacement-backup.json", pitr.Backup)
+    require(backup.timeline == baseline.control.timeline, "replacement_backup_timeline_mismatch")
+    artifact = pitr.inspect_tar(directory / "replacement-basebackup.tar", pitr.MAX_BACKUP_BYTES)
+    check_preserved(baseline, capture(
+        primary_url, "post-probe", baseline.fixture, uncertain=baseline.uncertain,
+    ), promoted=False)
+    wait_replacement_pair(primary_url, replacement_url)
+    with psycopg.connect(primary_url, autocommit=True, row_factory=dict_row) as primary:
+        senders = primary.execute(
+            "SELECT application_name,state,sync_state FROM pg_stat_replication "
+            "WHERE usename='pgag_ha_replication'"
+        ).fetchall()
+        require(senders == [{
+            "application_name": REPLACEMENT_APPLICATION, "state": "streaming",
+            "sync_state": "async",
+        }], "owned_replacement_sender_required")
+        require(primary.execute(
+            "SELECT %s::pg_lsn >= %s::pg_lsn AND %s::pg_lsn > %s::pg_lsn AS fresh",
+            (backup.start_lsn, baseline.control.lsn, backup.end_lsn, backup.start_lsn),
+        ).fetchone() == {"fresh": True}, "replacement_backup_not_fresh")
+        # Force non-tenant WAL activity so switching an otherwise idle segment cannot be a no-op.
+        primary.execute("CHECKPOINT")
+        primary.execute("SELECT pg_switch_wal()")
+        row = primary.execute(
+            "WITH flushed AS MATERIALIZED (SELECT pg_current_wal_flush_lsn() AS lsn) "
+            "SELECT lsn::text AS lsn, lsn > %s::pg_lsn AS advanced FROM flushed",
+            (backup.end_lsn,),
+        ).fetchone()
+        require(row["advanced"] is True, "replacement_wal_not_advanced")
+        target = row["lsn"]
+    with psycopg.connect(
+        read_only_url(replacement_url), autocommit=True, row_factory=dict_row,
+    ) as standby:
+        deadline = time.monotonic() + 60
+        while True:
+            row = standby.execute(
+                "SELECT pg_is_in_recovery() AS recovering, "
+                "current_setting('transaction_read_only') AS read_only, "
+                "pg_is_wal_replay_paused() AS paused, "
+                "pg_last_wal_receive_lsn() >= %s::pg_lsn AS received, "
+                "pg_last_wal_replay_lsn() >= %s::pg_lsn AS replayed",
+                (target, target),
+            ).fetchone()
+            require(row["recovering"] is True and row["read_only"] == "on"
+                    and row["paused"] is False, "replacement_read_only_recovery_required")
+            if row["received"] is True and row["replayed"] is True:
+                break
+            require(time.monotonic() < deadline, "replacement_wal_replay_timeout")
+            time.sleep(0.1)
+    candidate = capture(
+        replacement_url, "replacement", baseline.fixture, recovery=True,
+        uncertain=baseline.uncertain,
+    )
+    check_preserved(baseline, candidate, promoted=False)
+    check_preserved(baseline, capture(
+        primary_url, "post-probe", baseline.fixture, uncertain=baseline.uncertain,
+    ), promoted=False)
+    primary_status, standby_status = wait_replacement_pair(primary_url, replacement_url)
+    require(artifact == pitr.inspect_tar(
+        directory / "replacement-basebackup.tar", pitr.MAX_BACKUP_BYTES,
+    ), "replacement_backup_artifact_changed")
+    evidence = ReplacementEvidence(
+        replacement_state_matches=True, kind=ownership.kind, backup_manifest_verified=True,
+        no_old_primary_reuse=ownership.no_old_primary_reuse,
+        fresh_empty_data_directory=ownership.fresh_empty_data_directory,
+        read_only_recovery=True, canonical_state_matches=True, processing_state_matches=True,
+        source_state_matches=True, effect_state_preserved=True, streaming_wal_advance=True,
+        synchronous_policy_renewed=False, writer_synchronous_commit="on",
+        uncertain_id=baseline.fixture.uncertain_id,
+        original_outcome_code=baseline.uncertain.outcome_code,
+        probe_id=baseline.fixture.probe_id, system_identifier=baseline.control.system_identifier,
+        timeline=baseline.control.timeline, backup=backup, artifact=artifact, wal_target_lsn=target,
+        primary=primary_status, standby=standby_status,
+    )
+    write_new(directory, "replacement-reference.json", candidate)
+    write_new(directory, "replacement.json", evidence)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=(
-        "seed", "artifact", "synchronous", "uncertain", "prefence", "verify",
+        "seed", "artifact", "synchronous", "uncertain", "prefence", "verify", "replacement",
     ))
     args = parser.parse_args(argv)
     directory = None
     try:
-        directory, primary_url, standby_url = owned_environment()
+        directory, primary_url, standby_url, replacement_url = owned_environment()
         if args.stage == "seed":
             asyncio.run(seed(directory, primary_url))
         elif args.stage == "artifact":
@@ -1021,8 +1237,10 @@ def main(argv=None):
             asyncio.run(uncertain(directory, primary_url, standby_url))
         elif args.stage == "prefence":
             prefence(directory, standby_url)
-        else:
+        elif args.stage == "verify":
             asyncio.run(verify(directory, standby_url))
+        else:
+            replacement(directory, standby_url, replacement_url)
     except (
         AdminError, RuntimeValidationError, ServiceError, CommitOutcomeUnknown,
         psycopg.Error, ValidationError,
