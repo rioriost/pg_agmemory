@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import importlib.util
 import ipaddress
+import json
 import os
 import platform
 import re
@@ -92,8 +93,7 @@ SOURCE = SourceIdentity(
 Measured = Literal[True] | None
 
 
-class UncertainEvidence(Contract):
-    uncertain_commit_reconciled: Literal[True]
+class UnknownCommitObservation(Contract):
     memory_id: UUID
     outcome_code: Literal["commit_outcome_unknown"]
     retryable: Literal[False]
@@ -106,14 +106,10 @@ class UncertainEvidence(Contract):
     sync_rep_wait_observed: Literal[True]
     local_wal_flush_observed: Literal[True]
     local_wal_flush_scope: Literal["precommit_insert_lsn_lower_bound"]
-    local_receipt_observed: Literal[True]
     local_receipt_observed_before_client_exit: Literal[False]
     client_connection_closed: Literal[True]
     commit_wait_seconds: Annotated[float, Field(ge=4.5, lt=8, allow_inf_nan=False)]
     sync_rep_observed_seconds: Annotated[float, Field(ge=4.5, lt=8, allow_inf_nan=False)]
-    replay_resumed_after_client_exit: Literal[True]
-    replica_state_matches: Literal[True]
-    read_only_reconciliation: Literal[True]
     no_retry: Literal[True]
     production_qualified: Literal[False] = False
     network_partition_qualified: Literal[False] = False
@@ -130,6 +126,14 @@ class UncertainEvidence(Contract):
         return self
 
 
+class UncertainEvidence(UnknownCommitObservation):
+    uncertain_commit_reconciled: Literal[True]
+    local_receipt_observed: Literal[True]
+    replay_resumed_after_client_exit: Literal[True]
+    replica_state_matches: Literal[True]
+    read_only_reconciliation: Literal[True]
+
+
 class Fixture(Contract):
     tenant_id: UUID
     scope_id: UUID
@@ -143,24 +147,27 @@ class Fixture(Contract):
     uncertain_id: UUID | None = None
     probe_id: UUID | None = None
     renewal_id: UUID | None = None
+    disconnect_id: UUID | None = None
 
 
 class Reference(Contract):
-    format: Literal["pgag-ha-reference-v4"] = "pgag-ha-reference-v4"
+    format: Literal["pgag-ha-reference-v5"] = "pgag-ha-reference-v5"
     service_version: str = __version__
     schema_version: Literal[22] = 22
     stage: Literal[
         "seed", "acknowledged", "reconciled", "promoted", "post-probe", "replacement", "renewed",
+        "reconnected",
     ]
     fixture: Fixture
     control: pitr.Control
     source_cursor: pitr.SourceCursor
-    episodes: Annotated[tuple[pitr.Episode, ...], Field(min_length=1, max_length=7)]
+    episodes: Annotated[tuple[pitr.Episode, ...], Field(min_length=1, max_length=8)]
     content: tuple[StateFingerprint, ...]
     processing: ProcessingRecoverySnapshot
     effect_status: Literal["dispatched"]
     effect_revision: Literal[2]
     uncertain: UncertainEvidence | None = None
+    disconnect: UnknownCommitObservation | None = None
     serving_authorized: Literal[False] = False
     effect_reexecution: Literal[False] = False
 
@@ -175,24 +182,33 @@ class Reference(Contract):
                 raise ValueError("unexpected_acknowledgements")
         elif len(self.fixture.acknowledged_ids) != 3:
             raise ValueError("three_acknowledgements_required")
-        if self.stage in ("reconciled", "promoted", "post-probe", "replacement", "renewed"):
+        if self.stage in (
+            "reconciled", "promoted", "post-probe", "replacement", "renewed", "reconnected",
+        ):
             if self.uncertain is None or self.fixture.uncertain_id != self.uncertain.memory_id:
                 raise ValueError("uncertain_evidence_required")
             expected += (self.fixture.uncertain_id,)
         elif self.fixture.uncertain_id is not None or self.uncertain is not None:
             raise ValueError("unexpected_uncertainty")
-        if self.stage in ("post-probe", "replacement", "renewed"):
+        if self.stage in ("post-probe", "replacement", "renewed", "reconnected"):
             if self.fixture.probe_id is None:
                 raise ValueError("probe_id_required")
             expected += (self.fixture.probe_id,)
         elif self.fixture.probe_id is not None:
             raise ValueError("unexpected_probe")
-        if self.stage == "renewed":
+        if self.stage in ("renewed", "reconnected"):
             if self.fixture.renewal_id is None:
                 raise ValueError("renewal_id_required")
             expected += (self.fixture.renewal_id,)
         elif self.fixture.renewal_id is not None:
             raise ValueError("unexpected_renewal")
+        if self.stage == "reconnected":
+            if (self.disconnect is None
+                    or self.fixture.disconnect_id != self.disconnect.memory_id):
+                raise ValueError("disconnect_evidence_required")
+            expected += (self.fixture.disconnect_id,)
+        elif self.fixture.disconnect_id is not None or self.disconnect is not None:
+            raise ValueError("unexpected_disconnect")
         if len(set(expected)) != len(expected) or {e.object_id for e in self.episodes} != set(
             expected
         ) or len(self.episodes) != len(expected):
@@ -354,8 +370,75 @@ class RenewalEvidence(Contract):
         return self
 
 
+class DisconnectOwnership(Contract):
+    kind: Literal["owned_replication_connection_rejection"]
+    replication_connections_rejected: Literal[True]
+    owned_sender_terminated: Literal[True]
+
+
+class DisconnectReceipt(Contract):
+    memory_id: UUID
+    revision: Literal[1]
+    synthesis_job_id: None
+
+
+class DisconnectPending(Contract):
+    format: Literal["pgag-ha-disconnect-pending-v1"] = "pgag-ha-disconnect-pending-v1"
+    baseline: Reference
+    ownership: DisconnectOwnership
+    commit: UnknownCommitObservation
+    receipt: DisconnectReceipt
+    replication_absent_during_commit: Literal[True]
+    disconnect_reconciled: Literal[False] = False
+    success_receipt_emitted: Literal[False] = False
+
+    @model_validator(mode="after")
+    def pending_not_acknowledged(self):
+        if (self.baseline.stage != "renewed"
+                or self.commit.memory_id != self.receipt.memory_id
+                or self.commit.memory_id in {
+                    episode.object_id for episode in self.baseline.episodes
+                }):
+            raise ValueError("disconnect_pending_identity_mismatch")
+        return self
+
+
+class DisconnectEvidence(UnknownCommitObservation):
+    disconnect_reconciled: Literal[True]
+    kind: Literal["owned_replication_connection_rejection"]
+    replication_connections_rejected: Literal[True]
+    owned_sender_terminated: Literal[True]
+    replication_absent_during_commit: Literal[True]
+    reconnected: Literal[True]
+    read_only_reconciliation: Literal[True]
+    local_receipt_observed: Literal[True]
+    canonical_state_matches: Literal[True]
+    processing_state_matches: Literal[True]
+    source_state_matches: Literal[True]
+    effect_state_preserved: Literal[True]
+    one_new_observation: Literal[True]
+    uncertain_id: UUID
+    original_outcome_code: Literal["commit_outcome_unknown"]
+    probe_id: UUID
+    renewal_id: UUID
+    system_identifier: Annotated[str, Field(pattern=r"^[0-9]{1,20}$")]
+    timeline: Annotated[int, Field(ge=2)]
+    primary: ReplicationStatus
+    standby: ReplicationStatus
+
+    @model_validator(mode="after")
+    def reconciled_without_retry(self):
+        if len({self.memory_id, self.uncertain_id, self.probe_id, self.renewal_id}) != 4:
+            raise ValueError("disconnect_identity_reused")
+        try:
+            require_renewal_pair(self.primary, self.standby)
+        except pitr.DrillError:
+            raise ValueError("disconnect_reconnected_pair_required") from None
+        return self
+
+
 class Report(Contract):
-    format: Literal["pgag-ha-drill-v4"] = "pgag-ha-drill-v4"
+    format: Literal["pgag-ha-drill-v5"] = "pgag-ha-drill-v5"
     service_version: str = __version__
     api_version: Literal["v1"] = "v1"
     schema_version: Literal[22] = 22
@@ -379,6 +462,8 @@ class Report(Contract):
     original_primary_remains_fenced: Measured = None
     renewal_state_matches: Measured = None
     renewal_primary_remains_fenced: Measured = None
+    disconnect_reconciled: Measured = None
+    disconnect_primary_remains_fenced: Measured = None
     timeline_before: Annotated[int, Field(ge=1)] | None = None
     timeline_after: Annotated[int, Field(ge=2)] | None = None
     artifact: pitr.Artifact | None = None
@@ -388,6 +473,7 @@ class Report(Contract):
     probe: ProbeEvidence | None = None
     replacement: ReplacementEvidence | None = None
     renewal: RenewalEvidence | None = None
+    disconnect: DisconnectEvidence | None = None
     elapsed_seconds: dict[str, pitr.Seconds]
     production_qualified: Literal[False] = False
     host_failure_domain_independent: Literal[False] = False
@@ -409,6 +495,7 @@ class Report(Contract):
             (self.probe, ("postpromotion_probe_verified",)),
             (self.replacement, ("replacement_state_matches",)),
             (self.renewal, ("renewal_state_matches",)),
+            (self.disconnect, ("disconnect_reconciled",)),
         ):
             if any(getattr(self, field) is not (True if proof is not None else None)
                    for field in fields):
@@ -480,6 +567,24 @@ class Report(Contract):
                 or self.renewal.memory_id in self.synchronous.acknowledgements
             ):
                 raise ValueError("renewal_report_identity_mismatch")
+        if self.disconnect_primary_remains_fenced and (
+            not self.renewal_primary_remains_fenced or self.renewal is None
+            or self.disconnect is None
+        ):
+            raise ValueError("disconnect_fence_not_verified")
+        if self.disconnect is not None:
+            if (self.renewal is None or self.synchronous is None
+                    or not self.disconnect_primary_remains_fenced):
+                raise ValueError("disconnect_before_verified_renewal_and_fence")
+            if (
+                self.disconnect.uncertain_id != self.renewal.uncertain_id
+                or self.disconnect.probe_id != self.renewal.probe_id
+                or self.disconnect.renewal_id != self.renewal.memory_id
+                or self.disconnect.system_identifier != self.renewal.system_identifier
+                or self.disconnect.timeline != self.renewal.timeline
+                or self.disconnect.memory_id in self.synchronous.acknowledgements
+            ):
+                raise ValueError("disconnect_report_identity_mismatch")
         if self.status == "passed":
             if self.failure_code is not None or not all((
                 self.source_destroyed, self.fencing_verified, self.pre_fence_promotion_rejected,
@@ -489,6 +594,7 @@ class Report(Contract):
                 self.replacement is not None, self.original_primary_remains_fenced,
                 self.replacement_backup_verified,
                 self.renewal is not None, self.renewal_primary_remains_fenced,
+                self.disconnect is not None, self.disconnect_primary_remains_fenced,
             )):
                 raise ValueError("incomplete_pass_evidence")
         elif self.failure_code is None:
@@ -589,7 +695,7 @@ async def observe(url, scope_id, name, policy="on"):
     return UUID(receipt["memory_id"])
 
 
-def capture(url, stage, fixture, recovery=False, uncertain=None):
+def capture(url, stage, fixture, recovery=False, uncertain=None, disconnect=None):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         require(conn.execute("SHOW server_version_num").fetchone()["server_version_num"]
@@ -600,7 +706,7 @@ def capture(url, stage, fixture, recovery=False, uncertain=None):
         episodes = tuple(pitr.Episode(
             object_id=row["id"], content_sha256=hashlib.sha256(row["content"].encode()).hexdigest(),
         ) for row in conn.execute(
-            "SELECT id,content FROM memory.episode WHERE tenant_id=%s ORDER BY id LIMIT 8",
+            "SELECT id,content FROM memory.episode WHERE tenant_id=%s ORDER BY id LIMIT 9",
             (tenant,),
         ))
         cursor = conn.execute(
@@ -623,6 +729,7 @@ def capture(url, stage, fixture, recovery=False, uncertain=None):
         stage=stage, fixture=fixture, control=control, source_cursor=pitr.SourceCursor(**cursor),
         episodes=episodes, content=content, processing=capture_processing_state(url, tenant),
         effect_status=effect["status"], effect_revision=effect["revision"], uncertain=uncertain,
+        disconnect=disconnect,
     )
 
 
@@ -897,13 +1004,43 @@ async def resume_replay(standby_url):
 
 
 async def paused_uncertain(primary_url, standby_url, fixture):
+    return await guarded_unknown(
+        primary_url, standby_url, fixture, name="paused-uncertain", pause_replay=True,
+    )
+
+
+async def observe_disconnected(admin, standby):
+    row = await (await admin.execute(
+        "SELECT pg_is_in_recovery() AS recovering, "
+        "current_setting('synchronous_commit') AS policy, "
+        "current_setting('synchronous_standby_names') AS standbys, "
+        "NOT EXISTS (SELECT 1 FROM pg_stat_replication) AS sender_absent"
+    )).fetchone()
+    require(row == {
+        "recovering": False, "policy": "remote_apply",
+        "standbys": "FIRST 1 (pgag_m5_replacement)", "sender_absent": True,
+    }, "disconnect_primary_not_isolated")
+    row = await (await standby.execute(
+        "SELECT pg_is_in_recovery() AS recovering, "
+        "current_setting('transaction_read_only') AS read_only, "
+        "pg_is_wal_replay_paused() AS paused, "
+        "NOT EXISTS (SELECT 1 FROM pg_stat_wal_receiver "
+        "WHERE status='streaming') AS receiver_absent"
+    )).fetchone()
+    require(row == {
+        "recovering": True, "read_only": "on", "paused": False, "receiver_absent": True,
+    }, "disconnect_standby_not_isolated")
+
+
+async def guarded_unknown(primary_url, standby_url, fixture, *, name, pause_replay):
     async with principal_connection(runtime_url(primary_url), WRITER) as (writer, identity):
         await writer_policy(writer, "remote_apply")
         pid = writer.info.backend_pid
         async with await psycopg.AsyncConnection.connect(
             read_only_url(primary_url), autocommit=True, row_factory=dict_row,
         ) as admin, await psycopg.AsyncConnection.connect(
-            standby_url, autocommit=True, row_factory=dict_row,
+            standby_url if pause_replay else read_only_url(standby_url),
+            autocommit=True, row_factory=dict_row,
         ) as standby:
             receipt = None
             commit_started = None
@@ -922,8 +1059,7 @@ async def paused_uncertain(primary_url, standby_url, fixture):
                         await bind_identity(writer, WRITER, identity)
                         await writer_policy(writer, "remote_apply")
                         receipt = await MemoryService(writer, identity).observe(
-                            observation(fixture.scope_id, "paused-uncertain"),
-                            "ha-paused-uncertain",
+                            observation(fixture.scope_id, name), "ha-" + name,
                         )
                         row = await (await writer.execute(
                             "SELECT pg_current_wal_insert_lsn() AS lsn"
@@ -940,22 +1076,27 @@ async def paused_uncertain(primary_url, standby_url, fixture):
                 raise pitr.DrillError("uncertain_commit_unexpectedly_acknowledged")
 
             try:
-                await standby.execute("SELECT pg_wal_replay_pause()")
-                paused_by = time.monotonic() + 5
-                while True:
-                    row = await (await standby.execute(
-                        "SELECT pg_get_wal_replay_pause_state() AS state"
-                    )).fetchone()
-                    if row == {"state": "paused"}:
-                        break
-                    require(time.monotonic() < paused_by, "uncertain_pause_not_established")
-                    await asyncio.sleep(0.02)
+                if pause_replay:
+                    await standby.execute("SELECT pg_wal_replay_pause()")
+                    paused_by = time.monotonic() + 5
+                    while True:
+                        row = await (await standby.execute(
+                            "SELECT pg_get_wal_replay_pause_state() AS state"
+                        )).fetchone()
+                        if row == {"state": "paused"}:
+                            break
+                        require(time.monotonic() < paused_by, "uncertain_pause_not_established")
+                        await asyncio.sleep(0.02)
+                else:
+                    await observe_disconnected(admin, standby)
                 task = asyncio.create_task(commit_once())
                 body_deadline = time.monotonic() + 15
                 while not task.done():
                     require(time.monotonic() < (
                         commit_started + 8 if commit_started is not None else body_deadline
                     ), "uncertain_client_exit_not_bounded")
+                    if not pause_replay:
+                        await observe_disconnected(admin, standby)
                     row = await (await admin.execute(
                         "SELECT wait_event FROM pg_stat_activity WHERE pid=%s", (pid,),
                     )).fetchone()
@@ -982,17 +1123,21 @@ async def paused_uncertain(primary_url, standby_url, fixture):
                         and 4.5 <= last_sync_rep - first_sync_rep < 8
                         and local_wal_flushed and client_exited is not None
                         and writer.closed, "uncertain_deadline_not_qualified")
-                paused = await (await standby.execute(
-                    "SELECT pg_get_wal_replay_pause_state() AS state"
-                )).fetchone()
-                require(paused == {"state": "paused"}, "replay_resumed_before_client_exit")
+                if pause_replay:
+                    paused = await (await standby.execute(
+                        "SELECT pg_get_wal_replay_pause_state() AS state"
+                    )).fetchone()
+                    require(paused == {"state": "paused"}, "replay_resumed_before_client_exit")
+                else:
+                    await observe_disconnected(admin, standby)
             except BaseException as exc:
                 pending = exc
                 raise
             finally:
                 cleanup_error = None
                 try:
-                    await resume_replay(standby_url)
+                    if pause_replay:
+                        await resume_replay(standby_url)
                 except BaseException as exc:
                     cleanup_error = exc
                 try:
@@ -1063,40 +1208,13 @@ async def uncertain(directory, primary_url, standby_url):
     memory_id, elapsed, observed, receipt = await paused_uncertain(
         primary_url, standby_url, reference.fixture,
     )
-    async with asyncio.timeout(30):
-        async with await psycopg.AsyncConnection.connect(
-            read_only_url(primary_url), autocommit=True, row_factory=dict_row,
-        ) as primary, await psycopg.AsyncConnection.connect(
-            read_only_url(standby_url), autocommit=True, row_factory=dict_row,
-        ) as standby:
-            local_state = None
-            while True:
-                primary_state = await uncertain_state(primary, reference.fixture, memory_id)
-                replica_state = await uncertain_state(standby, reference.fixture, memory_id)
-                if primary_state is not None:
-                    require(primary_state["receipts"][0]["result"] == receipt,
-                            "uncertain_local_receipt_mismatch")
-                    if local_state is None:
-                        local_state = primary_state
-                    require(primary_state == local_state, "uncertain_primary_state_changed")
-                if local_state is not None and replica_state is not None:
-                    require(replica_state == local_state, "uncertain_replica_state_mismatch")
-                    break
-                await asyncio.sleep(0.05)
+    await reconcile_receipt(primary_url, standby_url, reference.fixture, memory_id, receipt)
     fixture = reference.fixture.model_copy(update={"uncertain_id": memory_id})
     evidence = UncertainEvidence(
-        uncertain_commit_reconciled=True,
-        memory_id=memory_id, outcome_code=CommitOutcomeUnknown.code,
-        retryable=False, success_receipt_emitted=False,
-        writer_policy_verified=True, writer_synchronous_commit="remote_apply",
-        statement_timeout_seconds=5, lock_timeout_seconds=5, commit_timeout_seconds=5,
-        sync_rep_wait_observed=True, local_wal_flush_observed=True,
-        local_wal_flush_scope="precommit_insert_lsn_lower_bound",
-        local_receipt_observed=True, local_receipt_observed_before_client_exit=False,
-        client_connection_closed=True,
-        commit_wait_seconds=elapsed, sync_rep_observed_seconds=observed,
+        **unknown_observation(memory_id, elapsed, observed).model_dump(),
+        uncertain_commit_reconciled=True, local_receipt_observed=True,
         replay_resumed_after_client_exit=True, replica_state_matches=True,
-        read_only_reconciliation=True, no_retry=True,
+        read_only_reconciliation=True,
     )
     reconciled = capture(primary_url, "reconciled", fixture, uncertain=evidence)
     replica = capture(standby_url, "reconciled", fixture, recovery=True, uncertain=evidence)
@@ -1107,9 +1225,46 @@ async def uncertain(directory, primary_url, standby_url):
     write_new(directory, "uncertain.json", evidence)
 
 
+def unknown_observation(memory_id, elapsed, observed):
+    return UnknownCommitObservation(
+        memory_id=memory_id, outcome_code=CommitOutcomeUnknown.code,
+        retryable=False, success_receipt_emitted=False,
+        writer_policy_verified=True, writer_synchronous_commit="remote_apply",
+        statement_timeout_seconds=5, lock_timeout_seconds=5, commit_timeout_seconds=5,
+        sync_rep_wait_observed=True, local_wal_flush_observed=True,
+        local_wal_flush_scope="precommit_insert_lsn_lower_bound",
+        local_receipt_observed_before_client_exit=False, client_connection_closed=True,
+        commit_wait_seconds=elapsed, sync_rep_observed_seconds=observed, no_retry=True,
+    )
+
+
+async def reconcile_receipt(primary_url, standby_url, fixture, memory_id, receipt):
+    async with asyncio.timeout(30):
+        async with await psycopg.AsyncConnection.connect(
+            read_only_url(primary_url), autocommit=True, row_factory=dict_row,
+        ) as primary, await psycopg.AsyncConnection.connect(
+            read_only_url(standby_url), autocommit=True, row_factory=dict_row,
+        ) as standby:
+            local_state = None
+            while True:
+                primary_state = await uncertain_state(primary, fixture, memory_id)
+                replica_state = await uncertain_state(standby, fixture, memory_id)
+                if primary_state is not None:
+                    require(primary_state["receipts"][0]["result"] == receipt,
+                            "uncertain_local_receipt_mismatch")
+                    if local_state is None:
+                        local_state = primary_state
+                    require(primary_state == local_state, "uncertain_primary_state_changed")
+                if local_state is not None and replica_state is not None:
+                    require(replica_state == local_state, "uncertain_replica_state_mismatch")
+                    break
+                await asyncio.sleep(0.05)
+
+
 def check_preserved(reference, candidate, promoted):
     require(reference.fixture == candidate.fixture, "acknowledged_identity_mismatch")
     require(reference.uncertain == candidate.uncertain, "original_uncertainty_changed")
+    require(reference.disconnect == candidate.disconnect, "disconnect_outcome_changed")
     require(reference.control.system_identifier == candidate.control.system_identifier,
             "physical_cluster_identity_mismatch")
     require(candidate.control.timeline > reference.control.timeline if promoted else
@@ -1385,16 +1540,21 @@ def wait_renewal_pair(primary_url, replacement_url):
 
 
 def check_renewal_delta(before, after):
-    memory_id = after.fixture.renewal_id
+    check_observation_delta(before, after, "renewal_id")
+
+
+def check_observation_delta(before, after, identity_field):
+    prefix = "renewal" if identity_field == "renewal_id" else "disconnect"
+    memory_id = getattr(after.fixture, identity_field)
     require(memory_id is not None and memory_id not in {e.object_id for e in before.episodes}
-            and after.fixture == before.fixture.model_copy(update={"renewal_id": memory_id}),
-            "renewal_identity_reused")
+            and after.fixture == before.fixture.model_copy(update={identity_field: memory_id}),
+            prefix + "_identity_reused")
     require(before.uncertain == after.uncertain, "original_uncertainty_changed")
     require(before.control.system_identifier == after.control.system_identifier
             and before.control.timeline == after.control.timeline,
-            "renewal_cluster_identity_mismatch")
+            prefix + "_cluster_identity_mismatch")
     require(tuple(e for e in after.episodes if e.object_id != memory_id) == before.episodes,
-            "renewal_changed_original_episodes")
+            prefix + "_changed_original_episodes")
     growing = {
         "memory.episode", "memory.episode_lexical", "memory_ops.audit_event", "memory.object",
         "memory_ops.source_event", "memory_ops.idempotency",
@@ -1405,17 +1565,19 @@ def check_renewal_delta(before, after):
     ):
         require(new.table == old.table and (
             new.rows == old.rows + 1 if old.table in growing else new == old
-        ), "renewal_write_delta_mismatch")
+        ), prefix + "_write_delta_mismatch")
     require(before.source_cursor == after.source_cursor
             and before.effect_status == after.effect_status
             and before.effect_revision == after.effect_revision
             and before.processing.lineage == after.processing.lineage
             and before.processing.access_epoch == after.processing.access_epoch
             and before.processing.deletion_epoch == after.processing.deletion_epoch,
-            "renewal_changed_authority_or_effect")
+            prefix + "_changed_authority_or_effect")
 
 
-def check_renewal_existing_state(url, baseline, memory_id):
+def check_renewal_existing_state(
+    url, baseline, memory_id, failure_code="renewal_mutated_original_state",
+):
     predicates = {
         "memory.episode": sql.SQL("id <> {}").format(sql.Literal(memory_id)),
         "memory.episode_lexical": sql.SQL("episode_id <> {}").format(sql.Literal(memory_id)),
@@ -1435,8 +1597,7 @@ def check_renewal_existing_state(url, baseline, memory_id):
             conn, baseline.fixture.tenant_id, key, CONTENT_TABLES | PROCESSING_TABLES,
             filters=predicates,
         )
-    require(fingerprints == (*baseline.content, *baseline.processing.tables),
-            "renewal_mutated_original_state")
+    require(fingerprints == (*baseline.content, *baseline.processing.tables), failure_code)
 
 
 async def renewal(directory, primary_url, replacement_url):
@@ -1490,11 +1651,118 @@ async def renewal(directory, primary_url, replacement_url):
     write_new(directory, "renewal.json", evidence)
 
 
+def disconnect_reference(directory):
+    baseline = read(directory, "renewed-primary.json", Reference)
+    standby = read(directory, "renewed-standby.json", Reference)
+    renewed = read(directory, "renewal.json", RenewalEvidence)
+    require(baseline.stage == standby.stage == "renewed", "disconnect_renewed_reference_required")
+    check_preserved(baseline, standby, promoted=False)
+    require(baseline.uncertain == read(directory, "uncertain.json", UncertainEvidence),
+            "original_uncertainty_changed")
+    require(renewed.memory_id == baseline.fixture.renewal_id
+            and renewed.uncertain_id == baseline.fixture.uncertain_id
+            and renewed.probe_id == baseline.fixture.probe_id
+            and renewed.system_identifier == baseline.control.system_identifier
+            and renewed.timeline == baseline.control.timeline,
+            "disconnect_renewal_identity_mismatch")
+    return baseline
+
+
+async def wait_disconnected(primary_url, replacement_url):
+    async with asyncio.timeout(30):
+        async with await psycopg.AsyncConnection.connect(
+            read_only_url(primary_url), autocommit=True, row_factory=dict_row,
+        ) as admin, await psycopg.AsyncConnection.connect(
+            read_only_url(replacement_url), autocommit=True, row_factory=dict_row,
+        ) as standby:
+            while True:
+                try:
+                    await observe_disconnected(admin, standby)
+                    return
+                except pitr.DrillError:
+                    await asyncio.sleep(0.05)
+
+
+async def disconnect(directory, primary_url, replacement_url):
+    require(primary_url is not None and replacement_url is not None, "owned_replacement_required")
+    require(conninfo_to_dict(primary_url)["host"] != conninfo_to_dict(replacement_url)["host"],
+            "distinct_owned_database_required")
+    pending_path = directory / "disconnect-pending.json"
+    require(not pending_path.exists() and not pending_path.is_symlink(),
+            "disconnect_already_attempted")
+    ownership = read(directory, "disconnect-owned.json", DisconnectOwnership)
+    baseline = disconnect_reference(directory)
+    await wait_disconnected(primary_url, replacement_url)
+    for url, recovery in ((primary_url, False), (replacement_url, True)):
+        check_preserved(baseline, capture(
+            url, "renewed", baseline.fixture, recovery=recovery, uncertain=baseline.uncertain,
+        ), promoted=False)
+    memory_id, elapsed, observed, receipt = await guarded_unknown(
+        primary_url, replacement_url, baseline.fixture,
+        name="replication-disconnect-uncertain", pause_replay=False,
+    )
+    commit = unknown_observation(memory_id, elapsed, observed)
+    private_receipt = DisconnectReceipt.model_validate_json(json.dumps(receipt))
+    require(private_receipt.model_dump(mode="json") == receipt,
+            "disconnect_receipt_shape_mismatch")
+    write_new(directory, "disconnect-pending.json", DisconnectPending(
+        baseline=baseline, ownership=ownership, commit=commit, receipt=private_receipt,
+        replication_absent_during_commit=True,
+    ))
+
+
+async def reconnect(directory, primary_url, replacement_url):
+    require(primary_url is not None and replacement_url is not None, "owned_replacement_required")
+    require(conninfo_to_dict(primary_url)["host"] != conninfo_to_dict(replacement_url)["host"],
+            "distinct_owned_database_required")
+    pending = read(directory, "disconnect-pending.json", DisconnectPending)
+    baseline = disconnect_reference(directory)
+    require(pending.baseline == baseline, "disconnect_pending_baseline_changed")
+    require(pending.ownership == read(directory, "disconnect-owned.json", DisconnectOwnership),
+            "disconnect_ownership_changed")
+    wait_renewal_pair(primary_url, replacement_url)
+    memory_id = pending.commit.memory_id
+    await reconcile_receipt(
+        primary_url, replacement_url, baseline.fixture, memory_id,
+        pending.receipt.model_dump(mode="json"),
+    )
+    fixture = baseline.fixture.model_copy(update={"disconnect_id": memory_id})
+    primary = capture(
+        primary_url, "reconnected", fixture, uncertain=baseline.uncertain,
+        disconnect=pending.commit,
+    )
+    standby = capture(
+        replacement_url, "reconnected", fixture, recovery=True, uncertain=baseline.uncertain,
+        disconnect=pending.commit,
+    )
+    check_observation_delta(baseline, primary, "disconnect_id")
+    check_preserved(primary, standby, promoted=False)
+    for url in (primary_url, replacement_url):
+        check_renewal_existing_state(
+            url, baseline, memory_id, failure_code="disconnect_mutated_original_state",
+        )
+    primary_status, standby_status = wait_renewal_pair(primary_url, replacement_url)
+    evidence = DisconnectEvidence(
+        **pending.commit.model_dump(), **pending.ownership.model_dump(),
+        disconnect_reconciled=True, replication_absent_during_commit=True, reconnected=True,
+        read_only_reconciliation=True, local_receipt_observed=True, canonical_state_matches=True,
+        processing_state_matches=True, source_state_matches=True, effect_state_preserved=True,
+        one_new_observation=True, uncertain_id=baseline.fixture.uncertain_id,
+        original_outcome_code=baseline.uncertain.outcome_code, probe_id=baseline.fixture.probe_id,
+        renewal_id=baseline.fixture.renewal_id,
+        system_identifier=baseline.control.system_identifier,
+        timeline=baseline.control.timeline, primary=primary_status, standby=standby_status,
+    )
+    write_new(directory, "reconnected-primary.json", primary)
+    write_new(directory, "reconnected-standby.json", standby)
+    write_new(directory, "disconnect.json", evidence)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=(
         "seed", "artifact", "synchronous", "uncertain", "prefence", "verify",
-        "replacement", "renewal",
+        "replacement", "renewal", "disconnect", "reconnect",
     ))
     args = parser.parse_args(argv)
     directory = None
@@ -1517,8 +1785,12 @@ def main(argv=None):
             asyncio.run(verify(directory, standby_url))
         elif args.stage == "replacement":
             replacement(directory, standby_url, replacement_url)
-        else:
+        elif args.stage == "renewal":
             asyncio.run(renewal(directory, standby_url, replacement_url))
+        elif args.stage == "disconnect":
+            asyncio.run(disconnect(directory, standby_url, replacement_url))
+        else:
+            asyncio.run(reconnect(directory, standby_url, replacement_url))
     except (
         AdminError, RuntimeValidationError, ServiceError, CommitOutcomeUnknown,
         psycopg.Error, ValidationError,

@@ -2,7 +2,35 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 隔離環境での同期再構成
+## M5開発: 制御した複製接続断
+
+**0.4.0.dev1 / API v1 / schema 22**で、同期再構成後に制御した接続断caseを追加します。
+所有昇格先のHBAで複製roleだけを一時拒否し、その置換sender一件だけを切断します。
+管理者・Native接続と`remote_apply`は維持し、host firewallや共有clusterは変更しません。
+
+一意なguard対象observe一件が実`SyncRep`で既存5秒COMMIT契約の期限を超え、
+成功receiptを返さないことを要求します。結果不明としてclientが復帰した実測後だけ接続許可を復元します。
+非公開pending証跡はretryや成功を承認しません。その後read-only照合で同一同期replicaを待ち、
+書込み再実行やeffect実行なしにreceiptと状態を完全比較します。
+元の不明性、確定renewal状態、source、checkpointを保持します。
+
+report/referenceはv5へ進め、passedには最終照合と再度の旧primary live fence確認が必要です。
+本番・serving・再開・effectのauthorityはfalseを維持します。
+transport blackhole、任意network partition、primary rejoin、本番RPO/RTOを認定するものではありません。
+[所有HA契約](operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)を参照してください。
+
+ローカルApple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6でv5 lifecycle全体が
+**41秒**で成功しました。複製接続拒否中にclientは**5.0017秒**で結果不明として復帰し、
+うち**4.9765秒**の`SyncRep`を観測しました。その後だけ元HBAを復元し、
+同一同期peerのreceipt/状態を完全照合しています。永続v5 reportと再接続後の両referenceを検証し、
+pending証跡をclient成功receiptへ変えません。effect実行なしに最後のfence確認も成功しました。
+
+Ruff、55 moduleのstrict型検査、**915 targeted passed / 既存live-DB依存25 skipped**に成功しました。
+pending/完了の区別、書込み前の隔離、COMMIT中の隔離喪失、cleanup/cancel、
+retryなしの完全照合、HBA/PID/復元失敗を対象にしています。
+service/schema/依存package/timeoutの変更はありません。v5のnative CI認定はまだ記録していません。
+
+## 以前のM5 increment: 隔離環境での同期再構成
 
 **0.4.0.dev1 / API v1 / schema 22**で、所有SQL-only HA labの新しい置換先とfenceの検証後に
 独立した同期再構成phaseを追加します。設定前にbaseline、identity、timeline、非同期peerを再検証し、
@@ -26,7 +54,9 @@ dispatched effectを維持します。過去の非同期証跡はそのまま保
 renewal後referenceの完全一致と永続v4 reportを検証しています。
 元の不明性、以前の非同期証跡、effect状態は変更せず、host fence再確認も両方成功しました。
 Ruff、55 moduleのstrict型検査、**767 targeted passed / 既存live-DB依存25 skipped**に成功しました。
-service/schema/依存packageの変更やtimeout緩和はありません。このv4 incrementのnative CI認定はまだ記録していません。
+service/schema/依存packageの変更やtimeout緩和はありません。
+記録時点で`4895ca6`の[run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055)は
+amd64/arm64のHA、PITR、AGEが成功し、core 2ジョブは実行中のため、v4全体のnative認定はまだ記録していません。
 
 ## 以前のM5 increment: 新しい置換standbyの構築
 
@@ -55,9 +85,12 @@ report/referenceは`pgag-ha-drill-v3`と`pgag-ha-reference-v3`を使い、
 
 Ruff、55 moduleのstrict型検査、**643 targeted passed / 既存live-DB依存25 skipped**に成功しました。
 空でないdirectory、古い/不一致のbackup・状態・lineage、証跡欠落、timeoutの拒否も対象です。
-service/schema/依存packageは変更していません。このv3 incrementのnative CIはまだ全体完了していません。
-`ee2be6f`の[run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962)は
-amd64/arm64のHA、PITR、AGEが成功し、v4ローカル証跡の記録時点でcore 2ジョブが実行中でした。
+service/schema/依存packageは変更していません。実装`ee2be6f`はその後、
+[run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962)で
+native **全8ジョブ**（amd64/arm64のcore、HA、PITR、patched AGE）に成功しました。
+各coreは**3,990 passed / 134 skipped**、別途**18 COMMIT case**と**13 request case**、
+全install/packaged recovery lifecycleに成功しています。以前の実行中という観測は
+最終結果を変更せず、非同期置換の契約も拡張しません。
 
 ## 以前のM5 increment: 所有HAでのCOMMIT結果不明の照合
 

@@ -269,7 +269,36 @@ start service/workers, execute effects or authorize production operation.
 Unexpected cancellation, COMMIT uncertainty, a failed partial configuration or
 state mismatch stops the lab without a passing renewal receipt.
 
-The terminal `pgag-ha-drill-v4` report distinguishes measured facts from
+The v5 drill then tests **controlled replication connection loss** on the owned
+pair. The host saves the promoted node's HBA file and prepends rejection rules
+only for physical replication by `pgag_ha_replication`, leaving administrator and
+Native access unchanged. After reload/rule checks, it terminates exactly the
+sender belonging to `pgag_m5_replacement`. No host firewall, shared cluster,
+replay pause, synchronous-policy downgrade or automatic promotion is involved.
+The standby remains running read-only while its reconnect attempts are refused.
+
+After verifying the renewed baseline, role/lineage and absence of streaming,
+one distinct restricted-writer observation must enter real `SyncRep` and exhaust
+the unchanged five-second COMMIT watchdog. Client exit, connection closure and
+`commit_outcome_unknown` are observed **before admission is restored**. Neither
+backend cancellation nor a pre-exit MVCC receipt is used as evidence of that
+outcome. `disconnect-pending.json` is private incomplete evidence, not a success
+receipt, retry instruction or passing report.
+
+The host restores the original HBA file byte-for-byte and reloads it. Only then
+does read-only reconciliation wait for the same synchronous peer and compare
+the exact private receipt and complete state on both nodes, allowing only the
+single declared observation delta. Both unknown outcomes remain distinct from
+acknowledged writes. No same-key replay, compensating write or effect execution
+occurs. Another live original-primary fence check is required at the end.
+A failed stage stops the harness and cleans up its owned resources; it cannot
+overwrite a failed attempt as passed.
+
+This is a deliberately rejected replication connection, **not a network
+blackhole, arbitrary partition, primary rejoin or production loss bound**.
+Restoring replication connectivity never authorizes service or worker restart.
+
+The terminal `pgag-ha-drill-v5` report distinguishes measured facts from
 unmeasured nulls. Backup size is bounded to 512 MiB, readiness waits to 90 seconds,
 and promotion wait to 30 seconds. Phase timings are observations, not RTO.
 `uncertain_commit_reconciled` requires the corresponding measured uncertainty
@@ -277,7 +306,9 @@ and replica evidence; a missing stage cannot produce a passing report.
 Replacement backup verification, exact state evidence and the final live fence
 recheck are also mandatory for a passing report. Renewal requires its own
 measured writer/wait/state evidence and final live fence check.
-References use `pgag-ha-reference-v4`; historical v1/v2/v3 reports do not qualify
+Connection-loss reconciliation and its final live fence check are mandatory;
+pending-only evidence cannot produce a pass.
+References use `pgag-ha-reference-v5`; historical v1/v2/v3/v4 reports do not qualify
 the added cases.
 `production_qualified`, `host_failure_domain_independent`,
 `network_partition_qualified`, `commit_timeout_qualified`, `automatic_failover`,

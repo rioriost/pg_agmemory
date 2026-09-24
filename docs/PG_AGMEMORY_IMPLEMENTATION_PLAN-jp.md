@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.15 / M5 隔離環境での同期再構成、2026-09-24
+- 文書版: 1.16 / M5 制御した複製接続断、2026-09-24
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M5開発を0.4.0.dev1/APIv1/schema22で継続し、revision遅延検査の再走査削減、COMMIT結果guard、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。同期待機cancelをrollbackや複製成功とは扱わないが、本番HAとpartitionの認定は残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -890,6 +890,9 @@ read-only完全状態とstreaming WALの検証、最後の旧primary fence再確
 別のv4 lab phaseは置換先/fenceの事前確認後、所有同期policyを明示的に再構成し、
 制限付きwriterのguard対象COMMIT一件が置換先replayを待つことを観測します。
 完全状態、元の不明性維持、再度のhost fence確認を要求し、本番servingは承認しません。
+v5 labは複製role限定のHBA拒否とsender切断を追加し、接続許可復元前のguard対象COMMIT不明と、
+復元後のread-only完全照合を確認します。書込みretryはせず、
+任意network partition、blackhole、primary rejoin、本番再開は認定しません。
 
 本番gateには引き続きhost/storage failure domain、負荷、RPO/RTO目標の宣言、
 HA/partition fencingとfailover drill、alert/metrics保持、

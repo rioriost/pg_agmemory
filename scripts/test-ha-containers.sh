@@ -10,6 +10,7 @@ usage() {
     echo "No API/worker/service starts; even renewed lab replication is not serving-authorized."
     echo "A replacement async standby is rebuilt from the promoted node, never old-primary data."
     echo "The owned lab then explicitly renews synchronous policy and verifies one guarded write."
+    echo "A scoped replication connection rejection checks uncertain COMMIT and no-retry recovery."
     echo "Use a NEW project-relative directory with an existing non-symlink parent."
     echo "Private synthetic physical backups remain there, never as release assets."
     echo "PGAG_HA_RUNTIME_IMAGE selects a caller-owned image; otherwise builds the runtime target."
@@ -74,6 +75,7 @@ backup_verified=null
 replacement_backup_verified=null
 original_primary_remains_fenced=null
 renewal_primary_remains_fenced=null
+disconnect_primary_remains_fenced=null
 primary_host=""
 standby_host=""
 replacement_host=""
@@ -101,7 +103,7 @@ record_elapsed() {
 cleanup() {
     local status=$? cleanup_started=$SECONDS name failed=false
     local synchronous=null uncertain=null preserved=null probe=null artifact=null
-    local replacement_evidence=null renewal=null
+    local replacement_evidence=null renewal=null disconnect=null
     trap - EXIT INT TERM
     set +e
     for name in ${containers[@]+"${containers[@]}"}; do
@@ -146,13 +148,17 @@ cleanup() {
     if [[ -f "$directory/renewal.json" ]]; then
         renewal="$(jq -ce . "$directory/renewal.json")" || status=1
     fi
+    if [[ -f "$directory/disconnect.json" ]]; then
+        disconnect="$(jq -ce . "$directory/disconnect.json")" || status=1
+    fi
     if [[ "$source_destroyed" != true || "$fencing_verified" != true \
           || "$pre_fence_promotion_rejected" != true || "$promotion_executed" != true \
           || "$backup_verified" != true || "$synchronous" == null || "$preserved" == null \
           || "$uncertain" == null || "$probe" == null || "$artifact" == null \
           || "$replacement_backup_verified" != true || "$original_primary_remains_fenced" != true \
           || "$replacement_evidence" == null || "$renewal" == null \
-          || "$renewal_primary_remains_fenced" != true ]]; then status=1; fi
+          || "$renewal_primary_remains_fenced" != true || "$disconnect" == null \
+          || "$disconnect_primary_remains_fenced" != true ]]; then status=1; fi
     record_elapsed cleanup "$cleanup_started"
     timings="$(jq -cn --argjson before "$timings" --argjson total "$SECONDS" \
         '$before + {total: $total}')"
@@ -170,8 +176,10 @@ cleanup() {
         --argjson replacement_backup "$replacement_backup_verified" \
         --argjson still_fenced "$original_primary_remains_fenced" \
         --argjson renewal "$renewal" --argjson renewal_fenced "$renewal_primary_remains_fenced" \
+        --argjson disconnect "$disconnect" \
+        --argjson disconnect_fenced "$disconnect_primary_remains_fenced" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
-            format: "pgag-ha-drill-v4", service_version: $version, api_version: "v1",
+            format: "pgag-ha-drill-v5", service_version: $version, api_version: "v1",
             schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
@@ -192,6 +200,8 @@ cleanup() {
             replacement_state_matches: $replacement.replacement_state_matches,
             renewal: $renewal, renewal_state_matches: $renewal.renewal_state_matches,
             renewal_primary_remains_fenced: $renewal_fenced,
+            disconnect: $disconnect, disconnect_reconciled: $disconnect.disconnect_reconciled,
+            disconnect_primary_remains_fenced: $disconnect_fenced,
             elapsed_seconds: $timings, production_qualified: false,
             host_failure_domain_independent: false, network_partition_qualified: false,
             commit_timeout_qualified: false, automatic_failover: false,
@@ -441,4 +451,51 @@ phase renewal
 failure_code=renewal_fence_recheck_failed
 verify_primary_absent
 renewal_primary_remains_fenced=true
+
+failure_code=replication_rejection_failed
+started=$SECONDS
+"$engine" exec "$standby" bash -ceu '
+    test ! -e /owned/ha-original-pg_hba.conf
+    cp -p "$PGDATA/pg_hba.conf" /owned/ha-original-pg_hba.conf
+    {
+        printf "host replication pgag_ha_replication 0.0.0.0/0 reject\n"
+        printf "host replication pgag_ha_replication ::/0 reject\n"
+        cat /owned/ha-original-pg_hba.conf
+    } > "$PGDATA/pg_hba.conf"
+    test "$(timeout 20s psql -U postgres -d pgag_ha -At -v ON_ERROR_STOP=1 \
+        -c "SELECT pg_reload_conf()")" = t
+' >/dev/null 2>&1
+test "$("$engine" exec "$standby" timeout 20s psql -U postgres -d pgag_ha -At \
+    -v ON_ERROR_STOP=1 -c "SELECT count(*)=2 AND bool_and(error IS NULL AND auth_method='reject'
+        AND type='host' AND database=ARRAY['replication']
+        AND user_name=ARRAY['pgag_ha_replication'])
+        FROM pg_hba_file_rules WHERE line_number IN (1,2)")" = t
+failure_code=owned_sender_disconnect_failed
+test "$("$engine" exec "$standby" timeout 20s psql -U postgres -d pgag_ha -At \
+    -v ON_ERROR_STOP=1 -c "WITH target AS MATERIALIZED (
+        SELECT pid FROM pg_stat_replication WHERE usename='pgag_ha_replication'
+        AND application_name='pgag_m5_replacement')
+        SELECT pg_terminate_backend(pid, 5000) FROM target
+        WHERE (SELECT count(*) FROM target)=1")" = t
+record_elapsed replication_rejection "$started"
+failure_code=disconnect_ownership_record_failed
+(set -o noclobber; jq -n '{
+    kind: "owned_replication_connection_rejection",
+    replication_connections_rejected: true, owned_sender_terminated: true
+}' > "$directory/disconnect-owned.json")
+phase disconnect
+
+failure_code=replication_admission_restore_failed
+started=$SECONDS
+"$engine" exec "$standby" bash -ceu '
+    cp -p /owned/ha-original-pg_hba.conf "$PGDATA/pg_hba.conf"
+    cmp -s /owned/ha-original-pg_hba.conf "$PGDATA/pg_hba.conf"
+    test "$(timeout 20s psql -U postgres -d pgag_ha -At -v ON_ERROR_STOP=1 \
+        -c "SELECT pg_reload_conf()")" = t
+' >/dev/null 2>&1
+record_elapsed replication_admission_restore "$started"
+phase reconnect
+failure_code=disconnect_fence_recheck_failed
+verify_primary_absent
+disconnect_primary_remains_fenced=true
 failure_code=drill_incomplete

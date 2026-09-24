@@ -224,12 +224,34 @@ primary/replicaの完全状態と宣言した一件だけの差分を比較し�
 effect実行、本番運用の承認は行いません。予期しないcancel、COMMIT不明、設定途中の失敗、
 状態不一致では成功renewal receiptを作らずlabを停止します。
 
-終端`pgag-ha-drill-v4` reportは測定した事実と未測定nullを分けます。
+v5 drillは続いて、所有pairで**制御した複製接続断**を検査します。
+hostは昇格先のHBAを保存し、`pgag_ha_replication`による物理複製だけを拒否するruleを先頭へ追加します。
+管理者・Native接続は変更せず、reload/rule確認後に`pgag_m5_replacement`のsender一件だけを停止します。
+host firewall、共有cluster、replay pause、同期policy緩和、自動昇格は使いません。
+standbyはread-onlyで稼働を続けますが、再接続は拒否されます。
+
+renewal後baseline、role/lineage、streaming不在を検証してから、
+一意な制限付きwriterのobserve一件で実`SyncRep`と既存5秒COMMIT watchdog期限超過を要求します。
+**接続許可の復元前**にclient復帰、接続破棄、`commit_outcome_unknown`を観測します。
+backend cancelや復帰前のMVCC receiptを結果の証拠にしません。
+`disconnect-pending.json`は非公開の未完了証跡であり、成功receipt、retry指示、passed reportではありません。
+
+hostは元HBAをbyte単位で一致するよう復元してreloadします。
+その後だけread-only照合で同一同期peerを待ち、両nodeのprivate receiptと完全状態を比較し、
+宣言した一件だけの差分を許します。二つの不明結果は確定書込みと区別して保持し、
+same-key replay、補償書込み、effect実行は行いません。最後に旧primaryのlive fenceを再確認します。
+stage失敗ではharnessを停止して所有resourceをcleanupし、失敗試行をpassedへ上書きしません。
+
+これは意図的に拒否した複製接続であり、**network blackhole、任意partition、primary rejoin、
+本番損失上限の認定ではありません**。複製接続の復元はservice/worker再開の承認にもなりません。
+
+終端`pgag-ha-drill-v5` reportは測定した事実と未測定nullを分けます。
 backupは512 MiB、readiness待機90秒、昇格待機30秒を上限とし、phase時間をRTOとは扱いません。
 `uncertain_commit_reconciled`には対応する結果不明とreplicaの実測証跡が必要で、
 stage欠落をpassedにはできません。置換backup検証、完全状態証跡、最後のlive fence再確認も必須です。
 renewal独自のwriter/wait/状態証跡と最後のlive fence確認も必要です。
-referenceは`pgag-ha-reference-v4`を使い、過去v1/v2/v3 reportを追加caseの認定へ読み替えません。
+接続断後の照合と最後のlive fence確認も必須で、pendingだけの証跡をpassedにしません。
+referenceは`pgag-ha-reference-v5`を使い、過去v1/v2/v3/v4 reportを追加caseの認定へ読み替えません。
 `production_qualified`、`host_failure_domain_independent`、
 `network_partition_qualified`、`commit_timeout_qualified`、`automatic_failover`、
 `automatic_service_start`、`serving_authorized`、`effect_reexecution`はfalseを維持します。

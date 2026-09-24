@@ -50,19 +50,27 @@ def observation(role="primary"):
     }))
 
 
-def uncertain_evidence(memory_id=None):
-    return drill.UncertainEvidence(
+def unknown_commit_observation(memory_id=None):
+    return drill.UnknownCommitObservation(
         memory_id=memory_id or uuid4(), outcome_code="commit_outcome_unknown",
-        uncertain_commit_reconciled=True, retryable=False, success_receipt_emitted=False,
+        retryable=False, success_receipt_emitted=False,
         writer_policy_verified=True, writer_synchronous_commit="remote_apply",
         statement_timeout_seconds=5, lock_timeout_seconds=5, commit_timeout_seconds=5,
         sync_rep_wait_observed=True, local_wal_flush_observed=True,
         local_wal_flush_scope="precommit_insert_lsn_lower_bound",
-        local_receipt_observed=True, local_receipt_observed_before_client_exit=False,
+        local_receipt_observed_before_client_exit=False,
         client_connection_closed=True,
         commit_wait_seconds=5.05, sync_rep_observed_seconds=4.95,
+        no_retry=True,
+    )
+
+
+def uncertain_evidence(memory_id=None):
+    return drill.UncertainEvidence(
+        **unknown_commit_observation(memory_id).model_dump(),
+        uncertain_commit_reconciled=True, local_receipt_observed=True,
         replay_resumed_after_client_exit=True, replica_state_matches=True,
-        read_only_reconciliation=True, no_retry=True,
+        read_only_reconciliation=True,
     )
 
 
@@ -139,6 +147,14 @@ def renewed_reference(baseline, memory_id):
     })
 
 
+def reconnected_reference(baseline, memory_id, commit=None):
+    return baseline.model_copy(update=observation_state_delta(baseline, memory_id) | {
+        "stage": "reconnected",
+        "fixture": baseline.fixture.model_copy(update={"disconnect_id": memory_id}),
+        "disconnect": commit or unknown_commit_observation(memory_id),
+    })
+
+
 def post_probe_reference():
     _, promoted = references()
     probe_id = uuid4()
@@ -192,6 +208,18 @@ def renewal_observations():
     )
 
 
+def disconnected_observations():
+    primary, standby = renewal_observations()
+    return (
+        primary.model_copy(update={"senders": primary.senders.model_copy(update={
+            "total": 0, "physical_streaming": 0, "physical_synchronous": 0,
+        })}),
+        standby.model_copy(update={"receiver": standby.receiver.model_copy(update={
+            "present": False, "streaming": False,
+        })}),
+    )
+
+
 def renewal_evidence(uncertain_id=None, probe_id=None, memory_id=None):
     primary, standby = renewal_observations()
     return drill.RenewalEvidence(
@@ -208,9 +236,44 @@ def renewal_evidence(uncertain_id=None, probe_id=None, memory_id=None):
     )
 
 
+def disconnect_ownership():
+    return drill.DisconnectOwnership(
+        kind="owned_replication_connection_rejection",
+        replication_connections_rejected=True, owned_sender_terminated=True,
+    )
+
+
+def disconnect_pending():
+    baseline = renewed_reference(post_probe_reference(), uuid4())
+    commit = unknown_commit_observation()
+    return drill.DisconnectPending(
+        baseline=baseline, ownership=disconnect_ownership(), commit=commit,
+        receipt=drill.DisconnectReceipt(
+            memory_id=commit.memory_id, revision=1, synthesis_job_id=None,
+        ),
+        replication_absent_during_commit=True,
+    )
+
+
+def disconnect_evidence(uncertain_id, probe_id, renewal_id, commit=None):
+    primary, standby = renewal_observations()
+    return drill.DisconnectEvidence(
+        **(commit or unknown_commit_observation()).model_dump(),
+        **disconnect_ownership().model_dump(),
+        disconnect_reconciled=True, replication_absent_during_commit=True, reconnected=True,
+        read_only_reconciliation=True, local_receipt_observed=True,
+        canonical_state_matches=True, processing_state_matches=True, source_state_matches=True,
+        effect_state_preserved=True, one_new_observation=True,
+        uncertain_id=uncertain_id, original_outcome_code="commit_outcome_unknown",
+        probe_id=probe_id, renewal_id=renewal_id,
+        system_identifier="1234567890123456789", timeline=2, primary=primary, standby=standby,
+    )
+
+
 def passed_report():
     reference, _ = references()
     probe_id = uuid4()
+    renewed = renewal_evidence(reference.fixture.uncertain_id, probe_id)
     return drill.Report(
         status="passed", failure_code=None, source_destroyed=True, fencing_verified=True,
         pre_fence_promotion_rejected=True, promotion_executed=True, backup_verified=True,
@@ -222,7 +285,10 @@ def passed_report():
         replacement_backup_verified=True,
         replacement=replacement_evidence(reference.fixture.uncertain_id, probe_id),
         renewal_state_matches=True, renewal_primary_remains_fenced=True,
-        renewal=renewal_evidence(reference.fixture.uncertain_id, probe_id),
+        renewal=renewed, disconnect_reconciled=True, disconnect_primary_remains_fenced=True,
+        disconnect=disconnect_evidence(
+            reference.fixture.uncertain_id, probe_id, renewed.memory_id,
+        ),
         artifact=drill.pitr.Artifact(bytes=1024, sha256="a" * 64),
         synchronous=drill.SynchronousEvidence(
             writer_policy_verified=True, writer_synchronous_commit="remote_apply",
@@ -246,7 +312,7 @@ def passed_report():
 
 def test_report_pins_schema_and_never_authorizes_general_serving():
     report = passed_report()
-    assert report.format == "pgag-ha-drill-v4"
+    assert report.format == "pgag-ha-drill-v5"
     assert report.service_version == __version__
     assert report.schema_version == 22 and report.api_version == "v1"
     assert report.postgres_version_num == 180006 and report.pgvector_version == "0.8.6"
@@ -272,6 +338,7 @@ def test_failed_report_keeps_unmeasured_facts_null():
         "replacement_state_matches", "original_primary_remains_fenced",
         "replacement_backup_verified",
         "renewal_state_matches", "renewal_primary_remains_fenced",
+        "disconnect_reconciled", "disconnect_primary_remains_fenced",
     ):
         assert getattr(report, field) is None
         with pytest.raises(ValidationError):
@@ -283,6 +350,7 @@ def test_failed_report_keeps_unmeasured_facts_null():
     "backup_verified", "artifact", "synchronous", "uncertain", "preserved", "probe", "replacement",
     "original_primary_remains_fenced", "replacement_backup_verified",
     "renewal", "renewal_primary_remains_fenced",
+    "disconnect", "disconnect_primary_remains_fenced",
 ])
 def test_pass_cannot_omit_its_evidence(field):
     with pytest.raises(ValidationError):
@@ -300,7 +368,7 @@ def test_promotion_observation_without_fencing_never_validates():
 @pytest.mark.parametrize("field", [
     "writer_policy_verified", "short_pause_blocked_ack", "acknowledged_state_matches",
     "effect_state_preserved", "postpromotion_probe_verified", "uncertain_commit_reconciled",
-    "replacement_state_matches", "renewal_state_matches",
+    "replacement_state_matches", "renewal_state_matches", "disconnect_reconciled",
 ])
 def test_measurement_cannot_be_invented_without_its_proof(field):
     with pytest.raises(ValidationError, match="unmeasured_or_inconsistent_evidence"):
@@ -370,6 +438,248 @@ def test_pass_cannot_skip_the_entire_renewal_stage():
         })
 
 
+@pytest.mark.parametrize("status", ["passed", "failed"])
+@pytest.mark.parametrize("proof,flag", [(False, True), (True, None), (True, False)])
+def test_disconnect_report_measurement_must_match_completed_reconciliation(status, proof, flag):
+    report = passed_report().model_dump() | {
+        "status": status, "failure_code": None if status == "passed" else "cleanup_failed",
+        "disconnect_reconciled": flag,
+    }
+    if not proof:
+        report["disconnect"] = None
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(report)
+
+
+def test_pass_cannot_skip_the_entire_disconnect_and_reconnect_stage():
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(passed_report().model_dump() | {
+            "disconnect": None, "disconnect_reconciled": None,
+            "disconnect_primary_remains_fenced": None,
+        })
+
+
+def test_failed_disconnect_keeps_renewal_proof_without_claiming_reconciliation():
+    report = drill.Report.model_validate(passed_report().model_dump() | {
+        "status": "failed", "failure_code": "reconnect_failed",
+        "disconnect": None, "disconnect_reconciled": None,
+        "disconnect_primary_remains_fenced": None,
+    })
+    assert report.renewal_state_matches is True and report.renewal_primary_remains_fenced is True
+    assert report.disconnect_reconciled is None and report.disconnect is None
+    assert not report.serving_authorized and not report.network_partition_qualified
+
+
+def test_disconnect_fence_cannot_be_invented_without_prior_owned_fencing():
+    with pytest.raises(ValidationError):
+        drill.Report(
+            status="failed", failure_code="disconnect_failed",
+            disconnect_primary_remains_fenced=True, elapsed_seconds={"total": 1.0},
+        )
+
+
+@pytest.mark.parametrize("value", [None, False])
+def test_disconnect_requires_all_measurements_and_cannot_negate_completed_evidence(value):
+    evidence = passed_report().disconnect.model_dump()
+    for field, definition in drill.DisconnectEvidence.model_fields.items():
+        if definition.is_required():
+            with pytest.raises(ValidationError):
+                drill.DisconnectEvidence.model_validate({
+                    name: result for name, result in evidence.items() if name != field
+                })
+        if evidence[field] is True:
+            with pytest.raises(ValidationError):
+                drill.DisconnectEvidence.model_validate(evidence | {field: value})
+
+
+@pytest.mark.parametrize("field", [
+    "production_qualified", "network_partition_qualified", "commit_timeout_qualified",
+    "automatic_failover", "automatic_service_start", "serving_authorized", "effect_reexecution",
+])
+def test_controlled_disconnect_never_claims_partition_qualification_or_service_authority(field):
+    evidence = passed_report().disconnect
+    assert getattr(evidence, field) is False
+    with pytest.raises(ValidationError):
+        drill.DisconnectEvidence.model_validate(evidence.model_dump() | {field: True})
+
+
+@pytest.mark.parametrize("field", [
+    "private_receipt", "pending", "rpo_qualified", "blackhole_qualified", "automatic_retry",
+])
+def test_final_disconnect_evidence_rejects_private_pending_data_or_broader_claims(field):
+    with pytest.raises(ValidationError):
+        drill.DisconnectEvidence.model_validate(passed_report().disconnect.model_dump() | {
+            field: True,
+        })
+
+
+def test_final_disconnect_report_does_not_embed_the_private_receipt():
+    assert not {"receipt", "private_receipt", "pending"} & (
+        passed_report().disconnect.model_dump().keys()
+    )
+
+
+@pytest.mark.parametrize("field", [
+    "retryable", "success_receipt_emitted", "local_receipt_observed_before_client_exit",
+])
+def test_disconnect_cannot_upgrade_unknown_to_acknowledged_or_retryable(field):
+    evidence = passed_report().disconnect
+    assert getattr(evidence, field) is False
+    with pytest.raises(ValidationError):
+        drill.DisconnectEvidence.model_validate(evidence.model_dump() | {field: True})
+
+
+@pytest.mark.parametrize("field", ["commit_wait_seconds", "sync_rep_observed_seconds"])
+@pytest.mark.parametrize("seconds", [0, 4.49, 8, float("nan"), float("inf")])
+def test_disconnect_proof_requires_the_real_bounded_commit_window(field, seconds):
+    with pytest.raises(ValidationError):
+        drill.DisconnectEvidence.model_validate(passed_report().disconnect.model_dump() | {
+            field: seconds,
+        })
+
+
+@pytest.mark.parametrize("change", [
+    {"kind": "network_partition"}, {"kind": "blackhole"},
+    {"outcome_code": "committed"}, {"writer_synchronous_commit": "on"},
+    {"commit_timeout_seconds": 0.05}, {"statement_timeout_seconds": 0},
+    {"lock_timeout_seconds": 0}, {"local_wal_flush_scope": "commit_record_watermark"},
+])
+def test_disconnect_proof_rejects_broader_faults_and_weakened_commit_guards(change):
+    with pytest.raises(ValidationError):
+        drill.DisconnectEvidence.model_validate(passed_report().disconnect.model_dump() | change)
+
+
+def test_disconnect_pending_is_private_unknown_evidence_not_a_completed_report():
+    pending = disconnect_pending()
+    assert pending.format == "pgag-ha-disconnect-pending-v1"
+    assert pending.disconnect_reconciled is False and pending.success_receipt_emitted is False
+    assert pending.commit.memory_id == pending.receipt.memory_id
+    assert pending.commit.memory_id not in {item.object_id for item in pending.baseline.episodes}
+    for field in ("disconnect_reconciled", "success_receipt_emitted"):
+        with pytest.raises(ValidationError):
+            drill.DisconnectPending.model_validate(pending.model_dump() | {field: True})
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(passed_report().model_dump() | {
+            "disconnect": pending.model_dump(),
+        })
+
+
+@pytest.mark.parametrize("change", ["receipt_id", "existing_id", "baseline_stage"])
+def test_disconnect_pending_requires_one_new_identity_matching_the_private_receipt(change):
+    pending = disconnect_pending().model_dump()
+    if change == "receipt_id":
+        pending["receipt"]["memory_id"] = uuid4()
+    elif change == "existing_id":
+        memory_id = pending["baseline"]["fixture"]["renewal_id"]
+        pending["commit"]["memory_id"] = pending["receipt"]["memory_id"] = memory_id
+    else:
+        baseline = post_probe_reference()
+        pending["baseline"] = baseline.model_dump()
+    with pytest.raises(ValidationError, match="disconnect_pending_identity_mismatch"):
+        drill.DisconnectPending.model_validate(pending)
+
+
+@pytest.mark.parametrize("field", ["replication_connections_rejected", "owned_sender_terminated"])
+def test_disconnect_ownership_cannot_omit_or_invent_missing_fault_injection(field):
+    document = disconnect_ownership().model_dump()
+    for value in (False, None):
+        with pytest.raises(ValidationError):
+            drill.DisconnectOwnership.model_validate(document | {field: value})
+    with pytest.raises(ValidationError):
+        drill.DisconnectOwnership.model_validate({
+            key: value for key, value in document.items() if key != field
+        })
+
+
+@pytest.mark.parametrize("field", ["uncertain_id", "probe_id", "renewal_id"])
+def test_disconnect_unknown_identity_cannot_reuse_any_previous_named_write(field):
+    document = passed_report().disconnect.model_dump()
+    document["memory_id"] = document[field]
+    with pytest.raises(ValidationError, match="disconnect_identity_reused"):
+        drill.DisconnectEvidence.model_validate(document)
+
+
+@pytest.mark.parametrize("field", [
+    "memory_id", "uncertain_id", "probe_id", "renewal_id", "system_identifier", "timeline",
+])
+def test_disconnect_report_identity_must_match_renewal_without_reusing_old_acknowledgements(field):
+    report = passed_report().model_dump()
+    if field == "memory_id":
+        value = report["synchronous"]["acknowledgements"][0]
+    elif field == "system_identifier":
+        value = "42"
+    elif field == "timeline":
+        value = 3
+    else:
+        value = uuid4()
+    report["disconnect"][field] = value
+    with pytest.raises(ValidationError, match="disconnect_report_identity_mismatch"):
+        drill.Report.model_validate(report)
+
+
+def test_reconnected_reference_preserves_both_unknown_outcomes_separately():
+    pending = disconnect_pending()
+    reference = drill.Reference.model_validate(reconnected_reference(
+        pending.baseline, pending.commit.memory_id, pending.commit,
+    ).model_dump())
+    assert len(reference.episodes) == 8 and len(reference.fixture.acknowledged_ids) == 3
+    assert reference.uncertain == pending.baseline.uncertain
+    assert reference.disconnect == pending.commit
+    assert reference.fixture.renewal_id == pending.baseline.fixture.renewal_id
+    assert reference.disconnect.outcome_code == reference.uncertain.outcome_code
+    assert reference.disconnect.memory_id != reference.uncertain.memory_id
+    for version in (1, 2, 3, 4):
+        with pytest.raises(ValidationError):
+            drill.Reference.model_validate(reference.model_dump() | {
+                "format": f"pgag-ha-reference-v{version}",
+            })
+
+
+@pytest.mark.parametrize("change", [
+    "missing_proof", "missing_id", "mismatched_id", "missing_episode", "old_stage",
+])
+def test_reconnected_reference_requires_exact_disconnect_identity_and_evidence(change):
+    pending = disconnect_pending()
+    document = reconnected_reference(pending.baseline, pending.commit.memory_id).model_dump()
+    if change == "missing_proof":
+        document["disconnect"] = None
+    elif change == "missing_id":
+        document["fixture"]["disconnect_id"] = None
+    elif change == "mismatched_id":
+        document["disconnect"]["memory_id"] = uuid4()
+    elif change == "missing_episode":
+        document["episodes"] = document["episodes"][:-1]
+    else:
+        document["stage"] = "renewed"
+    with pytest.raises(ValidationError):
+        drill.Reference.model_validate(document)
+
+
+@pytest.mark.parametrize("identity", [
+    "before_id", "uncertain_id", "probe_id", "renewal_id", "acknowledged_id",
+])
+def test_reconnected_reference_cannot_reuse_any_of_the_seven_previous_episode_identities(identity):
+    pending = disconnect_pending()
+    fixture = pending.baseline.fixture
+    memory_id = fixture.acknowledged_ids[0] if identity == "acknowledged_id" else getattr(
+        fixture, identity,
+    )
+    with pytest.raises(ValidationError, match="invalid_acknowledged_episode_set"):
+        drill.Reference.model_validate(
+            reconnected_reference(pending.baseline, memory_id).model_dump(),
+        )
+
+
+def test_reconnected_snapshot_comparison_preserves_the_new_unknown_evidence_exactly():
+    pending = disconnect_pending()
+    reference = reconnected_reference(pending.baseline, pending.commit.memory_id, pending.commit)
+    changed = reference.model_copy(update={"disconnect": pending.commit.model_copy(update={
+        "commit_wait_seconds": 6.0,
+    })})
+    with pytest.raises(drill.pitr.DrillError, match="disconnect_outcome_changed"):
+        drill.check_preserved(reference, changed, promoted=False)
+
+
 def test_renewal_preserves_historical_async_and_unknown_evidence():
     report = passed_report()
     assert report.replacement.synchronous_policy_renewed is False
@@ -387,6 +697,8 @@ def test_failed_renewal_can_retain_complete_replacement_without_inventing_new_ev
     report = drill.Report.model_validate(passed_report().model_dump() | {
         "status": "failed", "failure_code": "renewal_failed",
         "renewal": None, "renewal_state_matches": None, "renewal_primary_remains_fenced": None,
+        "disconnect": None, "disconnect_reconciled": None,
+        "disconnect_primary_remains_fenced": None,
     })
     assert report.replacement_state_matches is True
     assert report.original_primary_remains_fenced is True
@@ -469,7 +781,7 @@ def test_renewal_reference_has_seven_distinct_episodes_without_relabeling_old_ac
     assert reference.uncertain == baseline.uncertain
     assert reference.fixture.probe_id == baseline.fixture.probe_id
     assert reference.fixture.renewal_id not in {item.object_id for item in baseline.episodes}
-    for version in (1, 2, 3):
+    for version in (1, 2, 3, 4):
         with pytest.raises(ValidationError):
             drill.Reference.model_validate(reference.model_dump() | {
                 "format": f"pgag-ha-reference-v{version}",
@@ -642,6 +954,8 @@ def test_partial_failed_rebuild_retains_only_the_measured_backup_fact():
         "replacement": None, "replacement_state_matches": None,
         "original_primary_remains_fenced": None,
         "renewal": None, "renewal_state_matches": None, "renewal_primary_remains_fenced": None,
+        "disconnect": None, "disconnect_reconciled": None,
+        "disconnect_primary_remains_fenced": None,
     })
     assert report.replacement_backup_verified is True
     assert report.replacement_state_matches is None
@@ -719,7 +1033,7 @@ def test_replacement_reference_preserves_probe_and_original_uncertain_state():
     assert replacement.fixture.probe_id == baseline.fixture.probe_id
     assert replacement.uncertain == baseline.uncertain
     drill.check_preserved(baseline, replacement, promoted=False)
-    for version in (1, 2, 3):
+    for version in (1, 2, 3, 4):
         with pytest.raises(ValidationError):
             drill.Reference.model_validate(replacement.model_dump() | {
                 "format": f"pgag-ha-reference-v{version}",
@@ -784,7 +1098,7 @@ def test_ha_uses_the_shared_production_commit_guard_without_timeout_override():
     )
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_old_report_format_cannot_claim_new_evidence(version):
     with pytest.raises(ValidationError):
         drill.Report.model_validate(passed_report().model_dump() | {
@@ -792,7 +1106,7 @@ def test_old_report_format_cannot_claim_new_evidence(version):
         })
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_old_reference_format_cannot_claim_reconciled_state(version):
     reference, _ = references()
     with pytest.raises(ValidationError):
@@ -906,7 +1220,7 @@ def test_uncertainty_cannot_be_reported_before_the_synchronous_stage():
 
 def test_reconciled_reference_keeps_three_acks_and_one_separate_unknown():
     reference, promoted = references()
-    assert reference.format == "pgag-ha-reference-v4"
+    assert reference.format == "pgag-ha-reference-v5"
     assert reference.stage == "reconciled" and len(reference.fixture.acknowledged_ids) == 3
     assert reference.fixture.uncertain_id not in reference.fixture.acknowledged_ids
     assert len(reference.episodes) == 5
@@ -1190,7 +1504,7 @@ def test_service_observe_uses_guard_and_never_retries_or_releases_failed_commit(
 
 @pytest.fixture
 def paused_uncertain_harness(monkeypatch):
-    def build(mode, *, resume_error=False, cleanup_error=False):
+    def build(mode, *, resume_error=False, cleanup_error=False, disconnected=False):
         reference, _ = references("acknowledged")
         memory_id = uuid4()
         receipt = {"memory_id": str(memory_id)}
@@ -1247,8 +1561,9 @@ def paused_uncertain_harness(monkeypatch):
 
             async def observe(self, request, key):
                 assert request.scope_id == reference.fixture.scope_id
-                assert request.source_event_id == "paused-uncertain"
-                assert key == "ha-paused-uncertain"
+                name = "disconnected-uncertain" if disconnected else "paused-uncertain"
+                assert request.source_event_id == name
+                assert key == "ha-" + name
                 state.events.append("observe")
                 if mode == "body_error":
                     raise state.original_error
@@ -1276,10 +1591,30 @@ def paused_uncertain_harness(monkeypatch):
                     assert not state.resumed and not writer.closed
                     state.events.append("wal-flush")
                     row = {"flushed": mode != "unflushed"}
+                elif "AS sender_absent" in query:
+                    assert disconnected and self.url == "readonly:owned-primary"
+                    state.events.append("sender-checked")
+                    row = {
+                        "recovering": mode == "primary_recovery",
+                        "policy": "on" if mode == "wrong_policy" else "remote_apply",
+                        "standbys": "FIRST 1 (pgag_m5_replacement)",
+                        "sender_absent": mode != "sender_present" and not (
+                            mode == "reconnected_early" and state.seconds >= 0.1
+                        ),
+                    }
+                elif "AS receiver_absent" in query:
+                    assert disconnected and self.url == "readonly:owned-standby"
+                    row = {
+                        "recovering": True, "read_only": "off" if mode == "writable" else "on",
+                        "paused": mode == "paused",
+                        "receiver_absent": mode != "receiver_streaming",
+                    }
                 elif "pg_get_wal_replay_pause_state" in query:
+                    assert not disconnected
                     assert not state.resumed
                     row = {"state": "paused"}
                 else:
+                    assert not disconnected
                     assert query == "SELECT pg_wal_replay_pause()"
                     state.events.append("pause")
                     row = None
@@ -1301,6 +1636,7 @@ def paused_uncertain_harness(monkeypatch):
             raise AssertionError("MVCC_receipt_is_not_visible_during_SyncRep")
 
         async def resume(url):
+            assert not disconnected, "disconnect_helper_must_not_reconnect_or_resume_replication"
             assert url == "owned-standby"
             state.events.append(("resume", writer.closed))
             state.resumed = True
@@ -1308,6 +1644,9 @@ def paused_uncertain_harness(monkeypatch):
                 raise OSError("private-replay-resume-diagnostic")
 
         async def wait(tasks, *, timeout):
+            if disconnected and any(not task.done() for task in tasks):
+                await actual_sleep(0)
+                state.seconds += 5.1
             result = await asyncio.wait(tasks, timeout=timeout)
             if cleanup_error:
                 raise RuntimeError("private-writer-cleanup-diagnostic")
@@ -1394,6 +1733,69 @@ def test_paused_uncertain_resume_failure_cannot_return_reconciliation_evidence(
     with pytest.raises(OSError, match="private-replay-resume-diagnostic"):
         asyncio.run(drill.paused_uncertain("owned-primary", "owned-standby", fixture))
     assert state.events[-1] == ("resume", True)
+
+
+def test_controlled_disconnect_observes_closed_unknown_without_replay_or_transport_changes(
+    paused_uncertain_harness,
+):
+    fixture, memory_id, receipt, state = paused_uncertain_harness("unknown", disconnected=True)
+    identity, elapsed, observed, private = asyncio.run(drill.guarded_unknown(
+        "owned-primary", "owned-standby", fixture,
+        name="disconnected-uncertain", pause_replay=False,
+    ))
+    assert identity == memory_id and private == receipt
+    assert 4.5 <= observed <= elapsed < 8
+    assert state.events.count("observe") == state.events.count("guard") == 1
+    assert state.events.count("sender-checked") >= 3
+    assert state.events.index("sender-checked") < state.events.index("observe")
+    assert state.events.index("wal-flush") < state.events.index("client-exit")
+    assert "pause" not in state.events and not state.resumed
+    assert not any(isinstance(event, tuple) and event[0] == "resume" for event in state.events)
+
+
+@pytest.mark.parametrize("mode,code", [
+    ("sender_present", "disconnect_primary_not_isolated"),
+    ("primary_recovery", "disconnect_primary_not_isolated"),
+    ("wrong_policy", "disconnect_primary_not_isolated"),
+    ("receiver_streaming", "disconnect_standby_not_isolated"),
+    ("writable", "disconnect_standby_not_isolated"),
+    ("paused", "disconnect_standby_not_isolated"),
+])
+def test_disconnect_live_preconditions_fail_before_starting_the_guarded_write(
+    paused_uncertain_harness, mode, code,
+):
+    fixture, _, _, state = paused_uncertain_harness(mode, disconnected=True)
+    with pytest.raises(drill.pitr.DrillError, match=code):
+        asyncio.run(drill.guarded_unknown(
+            "owned-primary", "owned-standby", fixture,
+            name="disconnected-uncertain", pause_replay=False,
+        ))
+    assert "observe" not in state.events and "guard" not in state.events
+    assert not state.resumed
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("reconnected_early", drill.pitr.DrillError, "disconnect_primary_not_isolated"),
+    ("success", drill.pitr.DrillError, "uncertain_commit_unexpectedly_acknowledged"),
+    ("open_unknown", drill.pitr.DrillError, "watchdog_unknown_not_verified"),
+    ("local_committed", drill.pitr.DrillError, "watchdog_unknown_not_verified"),
+    ("short_deadline", drill.pitr.DrillError, "uncertain_deadline_not_qualified"),
+    ("no_sync_rep", drill.pitr.DrillError, "uncertain_deadline_not_qualified"),
+    ("unflushed", drill.pitr.DrillError, "local_wal_not_flushed_before_exit"),
+    ("body_error", ValueError, "synthetic_body_failed"),
+    ("observer_failure", ValueError, "synthetic_observer_failed"),
+    ("cancelled", asyncio.CancelledError, None),
+])
+def test_disconnect_unknown_guard_failure_never_retries_or_restores_transport(
+    paused_uncertain_harness, mode, error, code,
+):
+    fixture, _, _, state = paused_uncertain_harness(mode, disconnected=True)
+    with pytest.raises(error, match=code):
+        asyncio.run(drill.guarded_unknown(
+            "owned-primary", "owned-standby", fixture,
+            name="disconnected-uncertain", pause_replay=False,
+        ))
+    assert state.events.count("observe") <= 1 and not state.resumed
 
 
 @pytest.mark.parametrize("change", [
@@ -2507,6 +2909,330 @@ def test_renewal_ack_cleanup_failure_alone_cannot_be_reported_as_success(renewal
     assert state.events.count("observe") == 1
 
 
+@pytest.fixture
+def disconnect_stages(monkeypatch):
+    def build(mode):
+        pending = disconnect_pending()
+        baseline = pending.baseline
+        documents = {
+            "disconnect-owned.json": pending.ownership, "disconnect-pending.json": pending,
+            "renewed-primary.json": baseline, "renewed-standby.json": baseline,
+            "renewal.json": renewal_evidence(
+                baseline.fixture.uncertain_id, baseline.fixture.probe_id,
+                baseline.fixture.renewal_id,
+            ),
+            "uncertain.json": baseline.uncertain,
+        }
+        state = SimpleNamespace(events=[], written=[], primary_reads=0, standby_reads=0)
+        if mode == "wrong_stage":
+            documents["renewed-primary.json"] = post_probe_reference()
+        elif mode == "wrong_renewal":
+            documents["renewal.json"] = documents["renewal.json"].model_copy(update={
+                "memory_id": uuid4(),
+            })
+        elif mode == "changed_uncertainty":
+            documents["uncertain.json"] = baseline.uncertain.model_copy(update={
+                "commit_wait_seconds": 6.0,
+            })
+        elif mode == "changed_pending_baseline":
+            documents["disconnect-pending.json"] = pending.model_copy(update={
+                "baseline": baseline.model_copy(update={"control": baseline.control.model_copy(
+                    update={"lsn": "0/600"},
+                )}),
+            })
+
+        def read(directory, name, model):
+            assert directory == Path("/drill")
+            state.events.append(("read", name))
+            if mode == "missing_ownership" and name == "disconnect-owned.json":
+                raise FileNotFoundError("synthetic_missing_ownership")
+            if mode == "missing_pending" and name == "disconnect-pending.json":
+                raise FileNotFoundError("synthetic_missing_pending")
+            return model.model_validate(documents[name].model_dump())
+
+        async def wait_disconnected(primary, replacement):
+            assert (primary, replacement) == ("host=owned-promoted", "host=owned-replacement")
+            state.events.append("isolated-pair")
+            if mode == "disconnect_timeout":
+                raise TimeoutError("synthetic_isolation_timeout")
+
+        async def guarded_unknown(primary, replacement, fixture, *, name, pause_replay):
+            assert (primary, replacement) == ("host=owned-promoted", "host=owned-replacement")
+            assert fixture == baseline.fixture
+            assert name == "replication-disconnect-uncertain" and pause_replay is False
+            state.events.append("single-unknown-write")
+            if mode == "writer_failure":
+                raise ValueError("synthetic_writer_failed")
+            if mode == "cancelled_writer":
+                raise asyncio.CancelledError()
+            receipt = pending.receipt.model_dump(mode="json")
+            if mode == "extra_receipt_field":
+                receipt["private_extra"] = "not-a-receipt-field"
+            return (
+                pending.commit.memory_id, pending.commit.commit_wait_seconds,
+                pending.commit.sync_rep_observed_seconds, receipt,
+            )
+
+        def capture(url, stage, fixture, recovery=False, uncertain=None, disconnect=None):
+            assert uncertain == baseline.uncertain
+            assert recovery == (url == "host=owned-replacement")
+            state.events.append(("capture", stage, recovery))
+            if stage == "renewed":
+                assert fixture == baseline.fixture and disconnect is None
+                return baseline.model_copy(update={"content": ()}) if (
+                    mode == "changed_baseline"
+                ) else baseline
+            assert stage == "reconnected" and fixture.disconnect_id == pending.commit.memory_id
+            assert disconnect == pending.commit
+            candidate = reconnected_reference(baseline, pending.commit.memory_id, disconnect)
+            if mode == "wrong_replica_timeline" and recovery:
+                candidate = candidate.model_copy(update={"control": baseline.control.model_copy(
+                    update={"timeline": 3},
+                )})
+            elif mode == "changed_effect":
+                candidate = candidate.model_copy(update={"effect_status": "confirmed"})
+            return candidate
+
+        def wait_pair(primary, replacement):
+            assert (primary, replacement) == ("host=owned-promoted", "host=owned-replacement")
+            state.events.append("reconnected-pair")
+            if mode == "still_disconnected":
+                raise drill.pitr.DrillError("renewal_synchronous_pair_unavailable")
+            return renewal_observations()
+
+        class Connection:
+            def __init__(self, host):
+                self.host = host
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def execute(self, *args):
+                raise AssertionError("reconnection_must_only_read_exact_state")
+
+        async def connect(url, **kwargs):
+            params = drill.conninfo_to_dict(url)
+            assert params["host"] in ("owned-promoted", "owned-replacement")
+            assert "default_transaction_read_only=on" in params["options"]
+            assert kwargs == {"autocommit": True, "row_factory": drill.dict_row}
+            return Connection(params["host"])
+
+        async def uncertain_state(conn, fixture, memory_id):
+            assert fixture == baseline.fixture and memory_id == pending.commit.memory_id
+            state.events.append(("receipt-state", conn.host))
+            if mode == "reconcile_timeout":
+                raise TimeoutError("synthetic_reconciliation_timeout")
+            if mode == "cancelled_reconcile":
+                raise asyncio.CancelledError()
+            result = {
+                "receipts": [{"result": pending.receipt.model_dump(mode="json")}],
+                "full_state": "exact-original-row-state",
+            }
+            if conn.host == "owned-promoted":
+                state.primary_reads += 1
+                if mode == "receipt_mismatch":
+                    result["receipts"][0]["result"] = {"memory_id": str(uuid4())}
+                elif mode == "primary_changed" and state.primary_reads > 1:
+                    result["full_state"] = "changed"
+            else:
+                state.standby_reads += 1
+                if mode in ("lagging", "primary_changed") and state.standby_reads == 1:
+                    return None
+                if mode == "replica_mismatch":
+                    result["full_state"] = "changed"
+            return result
+
+        @asynccontextmanager
+        async def timeout(seconds):
+            assert seconds == 30
+            state.events.append("bounded-readonly-reconciliation")
+            yield
+
+        async def sleep(seconds):
+            assert seconds == 0.05
+            state.events.append("waiting-for-replay")
+
+        def existing_state(url, original, memory_id, *, failure_code):
+            assert original == baseline and memory_id == pending.commit.memory_id
+            assert failure_code == "disconnect_mutated_original_state"
+            state.events.append(("existing-state", url))
+            if mode == "mutated_original_rows":
+                raise drill.pitr.DrillError(failure_code)
+
+        original_exists, original_symlink = Path.exists, Path.is_symlink
+        monkeypatch.setattr(Path, "exists", lambda path: (
+            mode == "existing_pending" if path == Path("/drill/disconnect-pending.json")
+            else original_exists(path)
+        ))
+        monkeypatch.setattr(Path, "is_symlink", lambda path: (
+            mode == "symlink_pending" if path == Path("/drill/disconnect-pending.json")
+            else original_symlink(path)
+        ))
+        monkeypatch.setattr(drill, "read", read)
+        monkeypatch.setattr(drill, "wait_disconnected", wait_disconnected)
+        monkeypatch.setattr(drill, "guarded_unknown", guarded_unknown)
+        monkeypatch.setattr(drill, "capture", capture)
+        monkeypatch.setattr(drill, "wait_renewal_pair", wait_pair)
+        monkeypatch.setattr(drill, "psycopg", SimpleNamespace(
+            AsyncConnection=SimpleNamespace(connect=connect),
+        ))
+        monkeypatch.setattr(drill, "asyncio", SimpleNamespace(timeout=timeout, sleep=sleep))
+        monkeypatch.setattr(drill, "uncertain_state", uncertain_state)
+        monkeypatch.setattr(drill, "check_renewal_existing_state", existing_state)
+        monkeypatch.setattr(drill, "write_new", lambda directory, name, model: state.written.append(
+            (name, model),
+        ))
+        return pending, state
+
+    return build
+
+
+def test_disconnect_stage_writes_only_private_pending_evidence_after_one_unknown(disconnect_stages):
+    expected, state = disconnect_stages("passed")
+    asyncio.run(drill.disconnect(Path("/drill"), "host=owned-promoted", "host=owned-replacement"))
+    assert [name for name, _ in state.written] == ["disconnect-pending.json"]
+    pending = state.written[0][1]
+    assert pending == expected
+    assert not pending.disconnect_reconciled and not pending.success_receipt_emitted
+    assert state.events.count("single-unknown-write") == 1
+    assert state.events.index("isolated-pair") < state.events.index("single-unknown-write")
+    assert not any(
+        event[0] == "receipt-state" for event in state.events if isinstance(event, tuple)
+    )
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("existing_pending", drill.pitr.DrillError, "disconnect_already_attempted"),
+    ("symlink_pending", drill.pitr.DrillError, "disconnect_already_attempted"),
+    ("missing_ownership", FileNotFoundError, "synthetic_missing_ownership"),
+    ("wrong_stage", drill.pitr.DrillError, "disconnect_renewed_reference_required"),
+    ("wrong_renewal", drill.pitr.DrillError, "disconnect_renewal_identity_mismatch"),
+    ("changed_uncertainty", drill.pitr.DrillError, "original_uncertainty_changed"),
+    ("changed_baseline", drill.pitr.DrillError, "acknowledged_content_mismatch"),
+    ("disconnect_timeout", TimeoutError, "synthetic_isolation_timeout"),
+])
+def test_disconnect_stage_rejects_incomplete_preconditions_before_writer(
+    disconnect_stages, mode, error, code,
+):
+    _, state = disconnect_stages(mode)
+    with pytest.raises(error, match=code):
+        asyncio.run(drill.disconnect(
+            Path("/drill"), "host=owned-promoted", "host=owned-replacement",
+        ))
+    assert state.written == [] and "single-unknown-write" not in state.events
+
+
+@pytest.mark.parametrize("mode,error", [
+    ("writer_failure", ValueError), ("cancelled_writer", asyncio.CancelledError),
+    ("extra_receipt_field", ValidationError),
+])
+def test_disconnect_stage_failure_does_not_retry_or_persist_success(disconnect_stages, mode, error):
+    _, state = disconnect_stages(mode)
+    with pytest.raises(error):
+        asyncio.run(drill.disconnect(
+            Path("/drill"), "host=owned-promoted", "host=owned-replacement",
+        ))
+    assert state.written == [] and state.events.count("single-unknown-write") == 1
+
+
+@pytest.mark.parametrize("mode", ["passed", "lagging"])
+def test_reconnect_reconciles_private_receipt_and_exact_readonly_state_without_another_write(
+    disconnect_stages, mode,
+):
+    pending, state = disconnect_stages(mode)
+    asyncio.run(drill.reconnect(Path("/drill"), "host=owned-promoted", "host=owned-replacement"))
+    assert [name for name, _ in state.written] == [
+        "reconnected-primary.json", "reconnected-standby.json", "disconnect.json",
+    ]
+    primary, standby, proof = (model for _, model in state.written)
+    assert primary == standby and primary.disconnect == pending.commit
+    assert primary.uncertain == pending.baseline.uncertain
+    assert primary.fixture.renewal_id == pending.baseline.fixture.renewal_id
+    assert proof.memory_id == pending.commit.memory_id
+    assert proof.outcome_code == "commit_outcome_unknown"
+    assert proof.disconnect_reconciled and not proof.success_receipt_emitted and not proof.retryable
+    assert "single-unknown-write" not in state.events
+    assert state.events.count("reconnected-pair") == 2
+    assert state.events.count("bounded-readonly-reconciliation") == 1
+    assert ("existing-state", "host=owned-promoted") in state.events
+    assert ("existing-state", "host=owned-replacement") in state.events
+    assert state.events.count("waiting-for-replay") == (1 if mode == "lagging" else 0)
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("missing_pending", FileNotFoundError, "synthetic_missing_pending"),
+    ("changed_pending_baseline", drill.pitr.DrillError, "disconnect_pending_baseline_changed"),
+    ("still_disconnected", drill.pitr.DrillError, "renewal_synchronous_pair_unavailable"),
+    ("receipt_mismatch", drill.pitr.DrillError, "uncertain_local_receipt_mismatch"),
+    ("primary_changed", drill.pitr.DrillError, "uncertain_primary_state_changed"),
+    ("replica_mismatch", drill.pitr.DrillError, "uncertain_replica_state_mismatch"),
+    ("wrong_replica_timeline", drill.pitr.DrillError, "timeline_mismatch"),
+    ("changed_effect", drill.pitr.DrillError, "disconnect_changed_authority_or_effect"),
+    ("mutated_original_rows", drill.pitr.DrillError, "disconnect_mutated_original_state"),
+    ("reconcile_timeout", TimeoutError, "synthetic_reconciliation_timeout"),
+    ("cancelled_reconcile", asyncio.CancelledError, None),
+])
+def test_reconnect_failures_never_retry_or_promote_pending_data_to_final_evidence(
+    disconnect_stages, mode, error, code,
+):
+    _, state = disconnect_stages(mode)
+    with pytest.raises(error, match=code):
+        asyncio.run(drill.reconnect(
+            Path("/drill"), "host=owned-promoted", "host=owned-replacement",
+        ))
+    assert state.written == [] and "single-unknown-write" not in state.events
+
+
+@pytest.mark.parametrize("mode", ["ready", "retrying", "timeout", "cancelled"])
+def test_wait_disconnected_is_bounded_readonly_and_preserves_cancellation(monkeypatch, mode):
+    events = []
+
+    @asynccontextmanager
+    async def connection(url):
+        yield url
+
+    async def connect(url, **kwargs):
+        assert "default_transaction_read_only=on" in drill.conninfo_to_dict(url)["options"]
+        assert kwargs == {"autocommit": True, "row_factory": drill.dict_row}
+        return connection(url)
+
+    async def observe(primary, standby):
+        assert drill.conninfo_to_dict(primary)["host"] == "owned-promoted"
+        assert drill.conninfo_to_dict(standby)["host"] == "owned-replacement"
+        events.append("observe-isolation")
+        if mode == "cancelled":
+            raise asyncio.CancelledError()
+        if mode == "timeout" or mode == "retrying" and events.count("observe-isolation") == 1:
+            raise drill.pitr.DrillError("disconnect_primary_not_isolated")
+
+    @asynccontextmanager
+    async def timeout(seconds):
+        assert seconds == 30
+        events.append("bounded")
+        yield
+
+    async def sleep(seconds):
+        assert seconds == 0.05
+        if mode == "timeout":
+            raise TimeoutError()
+
+    monkeypatch.setattr(drill, "psycopg", SimpleNamespace(
+        AsyncConnection=SimpleNamespace(connect=connect),
+    ))
+    monkeypatch.setattr(drill, "observe_disconnected", observe)
+    monkeypatch.setattr(drill, "asyncio", SimpleNamespace(timeout=timeout, sleep=sleep))
+    if mode in ("timeout", "cancelled"):
+        with pytest.raises(TimeoutError if mode == "timeout" else asyncio.CancelledError):
+            asyncio.run(drill.wait_disconnected("host=owned-promoted", "host=owned-replacement"))
+    else:
+        asyncio.run(drill.wait_disconnected("host=owned-promoted", "host=owned-replacement"))
+        assert events.count("observe-isolation") == (2 if mode == "retrying" else 1)
+    assert events.count("bounded") == 1
+
+
 def guard_script():
     text = RUNNER.read_text()
     return "owned_promote() {" + text.split("owned_promote() {", 1)[1].split(
@@ -2697,6 +3423,31 @@ def test_main_routes_renewal_only_to_promoted_primary_and_new_replacement(
     assert output.out == "" and output.err == ("ha_stage_failed\n" if failed else "")
 
 
+@pytest.mark.parametrize("stage", ["disconnect", "reconnect"])
+@pytest.mark.parametrize("failed", [False, True])
+def test_main_disconnect_stages_use_only_owned_pair_and_redact_private_pending_errors(
+    monkeypatch, capsys, stage, failed,
+):
+    events, written = [], []
+
+    async def operation(directory, primary, replacement):
+        events.append((directory, primary, replacement))
+        if failed:
+            raise RuntimeError("private-receipt postgresql://private-password@external/database")
+
+    monkeypatch.setattr(drill, "owned_environment", lambda: (
+        Path("/drill"), "forbidden-destroyed-primary", "owned-promoted", "owned-replacement",
+    ))
+    monkeypatch.setattr(drill, stage, operation)
+    monkeypatch.setattr(drill, "write_new", lambda *args: written.append(args))
+    assert drill.main([stage]) == int(failed)
+    assert events == [(Path("/drill"), "owned-promoted", "owned-replacement")]
+    assert [record[1] for record in written] == (["failure.json"] if failed else [])
+    output = capsys.readouterr()
+    assert output.out == "" and output.err == ("ha_stage_failed\n" if failed else "")
+    assert "private-receipt" not in repr(written) and "private-password" not in repr(written)
+
+
 @pytest.mark.parametrize("engine,host", [
     ("docker", "unowned-primary"), ("container", "8.8.8.8"), ("container", "127.0.0.1"),
 ])
@@ -2833,6 +3584,7 @@ cleanup
     None, "uncertain", "synchronous", "preserved", "probe", "artifact", "replacement_evidence",
     "replacement_backup_verified", "original_primary_remains_fenced",
     "renewal", "renewal_primary_remains_fenced",
+    "disconnect", "disconnect_primary_remains_fenced",
 ])
 @pytest.mark.parametrize("initial_status", [0, 1])
 def test_terminal_report_gate_requires_uncertain_evidence_and_preserves_failure(
@@ -2859,6 +3611,8 @@ artifact='{{}}'
 replacement_evidence='{{}}'
 renewal='{{}}'
 renewal_primary_remains_fenced=true
+disconnect='{{}}'
+disconnect_primary_remains_fenced=true
 """
     if missing is not None:
         setup += f"{missing}=null\n"
@@ -2876,7 +3630,7 @@ def test_terminal_report_merges_uncertain_proof_without_promoting_qualification(
     assert 'if [[ -f "$directory/uncertain.json" ]]' in cleanup
     assert '"$directory/uncertain.json")" || status=1' in cleanup
     assert '--argjson uncertain "$uncertain"' in cleanup
-    assert 'format: "pgag-ha-drill-v4"' in cleanup
+    assert 'format: "pgag-ha-drill-v5"' in cleanup
     assert "uncertain_commit_reconciled: $uncertain.uncertain_commit_reconciled" in cleanup
     assert "uncertain: $uncertain" in cleanup
     assert 'if [[ -f "$directory/replacement.json" ]]' in cleanup
@@ -2891,6 +3645,14 @@ def test_terminal_report_merges_uncertain_proof_without_promoting_qualification(
     assert "renewal: $renewal" in cleanup
     assert '--argjson renewal_fenced "$renewal_primary_remains_fenced"' in cleanup
     assert "renewal_primary_remains_fenced: $renewal_fenced" in cleanup
+    assert 'if [[ -f "$directory/disconnect.json" ]]' in cleanup
+    assert '"$directory/disconnect.json")" || status=1' in cleanup
+    assert '--argjson disconnect "$disconnect"' in cleanup
+    assert "disconnect_reconciled: $disconnect.disconnect_reconciled" in cleanup
+    assert "disconnect: $disconnect" in cleanup
+    assert '--argjson disconnect_fenced "$disconnect_primary_remains_fenced"' in cleanup
+    assert "disconnect_primary_remains_fenced: $disconnect_fenced" in cleanup
+    assert "disconnect-pending.json" not in cleanup
     for flag in (
         "production_qualified", "host_failure_domain_independent", "network_partition_qualified",
         "commit_timeout_qualified", "automatic_failover", "automatic_service_start",
@@ -2984,6 +3746,7 @@ def test_runner_rebuilds_only_after_probe_from_promoted_node_then_rechecks_origi
 
 @pytest.mark.parametrize("stage,engine_status", [
     ("replacement", 0), ("verify", 0), ("replacement", 7), ("renewal", 0), ("renewal", 7),
+    ("disconnect", 0), ("disconnect", 7), ("reconnect", 0), ("reconnect", 7),
 ])
 def test_phase_helper_never_collides_with_replacement_database_and_propagates_failure(
     stage, engine_status,
@@ -3073,3 +3836,123 @@ def test_runner_renews_only_after_replacement_and_rechecks_original_fence_afterw
     )
     assert script.count("renewal_primary_remains_fenced=true") == 1
     assert "renewal_primary_remains_fenced=null" in script
+
+
+def test_runner_disconnects_only_owned_replication_and_restores_before_reconciliation():
+    script = RUNNER.read_text()
+    tail = script.split("renewal_primary_remains_fenced=true\n", 1)[1]
+    markers = [
+        "failure_code=replication_rejection_failed\n",
+        'cp -p "$PGDATA/pg_hba.conf" /owned/ha-original-pg_hba.conf',
+        "host replication pgag_ha_replication 0.0.0.0/0 reject",
+        "SELECT pg_reload_conf()", "FROM pg_hba_file_rules",
+        "failure_code=owned_sender_disconnect_failed\n",
+        "SELECT pid FROM pg_stat_replication WHERE usename='pgag_ha_replication'",
+        "AND application_name='pgag_m5_replacement'",
+        "SELECT pg_terminate_backend(pid, 5000) FROM target",
+        "WHERE (SELECT count(*) FROM target)=1",
+        '"$directory/disconnect-owned.json"', "phase disconnect\n",
+        "failure_code=replication_admission_restore_failed\n",
+        'cp -p /owned/ha-original-pg_hba.conf "$PGDATA/pg_hba.conf"',
+        'cmp -s /owned/ha-original-pg_hba.conf "$PGDATA/pg_hba.conf"',
+        "phase reconnect\n", "failure_code=disconnect_fence_recheck_failed\n",
+        "verify_primary_absent\n", "disconnect_primary_remains_fenced=true\n",
+    ]
+    positions = [tail.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    restored = tail.split("failure_code=replication_admission_restore_failed\n", 1)[1]
+    assert restored.index("SELECT pg_reload_conf()") < restored.index("phase reconnect\n")
+    assert '"$engine" exec "$primary"' not in tail
+    assert script.count("disconnect_primary_remains_fenced=true") == 1
+    assert "disconnect_primary_remains_fenced=null" in script
+    assert "pg_terminate_backend" not in (ROOT / "scripts" / "smoke-ha.py").read_text()
+
+
+@pytest.mark.parametrize("failure", [
+    None, "reject", "hba", "sender", "disconnect", "restore", "reconnect", "fence",
+])
+def test_owned_disconnect_restore_and_reconnect_failures_never_advance_the_final_fence(failure):
+    tail = RUNNER.read_text().split("failure_code=replication_rejection_failed\n", 1)[1]
+    rejection = tail.split("record_elapsed replication_rejection", 1)[0]
+    restoration = "failure_code=replication_admission_restore_failed\n" + tail.split(
+        "failure_code=replication_admission_restore_failed\n", 1,
+    )[1]
+    result = subprocess.run(
+        ["bash", "-ceu", """
+exec 3>&1
+engine=fake_engine
+standby=owned-promoted
+disconnect_primary_remains_fenced=null
+record_elapsed() { :; }
+verify_primary_absent() {
+    printf 'fence\\n'
+    if [[ "$failure" == fence ]]; then return 7; fi
+}
+fake_engine() {
+    [[ "$1" == exec && "$2" == owned-promoted ]]
+    if [[ "$*" == *pg_hba_file_rules* ]]; then
+        printf 'hba\\n' >&3
+        if [[ "$failure" == hba ]]; then printf 'f\\n'; else printf 't\\n'; fi
+    elif [[ "$*" == *pg_terminate_backend* ]]; then
+        [[ "$*" == *"usename='pgag_ha_replication'"* ]]
+        [[ "$*" == *"application_name='pgag_m5_replacement'"* ]]
+        [[ "$*" == *'WHERE (SELECT count(*) FROM target)=1'* ]]
+        printf 'sender\\n' >&3
+        if [[ "$failure" == sender ]]; then printf 'f\\n'; else printf 't\\n'; fi
+    elif [[ "$*" == *'test ! -e /owned/ha-original-pg_hba.conf'* ]]; then
+        printf 'reject\\n' >&3
+        if [[ "$failure" == reject ]]; then return 7; fi
+    else
+        [[ "$*" == *'cmp -s /owned/ha-original-pg_hba.conf'* ]]
+        printf 'restore\\n' >&3
+        if [[ "$failure" == restore ]]; then return 7; fi
+    fi
+}
+phase() {
+    printf 'phase:%s\\n' "$1"
+    if [[ "$failure" == "$1" ]]; then return 7; fi
+}
+""" + f"failure={failure or 'none'}\n" + rejection + "\nphase disconnect\n" + restoration
+         + '\nprintf "final:%s\\n" "$disconnect_primary_remains_fenced"\n'],
+        capture_output=True, text=True, check=False,
+    )
+    expected = [
+        "reject", "hba", "sender", "phase:disconnect", "restore", "phase:reconnect", "fence",
+        "final:true",
+    ]
+    if failure is not None:
+        last = f"phase:{failure}" if failure in ("disconnect", "reconnect") else failure
+        expected = expected[:expected.index(last) + 1]
+    assert result.stdout.splitlines() == expected and result.stderr == ""
+    assert result.returncode == (0 if failure is None else 1 if failure in ("hba", "sender") else 7)
+
+
+@pytest.mark.parametrize("failure", [None, "copy", "compare", "reload"])
+def test_replication_readmission_requires_identical_hba_and_successful_reload(failure):
+    tail = RUNNER.read_text().split("failure_code=replication_admission_restore_failed\n", 1)[1]
+    restore = tail.split("bash -ceu '", 1)[1].split("\n' >/dev/null", 1)[0]
+    result = subprocess.run(
+        ["bash", "-ceu", """
+PGDATA=owned-synthetic
+cp() {
+    [[ "$*" == '-p /owned/ha-original-pg_hba.conf owned-synthetic/pg_hba.conf' ]]
+    printf 'copy\\n'
+    if [[ "$failure" == copy ]]; then return 7; fi
+}
+cmp() {
+    [[ "$*" == '-s /owned/ha-original-pg_hba.conf owned-synthetic/pg_hba.conf' ]]
+    printf 'compare\\n'
+    if [[ "$failure" == compare ]]; then return 7; fi
+}
+timeout() {
+    [[ "$*" == *'SELECT pg_reload_conf()'* ]]
+    if [[ "$failure" == reload ]]; then printf 'f\\n'; else printf 't\\n'; fi
+}
+""" + f"failure={failure or 'none'}\n" + restore + "\nprintf 'readmission-restored\\n'\n"],
+        capture_output=True, text=True, check=False,
+    )
+    expected = ["copy"] if failure == "copy" else ["copy", "compare"]
+    if failure is None:
+        expected.append("readmission-restored")
+    assert result.stdout.splitlines() == expected and result.stderr == ""
+    assert result.returncode == (0 if failure is None else 1 if failure == "reload" else 7)

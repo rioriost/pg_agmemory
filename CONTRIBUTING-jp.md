@@ -72,6 +72,9 @@ read-only完全状態一致、backup以降のstreaming WAL進行、旧primaryの
 別のv4 renewalでは設定前に古い前提を拒否し、制限付きwriterの`remote_apply`と、
 置換先replay停止中の実`SyncRep`を確認します。一意な合成書込み一件、元の結果不明、
 既存期限、cleanup cancel、再開禁止の契約を維持してください。
+v5接続断は所有物理複製role/senderだけを対象とし、結果不明のclient復帰を実測してから同一HBAを復元します。
+read-only完全照合を要求し、pending証跡を成功と扱ってはいけません。
+意図的な接続拒否を任意network partitionの認定と説明しないでください。
 assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制約を通し、
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で

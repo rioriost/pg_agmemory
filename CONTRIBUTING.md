@@ -81,6 +81,10 @@ The separate v4 renewal must reject stale prerequisites before configuration,
 verify `remote_apply` on its restricted writer, and observe actual `SyncRep`
 during replacement replay pause. Keep one distinct synthetic write, the original
 uncertain outcome, existing deadlines, cleanup cancellation and no-restart rules.
+The v5 connection-loss case must target only the owned physical replication
+role/sender. Restore identical HBA admission only after measuring unknown client
+exit, and require read-only exact reconciliation; pending evidence is not success.
+Do not describe deliberate connection rejection as arbitrary network-partition qualification.
 The exact 1,000-revision assertion/relation tests also exercise real deferred
 constraints inside that five-second budget, including replay and history.
 Migration 022 must preserve invoker RLS and all history/evidence/target checks.

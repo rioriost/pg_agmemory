@@ -2,7 +2,43 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: isolated synchronous renewal
+## M5 development: controlled replication connection loss
+
+**0.4.0.dev1 / API v1 / schema 22** adds a controlled connection-loss case after
+synchronous renewal. Only the owned replication role is temporarily rejected
+in the promoted node's HBA; exactly its replacement sender is disconnected.
+Administrator/Native access and `remote_apply` remain unchanged. This is not a
+host firewall modification or a shared-cluster fault.
+
+One distinct guarded observation must time out in real `SyncRep` within the
+existing five-second COMMIT contract, with no success receipt. Admission is
+restored only after measured unknown client exit. The pending private evidence
+does not authorize retry or success. Read-only reconciliation then waits for
+the same synchronous replica and checks the exact receipt and state, without
+replaying the write or executing effects. Original uncertainty, acknowledged
+renewal state, source and checkpoints remain preserved.
+
+Report/reference formats advance to v5; passing requires final reconciliation
+and another live original-primary fence check. All production, serving, restart
+and effect authority remains false. This qualifies neither blackholed transport,
+arbitrary network partition, primary rejoin nor production RPO/RTO.
+See [the owned HA contract](operations/README.md#explicitly-fenced-owned-ha-rehearsal).
+
+Local Apple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6 passes the full
+v5 lifecycle in **41 seconds**. During rejected replication admission, the
+client exits unknown after **5.0017 seconds**, including **4.9765 seconds** of
+observed `SyncRep`. Only afterward is the original HBA restored and the same
+synchronous peer's exact receipt/state reconciled. Persisted v5 report and
+both reconnected references validate; pending evidence never becomes a client
+success receipt. The final fence check succeeds with no effect execution.
+
+Ruff, strict typing for 55 modules and **915 targeted cases / 25 existing
+live-DB skips** pass. Tests cover pending/final separation, pre-write isolation,
+lost isolation during COMMIT, cleanup/cancellation, exact no-retry reconciliation
+and scoped HBA/PID/restore failure paths. No service/schema/dependency or timeout
+change is introduced. Native CI qualification of v5 is not yet recorded.
+
+## Previous M5 increment: isolated synchronous renewal
 
 **0.4.0.dev1 / API v1 / schema 22** extends the owned SQL-only HA lab with a
 separate synchronous-renewal phase after fresh replacement and fence verification.
@@ -32,7 +68,9 @@ v4 report validate. Original uncertainty, earlier asynchronous evidence and
 effect state remain unchanged, and both host fence rechecks succeed.
 Ruff, strict typing for 55 modules and **767 targeted cases / 25 existing
 live-DB skips** pass. No service/schema/dependency change or timeout relaxation
-is introduced. Native CI qualification of this v4 increment is not yet recorded.
+is introduced. At recording time, [run35974807055](https://github.com/rioriost/pg_agmemory/actions/runs/35974807055)
+at `4895ca6` passes both native HA, PITR and AGE jobs, while the two core jobs
+remain running; full v4 native qualification is not yet recorded.
 
 ## Previous M5 increment: fresh replacement standby
 
@@ -66,10 +104,12 @@ temporary credential/config files are removed.
 Ruff, strict typing for 55 modules and **643 targeted cases / 25 existing
 live-DB skips** pass, including nonempty-directory rejection, stale/mismatched
 backup/state/lineage, absent evidence and timeout failures. No service/schema/
-dependency change is introduced. Native CI qualification of this v3 increment
-is not yet complete: [run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962)
-has passed both native HA, PITR and AGE jobs at `ee2be6f`; the two core jobs
-were still running when the v4 local evidence was recorded.
+dependency change is introduced. The exact implementation `ee2be6f` subsequently
+passes **all eight native jobs** in [run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962):
+core, HA, PITR and patched AGE on amd64 and arm64. Each core passes **3,990 cases /
+134 skips**, then the separate **18 COMMIT** and **13 request** cases and complete
+installation/packaged recovery lifecycle. Earlier in-progress observations do
+not change the final result or expand the asynchronous replacement contract.
 
 ## Previous M5 increment: owned HA uncertain-COMMIT reconciliation
 
