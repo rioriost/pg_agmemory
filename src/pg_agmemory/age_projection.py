@@ -64,7 +64,7 @@ class AgeProjection(HistoryContract):
     input_digest: Digest
     captured_access_epoch: Epoch
     captured_deletion_epoch: Epoch
-    captured_schema_version: Literal[20, 21]
+    captured_schema_version: Literal[20, 21, 22]
     age_commit: Literal["72707aab7ce982bf13cad3d102bd869dab07d64b"]
     node_count: int
     edge_revision_count: int

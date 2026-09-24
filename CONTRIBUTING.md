@@ -59,6 +59,12 @@ This is not a whole-request deadline or remote durability qualification.
 Only those synthetic deadline probes disable their statement timeout to ensure
 the client watchdog is what ends the wait; production query limits are unchanged.
 See [the uncertainty contract](docs/operations/README.md#unconfirmed-commit-outcomes).
+The exact 1,000-revision assertion/relation tests also exercise real deferred
+constraints inside that five-second budget, including replay and history.
+Migration 022 must preserve invoker RLS and all history/evidence/target checks.
+Do not hide regressions with larger timeouts, fixture `ANALYZE`, disabled
+constraints or edits to already-shipped migrations. Check matching schema
+contracts and stale graph artifacts when adding a migration.
 Schema 10 adds terminal job cancellation. Its smoke uses the SDK to enqueue,
 cancel, replay, confirm worker idleness, and purge the source dependency. Preserve
 state/attempt CAS, owner/current-access checks, atomic audit/receipt writes, and

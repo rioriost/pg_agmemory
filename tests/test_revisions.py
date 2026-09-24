@@ -1,14 +1,18 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from time import monotonic
 from uuid import uuid4
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from pg_agmemory import transactions
 from pg_agmemory.api import create_app
+from pg_agmemory.commit_deadline import COMMIT_ACK_TIMEOUT_SECONDS
 from pg_agmemory.database import SCHEMA_VERSION, connect, migrate
 from pg_agmemory.models import AssertionHistory, AssertionHistoryPage, Identity
 from pg_agmemory.service import MemoryError, MemoryService
@@ -508,7 +512,7 @@ def test_schema_upgrade_preserves_legacy_tenants_times_evidence_replays_and_dele
             )
             assert response.json()["evidence"][0]["memory_id"] == str(record["source"])
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 21 and capabilities["temporal_revisions"] is True
+    assert capabilities["schema_version"] == 22 and capabilities["temporal_revisions"] is True
     schema = env.client.get("/openapi.json").json()
     contract = schema["paths"]["/v1/assertions/{memory_id}/revisions"]["post"]
     assert contract["security"] == [{"BearerAuth": []}]
@@ -537,7 +541,9 @@ def test_unknown_assertion_matches_inaccessible_response(env):
 
 
 @pytest.mark.parametrize("typed", [False, True])
-def test_exact_revision_limit_preserves_replay_and_history(env, typed):
+def test_exact_revision_limit_preserves_replay_and_history(
+    env, typed, monkeypatch, record_property,
+):
     source = env.observe("Gold Silver").json()["memory_id"]
     entities = []
     if typed:
@@ -620,6 +626,22 @@ def test_exact_revision_limit_preserves_replay_and_history(env, typed):
         conn.execute("ALTER TABLE memory.assertion_revision ENABLE TRIGGER relation_shape")
         if typed:
             conn.execute("ALTER TABLE memory.relation_revision ENABLE TRIGGER relation_shape")
+        assert conn.execute(
+            """SELECT bool_and(tgenabled='O') FROM pg_trigger
+               WHERE tgrelid IN ('memory.assertion'::regclass,
+                                 'memory.assertion_revision'::regclass,
+                                 'memory.provenance_edge'::regclass,
+                                 'memory.relation'::regclass,
+                                 'memory.relation_revision'::regclass)"""
+        ).fetchone() == (True,)
+        assert conn.execute(
+            """SELECT bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class
+               WHERE oid IN ('memory.assertion'::regclass,
+                             'memory.assertion_revision'::regclass,
+                             'memory.provenance_edge'::regclass,
+                             'memory.relation'::regclass,
+                             'memory.relation_revision'::regclass)"""
+        ).fetchone() == (True,)
 
     def append(expected, headers=None):
         if not typed:
@@ -637,13 +659,31 @@ def test_exact_revision_limit_preserves_replay_and_history(env, typed):
         )
 
     key = env.headers()
-    final = append(999, headers=key)
+    elapsed = []
+    original_phase = transactions._CommitGuard.commit_phase
+
+    @contextmanager
+    def measured_commit(guard, *args, **kwargs):
+        assert guard.outer and guard.committing and guard.deadline is not None
+        assert guard.deadline._seconds == COMMIT_ACK_TIMEOUT_SECONDS == 5.0
+        started = monotonic()
+        with original_phase(guard, *args, **kwargs):
+            yield
+        elapsed.append(monotonic() - started)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(transactions._CommitGuard, "commit_phase", measured_commit)
+        final = append(999, headers=key)
     assert final.status_code == 201, final.text
+    assert len(elapsed) == 1
+    record_property("commit_elapsed_seconds", elapsed[0])
+    assert 0 < elapsed[0] < 5.0, f"Exact-limit COMMIT took {elapsed[0]:.3f}s"
     assert final.json()["revision"] == 1000
     exceeded = append(1000)
     assert exceeded.status_code == 422
     assert exceeded.json()["code"] == "revision_limit_exceeded"
-    assert append(999, headers=key).json() == final.json()
+    replay = append(999, headers=key)
+    assert replay.status_code == 201 and replay.json() == final.json()
     assert explain(env, memory, 1000).status_code == 200
     assert assertions(env)[0]["revision"] == 1000
     before_revision = 1001

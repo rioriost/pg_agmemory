@@ -10,11 +10,34 @@ databases or real user histories.
 
 ## M5 operational foundations
 
-Development identity: **0.4.0.dev1 / API v1 / schema 21**, stage
+Development identity: **0.4.0.dev1 / API v1 / schema 22**, stage
 `m5-production-candidate`. This is not M5 completion or production qualification.
 The foundations supply read-only operator/replication evidence, a SQL-only
 physical PITR lab and an explicitly fenced owned HA rehearsal.
 Published v0.3.0/M4 evidence retains its original identity.
+
+### Schema-22 revision validation
+
+Migration `022_bounded_revision_checks.sql` replaces the invoker functions
+used by deferred assertion-history and relation-shape constraints. It avoids
+repeated history/evidence/target scans at the existing 1,000-revision limit.
+Contiguous system-time history, exact heads, evidence, typed targets and
+caller-visible rows are still checked. Existing migrations, trigger deferral,
+RLS, privileges and the five-second COMMIT budget remain unchanged.
+COMMIT-time deferred validation is inside that budget, not an exempt phase.
+The AGE receipt guard additionally requires schema 22 for new enabled
+publications while retaining disabled schema-20/21 history.
+
+Stop and drain API, workers and administrator writers before running
+`pg-agmemory migrate` with matching schema-22 code. Reconcile any unconfirmed
+COMMIT first; migration is not permission to retry or restart uncertain work.
+Do not connect schema-21 components to the upgraded database. Before enabling
+AGE again, explicitly disable the old projection and rebuild/record/publish
+matching schema-22 artifacts: old receipts remain history, not serving authority.
+Recovery evidence must likewise match the selected schema and authoritative
+source/deletion state. There is no in-place downgrade; rollback requires an
+isolated schema-21 backup and matching components, not deletion of migration
+ledger rows. The published schema-21 M4 qualification does not qualify schema 22.
 
 ### Read-only operations status
 
@@ -289,8 +312,10 @@ reexecution or service restart is performed.
 M5 still needs a declared production topology/load profile, independent media,
 production partition/failover and commit-outcome handling, monitoring/alert retention,
 embedding-space migration, upgrade rehearsal and verified backup expiration.
-The new v5 development graph recipe does not relabel the frozen M4 v4 timings;
-`examples/graph-resource-profile-m4-v4.json` preserves that historical recipe.
+The current v6 graph recipe uses schema 22 without changing workload or
+thresholds. `examples/graph-resource-profile-m5-v5.json` preserves the schema-21
+development recipe, and `examples/graph-resource-profile-m4-v4.json` preserves
+the published M4 recipe. Neither historical measurement qualifies v6.
 
 ## M4 durable source-access coordinator
 

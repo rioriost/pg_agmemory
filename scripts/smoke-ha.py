@@ -103,7 +103,7 @@ class Fixture(Contract):
 class Reference(Contract):
     format: Literal["pgag-ha-reference-v1"] = "pgag-ha-reference-v1"
     service_version: str = __version__
-    schema_version: Literal[21] = 21
+    schema_version: Literal[22] = 22
     stage: Literal["seed", "acknowledged", "promoted", "post-probe"]
     fixture: Fixture
     control: pitr.Control
@@ -187,7 +187,7 @@ class Report(Contract):
     format: Literal["pgag-ha-drill-v1"] = "pgag-ha-drill-v1"
     service_version: str = __version__
     api_version: Literal["v1"] = "v1"
-    schema_version: Literal[21] = 21
+    schema_version: Literal[22] = 22
     postgres_version_num: Literal[180006] = 180006
     pgvector_version: Literal["0.8.6"] = "0.8.6"
     status: Literal["passed", "failed"]
@@ -259,7 +259,7 @@ class Report(Contract):
 
 def owned_environment():
     require(platform.system() == "Linux", "linux_runtime_required")
-    require(SCHEMA_VERSION == 21, "schema_version_mismatch")
+    require(SCHEMA_VERSION == 22, "schema_version_mismatch")
     require(not any(os.environ.get(key) for key in (
         "PGAG_DATABASE_URL", "PGAG_ADMIN_DATABASE_URL", "PGHOST", "PGSERVICE",
     )), "external_database_target_forbidden")

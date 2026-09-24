@@ -205,7 +205,7 @@ def test_deterministic_canonical_history_is_complete_and_read_only(env, artifact
         "profile_digest", "input_digest", "input_snapshot", "nodes", "edge_revisions",
         "signature", "serving_enabled", "permission_filter_required",
     }
-    assert body["format"] == "pgag-graph-artifact-v1" and body["schema_version"] == 21
+    assert body["format"] == "pgag-graph-artifact-v1" and body["schema_version"] == 22
     assert body["profile_digest"] == reserved.building.profile_digest
     assert body["input_digest"] == reserved.building.input_digest
     assert body["input_snapshot"] == reserved.building.input_snapshot.model_dump(mode="json")
@@ -437,7 +437,7 @@ def test_runtime_credentials_are_denied_for_both_operations(env, artifact_dir):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("schema", [18, 19, 20])
+@pytest.mark.parametrize("schema", [18, 19, 20, 21])
 @pytest.mark.parametrize("field", ["schema_version", "input_snapshot"])
 def test_previous_schema_artifact_requires_matching_version(env, artifact_dir, schema, field):
     reserved = begin(env)

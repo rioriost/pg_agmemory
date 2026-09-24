@@ -539,9 +539,59 @@ def database():
         assert admin.execute(
             "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
         ).fetchone()[0] == previous_guard
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:21])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
+    function_query = """SELECT oid,proname,proowner,prosecdef,proconfig,proacl,
+                              pg_get_functiondef(oid)
+                       FROM pg_proc WHERE oid IN (
+                           'memory.check_assertion_history()'::regprocedure,
+                           'memory.check_relation()'::regprocedure)
+                       ORDER BY proname"""
+    security_query = """SELECT c.oid,c.relrowsecurity,c.relforcerowsecurity,c.relacl,
+                           (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.polname)
+                            FROM pg_policy p WHERE p.polrelid=c.oid),
+                           (SELECT jsonb_agg(to_jsonb(k) ORDER BY k.conname)
+                            FROM pg_constraint k WHERE k.conrelid=c.oid),
+                           (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.tgname)
+                            FROM pg_trigger t WHERE t.tgrelid=c.oid)
+                       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                       WHERE n.nspname='memory' AND c.relkind='r' ORDER BY c.oid"""
+    with psycopg.connect(url) as admin:
+        previous_functions = admin.execute(function_query).fetchall()
+        previous_security = admin.execute(security_query).fetchall()
+        assert len(previous_functions) == 2
+        assert all(not row[3] and row[4] == ["search_path=pg_catalog"]
+                   for row in previous_functions)
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_revision_checks_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (22,):
+                raise RuntimeError("simulated bounded revision checks migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_revision_checks_ledger)
+        with pytest.raises(
+            RuntimeError, match="simulated bounded revision checks migration failure",
+        ):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 21
+        assert admin.execute(function_query).fetchall() == previous_functions
+        assert admin.execute(security_query).fetchall() == previous_security
     migrate(url)
     asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:
+        current_functions = admin.execute(function_query).fetchall()
+        assert [row[:-1] for row in current_functions] == [
+            row[:-1] for row in previous_functions
+        ]
+        assert all(current[-1] != previous[-1]
+                   for current, previous in zip(current_functions, previous_functions, strict=True))
+        assert admin.execute(security_query).fetchall() == previous_security
         assert admin.execute(
             "SELECT oid,extversion,extnamespace FROM pg_extension WHERE extname='age'"
         ).fetchone() == age_before

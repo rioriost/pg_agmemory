@@ -206,7 +206,7 @@ def test_primary_database_exact_contract_real_counts_and_local_settings(database
     assert lsn_value(flush_before) <= lsn_value(report.primary_flush_lsn) <= lsn_value(flush_after)
     assert report.model_dump(exclude={"evaluated_at", "primary_flush_lsn", "warnings"}) == {
         "format": "pgag-replication-status-v1",
-        "service_version": __version__, "api_version": "v1", "schema_version": 21,
+        "service_version": __version__, "api_version": "v1", "schema_version": 22,
         "in_recovery": False, "transaction_read_only": True,
         "synchronous_commit": commit, "synchronous_standby_configured": configured,
         "received_lsn": None, "replayed_lsn": None, "replay_paused": None,

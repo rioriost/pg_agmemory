@@ -172,7 +172,7 @@ async def smoke(directory):
     return {
         "status": "passed", "backend": "age",
         "age_commit": "72707aab7ce982bf13cad3d102bd869dab07d64b",
-        "schema_version": 21, "native_paths": 2, "nodes": 3, "edge_revisions": 3,
+        "schema_version": 22, "native_paths": 2, "nodes": 3, "edge_revisions": 3,
         "canonical_sql_equal": True, "disabled_refused": True, "same_head_rebuilt": True,
         "stale_refused": True, "explicit_sql_switch": True,
     }

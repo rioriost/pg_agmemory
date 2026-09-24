@@ -100,10 +100,10 @@ def report():
     )
 
 
-def test_report_preserves_schema21_and_never_grants_restore_authority():
+def test_report_preserves_schema22_and_never_grants_restore_authority():
     value = report().model_dump(mode="json")
     assert value["service_version"] == __version__
-    assert value["schema_version"] == 21
+    assert value["schema_version"] == 22
     assert value["postgres_version_num"] == 180006
     assert value["pgvector_version"] == "0.8.6"
     assert value["api_version"] == "v1"
@@ -247,7 +247,8 @@ def test_content_and_processing_are_both_required():
 def test_reference_contract_rejects_unknown_fields_missing_ids_and_duplicate_episodes():
     _, target, _, _ = references()
     for change in (
-        {"dsn": "forbidden"}, {"target_id": None}, {"schema_version": 20},
+        {"dsn": "forbidden"}, {"target_id": None},
+        {"schema_version": 20}, {"schema_version": 21},
         {"episodes": [target.episodes[0].model_dump(mode="json")] * 2},
         {"service_version": "unrelated-build"},
     ):

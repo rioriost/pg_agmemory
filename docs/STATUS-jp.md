@@ -2,7 +2,43 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: COMMIT応答待ちの制限
+## M5開発: revision遅延検査の再走査削減
+
+**0.4.0.dev1 / API v1 / schema 22**で、assertion historyとrelation-shapeの遅延検査を
+migration022で更新します。対象を限定したmaterialized入力により、invoker RLSでの
+evidence/targetの繰返し走査を減らします。1,000 revision契約、整合性検査、固定5秒の
+COMMIT応答budgetを維持し、制約検査をbudget外へ移しません。
+[schema22移行手順と対応component](operations/README-jp.md#schema-22-revision-validation)が必要です。
+schema21 artifactは履歴であり、移行後graphのserving権限にはなりません。
+
+`3daae55`のnative [run35934493283](https://github.com/rioriost/pg_agmemory/actions/runs/35934493283)は
+HA・PITR・修正AGEの両jobが成功しましたが、core両jobは1,000 revision境界で失敗しました
+（architectureごとに**3,618成功/130 skip/2失敗**）。
+前回のpackaging mock問題とは異なり、実際の遅延検査の負荷です。
+local PostgreSQLの`auto_explain`では、evidence検査1回に約**16.4秒**、
+**500,500行**、**shared-buffer 700万hit**を記録し、target joinも約100万行を走査しました。
+deadlineは正しく成功を抑止し、既存の二乗的なquery planを顕在化させました。
+修正では期限を延ばさずRLSも回避しません。失敗runは隔離COMMIT障害stageに到達していません。
+
+凍結したlocal Linux arm64/PostgreSQL 18.6のcore全体で**3,634成功/optional 133 skip**、
+別の**実cancel/deadline 18件**が成功しました。上限回帰では両assertion種別のguard対象COMMITを
+実測で**5秒未満**と確認し、replay/historyを維持します。schema21→22移行失敗時のrollbackと
+成功時の置換で、function identity、invoker security、権限、RLS policy、既存memory制約/triggerを
+保持します。履歴欠落、evidence、head、interval、relation targetの不整合は引き続き
+確定rollbackになります。全5 install profile、non-root runtime smoke、
+schema22の隔離operational-state復旧も成功しました。
+
+別の修正AGE実行では**218件**と実HTTPのpublication、stale/disabled拒否、
+明示rebuildが成功し、schema20/21履歴も対象です。件数には重複があるため加算しません。
+Ruff、source54 filesとconsumer3 filesのstrict型確認も成功しています。
+これはlocal観測で、このcheckpointのnative CI完了認定ではありません。
+schema22のv6 graph recipeはworkload/閾値を維持しますが、新たな資源認定はありません。
+M4 v4とschema21/M5 v5の凍結recipeは元のidentityを保持します。
+
+request全体のdeadline、正当な復旧先との照合、partition/rejoin、独立failure domain、
+本番RPO/RTO認定は残ります。
+
+## 以前のM5 increment: COMMIT応答待ちの制限
 
 **0.4.0.dev1 / API v1 / schema 21**で、同期管理commandと非同期API/workerの
 guard対象outer COMMITに固定**5秒のlocal応答待ちbudget**を追加します。
@@ -53,6 +89,9 @@ pipeline modeと判定されたもので、DB障害ではありません。隔�
 明示mockして呼出しをassertし、migration SQL/ledgerの検査は維持します。
 packagingとguard契約のlocal **100件**が成功しています。失敗したnative runは
 別のCOMMIT cancel stageへ到達しておらず、core認定とは扱いません。
+その修正`aa3eb98`の[run35932899722](https://github.com/rioriost/pg_agmemory/actions/runs/35932899722)は、
+その後**native全8 job成功**を確認しました。これは以前のcancel対応の証跡で、
+後続deadlineやschema22差分の認定ではありません。
 
 照会と同key replayによるlocal receipt照合を、remote durability証明や昇格/再開許可には使いません。
 本番HA、partition/rejoin、独立failure domain、RPO/RTOは未認定です。

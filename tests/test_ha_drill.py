@@ -108,7 +108,7 @@ def passed_report():
 def test_report_pins_schema_and_never_authorizes_general_serving():
     report = passed_report()
     assert report.service_version == __version__
-    assert report.schema_version == 21 and report.api_version == "v1"
+    assert report.schema_version == 22 and report.api_version == "v1"
     assert report.postgres_version_num == 180006 and report.pgvector_version == "0.8.6"
     for field in (
         "production_qualified", "host_failure_domain_independent", "network_partition_qualified",
@@ -227,7 +227,8 @@ def test_missing_or_mutated_acknowledged_state_fails(change, code):
 def test_reference_rejects_missing_ack_duplicate_ids_and_unknown_fields():
     reference, _ = references()
     for change in (
-        {"private_key": "never-allowed"}, {"schema_version": 20}, {"effect_revision": 3},
+        {"private_key": "never-allowed"}, {"schema_version": 20}, {"schema_version": 21},
+        {"effect_revision": 3},
         {"episodes": reference.model_dump(mode="json")["episodes"][:-1]},
         {"fixture": reference.fixture.model_dump(mode="json") | {"acknowledged_ids": []}},
     ):

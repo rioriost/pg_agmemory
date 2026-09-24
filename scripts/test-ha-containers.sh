@@ -146,7 +146,7 @@ cleanup() {
         --argjson synchronous "$synchronous" --argjson preserved "$preserved" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
             format: "pgag-ha-drill-v1", service_version: $version, api_version: "v1",
-            schema_version: 21, postgres_version_num: 180006, pgvector_version: "0.8.6",
+            schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
             source_destroyed: $destroyed, fencing_verified: $fenced,

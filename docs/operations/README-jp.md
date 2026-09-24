@@ -9,11 +9,30 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## M5 operational foundations
 
-開発identityは**0.4.0.dev1 / API v1 / schema 21**、
+開発identityは**0.4.0.dev1 / API v1 / schema 22**、
 stageは`m5-production-candidate`です。M5完了や本番認定ではありません。
 foundationとしてread-only運用/複製証跡、SQL-only物理PITR lab、
 所有primaryのfencingを明示確認するHA rehearsalを追加します。
 公開済みv0.3.0/M4の証跡は元のidentityを維持します。
+
+### Schema-22 revision validation
+
+migration `022_bounded_revision_checks.sql`は、遅延assertion-history/relation-shape制約の
+invoker functionを置き換え、既存の1,000 revision上限でhistory/evidence/targetを
+繰り返し走査する処理を減らします。system-timeの連続性、正確なhead、evidence、
+typed target、呼出し元から見える行の検査は維持します。既存migration、triggerの遅延設定、
+RLS、権限、5秒COMMIT budgetは変更しません。COMMIT時の遅延検査もbudget内であり、
+制限対象外のphaseには移しません。
+AGE receipt guardも新しい有効publicationにschema22を要求しますが、
+無効化されたschema20/21履歴は保持します。
+
+API、worker、管理writerを停止/drainし、schema22の対応codeで`pg-agmemory migrate`を実行します。
+COMMIT結果不明があれば先に照合し、migrationを再試行/再開の許可として扱いません。
+移行後DBにschema21 componentを接続しないでください。AGEを再選択する前に旧投影を
+明示disableし、schema22 artifactをbuild/record/publishします。旧receiptは履歴であり、
+serving権限ではありません。復旧証跡も選択schemaと正当なsource/deletion状態に合わせます。
+in-place downgradeはなく、rollbackには隔離したschema21 backupと対応componentを使います。
+migration ledger行の削除では戻せません。公開済みschema21/M4認定はschema22の認定ではありません。
 
 ### Read-only operations status
 
@@ -245,8 +264,10 @@ end-to-end request deadlineとpartition/rejoin認定は残ります。
 
 M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
-新v5開発graph recipeへM4 v4測定を読み替えず、
-`examples/graph-resource-profile-m4-v4.json`に過去recipeを保存しています。
+現行v6 graph recipeはworkload/閾値を変えずschema22に合わせます。
+`examples/graph-resource-profile-m5-v5.json`にschema21開発recipe、
+`examples/graph-resource-profile-m4-v4.json`に公開済みM4 recipeを保持し、
+どちらの過去測定もv6の認定へ読み替えません。
 
 ## M4 durable source-access coordinator
 

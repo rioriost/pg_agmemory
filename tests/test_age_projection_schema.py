@@ -80,7 +80,7 @@ def test_registry_is_optional_and_stamps_server_identity(env):
                WHERE tenant_id=%s RETURNING *""", (env.tenants[0],),
         ).fetchone()
         assert after["revision"] == 2 and after["enabled"]
-        assert after["captured_schema_version"] == 21
+        assert after["captured_schema_version"] == 22
         assert after["database_role"] == actor["actor"]
         assert after["created_at"] == receipt["created_at"]
         assert after["updated_at"] > receipt["updated_at"]
@@ -100,7 +100,7 @@ def test_captured_schema_marker_is_visible_without_generation_read_access_or_a_d
         assert conn.execute(
             "SELECT captured_schema_version FROM memory_ops.age_projection"
         ).fetchall() == []
-        for tenant, expected in ((env.tenants[1], []), (env.tenants[0], [(21,)])):
+        for tenant, expected in ((env.tenants[1], []), (env.tenants[0], [(22,)])):
             conn.execute("SELECT set_config('pgag.tenant_id',%s,true)", (str(tenant),))
             assert conn.execute(
                 "SELECT captured_schema_version FROM memory_ops.age_projection"
@@ -176,7 +176,7 @@ def test_registry_requires_same_tenant_generation(env):
             ))
 
 
-@pytest.mark.parametrize("schema", [18, 19, 20])
+@pytest.mark.parametrize("schema", [18, 19, 20, 21])
 def test_older_schema_receipt_cannot_enable_projection(env, schema):
     head = record(env, begin(env)).head
     with psycopg.connect(env.admin_url) as conn:

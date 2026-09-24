@@ -2,7 +2,49 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: bounded COMMIT acknowledgement
+## M5 development: bounded revision validation
+
+**0.4.0.dev1 / API v1 / schema 22** adds migration 022 for deferred assertion
+history and relation-shape checks. Bounded materialized inputs avoid repeatedly
+scanning evidence and targets under invoker RLS. The 1,000-revision contract,
+integrity checks and fixed five-second COMMIT acknowledgement budget are
+preserved; no constraint work is moved outside that budget.
+Use [matching components and the schema-22 upgrade procedure](operations/README.md#schema-22-revision-validation).
+Schema-21 artifacts are historical, not authority to serve the upgraded graph.
+
+Native [run35934493283](https://github.com/rioriost/pg_agmemory/actions/runs/35934493283)
+at `3daae55` passed both HA, PITR and patched AGE jobs but failed both core jobs
+at the exact 1,000-revision boundary (**3,618 passed / 130 skipped / 2 failed**
+per architecture). Unlike the earlier packaging mock failure, this was a real
+deferred-validation cost: local PostgreSQL `auto_explain` observed about
+**16.4 seconds**, **500,500 evidence rows** and **7 million shared-buffer hits**
+for one evidence check; the target join also visited nearly a million rows.
+The deadline correctly withheld success, exposing a pre-existing quadratic
+query plan. The correction does not increase the deadline or bypass RLS.
+The failed run never reached the isolated COMMIT fault stage.
+
+The frozen local Linux arm64/PostgreSQL 18.6 core run passes **3,634 cases /
+133 optional skips**, plus **18 separate real cancellation/deadline cases**.
+The exact-limit regressions measure successful guarded COMMIT at **less than
+five seconds** for both assertion kinds and preserve replay/history. Schema
+21→22 upgrade rollback and successful replacement preserve function identity,
+invoker security, grants, RLS policies and existing memory constraints/triggers.
+Invalid historical gaps, evidence, heads, intervals and relation targets still
+produce confirmed rollback. All five installation profiles, non-root runtime
+smokes and isolated schema-22 operational-state recovery pass.
+
+The separate patched AGE run passes **218 cases** and real HTTP publication,
+stale/disabled rejection and explicit rebuild checks, including historical
+schema-20/21 receipts. Counts overlap and must not be added. Ruff and strict
+typing for 54 source files and three consumers pass. These are local observations,
+not completed native CI qualification of this checkpoint. The schema-22 v6 graph
+recipe preserves workload/thresholds but has no new resource qualification;
+frozen M4 v4 and schema-21 M5 v5 recipes retain their original identities.
+
+Whole-request deadlines, authoritative reconciliation, partition/rejoin,
+independent failure domains and production RPO/RTO qualification remain open.
+
+## Previous M5 increment: bounded COMMIT acknowledgement
 
 **0.4.0.dev1 / API v1 / schema 21** adds a fixed **5-second local
 acknowledgement budget** at guarded outer COMMIT boundaries, for synchronous
@@ -65,6 +107,10 @@ guard; this was not a database failure. The isolated test correction mocks and
 asserts the guarded boundary explicitly while preserving all migration SQL/ledger
 checks. Packaging plus guard contracts pass **100 local cases**. The failed
 native runs did not reach the separate COMMIT-cancellation stage or qualify core.
+The correction at `aa3eb98` subsequently passed **all eight native jobs** in
+[run35932899722](https://github.com/rioriost/pg_agmemory/actions/runs/35932899722).
+That qualifies the earlier cancellation increment, not the later deadline or
+schema-22 changes.
 
 Lookup and same-key replay can reconcile local receipts, not certify remote
 durability or authorize promotion/restart. Production HA, partition/rejoin,

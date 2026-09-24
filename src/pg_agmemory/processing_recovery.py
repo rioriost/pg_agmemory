@@ -62,7 +62,7 @@ class StateFingerprint(HistoryContract):
 
 class ProcessingRecoverySnapshot(HistoryContract):
     format: Literal["pgag-processing-recovery-v1"] = "pgag-processing-recovery-v1"
-    schema_version: Literal[21] = 21
+    schema_version: Literal[22] = 22
     tenant_id: UUID
     lineage: Digest
     access_epoch: Epoch
@@ -133,7 +133,7 @@ def fingerprint_tables(
 def capture_processing_connection(
     conn: psycopg.Connection[dict[str, Any]], tenant_id: UUID,
 ) -> ProcessingRecoverySnapshot:
-    if SCHEMA_VERSION != 21:
+    if SCHEMA_VERSION != 22:
         raise AdminError("schema_version_mismatch")
     conn.execute("SET LOCAL timezone='UTC'")
     tenant = conn.execute(

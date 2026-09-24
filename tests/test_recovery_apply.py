@@ -265,7 +265,7 @@ def test_dataset_emergency_revocation_restores_without_replaying_source_notices(
                    for target in recovered.targets)
 
 
-@pytest.mark.parametrize("schema", [18, 19, 20])
+@pytest.mark.parametrize("schema", [18, 19, 20, 21])
 def test_previous_schema_bundle_requires_matching_version(env, schema):
     bundle = export_bundle(env.admin_url, env.tenants[0]).model_dump(mode="json")
     bundle["reference"]["schema_version"] = schema

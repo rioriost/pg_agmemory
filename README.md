@@ -6,7 +6,7 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**M5 development: 0.4.0.dev1 / API v1 / schema 21.** The new
+**M5 development: 0.4.0.dev1 / API v1 / schema 22.** The new
 [operational foundations](docs/operations/README.md#m5-operational-foundations)
 include read-only operator/replication observations, paused PITR and an explicitly
 fenced owned HA rehearsal. Reports do not authorize service startup or certify
@@ -17,6 +17,9 @@ of replication. Workers stop for reconciliation instead of retrying.
 Guarded COMMIT acknowledgement waits have a separate
 [five-second local budget](docs/operations/README.md#commit-acknowledgement-deadline);
 expiry still means outcome unknown, not rollback.
+Migration 022 removes repeated history/evidence scans from deferred revision
+checks without relaxing that budget or RLS. Follow the
+[schema-22 upgrade procedure](docs/operations/README.md#schema-22-revision-validation).
 The published M4 release and its qualification remain unchanged.
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21.** An administrator-only

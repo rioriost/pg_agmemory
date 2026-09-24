@@ -7,7 +7,7 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**M5開発: 0.4.0.dev1 / API v1 / schema 21。**
+**M5開発: 0.4.0.dev1 / API v1 / schema 22。**
 新しい[運用foundation](docs/operations/README-jp.md#m5-operational-foundations)に、
 read-only運用/複製観測、pauseを維持するPITR、所有primaryのfencingを確認するHA rehearsalを含めます。
 reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定ではありません。
@@ -16,6 +16,8 @@ reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定�
 workerは再試行せず照合のため停止します。
 guard対象COMMITの応答待ちは別の[5秒local budget](docs/operations/README-jp.md#commit-acknowledgement-deadline)で制限し、
 期限超過もrollbackではなく結果不明と扱います。
+migration022は遅延revision制約でのhistory/evidence再走査を減らし、期限とRLSは緩めません。
+[schema22移行手順](docs/operations/README-jp.md#schema-22-revision-validation)に従ってください。
 公開済みM4 releaseと証跡は変更しません。
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21。**
