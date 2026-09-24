@@ -2,7 +2,32 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: revision遅延検査の再走査削減
+## M5開発: assertion履歴のpage単位走査
+
+**0.4.0.dev1 / API v1 / schema 22**でhistory pageをmaterializeし、
+relation target/evidenceをpageとlookaheadに限定し、参照episodeも根拠集約前にmaterializeします。
+application queryの修正であり、
+追加migrationやtimeout延長ではありません。現在のRLS、metadata限定出力、ordinal降順、
+欠落行の拒否、全pageのevidence/endpoint検査は維持します。
+
+`8bb7073`のschema22 [run35940492128](https://github.com/rioriost/pg_agmemory/actions/runs/35940492128)は
+**native 8 job中7成功**で、amd64 coreとHA・PITR・修正AGEの両jobが成功しました。
+arm64 coreも上限COMMIT、replay、Explainは通過しましたが、その後のtyped history pageが
+5秒のstatement timeoutで失敗しました（**3,633成功/133 skip/1失敗**）。
+先のlocal planでも最初のpageで保護targetを`950行×101 loops`走査していました。
+残っていた読取り経路の負荷であり、COMMIT結果分類の退行ではありません。
+失敗jobは隔離COMMIT stageには到達していません。
+
+local Linux arm64/PostgreSQL 18.6で**重点history/revision 27件**と
+**SDK/contract/relation 30件**が成功しました（重複があるため加算しません）。
+Ruff、source54 filesとconsumer3 filesのstrict型確認も成功しています。
+自動、forced custom、実prepared generic、generic nested-loop-onlyの4 planで
+先頭/中間/末尾pageを既存5秒statement timeout下で確認し、target走査は1回・最大101行に限定します。
+plannerが選ぶhistory/evidenceの線形1回走査は許しますが、返却revisionごとの全履歴再走査は拒否します。
+非公開の過去targetは返却pageを失敗させ、返却しないsentinelだけなら従来どおりpageを維持します。
+重点local証跡であり、後続native実行の結果とは分離します。
+
+## 以前のM5 increment: revision遅延検査の再走査削減
 
 **0.4.0.dev1 / API v1 / schema 22**で、assertion historyとrelation-shapeの遅延検査を
 migration022で更新します。対象を限定したmaterialized入力により、invoker RLSでの

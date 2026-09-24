@@ -540,10 +540,7 @@ def test_unknown_assertion_matches_inaccessible_response(env):
     assert response.status_code == 404 and response.json()["code"] == "not_found"
 
 
-@pytest.mark.parametrize("typed", [False, True])
-def test_exact_revision_limit_preserves_replay_and_history(
-    env, typed, monkeypatch, record_property,
-):
+def seed_revision_limit_prefix(env, typed):
     source = env.observe("Gold Silver").json()["memory_id"]
     entities = []
     if typed:
@@ -642,6 +639,15 @@ def test_exact_revision_limit_preserves_replay_and_history(
                              'memory.relation'::regclass,
                              'memory.relation_revision'::regclass)"""
         ).fetchone() == (True,)
+
+    return memory, source, entities
+
+
+@pytest.mark.parametrize("typed", [False, True])
+def test_exact_revision_limit_preserves_replay_and_history(
+    env, typed, monkeypatch, record_property,
+):
+    memory, source, entities = seed_revision_limit_prefix(env, typed)
 
     def append(expected, headers=None):
         if not typed:

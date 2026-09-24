@@ -2549,6 +2549,11 @@ page間の新revisionには位置なしの再開が必要で、以前のheadの`
 元のmutationを元のidempotency key/bodyで照合し、
 expected revisionの自動更新や置換keyの生成はしないでください。
 
+現行queryは上限付きrevision pageを先にmaterializeし、relation target/evidenceをそのpageの
+ordinalに限定し、evidenceと参照episodeも集約前にmaterializeします。
+5秒のstatement timeoutを延ばさず、RLS保護された全履歴の
+繰返し走査を防ぎます。lookaheadと全page検証の意味は変えず、value/evidence quoteも取得しません。
+
 各pageで現在ACL/source/削除検査と既存tenant response-delivery/drain barrierを適用します。
 選択metadataの欠落/番号gap、または読取り可能な根拠がない場合は
 `409 assertion_invalidated`で**全page失敗**となり、

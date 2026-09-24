@@ -2835,6 +2835,13 @@ restart without a position, and a former head's `known_until` may close.
 Reconcile the original mutation using its original idempotency key/body; never
 automatically refresh an expected revision or generate a replacement key.
 
+The current query materializes the bounded revision page before looking up
+relation metadata, restricting targets and evidence to those page ordinals.
+Evidence and referenced episode sets are materialized before aggregation. This prevents
+repeated RLS-protected scans of the full history without increasing the
+five-second statement timeout. The lookahead row and whole-page validation
+semantics are unchanged; values and evidence quotes remain unfetched.
+
 Every page applies current ACL/source/deletion checks and the existing tenant
 response-delivery/drain barrier. Missing/gapped selected metadata or no readable
 evidence fails the **whole page** with `409 assertion_invalidated`; missing

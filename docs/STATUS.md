@@ -2,7 +2,37 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: bounded revision validation
+## M5 development: page-bounded assertion history
+
+**0.4.0.dev1 / API v1 / schema 22** additionally materializes each history page
+and limits relation targets/evidence to that page plus lookahead. Referenced
+episodes are materialized before evidence aggregation. This is an
+application query correction, not another migration or a timeout increase.
+Current RLS, metadata-only output, descending ordinals, missing-row rejection
+and whole-page evidence/endpoint validation remain unchanged.
+
+The schema-22 [run35940492128](https://github.com/rioriost/pg_agmemory/actions/runs/35940492128)
+at `8bb7073` passed **seven of eight native jobs**: amd64 core and both HA, PITR
+and patched AGE jobs. Arm64 core passed the exact-limit COMMIT, replay and
+Explain checks but failed the subsequent typed history page with a five-second
+statement timeout (**3,633 passed / 133 skipped / 1 failed**).
+The earlier local plan already showed repeated protected target scans
+(`950 rows × 101 loops` on the first page); the native failure exposed the same
+remaining read-path cost, not a COMMIT-outcome regression.
+That failed job did not reach its isolated COMMIT stage.
+
+Local Linux arm64/PostgreSQL 18.6 passes **27 focused history/revision cases**
+and **30 SDK/contract/relation cases** (overlapping, not additive), plus Ruff
+and strict typing for 54 source files and three consumers. Four real runtime
+plan variants—automatic, forced custom, actual prepared generic and generic
+nested-loop-only—check first/middle/last pages under the unchanged five-second
+statement timeout. Target scans are limited to at most 101 rows in one pass.
+A single linear evidence/history scan is permitted when chosen by the planner,
+not repeated full-history scans per returned revision. Hidden historical
+targets still fail selected pages but do not invalidate an unreturned sentinel.
+This is targeted local evidence; the follow-up native run remains separate.
+
+## Previous M5 increment: bounded revision validation
 
 **0.4.0.dev1 / API v1 / schema 22** adds migration 022 for deferred assertion
 history and relation-shape checks. Bounded materialized inputs avoid repeatedly

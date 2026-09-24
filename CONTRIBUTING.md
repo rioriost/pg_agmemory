@@ -65,6 +65,10 @@ Migration 022 must preserve invoker RLS and all history/evidence/target checks.
 Do not hide regressions with larger timeouts, fixture `ANALYZE`, disabled
 constraints or edits to already-shipped migrations. Check matching schema
 contracts and stale graph artifacts when adding a migration.
+History-page plan regressions must call the production query under runtime RLS
+and the unchanged statement timeout, including generic and nested-loop-only
+plans. Join only the page plus lookahead to bounded targets and evidence;
+fast elapsed time alone must not hide repeated protected full-history scans.
 Schema 10 adds terminal job cancellation. Its smoke uses the SDK to enqueue,
 cancel, replay, confirm worker idleness, and purge the source dependency. Preserve
 state/attempt CAS, owner/current-access checks, atomic audit/receipt writes, and

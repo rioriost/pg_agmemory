@@ -816,27 +816,47 @@ class MemoryService:
         highest = min(anchor["current_revision"], (data.before_revision or 1001) - 1)
         rows = await (
             await self.conn.execute(
-                """SELECT r.revision,lower(r.valid_time) AS valid_from,
+                """WITH revisions AS MATERIALIZED (
+                       SELECT revision,valid_time,system_time,correction_reason,epistemic_status
+                       FROM memory.assertion_revision
+                       WHERE tenant_id=%(tenant)s AND assertion_id=%(memory)s
+                         AND revision<=%(highest)s
+                       ORDER BY revision DESC LIMIT %(limit)s
+                   ), relation AS MATERIALIZED (
+                       SELECT source_id FROM memory.relation
+                       WHERE tenant_id=%(tenant)s AND id=%(memory)s
+                   ), targets AS MATERIALIZED (
+                       SELECT revision,target_id FROM memory.relation_revision
+                       WHERE tenant_id=%(tenant)s AND assertion_id=%(memory)s
+                         AND revision=ANY(ARRAY(SELECT revision FROM revisions))
+                   ), evidence AS MATERIALIZED (
+                       SELECT child_revision,parent_id FROM memory.provenance_edge
+                       WHERE tenant_id=%(tenant)s AND child_id=%(memory)s
+                         AND child_revision=ANY(ARRAY(SELECT revision FROM revisions))
+                   ), episodes AS MATERIALIZED (
+                       SELECT id FROM memory.episode
+                       WHERE tenant_id=%(tenant)s
+                         AND id=ANY(ARRAY(SELECT parent_id FROM evidence))
+                   ), refs AS MATERIALIZED (
+                       SELECT p.child_revision AS revision,jsonb_agg(
+                           jsonb_build_object('memory_id',p.parent_id,'revision',1)
+                           ORDER BY p.parent_id) AS evidence_refs
+                       FROM evidence p JOIN episodes e ON e.id=p.parent_id
+                       GROUP BY p.child_revision
+                   )
+                   SELECT r.revision,lower(r.valid_time) AS valid_from,
                           upper(r.valid_time) AS valid_to,
                           lower(r.system_time) AS recorded_at,
                           upper(r.system_time) AS known_until,r.correction_reason,
-                          r.epistemic_status,l.source_id,v.target_id,
-                          (SELECT jsonb_agg(
-                              jsonb_build_object('memory_id',p.parent_id,'revision',1)
-                              ORDER BY p.parent_id)
-                           FROM memory.provenance_edge p JOIN memory.episode e
-                             ON e.tenant_id=p.tenant_id AND e.id=p.parent_id
-                           WHERE p.tenant_id=r.tenant_id AND p.child_id=r.assertion_id
-                             AND p.child_revision=r.revision) AS evidence_refs
-                   FROM memory.assertion_revision r
-                   LEFT JOIN memory.relation l
-                     ON l.tenant_id=r.tenant_id AND l.id=r.assertion_id
-                   LEFT JOIN memory.relation_revision v
-                     ON v.tenant_id=r.tenant_id AND v.assertion_id=r.assertion_id
-                       AND v.revision=r.revision
-                   WHERE r.tenant_id=%s AND r.assertion_id=%s AND r.revision<=%s
-                   ORDER BY r.revision DESC LIMIT %s""",
-                (self.tenant, data.memory_id, highest, data.max_items + 1),
+                          r.epistemic_status,(SELECT source_id FROM relation) AS source_id,
+                          v.target_id,refs.evidence_refs
+                   FROM revisions r LEFT JOIN targets v USING (revision)
+                   LEFT JOIN refs USING (revision)
+                   ORDER BY r.revision DESC""",
+                {
+                    "tenant": self.tenant, "memory": data.memory_id,
+                    "highest": highest, "limit": data.max_items + 1,
+                },
             )
         ).fetchall()
         expected = list(range(highest, max(0, highest - data.max_items - 1), -1))
