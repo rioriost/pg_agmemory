@@ -400,6 +400,7 @@ def empty_result():
         ("vector_coverage", "invalid_native_response"),
         ("transport", "native_api_unavailable"),
         ("native", "dependency_unavailable"),
+        ("request_deadline", "request_deadline_exceeded"),
         ("unknown_native", "native_api_error"),
     ],
 )
@@ -415,10 +416,10 @@ def test_hook_safe_native_errors_and_response_limits(fault, code):
             )
         if fault == "transport":
             raise httpx.ReadError("SECRET")
-        if fault in ("native", "unknown_native"):
+        if fault in ("native", "request_deadline", "unknown_native"):
             return response(
                 {
-                    "code": "dependency_unavailable" if fault == "native" else "SECRET",
+                    "code": code if fault != "unknown_native" else "SECRET",
                     "retryable": True,
                     "request_id": str(uuid4()),
                     "details": {"secret": "SECRET"},

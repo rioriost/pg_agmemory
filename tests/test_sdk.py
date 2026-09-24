@@ -463,6 +463,7 @@ def test_native_error_catalog_preserves_only_safe_codes(monkeypatch, code):
     [
         ("capture_policy_denied", 403, False, False),
         ("capture_policy_invalid", 503, True, True),
+        ("request_deadline_exceeded", 503, True, True),
         ("commit_outcome_unknown", 503, False, True),
     ],
 )

@@ -259,8 +259,48 @@ teardownして永続行を確認します。このteardownは製品の処理で�
 OS障害中のhard real-time保証ではありません。外部task cancelはcancelとして伝播し、
 driverの別cancel channel cleanupには独自の待機があり得ます。request本文の読取り、
 接続/admission待機、transaction statement、応答配送は既存の個別制限を維持し、
-end-to-end request deadlineとpartition/rejoin認定は残ります。
+Native HTTPには以下のrequest deadlineも適用します。partition/rejoin認定は残ります。
 `synchronous_commit`の緩和、failover、effect再実行、service再開は行いません。
+
+### Native request deadline
+
+`/v1/` HTTP requestにはmiddleware入口から固定**30秒のapplication lifecycle budget**を適用します。
+**最初の29秒**に認証、本文受信、接続/principal照会、tenant admission barrier、
+handler query、guard対象COMMIT、成功応答送信を含めます。
+**最後の1秒は秘匿化したエラー応答用**で、絶対期限を延長せず、phaseごとにも再設定しません。
+既存の本文/送信10秒、DB/COMMIT 5秒は独立した短い上限として維持します。
+`/healthz`、`/readyz`、startup、管理command、workerにはこのHTTP期限を適用しません。
+capabilitiesにrequest budgetとreserveを公開します。
+
+期限超過時は所有event-loop threadで、そのrequestに登録したDB connectionだけを閉じてから
+taskをcancelします。別のPostgreSQL cancel接続を待たず、背景requestも残しません。
+接続成立直後、principal照会/admission前から登録し、終了時はtimerと接続の対応を解除します。
+終了済みrequestが後続requestを中断することはありません。COMMIT前と各送信前にも期限を確認し、
+timerがまだ実行されていなくても期限後の継続を拒否します。
+接続破棄に失敗した場合は明示的にlogへ記録し、その際のdriver cleanupの期限内完了は
+保証できません。
+
+COMMIT試行前の期限超過は`503 request_deadline_exceeded`、`retryable:true`を返せます。
+COMMIT中、または応答を試みる前のCOMMIT応答確認後は
+`503 commit_outcome_unknown`、`retryable:false`とし、local commitを再試行可能な
+COMMIT前障害に誤分類しません。Native mutation adapterは5xxで保守的に
+`outcome_unknown:true`を維持し、自動retryしません。read adapterはmutationを主張しません。
+外部task cancelはcancelとして伝播し、timeout応答を作りません。
+
+一度でも応答送信を開始した後は送信を中断し、二つ目のstatusや置換bodyを送信しません。
+通常の認証/エラー応答にも期限を適用し、reserveによる送信も絶対期限を超えて待ちません。
+通信不能や送信停滞では完全なエラーbodyを届けられない場合があります。
+logは固定code/request IDだけを使い、SQL、資格情報、memory本文を含めません。
+COMMIT timingは応答確認後だけ記録し、HTTP応答全体がcallerへ届いたかとは区別します。
+
+これはevent loopが応答する場合の協調的application上限で、
+**end-to-end network SLAやhard real-time保証ではありません**。
+reverse-proxy待ち、client側期限、同期blocking code/telemetryは保証対象外です。
+Native SDKのtransport期限が先に切れる場合もあり、mutationは不明のままです。
+切断はbackend停止、lock解放、rollback、複製完了、安全なfailoverを証明しません。
+operator照合を継続し、workerの自動再開、replica昇格、effect再実行を行わないでください。
+例えば、client期限による復帰後もadmission backendがadvisory lockを待っている場合があり、
+その後のcleanupは別の観測として扱います。
 
 M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。

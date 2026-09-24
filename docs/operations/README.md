@@ -305,9 +305,59 @@ real-time guarantee during process suspension, resource starvation or OS failure
 External task cancellation remains cancellation, and the driver's separate
 cancel-channel cleanup may have its own wait. Request-body reads, connection/
 admission waits, transaction statements and response delivery retain their
-existing separate limits; end-to-end request deadlines and partition/rejoin
-qualification remain open. No `synchronous_commit` downgrade, failover, effect
+existing separate limits, additionally bounded for Native HTTP by the request
+deadline below. Partition/rejoin qualification remains open. No
+`synchronous_commit` downgrade, failover, effect
 reexecution or service restart is performed.
+
+### Native request deadline
+
+Every `/v1/` HTTP request has a fixed **30-second application lifecycle budget**
+starting at middleware entry. **The first 29 seconds** cover authentication,
+body reception, connection/principal lookup, the tenant admission barrier,
+handler queries, guarded COMMIT and successful response delivery. The final
+**one second is reserved for a sanitized error response**, with the same
+absolute endpoint; no phase resets the budget. Existing ten-second body/send
+limits and five-second database/COMMIT limits remain shorter independent caps.
+`/healthz`, `/readyz`, startup, administrative commands and workers do not gain
+this HTTP deadline. Capabilities advertise the request budget and reserve.
+
+On expiry the owning event-loop thread closes only that request's registered
+database connection before cancelling its task. It does not wait for a separate
+PostgreSQL cancel connection or leave a background request running. Registration
+starts immediately after connection establishment, before principal lookup or
+admission. Cleanup removes the timer and connection association; a completed
+request cannot interrupt the next request. Checks before COMMIT and each send
+also reject late continuations when the timer has not yet been dispatched.
+A connection-disposal failure is logged explicitly; timely driver cleanup
+cannot then be guaranteed.
+
+Before COMMIT is attempted, expiry can return `503 request_deadline_exceeded`
+with `retryable:true`. During COMMIT, or after acknowledgement but before any
+response attempt, it returns `503 commit_outcome_unknown`, `retryable:false`.
+This prevents a locally committed mutation from looking like a retryable
+pre-commit failure. Native mutation adapters remain conservatively
+`outcome_unknown:true` on 5xx and never automatically retry. Read adapters do
+not claim a mutation occurred. External task cancellation still propagates
+as cancellation, not a manufactured timeout response.
+
+Once any response send has started, expiry aborts delivery without writing a
+second status or replacement body. Even ordinary authentication/error responses
+are bounded; the reserved error send cannot extend past the absolute endpoint.
+An unavailable or stalled transport may receive no complete error body.
+Logs use fixed codes/request IDs, not SQL, credentials or memory payloads.
+Commit timing is recorded only after acknowledgement, independently of whether
+the complete HTTP response reaches the caller.
+
+This is a cooperative application bound on a responsive event loop, **not an
+end-to-end network SLA or hard real-time guarantee**. Reverse-proxy queues,
+client-side deadlines and synchronous blocking code/telemetry remain outside
+that guarantee. Native SDK transport limits may expire earlier and still mean
+an uncertain mutation. Disconnect never proves backend termination, lock
+release, rollback, replication or safe failover. Continue operator reconciliation;
+do not automatically restart workers, promote replicas or replay effects.
+For example, an admission backend may still be waiting for its advisory lock
+after the client deadline has returned; its later cleanup is a separate observation.
 
 M5 still needs a declared production topology/load profile, independent media,
 production partition/failover and commit-outcome handling, monitoring/alert retention,

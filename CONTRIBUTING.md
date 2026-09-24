@@ -55,10 +55,18 @@ container runner executes them separately on both CI architectures.
 expiry without an external backend cancel, and lost responses through an owned
 loopback proxy. Preserve the fixed five-second COMMIT budget, local-state
 uncertainty, safe connection reuse and absence of success-shaped timing samples.
-This is not a whole-request deadline or remote durability qualification.
+That COMMIT-only stage is not remote durability qualification.
 Only those synthetic deadline probes disable their statement timeout to ensure
 the client watchdog is what ends the wait; production query limits are unchanged.
 See [the uncertainty contract](docs/operations/README.md#unconfirmed-commit-outcomes).
+Request-deadline regressions separately cover the production 30-second budget,
+cumulative work, admission, body/response stalls and COMMIT uncertainty.
+Keep the 29-second processing/one-second error split, cancellation semantics,
+per-request connection ownership and existing phase limits unchanged.
+A fresh owned fault primary runs the request cases in a separate bounded stage.
+Do not terminate the backend to manufacture a timely client exit, weaken RLS,
+or infer backend termination/rollback/replication from client-side closure.
+See [the request contract](docs/operations/README.md#native-request-deadline).
 The exact 1,000-revision assertion/relation tests also exercise real deferred
 constraints inside that five-second budget, including replay and history.
 Migration 022 must preserve invoker RLS and all history/evidence/target checks.

@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -30,6 +30,7 @@ from pg_agmemory.models import (
     RetrievalEvidence,
     ReviseAssertion,
 )
+from pg_agmemory.request_deadline import RequestDeadline
 
 
 class MemoryError(Exception):
@@ -41,25 +42,27 @@ class MemoryError(Exception):
 
 @asynccontextmanager
 async def principal_connection(
-    url: str, subject: str
+    url: str, subject: str, *, deadline: RequestDeadline | None = None
 ) -> AsyncIterator[tuple[Connection, Identity]]:
-    async with await connect(url) as conn:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('pgag.subject', %s, true)", (subject,))
-            row = await (
-                await conn.execute(
-                    "SELECT tenant_id,id FROM memory.principal WHERE external_subject = %s",
-                    (subject,),
-                )
-            ).fetchone()
-        if row is None:
-            raise MemoryError("unauthenticated", 401)
-        identity = Identity(tenant_id=row["tenant_id"], principal_id=row["id"])
-        # The lock survives commit and stays held through API response delivery.
-        await conn.execute(
-            "SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(identity.tenant_id),)
-        )
-        yield conn, identity
+    conn = await connect(url)
+    with deadline.connection(conn) if deadline is not None else nullcontext():
+        async with conn:
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('pgag.subject', %s, true)", (subject,))
+                row = await (
+                    await conn.execute(
+                        "SELECT tenant_id,id FROM memory.principal WHERE external_subject = %s",
+                        (subject,),
+                    )
+                ).fetchone()
+            if row is None:
+                raise MemoryError("unauthenticated", 401)
+            identity = Identity(tenant_id=row["tenant_id"], principal_id=row["id"])
+            # The lock survives commit and stays held through API response delivery.
+            await conn.execute(
+                "SELECT pg_advisory_lock(hashtextextended(%s, 0))", (str(identity.tenant_id),)
+            )
+            yield conn, identity
 
 
 async def bind_identity(conn: Connection, subject: str, identity: Identity) -> None:

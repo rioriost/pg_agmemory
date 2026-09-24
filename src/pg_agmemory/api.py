@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Annotated, Any, get_args
 from uuid import UUID, uuid4
@@ -99,12 +100,40 @@ from pg_agmemory.models import (
     WorkingSnapshot,
 )
 from pg_agmemory.processing import Processing
+from pg_agmemory.request_deadline import (
+    ERROR_RESPONSE_RESERVE_SECONDS,
+    REQUEST_TIMEOUT_SECONDS,
+    RequestDeadline,
+    RequestDeadlineExceeded,
+)
 from pg_agmemory.service import MemoryError, MemoryService, bind_identity, principal_connection
 from pg_agmemory.transactions import CommitOutcomeUnknown, async_transaction
 
 logger = logging.getLogger("pg_agmemory")
 READINESS_TIMEOUT_SECONDS = 5.0
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=256)]
+
+
+@dataclass
+class _RequestOutcome:
+    committed: bool = False
+    commit_uncertain: bool = False
+    response_started: bool = False
+
+
+def _error_response(error: MemoryError, request_id: str) -> JSONResponse:
+    return JSONResponse(
+        ErrorBody(
+            code=error.code, request_id=request_id,
+            retryable=error.status == 503 and error.code != "commit_outcome_unknown",
+        ).model_dump(),
+        status_code=error.status,
+        headers={
+            "X-Request-ID": request_id,
+            "Cache-Control": "no-store",
+            **({"WWW-Authenticate": "Bearer"} if error.status == 401 else {}),
+        },
+    )
 
 
 class TransactionBoundary:
@@ -122,7 +151,7 @@ class TransactionBoundary:
         request_id = str(uuid4())
         scope.setdefault("state", {})["request_id"] = request_id
         if self.timing_sink is None:
-            await self._request(scope, receive, send, request_id, None)
+            await self._bounded_request(scope, receive, send, request_id, None)
             return
         clock = RequestClock(request_id)
 
@@ -131,16 +160,56 @@ class TransactionBoundary:
             clock.sent(message)
 
         try:
-            await self._request(scope, receive, measured_send, request_id, clock)
+            await self._bounded_request(scope, receive, measured_send, request_id, clock)
         finally:
             self.timing_sink(clock.finish(scope))
 
-    async def _request(
+    async def _bounded_request(
         self, scope: Scope, receive: Receive, send: Send, request_id: str,
         clock: RequestClock | None,
     ) -> None:
-        sent = False
+        deadline = RequestDeadline(request_id)
+        outcome = _RequestOutcome()
+
+        async def bounded_send(message: Message) -> None:
+            deadline.check()
+            outcome.response_started = True
+            await send(message)
+
         try:
+            async with deadline.processing():
+                await self._request(
+                    scope, receive, bounded_send, request_id, clock, deadline, outcome,
+                )
+            return
+        except RequestDeadlineExceeded as exc:
+            unknown = exc.commit_outcome_unknown or outcome.commit_uncertain or outcome.committed
+            code = "commit_outcome_unknown" if unknown else "request_deadline_exceeded"
+            logger.warning("%s request_id=%s", code, request_id)
+        if outcome.response_started:
+            logger.warning("request_response_aborted request_id=%s", request_id)
+            return
+
+        async def error_send(message: Message) -> None:
+            if asyncio.get_running_loop().time() >= deadline.expires_at:
+                raise TimeoutError
+            outcome.response_started = True
+            await send(message)
+
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                await _error_response(MemoryError(code, 503), request_id)(
+                    scope, receive, error_send,
+                )
+        except TimeoutError:
+            logger.warning("request_error_response_expired request_id=%s", request_id)
+
+    async def _request(
+        self, scope: Scope, receive: Receive, send: Send, request_id: str,
+        clock: RequestClock | None, deadline: RequestDeadline, outcome: _RequestOutcome,
+    ) -> None:
+        try:
+            deadline.check()
             headers = dict(scope["headers"])
             authorization = headers.get(b"authorization", b"").decode("latin-1")
             if not authorization.startswith("Bearer ") or len(authorization) > 16384:
@@ -191,7 +260,9 @@ class TransactionBoundary:
 
             if clock is not None:
                 clock.connection_started = perf_counter_ns()
-            async with principal_connection(self.settings.database_url, subject) as (
+            async with principal_connection(
+                self.settings.database_url, subject, deadline=deadline,
+            ) as (
                 conn,
                 identity,
             ):
@@ -205,18 +276,22 @@ class TransactionBoundary:
                     await self.app(scope, buffered_receive, buffered_send)
                     if clock is not None:
                         clock.handler_finished = perf_counter_ns()
+                    deadline.check()
+                outcome.committed = True
                 if clock is not None:
                     clock.committed = perf_counter_ns()
                 async with asyncio.timeout(10):
                     for message in messages:
-                        sent = True
                         await send(message)
             return
+        except RequestDeadlineExceeded:
+            raise
         except jwt.InvalidTokenError:
             error = MemoryError("unauthenticated", 401)
         except MemoryError as exc:
             error = exc
         except CommitOutcomeUnknown:
+            outcome.commit_uncertain = True
             logger.error("commit_outcome_unknown request_id=%s", request_id)
             error = MemoryError("commit_outcome_unknown", 503)
         except (
@@ -232,21 +307,12 @@ class TransactionBoundary:
         except psycopg.Error as exc:
             logger.error("database_error request_id=%s type=%s", request_id, type(exc).__name__)
             error = MemoryError("database_error", 503)
-        if sent:
+        if outcome.response_started:
             return
-        response = JSONResponse(
-            ErrorBody(
-                code=error.code, request_id=request_id,
-                retryable=error.status == 503 and error.code != "commit_outcome_unknown",
-            ).model_dump(),
-            status_code=error.status,
-            headers={
-                "X-Request-ID": request_id,
-                "Cache-Control": "no-store",
-                **({"WWW-Authenticate": "Bearer"} if error.status == 401 else {}),
-            },
-        )
-        await response(scope, receive, send)
+        if outcome.committed:
+            logger.error("commit_outcome_unknown request_id=%s", request_id)
+            error = MemoryError("commit_outcome_unknown", 503)
+        await _error_response(error, request_id)(scope, receive, send)
 
 
 def service(request: Request) -> MemoryService:
@@ -338,6 +404,13 @@ def create_app(
             "service_version": __version__,
             "schema_version": SCHEMA_VERSION,
             "stage": "m5-production-candidate",
+            "request_deadline": {
+                "scope": "v1_http",
+                "seconds": REQUEST_TIMEOUT_SECONDS,
+                "error_response_reserve_seconds": ERROR_RESPONSE_RESERVE_SECONDS,
+                "commit_expiry_outcome": "unknown",
+                "hard_realtime": False,
+            },
             "features": [
                 "observe",
                 "episode_query",

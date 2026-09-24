@@ -2,7 +2,42 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: page-bounded assertion history
+## M5 development: Native request deadlines
+
+**0.4.0.dev1 / API v1 / schema 22** adds a cumulative **30-second `/v1/`
+application budget**, including **one second reserved for error delivery**.
+Authentication, receive, connection/admission, handler, COMMIT and response
+work share the first 29 seconds; existing shorter phase limits remain.
+No migration, dependency or resource-profile change is introduced.
+
+An expired request closes its owned connection before task cancellation.
+Pre-COMMIT expiry is `503 request_deadline_exceeded`; in/after-COMMIT expiry
+before response delivery is non-retryable `commit_outcome_unknown`. Buffered
+success remains suppressed, partial delivery is never followed by a second
+response, and normal/error sends both have an absolute endpoint. External
+cancellation remains cancellation; completed timers cannot affect later requests.
+See [the request deadline contract](operations/README.md#native-request-deadline).
+
+Local Apple Container arm64 evidence (PostgreSQL 18.6 / pgvector 0.8.6):
+Ruff, strict typing (**55 modules + 3 consumers**), and **3,695 core cases
+passed / 134 skipped**. Separate fresh missing-standby primaries passed the
+unchanged **18 COMMIT cases** and **13 request cases** (57.90 seconds for the
+request stage), including the production-default cumulative budget, startup/
+admission waits, lost ACK/cancel-channel blackhole, response stalls and timer
+isolation. All optional-install and packaged API/SDK/worker/MCP/hook/recovery
+smokes passed. Native amd64/arm64 CI evidence is not yet recorded for this increment.
+
+The admission regression measures client exit before releasing its owned
+blocker and observes backend cleanup separately. Each fault pytest process
+receives a fresh cluster for the legacy-migration fixture; tests do not weaken
+the fixture or mistake a still-waiting backend for a failed client deadline.
+
+This does not prove backend termination, rollback, remote durability or safe
+restart. A responsive event loop is required; client/proxy latency and blocking
+code are not covered by a network SLA. Authoritative reconciliation,
+partition/rejoin, independent failure domains and production RPO/RTO remain open.
+
+## Previous M5 increment: page-bounded assertion history
 
 **0.4.0.dev1 / API v1 / schema 22** additionally materializes each history page
 and limits relation targets/evidence to that page plus lookahead. Referenced

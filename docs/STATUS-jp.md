@@ -2,7 +2,38 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: assertion履歴のpage単位走査
+## M5開発: Native request deadline
+
+**0.4.0.dev1 / API v1 / schema 22**で`/v1/`に累積**30秒のapplication budget**を追加し、
+うち**1秒をエラー応答用**に確保します。認証、受信、接続/admission、handler、COMMIT、
+応答処理で最初の29秒を共有し、既存の短いphase上限も維持します。
+migration、依存package、resource profileの変更はありません。
+
+期限超過は所有connectionを閉じてからtaskをcancelします。COMMIT前は
+`503 request_deadline_exceeded`、COMMIT中/確認後で応答送信前なら非retryableな
+`commit_outcome_unknown`です。buffered成功を抑止し、部分送信後に二つ目の応答を送らず、
+通常/エラー応答の両方を絶対期限で制限します。外部cancelはcancelとして維持し、
+終了済みtimerが後続requestへ影響しないようにします。
+[request deadline契約](operations/README-jp.md#native-request-deadline)を参照してください。
+
+ローカルApple Container arm64（PostgreSQL 18.6 / pgvector 0.8.6）で、
+Ruff、strict型検査（**55 module + 3利用側**）、core **3,695 passed / 134 skipped**を確認しました。
+別々の新しいmissing-standby primaryで、既存**18 COMMIT case**と
+**13 request case**（request stageは57.90秒）が成功しました。
+製品既定の累積budget、接続/admission待ち、ACK/cancel channel喪失、応答停滞、
+timer隔離を含みます。optional installとpackaged API/SDK/worker/MCP/hook/recovery smokeも成功しました。
+このincrementのnative amd64/arm64 CI証跡はまだ記録していません。
+
+admission回帰では所有blockerの解放前にclient復帰を測り、その後のbackend cleanupを
+別に観測します。各fault pytest processにはlegacy migration fixture用の新しいclusterを渡し、
+fixtureを緩めたり、待機中backendをclient deadline失敗と混同したりしません。
+
+backend停止、rollback、remote durability、安全な再開を証明するものではありません。
+応答するevent loopが必要で、client/proxyの待機や同期blocking codeをnetwork SLAとして
+保証しません。正当な復旧先との照合、partition/rejoin、独立failure domain、
+本番RPO/RTOは引き続き未認定です。
+
+## 以前のM5 increment: assertion履歴のpage単位走査
 
 **0.4.0.dev1 / API v1 / schema 22**でhistory pageをmaterializeし、
 relation target/evidenceをpageとlookaheadに限定し、参照episodeも根拠集約前にmaterializeします。

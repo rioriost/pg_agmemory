@@ -43,6 +43,7 @@ commit_db="${run_id}-commit-db"
 smoke_db="${run_id}-smoke-db"
 test_name="${run_id}-tests"
 commit_name="${run_id}-commit-tests"
+request_name="${run_id}-request-tests"
 migrate_name="${run_id}-migrate"
 key_name="${run_id}-key"
 api_name="${run_id}-api"
@@ -50,7 +51,8 @@ probe_name="${run_id}-probe"
 provision_name="${run_id}-provision"
 worker_name="${run_id}-worker"
 containers=("$worker_name" "$provision_name" "$probe_name" "$api_name" "$key_name"
-            "$migrate_name" "$test_name" "$commit_name" "$smoke_db" "$test_db" "$commit_db")
+            "$migrate_name" "$test_name" "$commit_name" "$request_name"
+            "$smoke_db" "$test_db" "$commit_db")
 network=default
 network_created=false
 password="${run_id}-${RANDOM}"
@@ -69,7 +71,7 @@ cleanup() {
     trap - EXIT INT TERM
     set +e
     if [[ $status -ne 0 ]]; then
-        for name in "$test_name" "$commit_name" "$api_name" "$worker_name" \
+        for name in "$test_name" "$commit_name" "$request_name" "$api_name" "$worker_name" \
             "$smoke_db" "$test_db" "$commit_db"; do
             "$engine" logs "$name" >&2 2>/dev/null
         done
@@ -123,6 +125,15 @@ start_database() {
     return 1
 }
 
+start_commit_database() {
+    start_database "$commit_db" postgres \
+        -c synchronous_standby_names=pgag_missing -c synchronous_commit=local
+    test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
+        'SHOW synchronous_standby_names')" = pgag_missing
+    test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
+        'SHOW synchronous_commit')" = local
+}
+
 echo "Building test image with $engine..."
 "$engine" build --target test --tag "$test_image" .
 start_database "$test_db"
@@ -134,16 +145,20 @@ echo "Running containerized lint, type checks, and PostgreSQL tests..."
 remove_container "$test_db"
 
 echo "Checking canceled and expired COMMIT waits on a separate owned primary..."
-start_database "$commit_db" postgres \
-    -c synchronous_standby_names=pgag_missing -c synchronous_commit=local
-test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
-    'SHOW synchronous_standby_names')" = pgag_missing
-test "$("$engine" exec "$commit_db" psql -U postgres -d pgag_test -Atc \
-    'SHOW synchronous_commit')" = local
+start_commit_database
 commit_host="$(container_host "$commit_db")"
 "$engine" run --name "$commit_name" --network "$network" \
     -e "PGAG_TEST_DATABASE_URL=postgresql://postgres:${password}@${commit_host}:5432/pgag_test" \
     "$test_image" timeout 120s pytest -q tests/test_commit_outcomes.py tests/test_commit_deadline.py
+remove_container "$commit_db"
+
+echo "Checking cumulative request deadlines and uncertain COMMITs on the owned primary..."
+# Each pytest process seeds legacy migrations and requires a fresh cluster.
+start_commit_database
+commit_host="$(container_host "$commit_db")"
+"$engine" run --name "$request_name" --network "$network" \
+    -e "PGAG_TEST_DATABASE_URL=postgresql://postgres:${password}@${commit_host}:5432/pgag_test" \
+    "$test_image" timeout 120s pytest -q tests/test_request_deadline_live.py
 remove_container "$commit_db"
 
 echo "Building and running the non-root production image..."

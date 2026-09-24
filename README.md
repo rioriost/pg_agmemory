@@ -17,6 +17,9 @@ of replication. Workers stop for reconciliation instead of retrying.
 Guarded COMMIT acknowledgement waits have a separate
 [five-second local budget](docs/operations/README.md#commit-acknowledgement-deadline);
 expiry still means outcome unknown, not rollback.
+Native `/v1/` requests also have a cumulative
+[30-second application budget](docs/operations/README.md#native-request-deadline),
+including one second reserved for errors; COMMIT-time expiry remains unknown.
 Migration 022 removes repeated history/evidence scans from deferred revision
 checks without relaxing that budget or RLS. Follow the
 [schema-22 upgrade procedure](docs/operations/README.md#schema-22-revision-validation).

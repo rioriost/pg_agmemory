@@ -51,10 +51,17 @@ missing-standby caseをskipしますが、main container runnerはCI両architect
 `tests/test_commit_deadline.py`では外部backend cancelを行わない応答期限超過と、
 所有loopback proxyによる応答喪失も検査します。固定5秒のCOMMIT budget、local状態の不明性、
 安全なconnection再利用、成功扱いのtiming sampleを出さない契約を維持してください。
-request全体のdeadlineやremote durabilityの認定ではありません。
+このCOMMIT専用stageはremote durabilityの認定ではありません。
 client watchdogで待機が終了することを確認するため、合成deadline probeだけstatement timeoutを
 無効にします。製品のquery制限は変更しません。
 [結果不明の契約](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を参照してください。
+request deadline回帰では製品既定の30秒、累積処理、admission、本文/応答停滞と
+COMMIT不明性を別途検査します。処理29秒/エラー用1秒、cancelの意味、
+request単位の接続所有と既存のphase上限を維持してください。
+新しい所有fault primaryで、別の時間制限付きstageとしてrequest caseも実行します。
+clientの期限内終了を作るためにbackendを停止したり、RLSを緩和したり、
+client切断からbackend停止/rollback/複製完了を推論したりしないでください。
+[request契約](docs/operations/README-jp.md#native-request-deadline)を参照してください。
 assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制約を通し、
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で

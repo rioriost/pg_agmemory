@@ -16,6 +16,9 @@ reportはservice起動許可、本番HA、RPO/RTO、backup保持期限の認定�
 workerは再試行せず照合のため停止します。
 guard対象COMMITの応答待ちは別の[5秒local budget](docs/operations/README-jp.md#commit-acknowledgement-deadline)で制限し、
 期限超過もrollbackではなく結果不明と扱います。
+Native `/v1/` requestには、エラー応答用1秒を含む累積
+[30秒のapplication budget](docs/operations/README-jp.md#native-request-deadline)も設け、
+COMMIT中の期限超過は引き続き結果不明として扱います。
 migration022は遅延revision制約でのhistory/evidence再走査を減らし、期限とRLSは緩めません。
 [schema22移行手順](docs/operations/README-jp.md#schema-22-revision-validation)に従ってください。
 公開済みM4 releaseと証跡は変更しません。

@@ -30,6 +30,7 @@ SAFE_NATIVE_CODES = {
     "deletion_limit_exceeded",
     "relation_invalidated",
     "dependency_unavailable",
+    "request_deadline_exceeded",
     "database_error",
     "commit_outcome_unknown",
 }

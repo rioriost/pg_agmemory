@@ -191,6 +191,10 @@ def test_api_v1_reports_m5_candidate_without_changing_backend_readiness(monkeypa
             "api_version", "service_version", "schema_version", "stage", "graph_backend",
         )) == ("v1", "0.4.0.dev1", 22, "m5-production-candidate", backend)
         assert {"graph_expand", "entities", "structured_relations"} <= set(capabilities["features"])
+        assert capabilities["request_deadline"] == {
+            "scope": "v1_http", "seconds": 30.0, "error_response_reserve_seconds": 1.0,
+            "commit_expiry_outcome": "unknown", "hard_realtime": False,
+        }
         administration = capabilities["age_projection_administration"]
         assert administration["required_age_commit"] == AGE_COMMIT
         assert administration["fallback"] == "explicit_sql_configuration_only"

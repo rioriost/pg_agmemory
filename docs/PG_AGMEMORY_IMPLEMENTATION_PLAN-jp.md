@@ -2,7 +2,7 @@
 
 [English](PG_AGMEMORY_IMPLEMENTATION_PLAN.md) | 日本語
 
-- 文書版: 1.11 / M5 revision遅延検査の再走査削減、2026-09-24
+- 文書版: 1.12 / M5 Native request deadline、2026-09-24
 - 作成日・原案に記載された外部仕様の確認日: 2026-09-16。本改訂・翻訳で外部仕様やversionの再確認は行っていない。
 - 状態: M5開発を0.4.0.dev1/APIv1/schema22で継続し、revision遅延検査の再走査削減、COMMIT結果guard、運用/複製観測、paused SQL-only PITR、所有primaryのfencingを確認するHA rehearsalを追加。同期待機cancelをrollbackや複製成功とは扱わないが、本番HAとpartitionの認定は残る。公開済みM4 v0.3.0とa869629のnative/復元/資源証跡は変更せず、SQL既定・修正AGE72707aa opt-inを維持する。[STATUS](STATUS-jp.md)と[EVALUATION](EVALUATION-jp.md)を参照。
 - 対象: PostgreSQLを唯一のアプリケーション永続基盤とする、独立したOSS Agent Memory Service
@@ -877,6 +877,9 @@ backend停止、rollback、複製完了を証明するものではありませ�
 migration022では、1,000 revisionでdeadlineにより顕在化した遅延history/evidence/target検査の
 再走査を減らします。invoker RLSと整合性検査を維持し、COMMIT budget内で実行します。
 schema22 componentとgraph artifactの再構築が必要で、過去M4認定は読み替えません。
+Native `/v1/`には最後の1秒をエラー用に確保する30秒のapplication deadlineを適用します。
+所有接続を閉じてからtaskをcancelし、COMMIT中の期限超過は非retryableな結果不明を維持します。
+application処理の上限であり、backend lifetimeやend-to-end network待機の保証ではありません。
 
 本番gateには引き続きhost/storage failure domain、負荷、RPO/RTO目標の宣言、
 HA/partition fencingとfailover drill、alert/metrics保持、
