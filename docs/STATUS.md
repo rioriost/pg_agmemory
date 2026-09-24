@@ -31,7 +31,13 @@ packaged lifecycle/recovery checks pass, including the new migration command's
 empty-not-ready result and monitoring's private atomic success/failure output.
 The separate actual physical PITR and complete HA v5 labs both pass with the
 tightened shared WAL inspector. Earlier focused counts overlap this suite and
-must not be added. Native CI qualification of this operator increment is pending.
+must not be added. The exact implementation `9ae9c8b` subsequently passes
+**all eight native jobs** in [run36011089240](https://github.com/rioriost/pg_agmemory/actions/runs/36011089240):
+core, HA, PITR and patched AGE on amd64 and arm64. Each core passes **4,476 cases /
+134 skips**, the separate **18 COMMIT** and **13 request** cases, all installation
+profiles and packaged lifecycle/recovery checks, including both new commands.
+This closes the implemented operator/upgrade/WAL increment's repository gates;
+it does not close the target-deployment requirements below.
 
 **M5 production acceptance remains open, not silently implemented by these
 tools.** The target deployment must supply load/concurrency, host/storage

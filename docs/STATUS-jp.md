@@ -27,7 +27,12 @@ in-place downgradeは提供せず、検証済み隔離backupと対応する旧co
 packaged lifecycle/recoveryも成功し、移行commandのempty-not-ready、
 監視のprivate atomic成功/失敗出力も含みます。別の実物理PITRと全HA v5 labも、
 共通WAL inspector補強後に成功しました。先行するfocused件数とは重複するため加算しません。
-この運用incrementのnative CI認定は実行待ちです。
+実装`9ae9c8b`はその後、
+[run36011089240](https://github.com/rioriost/pg_agmemory/actions/runs/36011089240)で
+native **全8ジョブ**（amd64/arm64のcore、HA、PITR、patched AGE）に成功しました。
+各coreは**4,476 passed / 134 skipped**、別途**18 COMMIT case**と**13 request case**、
+全install profile、新command二つを含むpackaged lifecycle/recoveryに成功しています。
+この運用/upgrade/WAL incrementのrepository gateは完了ですが、次の配置先条件は未完です。
 
 **これらのtoolでM5本番受入れまで完了したとは扱いません。**
 配置先の負荷/同時数、host/storage failure domain、RPO/RTO、backup backend/inventory、
