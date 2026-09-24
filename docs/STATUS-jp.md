@@ -25,7 +25,12 @@ Ruff、source54 filesとconsumer3 filesのstrict型確認も成功していま�
 先頭/中間/末尾pageを既存5秒statement timeout下で確認し、target走査は1回・最大101行に限定します。
 plannerが選ぶhistory/evidenceの線形1回走査は許しますが、返却revisionごとの全履歴再走査は拒否します。
 非公開の過去targetは返却pageを失敗させ、返却しないsentinelだけなら従来どおりpageを維持します。
-重点local証跡であり、後続native実行の結果とは分離します。
+その後、実装`13fa132`の[run35943204446](https://github.com/rioriost/pg_agmemory/actions/runs/35943204446)で
+**native全8 job成功**を確認しました。amd64/arm64のcore、HA、PITR、修正AGEが対象です。
+coreは各**3,639成功/optional 133 skip**に加え、別の**実COMMIT cancel/deadline 18件**、
+install profile、production smoke、隔離復旧まで成功しました。
+5秒の制限とRLSを緩めず、上記native失敗を解消しています。
+本番HA、RPO/RTO、partition/rejoin、request全体のdeadline、v6資源profileの認定ではありません。
 
 ## 以前のM5 increment: revision遅延検査の再走査削減
 

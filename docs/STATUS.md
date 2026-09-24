@@ -30,7 +30,14 @@ statement timeout. Target scans are limited to at most 101 rows in one pass.
 A single linear evidence/history scan is permitted when chosen by the planner,
 not repeated full-history scans per returned revision. Hidden historical
 targets still fail selected pages but do not invalidate an unreturned sentinel.
-This is targeted local evidence; the follow-up native run remains separate.
+The exact implementation `13fa132` subsequently passed **all eight native jobs**
+in [run35943204446](https://github.com/rioriost/pg_agmemory/actions/runs/35943204446):
+core, HA, PITR and patched AGE on both amd64 and arm64. Each core job passes
+**3,639 cases / 133 optional skips**, followed by **18 separate real COMMIT
+cancellation/deadline cases**, installation profiles, production smokes and
+isolated recovery. This closes the native failures recorded above without
+relaxing the five-second limits or RLS. It does not qualify production HA,
+RPO/RTO, partition/rejoin, whole-request deadlines or the v6 resource profile.
 
 ## Previous M5 increment: bounded revision validation
 
