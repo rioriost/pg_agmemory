@@ -15,6 +15,8 @@ The v2 HA rehearsal separately reconciles a replay-pause COMMIT deadline with
 the physical replica before fencing, without retrying the uncertain write.
 The v3 rehearsal additionally rebuilds a fresh asynchronous standby from the
 promoted node; it does not rejoin an old primary or authorize service restart.
+The v4 lab then explicitly renews synchronous policy and observes a restricted
+writer waiting for replacement replay, still without serving authority.
 Write boundaries also reject [unconfirmed COMMIT outcomes](docs/operations/README.md#unconfirmed-commit-outcomes):
 local commit after synchronous-wait cancellation is neither rollback nor proof
 of replication. Workers stop for reconciliation instead of retrying.

@@ -77,6 +77,10 @@ The v3 replacement must start from a newly verified backup of the promoted
 timeline, preserve exact state read-only, advance streamed WAL beyond the backup,
 and recheck the original primary's fence. Do not reuse an old data directory or
 turn asynchronous replacement into serving/synchronous-durability authority.
+The separate v4 renewal must reject stale prerequisites before configuration,
+verify `remote_apply` on its restricted writer, and observe actual `SyncRep`
+during replacement replay pause. Keep one distinct synthetic write, the original
+uncertain outcome, existing deadlines, cleanup cancellation and no-restart rules.
 The exact 1,000-revision assertion/relation tests also exercise real deferred
 constraints inside that five-second budget, including replay and history.
 Migration 022 must preserve invoker RLS and all history/evidence/target checks.

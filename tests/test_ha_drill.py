@@ -103,7 +103,7 @@ def references(stage="reconciled"):
     return reference, promoted
 
 
-def reconcile_reference(reference, evidence):
+def observation_state_delta(reference, memory_id):
     growing = {
         "memory.episode", "memory.episode_lexical", "memory.object", "memory_ops.audit_event",
         "memory_ops.source_event", "memory_ops.idempotency",
@@ -114,16 +114,28 @@ def reconcile_reference(reference, evidence):
             item.table in growing
         ) else item
 
-    return reference.model_copy(update={
-        "stage": "reconciled", "uncertain": evidence,
-        "fixture": reference.fixture.model_copy(update={"uncertain_id": evidence.memory_id}),
+    return {
         "episodes": reference.episodes + (drill.pitr.Episode(
-            object_id=evidence.memory_id, content_sha256="e" * 64,
+            object_id=memory_id, content_sha256="e" * 64,
         ),),
         "content": tuple(increment(item) for item in reference.content),
         "processing": reference.processing.model_copy(update={
             "tables": tuple(increment(item) for item in reference.processing.tables),
         }),
+    }
+
+
+def reconcile_reference(reference, evidence):
+    return reference.model_copy(update=observation_state_delta(reference, evidence.memory_id) | {
+        "stage": "reconciled", "uncertain": evidence,
+        "fixture": reference.fixture.model_copy(update={"uncertain_id": evidence.memory_id}),
+    })
+
+
+def renewed_reference(baseline, memory_id):
+    return baseline.model_copy(update=observation_state_delta(baseline, memory_id) | {
+        "stage": "renewed",
+        "fixture": baseline.fixture.model_copy(update={"renewal_id": memory_id}),
     })
 
 
@@ -171,6 +183,31 @@ def replacement_evidence(uncertain_id=None, probe_id=None):
     )
 
 
+def renewal_observations():
+    return (
+        observation().model_copy(update={"primary_flush_lsn": "0/900"}),
+        observation("standby").model_copy(update={
+            "received_lsn": "0/900", "replayed_lsn": "0/900",
+        }),
+    )
+
+
+def renewal_evidence(uncertain_id=None, probe_id=None, memory_id=None):
+    primary, standby = renewal_observations()
+    return drill.RenewalEvidence(
+        renewal_state_matches=True, synchronous_policy_renewed=True,
+        writer_policy_verified=True, writer_synchronous_commit="remote_apply",
+        statement_timeout_seconds=5, lock_timeout_seconds=5, commit_timeout_seconds=5,
+        short_pause_blocked_ack=True, sync_rep_wait_observed=True, pause_seconds=0.2,
+        memory_id=memory_id or uuid4(), uncertain_id=uncertain_id or uuid4(),
+        original_outcome_code="commit_outcome_unknown", probe_id=probe_id or uuid4(),
+        system_identifier="1234567890123456789", timeline=2,
+        canonical_state_matches=True, processing_state_matches=True, source_state_matches=True,
+        effect_state_preserved=True, one_new_observation=True, no_retry=True,
+        primary=primary, standby=standby,
+    )
+
+
 def passed_report():
     reference, _ = references()
     probe_id = uuid4()
@@ -184,6 +221,8 @@ def passed_report():
         replacement_state_matches=True, original_primary_remains_fenced=True,
         replacement_backup_verified=True,
         replacement=replacement_evidence(reference.fixture.uncertain_id, probe_id),
+        renewal_state_matches=True, renewal_primary_remains_fenced=True,
+        renewal=renewal_evidence(reference.fixture.uncertain_id, probe_id),
         artifact=drill.pitr.Artifact(bytes=1024, sha256="a" * 64),
         synchronous=drill.SynchronousEvidence(
             writer_policy_verified=True, writer_synchronous_commit="remote_apply",
@@ -207,7 +246,7 @@ def passed_report():
 
 def test_report_pins_schema_and_never_authorizes_general_serving():
     report = passed_report()
-    assert report.format == "pgag-ha-drill-v3"
+    assert report.format == "pgag-ha-drill-v4"
     assert report.service_version == __version__
     assert report.schema_version == 22 and report.api_version == "v1"
     assert report.postgres_version_num == 180006 and report.pgvector_version == "0.8.6"
@@ -232,6 +271,7 @@ def test_failed_report_keeps_unmeasured_facts_null():
         "acknowledged_state_matches", "effect_state_preserved", "postpromotion_probe_verified",
         "replacement_state_matches", "original_primary_remains_fenced",
         "replacement_backup_verified",
+        "renewal_state_matches", "renewal_primary_remains_fenced",
     ):
         assert getattr(report, field) is None
         with pytest.raises(ValidationError):
@@ -242,6 +282,7 @@ def test_failed_report_keeps_unmeasured_facts_null():
     "source_destroyed", "fencing_verified", "pre_fence_promotion_rejected", "promotion_executed",
     "backup_verified", "artifact", "synchronous", "uncertain", "preserved", "probe", "replacement",
     "original_primary_remains_fenced", "replacement_backup_verified",
+    "renewal", "renewal_primary_remains_fenced",
 ])
 def test_pass_cannot_omit_its_evidence(field):
     with pytest.raises(ValidationError):
@@ -259,7 +300,7 @@ def test_promotion_observation_without_fencing_never_validates():
 @pytest.mark.parametrize("field", [
     "writer_policy_verified", "short_pause_blocked_ack", "acknowledged_state_matches",
     "effect_state_preserved", "postpromotion_probe_verified", "uncertain_commit_reconciled",
-    "replacement_state_matches",
+    "replacement_state_matches", "renewal_state_matches",
 ])
 def test_measurement_cannot_be_invented_without_its_proof(field):
     with pytest.raises(ValidationError, match="unmeasured_or_inconsistent_evidence"):
@@ -307,6 +348,177 @@ def test_pass_cannot_skip_the_entire_replacement_stage():
         drill.Report.model_validate(passed_report().model_dump() | {
             "replacement": None, "replacement_state_matches": None,
         })
+
+
+@pytest.mark.parametrize("status", ["passed", "failed"])
+@pytest.mark.parametrize("proof,flag", [(False, True), (True, None), (True, False)])
+def test_renewal_report_measurement_must_match_its_proof(status, proof, flag):
+    report = passed_report().model_dump() | {
+        "status": status, "failure_code": None if status == "passed" else "cleanup_failed",
+        "renewal_state_matches": flag,
+    }
+    if not proof:
+        report["renewal"] = None
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(report)
+
+
+def test_pass_cannot_skip_the_entire_renewal_stage():
+    with pytest.raises(ValidationError):
+        drill.Report.model_validate(passed_report().model_dump() | {
+            "renewal": None, "renewal_state_matches": None, "renewal_primary_remains_fenced": None,
+        })
+
+
+def test_renewal_preserves_historical_async_and_unknown_evidence():
+    report = passed_report()
+    assert report.replacement.synchronous_policy_renewed is False
+    assert report.replacement.writer_synchronous_commit == "on"
+    assert report.renewal.synchronous_policy_renewed is True
+    assert report.renewal.writer_synchronous_commit == "remote_apply"
+    assert report.uncertain.outcome_code == report.renewal.original_outcome_code
+    assert report.uncertain.success_receipt_emitted is False
+    assert report.renewal.memory_id not in (
+        *report.synchronous.acknowledgements, report.uncertain.memory_id, report.probe.probe_id,
+    )
+
+
+def test_failed_renewal_can_retain_complete_replacement_without_inventing_new_evidence():
+    report = drill.Report.model_validate(passed_report().model_dump() | {
+        "status": "failed", "failure_code": "renewal_failed",
+        "renewal": None, "renewal_state_matches": None, "renewal_primary_remains_fenced": None,
+    })
+    assert report.replacement_state_matches is True
+    assert report.original_primary_remains_fenced is True
+    assert report.renewal_primary_remains_fenced is None
+    assert not report.serving_authorized
+
+
+@pytest.mark.parametrize("value", [None, False])
+def test_renewal_requires_all_measurements_and_cannot_negate_them(value):
+    evidence = renewal_evidence().model_dump()
+    for field, definition in drill.RenewalEvidence.model_fields.items():
+        if definition.is_required():
+            with pytest.raises(ValidationError):
+                drill.RenewalEvidence.model_validate({
+                    name: result for name, result in evidence.items() if name != field
+                })
+        if evidence[field] is True:
+            with pytest.raises(ValidationError):
+                drill.RenewalEvidence.model_validate(evidence | {field: value})
+
+
+@pytest.mark.parametrize("field", [
+    "production_qualified", "network_partition_qualified", "commit_timeout_qualified",
+    "automatic_failover", "automatic_service_start", "serving_authorized", "effect_reexecution",
+])
+def test_renewal_cannot_authorize_service_or_general_ha_qualification(field):
+    evidence = renewal_evidence()
+    assert getattr(evidence, field) is False
+    with pytest.raises(ValidationError):
+        drill.RenewalEvidence.model_validate(evidence.model_dump() | {field: True})
+
+
+@pytest.mark.parametrize("seconds", [-1, 0, 1, 5, float("nan"), float("inf")])
+def test_renewal_pause_must_be_finite_and_less_than_one_second(seconds):
+    with pytest.raises(ValidationError):
+        drill.RenewalEvidence.model_validate(renewal_evidence().model_dump() | {
+            "pause_seconds": seconds,
+        })
+
+
+@pytest.mark.parametrize("field", [
+    "statement_timeout_seconds", "lock_timeout_seconds", "commit_timeout_seconds",
+])
+@pytest.mark.parametrize("seconds", [0, 0.05, 4, 6])
+def test_renewal_evidence_cannot_shorten_or_disable_production_guards(field, seconds):
+    with pytest.raises(ValidationError):
+        drill.RenewalEvidence.model_validate(renewal_evidence().model_dump() | {field: seconds})
+
+
+@pytest.mark.parametrize("field", ["uncertain_id", "probe_id"])
+def test_renewal_cannot_acknowledge_an_existing_unknown_or_probe_again(field):
+    evidence = renewal_evidence().model_dump()
+    evidence["memory_id"] = evidence[field]
+    with pytest.raises(ValidationError, match="renewal_identity_reused"):
+        drill.RenewalEvidence.model_validate(evidence)
+
+
+@pytest.mark.parametrize("field", [
+    "memory_id", "uncertain_id", "probe_id", "timeline", "system_identifier",
+])
+def test_renewal_report_identity_must_match_prior_proof_without_reusing_acknowledgements(field):
+    report = passed_report().model_dump()
+    if field == "memory_id":
+        value = report["synchronous"]["acknowledgements"][0]
+    elif field == "timeline":
+        value = 3
+    elif field == "system_identifier":
+        value = "42"
+    else:
+        value = uuid4()
+    report["renewal"][field] = value
+    with pytest.raises(ValidationError, match="renewal_report_identity_mismatch"):
+        drill.Report.model_validate(report)
+
+
+def test_renewal_reference_has_seven_distinct_episodes_without_relabeling_old_acks():
+    baseline = post_probe_reference()
+    reference = drill.Reference.model_validate(renewed_reference(baseline, uuid4()).model_dump())
+    assert len(reference.episodes) == 7 and len(reference.fixture.acknowledged_ids) == 3
+    assert reference.uncertain == baseline.uncertain
+    assert reference.fixture.probe_id == baseline.fixture.probe_id
+    assert reference.fixture.renewal_id not in {item.object_id for item in baseline.episodes}
+    for version in (1, 2, 3):
+        with pytest.raises(ValidationError):
+            drill.Reference.model_validate(reference.model_dump() | {
+                "format": f"pgag-ha-reference-v{version}",
+            })
+
+
+def test_renewal_fence_cannot_be_invented_from_absent_replacement_or_renewal_evidence():
+    with pytest.raises(ValidationError, match="renewal_fence_not_verified"):
+        drill.Report(
+            status="failed", failure_code="renewal_failed", elapsed_seconds={"total": 1.0},
+            renewal_primary_remains_fenced=True,
+        )
+
+
+@pytest.mark.parametrize("node,field,value", [
+    ("primary", "synchronous_commit", "on"),
+    ("primary", "synchronous_standby_configured", False),
+    ("primary", "schema_version", 21),
+    ("standby", "service_version", "0.0.0"),
+    ("standby", "replay_paused", True),
+    ("standby", "synchronous_standby_configured", True),
+])
+def test_renewal_evidence_requires_actual_current_synchronous_physical_pair(node, field, value):
+    evidence = renewal_evidence().model_dump()
+    evidence[node][field] = value
+    with pytest.raises(ValidationError):
+        drill.RenewalEvidence.model_validate(evidence)
+
+
+@pytest.mark.parametrize("identity", ["before_id", "uncertain_id", "probe_id", "acknowledged_id"])
+def test_renewal_reference_rejects_identity_reuse(identity):
+    baseline = post_probe_reference()
+    memory_id = baseline.fixture.acknowledged_ids[0] if identity == "acknowledged_id" else (
+        getattr(baseline.fixture, identity)
+    )
+    with pytest.raises(ValidationError, match="invalid_acknowledged_episode_set"):
+        drill.Reference.model_validate(renewed_reference(baseline, memory_id).model_dump())
+
+
+@pytest.mark.parametrize("stage", ["post-probe", "replacement", "renewed"])
+def test_renewal_id_is_required_only_in_renewed_references(stage):
+    baseline = post_probe_reference()
+    reference = renewed_reference(baseline, uuid4()).model_dump() | {"stage": stage}
+    if stage == "renewed":
+        reference["fixture"]["renewal_id"] = None
+    with pytest.raises(ValidationError, match=(
+        "renewal_id_required" if stage == "renewed" else "unexpected_renewal"
+    )):
+        drill.Reference.model_validate(reference)
 
 
 def test_failed_report_can_preserve_measured_uncertainty_without_authority():
@@ -429,6 +641,7 @@ def test_partial_failed_rebuild_retains_only_the_measured_backup_fact():
         "status": "failed", "failure_code": "replacement_start_failed",
         "replacement": None, "replacement_state_matches": None,
         "original_primary_remains_fenced": None,
+        "renewal": None, "renewal_state_matches": None, "renewal_primary_remains_fenced": None,
     })
     assert report.replacement_backup_verified is True
     assert report.replacement_state_matches is None
@@ -506,7 +719,7 @@ def test_replacement_reference_preserves_probe_and_original_uncertain_state():
     assert replacement.fixture.probe_id == baseline.fixture.probe_id
     assert replacement.uncertain == baseline.uncertain
     drill.check_preserved(baseline, replacement, promoted=False)
-    for version in (1, 2):
+    for version in (1, 2, 3):
         with pytest.raises(ValidationError):
             drill.Reference.model_validate(replacement.model_dump() | {
                 "format": f"pgag-ha-reference-v{version}",
@@ -571,7 +784,7 @@ def test_ha_uses_the_shared_production_commit_guard_without_timeout_override():
     )
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_old_report_format_cannot_claim_new_evidence(version):
     with pytest.raises(ValidationError):
         drill.Report.model_validate(passed_report().model_dump() | {
@@ -579,7 +792,7 @@ def test_old_report_format_cannot_claim_new_evidence(version):
         })
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_old_reference_format_cannot_claim_reconciled_state(version):
     reference, _ = references()
     with pytest.raises(ValidationError):
@@ -693,7 +906,7 @@ def test_uncertainty_cannot_be_reported_before_the_synchronous_stage():
 
 def test_reconciled_reference_keeps_three_acks_and_one_separate_unknown():
     reference, promoted = references()
-    assert reference.format == "pgag-ha-reference-v3"
+    assert reference.format == "pgag-ha-reference-v4"
     assert reference.stage == "reconciled" and len(reference.fixture.acknowledged_ids) == 3
     assert reference.fixture.uncertain_id not in reference.fixture.acknowledged_ids
     assert len(reference.episodes) == 5
@@ -1760,6 +1973,540 @@ def test_replacement_config_is_private_create_only_and_targets_the_promoted_node
         assert params["connect_timeout"] == "5"
 
 
+@pytest.fixture
+def renewal_harness(monkeypatch):
+    def build(mode):
+        baseline = post_probe_reference()
+        memory_id = uuid4()
+        proof = replacement_evidence(baseline.fixture.uncertain_id, baseline.fixture.probe_id)
+        documents = {
+            "post-probe.json": baseline,
+            "replacement-reference.json": baseline.model_copy(update={"stage": "replacement"}),
+            "replacement.json": proof, "uncertain.json": baseline.uncertain,
+            "replacement-backup.json": proof.backup,
+        }
+        state = SimpleNamespace(
+            events=[], written=[], renewed=False, seconds=0.0,
+            error={"unknown": CommitOutcomeUnknown(), "cancelled": asyncio.CancelledError(),
+                   "timeout": TimeoutError("synthetic_ack_timeout")}.get(mode),
+        )
+        if mode == "wrong_stage":
+            documents["replacement-reference.json"] = baseline
+        elif mode == "changed_uncertainty":
+            documents["uncertain.json"] = baseline.uncertain.model_copy(update={
+                "commit_wait_seconds": 6.0,
+            })
+        elif mode == "wrong_proof_timeline":
+            documents["replacement.json"] = proof.model_copy(update={
+                "timeline": 3, "backup": proof.backup.model_copy(update={"timeline": 3}),
+            })
+
+        def read(directory, name, model):
+            assert directory == Path("/drill")
+            state.events.append(("read", name))
+            if mode == "missing_proof" and name == "replacement.json":
+                raise FileNotFoundError("synthetic_missing_replacement")
+            return model.model_validate(documents[name].model_dump())
+
+        def inspect(path, limit):
+            assert path == Path("/drill/replacement-basebackup.tar")
+            assert limit == drill.pitr.MAX_BACKUP_BYTES
+            return proof.artifact.model_copy(update={"sha256": "f" * 64}) if (
+                mode == "changed_artifact"
+            ) else proof.artifact
+
+        def capture(url, stage, fixture, recovery=False, uncertain=None):
+            assert url in ("host=owned-promoted", "host=owned-replacement")
+            assert recovery == (url == "host=owned-replacement") and uncertain == baseline.uncertain
+            state.events.append(("capture", stage, recovery))
+            if stage == "post-probe":
+                assert fixture == baseline.fixture
+                return baseline.model_copy(update={"content": ()}) if (
+                    mode == "changed_baseline" or mode == "changed_after_config" and state.renewed
+                ) else baseline
+            assert stage == "renewed" and fixture.renewal_id == memory_id
+            candidate = renewed_reference(baseline, memory_id)
+            if mode == "changed_checkpoint" and not recovery:
+                candidate = candidate.model_copy(update={"content": tuple(
+                    item.model_copy(update={"digest": "f" * 64})
+                    if item.table == "memory.checkpoint" else item for item in candidate.content
+                )})
+            elif mode == "wrong_replica_timeline" and recovery:
+                candidate = candidate.model_copy(update={"control": candidate.control.model_copy(
+                    update={"timeline": 3},
+                )})
+            return candidate
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, query):
+                state.events.append(("sql", query))
+                if "pg_stat_replication" in query:
+                    return SimpleNamespace(fetchall=lambda: [{
+                        "application_name": drill.APPLICATION if mode == "wrong_sender"
+                        else drill.REPLACEMENT_APPLICATION,
+                        "state": "streaming", "sync_state": "sync" if state.renewed else "async",
+                    }])
+                if query.startswith("SELECT pg_is_in_recovery()"):
+                    assert query == (
+                        "SELECT pg_is_in_recovery() AS recovering, "
+                        "current_setting('synchronous_commit') AS policy, "
+                        "current_setting('synchronous_standby_names') AS standbys"
+                    )
+                    return SimpleNamespace(fetchone=lambda: {
+                        "recovering": mode == "configuration_recovery",
+                        "policy": "remote_apply" if mode == "configuration_policy" else "on",
+                        "standbys": (
+                            "FIRST 1 (old_peer)" if mode == "configuration_standbys" else ""
+                        ),
+                    })
+                if query.startswith("ALTER SYSTEM SET "):
+                    return SimpleNamespace()
+                assert query == "SELECT pg_reload_conf() AS reloaded"
+                state.renewed = mode != "reload_failure"
+                return SimpleNamespace(fetchone=lambda: {"reloaded": state.renewed})
+
+        def connect(url, **kwargs):
+            params = drill.conninfo_to_dict(url)
+            assert params["host"] == "owned-promoted"
+            assert kwargs == {"autocommit": True, "row_factory": drill.dict_row}
+            return Connection()
+
+        def replication_status(url):
+            primary, standby = (
+                renewal_observations() if state.renewed else replacement_observations()
+            )
+            if mode == "sync_timeout" and state.renewed:
+                primary = replacement_observations()[0]
+            return primary if url == "host=owned-promoted" else standby
+
+        async def paused_ack(primary, replacement, fixture, *, name):
+            assert primary == "host=owned-promoted" and replacement == "host=owned-replacement"
+            assert fixture == baseline.fixture and name == "replacement-renewal-ack"
+            assert state.renewed
+            state.events.append("single-observe")
+            if state.error is not None:
+                raise state.error
+            return memory_id, 0.2
+
+        def existing_state(url, original, identity):
+            assert original == baseline and identity == memory_id
+            state.events.append(("existing-state", url))
+            if mode == "mutated_original_rows":
+                raise drill.pitr.DrillError("renewal_mutated_original_state")
+
+        def sleep(seconds):
+            assert seconds == 0.1
+            state.seconds += 30
+
+        monkeypatch.setattr(drill, "read", read)
+        monkeypatch.setattr(drill.pitr, "inspect_tar", inspect)
+        monkeypatch.setattr(drill, "capture", capture)
+        monkeypatch.setattr(drill, "psycopg", SimpleNamespace(connect=connect))
+        monkeypatch.setattr(drill, "replication_status", replication_status)
+        monkeypatch.setattr(drill, "paused_ack", paused_ack)
+        monkeypatch.setattr(drill, "check_renewal_existing_state", existing_state)
+        monkeypatch.setattr(drill, "time", SimpleNamespace(
+            monotonic=lambda: state.seconds, sleep=sleep,
+        ))
+        monkeypatch.setattr(drill, "write_new", lambda directory, name, model: state.written.append(
+            (name, model),
+        ))
+        return baseline, proof, state
+
+    return build
+
+
+def test_renewal_configures_named_sync_pair_then_one_ack_without_rewriting_history(renewal_harness):
+    baseline, replacement, state = renewal_harness("passed")
+    original = replacement.model_dump()
+    asyncio.run(drill.renewal(Path("/drill"), "host=owned-promoted", "host=owned-replacement"))
+    assert [name for name, _ in state.written] == [
+        "renewed-primary.json", "renewed-standby.json", "renewal.json",
+    ]
+    primary, standby, proof = (model for _, model in state.written)
+    assert primary == standby
+    assert primary.uncertain == baseline.uncertain
+    assert primary.fixture.acknowledged_ids == baseline.fixture.acknowledged_ids
+    assert proof.memory_id == primary.fixture.renewal_id and proof.one_new_observation
+    assert replacement.model_dump() == original and not replacement.synchronous_policy_renewed
+    assert state.events.count("single-observe") == 1
+    sql = [event[1] for event in state.events if isinstance(event, tuple) and event[0] == "sql"]
+    assert [query for query in sql if query.startswith("ALTER SYSTEM")] == [
+        "ALTER SYSTEM SET synchronous_standby_names = 'FIRST 1 (pgag_m5_replacement)'",
+        "ALTER SYSTEM SET synchronous_commit = 'remote_apply'",
+    ]
+    assert next(index for index, query in enumerate(sql)
+                if query.startswith("SELECT pg_is_in_recovery()")) < next(
+        index for index, query in enumerate(sql) if query.startswith("ALTER SYSTEM")
+    )
+    assert state.events.index(("sql", "SELECT pg_reload_conf() AS reloaded")) < (
+        state.events.index("single-observe")
+    )
+    assert ("existing-state", "host=owned-promoted") in state.events
+    assert ("existing-state", "host=owned-replacement") in state.events
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("missing_proof", FileNotFoundError, "synthetic_missing_replacement"),
+    ("wrong_stage", drill.pitr.DrillError, "renewal_baseline_stage_mismatch"),
+    ("changed_uncertainty", drill.pitr.DrillError, "original_uncertainty_changed"),
+    ("wrong_proof_timeline", drill.pitr.DrillError, "renewal_baseline_identity_mismatch"),
+    ("changed_artifact", drill.pitr.DrillError, "replacement_backup_artifact_changed"),
+    ("changed_baseline", drill.pitr.DrillError, "acknowledged_content_mismatch"),
+    ("wrong_sender", drill.pitr.DrillError, "owned_replacement_sender_required"),
+    ("configuration_recovery", drill.pitr.DrillError, "renewal_requires_degraded_primary"),
+    ("configuration_policy", drill.pitr.DrillError, "renewal_requires_degraded_primary"),
+    ("configuration_standbys", drill.pitr.DrillError, "renewal_requires_degraded_primary"),
+])
+def test_renewal_missing_or_inconsistent_preconditions_fail_before_configuration(
+    renewal_harness, mode, error, code,
+):
+    _, _, state = renewal_harness(mode)
+    with pytest.raises(error, match=code):
+        asyncio.run(drill.renewal(Path("/drill"), "host=owned-promoted", "host=owned-replacement"))
+    assert state.written == [] and "single-observe" not in state.events
+    assert not any(
+        isinstance(event, tuple) and event[0] == "sql" and event[1].startswith("ALTER SYSTEM")
+        for event in state.events
+    )
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("reload_failure", drill.pitr.DrillError, "renewal_config_reload_failed"),
+    ("sync_timeout", drill.pitr.DrillError, "renewal_synchronous_pair_unavailable"),
+    ("changed_after_config", drill.pitr.DrillError, "acknowledged_content_mismatch"),
+    ("unknown", CommitOutcomeUnknown, "commit_outcome_unknown"),
+    ("timeout", TimeoutError, "synthetic_ack_timeout"),
+    ("cancelled", asyncio.CancelledError, None),
+    ("changed_checkpoint", drill.pitr.DrillError, "renewal_write_delta_mismatch"),
+    ("wrong_replica_timeline", drill.pitr.DrillError, "timeline_mismatch"),
+    ("mutated_original_rows", drill.pitr.DrillError, "renewal_mutated_original_state"),
+])
+def test_renewal_propagates_failure_or_cancellation_without_retry_or_success(
+    renewal_harness, mode, error, code,
+):
+    _, _, state = renewal_harness(mode)
+    with pytest.raises(error, match=code) as raised:
+        asyncio.run(drill.renewal(Path("/drill"), "host=owned-promoted", "host=owned-replacement"))
+    if state.error is not None:
+        assert raised.value is state.error
+    assert state.written == [] and state.events.count("single-observe") <= 1
+    if mode == "sync_timeout":
+        assert state.seconds == 60 and "single-observe" not in state.events
+    if mode == "changed_after_config":
+        assert "single-observe" not in state.events
+
+
+def test_renewal_delta_allows_only_one_observation_with_unchanged_authority():
+    baseline = post_probe_reference()
+    candidate = renewed_reference(baseline, uuid4())
+    drill.check_renewal_delta(baseline, candidate)
+
+
+@pytest.mark.parametrize("change,code", [
+    ("reused_id", "renewal_identity_reused"),
+    ("original_uncertainty", "original_uncertainty_changed"),
+    ("timeline", "renewal_cluster_identity_mismatch"),
+    ("old_episode", "renewal_changed_original_episodes"),
+    ("extra_observe", "renewal_write_delta_mismatch"),
+    ("checkpoint", "renewal_write_delta_mismatch"),
+    ("source_cursor", "renewal_changed_authority_or_effect"),
+    ("effect", "renewal_changed_authority_or_effect"),
+    ("access_epoch", "renewal_changed_authority_or_effect"),
+])
+def test_renewal_delta_rejects_retries_and_changes_to_existing_state(change, code):
+    baseline = post_probe_reference()
+    candidate = renewed_reference(baseline, uuid4())
+    if change == "reused_id":
+        candidate = renewed_reference(baseline, baseline.fixture.uncertain_id)
+    elif change == "original_uncertainty":
+        candidate = candidate.model_copy(update={"uncertain": None})
+    elif change == "timeline":
+        candidate = candidate.model_copy(update={"control": candidate.control.model_copy(
+            update={"timeline": 3},
+        )})
+    elif change == "old_episode":
+        candidate = candidate.model_copy(update={"episodes": (
+            candidate.episodes[0].model_copy(update={"content_sha256": "f" * 64}),
+            *candidate.episodes[1:],
+        )})
+    elif change in ("extra_observe", "checkpoint"):
+        table = "memory.episode" if change == "extra_observe" else "memory.checkpoint"
+        candidate = candidate.model_copy(update={"content": tuple(
+            item.model_copy(update={"rows": item.rows + 1}) if item.table == table else item
+            for item in candidate.content
+        )})
+    elif change == "source_cursor":
+        candidate = candidate.model_copy(update={"source_cursor": baseline.source_cursor.model_copy(
+            update={"sequence": 2},
+        )})
+    elif change == "effect":
+        candidate = candidate.model_copy(update={"effect_status": "confirmed"})
+    else:
+        candidate = candidate.model_copy(update={
+            "processing": baseline.processing.model_copy(update={
+                "tables": candidate.processing.tables,
+                "access_epoch": baseline.processing.access_epoch + 1,
+            }),
+        })
+    with pytest.raises(drill.pitr.DrillError, match=code):
+        drill.check_renewal_delta(baseline, candidate)
+
+
+@pytest.mark.parametrize("changed", [
+    None, "memory.episode", "memory.checkpoint", "memory.tool_effect",
+])
+def test_renewal_rechecks_existing_rows_readonly_excluding_only_its_one_new_identity(
+    monkeypatch, changed,
+):
+    baseline, memory_id = post_probe_reference(), uuid4()
+    queries = []
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, query, params=None):
+            queries.append(query)
+            if query.startswith("SET TRANSACTION"):
+                assert query == "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+            else:
+                assert query == "SELECT dedup_secret FROM memory.tenant WHERE id=%s"
+                assert params == (baseline.fixture.tenant_id,)
+            return SimpleNamespace(fetchone=lambda: {"dedup_secret": b"k" * 32})
+
+    conn = Connection()
+
+    def connect(url, **kwargs):
+        params = drill.conninfo_to_dict(url)
+        assert params["host"] == "owned-replacement"
+        assert "default_transaction_read_only=on" in params["options"]
+        assert kwargs == {"row_factory": drill.dict_row}
+        return conn
+
+    def fingerprints(connection, tenant, key, tables, *, filters):
+        assert connection is conn and tenant == baseline.fixture.tenant_id and key == b"k" * 32
+        assert tuple(tables) == (*drill.CONTENT_TABLES, *TABLES)
+        assert set(filters) == {
+            "memory.episode", "memory.episode_lexical", "memory.object", "memory_ops.audit_event",
+            "memory_ops.source_event", "memory_ops.idempotency",
+        }
+        for predicate in filters.values():
+            assert memory_id.hex in predicate.as_string().replace("-", "")
+        assert "IS DISTINCT FROM" in filters["memory_ops.idempotency"].as_string()
+        original = (*baseline.content, *baseline.processing.tables)
+        return tuple(
+            item.model_copy(update={"digest": "f" * 64}) if item.table == changed else item
+            for item in original
+        )
+
+    monkeypatch.setattr(drill, "psycopg", SimpleNamespace(connect=connect))
+    monkeypatch.setattr(drill, "fingerprint_tables", fingerprints)
+    if changed is None:
+        drill.check_renewal_existing_state("host=owned-replacement", baseline, memory_id)
+    else:
+        with pytest.raises(drill.pitr.DrillError, match="renewal_mutated_original_state"):
+            drill.check_renewal_existing_state("host=owned-replacement", baseline, memory_id)
+    assert len(queries) == 2
+
+
+@pytest.fixture
+def renewal_ack_harness(monkeypatch):
+    def build(mode, *, resume_failure=False, fallback_failure=False):
+        baseline, memory_id = post_probe_reference(), uuid4()
+        state = SimpleNamespace(events=[], seconds=0.0, resumed=False)
+        state.error = {
+            "body_error": ValueError("synthetic_renewal_body_failed"),
+            "observer_error": ValueError("synthetic_renewal_observer_failed"),
+            "unknown": CommitOutcomeUnknown(), "cancelled": asyncio.CancelledError(),
+        }.get(mode)
+        writer = SimpleNamespace(info=SimpleNamespace(backend_pid=123))
+        actual_sleep = asyncio.sleep
+
+        @asynccontextmanager
+        async def principal(url, subject):
+            assert url == "owned-promoted" and subject == drill.WRITER
+            yield writer, baseline.fixture.writer_id
+
+        @asynccontextmanager
+        async def guard(conn):
+            assert conn is writer
+            state.events.append("guard")
+            yield
+            state.events.append("commit-entered")
+            if mode != "early_ack":
+                while not state.resumed:
+                    await actual_sleep(0)
+            if mode in ("unknown", "cancelled"):
+                raise state.error
+            state.events.append("acknowledged")
+
+        async def bind(conn, subject, identity):
+            assert conn is writer and subject == drill.WRITER
+            assert identity == baseline.fixture.writer_id
+
+        async def policy(conn, expected):
+            assert conn is writer and expected == "remote_apply"
+            state.events.append("writer-policy")
+
+        class Memory:
+            def __init__(self, conn, identity):
+                assert conn is writer and identity == baseline.fixture.writer_id
+
+            async def observe(self, request, key):
+                assert request.scope_id == baseline.fixture.scope_id
+                assert request.source_event_id == "replacement-renewal-ack"
+                assert key == "ha-replacement-renewal-ack"
+                state.events.append("observe")
+                if mode == "body_error":
+                    raise state.error
+                return {"memory_id": str(memory_id)}
+
+        class Connection:
+            def __init__(self, url):
+                self.url = url
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def execute(self, query, params=None):
+                if "pg_stat_activity" in query:
+                    assert self.url == "owned-promoted" and params == (123,)
+                    if mode == "observer_error" and "commit-entered" in state.events:
+                        raise state.error
+                    row = {"wait_event": "SyncRep" if (
+                        "commit-entered" in state.events and mode != "no_sync_rep"
+                    ) else None}
+                elif "pg_get_wal_replay_pause_state" in query:
+                    assert self.url == "owned-replacement"
+                    row = {"state": "pausing" if mode == "pause_timeout" else "paused"}
+                elif query == "SELECT pg_wal_replay_pause()":
+                    assert self.url == "owned-replacement"
+                    state.events.append("pause")
+                    row = None
+                else:
+                    assert self.url == "owned-replacement"
+                    assert query == "SELECT pg_wal_replay_resume()"
+                    state.events.append("resume")
+                    state.resumed = True
+                    if resume_failure:
+                        raise OSError("private-renewal-resume-diagnostic")
+                    row = None
+
+                async def fetchone():
+                    return row
+
+                return SimpleNamespace(fetchone=fetchone)
+
+        async def connect(url, **kwargs):
+            assert kwargs == {"autocommit": True, "row_factory": drill.dict_row}
+            return Connection(url)
+
+        async def sleep(seconds):
+            state.seconds += 1 if mode == "long_pause" and seconds == 0.075 else seconds
+            await actual_sleep(0)
+
+        async def resume(url):
+            assert url == "owned-replacement"
+            state.events.append("fallback-resume")
+            if fallback_failure:
+                raise OSError("private-renewal-fallback-diagnostic")
+
+        monkeypatch.setattr(drill, "runtime_url", lambda url: url)
+        monkeypatch.setattr(drill, "principal_connection", principal)
+        monkeypatch.setattr(drill, "async_transaction", guard)
+        monkeypatch.setattr(drill, "bind_identity", bind)
+        monkeypatch.setattr(drill, "writer_policy", policy)
+        monkeypatch.setattr(drill, "MemoryService", Memory)
+        monkeypatch.setattr(drill, "psycopg", SimpleNamespace(
+            AsyncConnection=SimpleNamespace(connect=connect),
+        ))
+        monkeypatch.setattr(drill, "time", SimpleNamespace(monotonic=lambda: state.seconds))
+        monkeypatch.setattr(drill, "asyncio", SimpleNamespace(
+            create_task=asyncio.create_task, wait=asyncio.wait, sleep=sleep,
+        ))
+        monkeypatch.setattr(drill, "resume_replay", resume)
+        return baseline.fixture, memory_id, state
+
+    return build
+
+
+def test_renewal_ack_uses_shared_guard_and_stays_blocked_until_replacement_replay_resumes(
+    renewal_ack_harness,
+):
+    fixture, memory_id, state = renewal_ack_harness("passed")
+    identity, elapsed = asyncio.run(drill.paused_ack(
+        "owned-promoted", "owned-replacement", fixture, name="replacement-renewal-ack",
+    ))
+    assert identity == memory_id and 0 < elapsed < 1
+    assert state.events.count("guard") == state.events.count("observe") == 1
+    assert state.events.count("writer-policy") == 2
+    assert state.events.index("pause") < state.events.index("commit-entered")
+    assert state.events.index("commit-entered") < state.events.index("resume")
+    assert state.events.index("resume") < state.events.index("acknowledged")
+
+
+@pytest.mark.parametrize("mode,error,code", [
+    ("early_ack", drill.pitr.DrillError, "short_pause_not_qualified"),
+    ("no_sync_rep", drill.pitr.DrillError, "short_pause_not_qualified"),
+    ("long_pause", drill.pitr.DrillError, "short_pause_not_qualified"),
+    ("pause_timeout", drill.pitr.DrillError, "short_pause_not_established"),
+    ("body_error", ValueError, "synthetic_renewal_body_failed"),
+    ("observer_error", ValueError, "synthetic_renewal_observer_failed"),
+    ("unknown", CommitOutcomeUnknown, "commit_outcome_unknown"),
+    ("cancelled", asyncio.CancelledError, None),
+])
+def test_renewal_ack_failure_cannot_retry_or_return_success(renewal_ack_harness, mode, error, code):
+    fixture, _, state = renewal_ack_harness(mode)
+    with pytest.raises(error, match=code) as raised:
+        asyncio.run(drill.paused_ack(
+            "owned-promoted", "owned-replacement", fixture, name="replacement-renewal-ack",
+        ))
+    if state.error is not None:
+        assert raised.value is state.error
+    assert state.resumed and state.events.count("observe") <= 1
+
+
+@pytest.mark.parametrize("mode", ["body_error", "observer_error", "unknown", "cancelled"])
+@pytest.mark.parametrize("fallback_failure", [False, True])
+def test_renewal_ack_cleanup_errors_preserve_original_error_or_cancellation(
+    renewal_ack_harness, mode, fallback_failure,
+):
+    fixture, _, state = renewal_ack_harness(
+        mode, resume_failure=True, fallback_failure=fallback_failure,
+    )
+    with pytest.raises(type(state.error)) as raised:
+        asyncio.run(drill.paused_ack(
+            "owned-promoted", "owned-replacement", fixture, name="replacement-renewal-ack",
+        ))
+    assert raised.value is state.error
+    assert "short_pause_resume_failed" in raised.value.__notes__
+    assert "private" not in repr(raised.value.__notes__)
+    assert state.events.count("observe") <= 1
+    assert state.events.count("fallback-resume") == 1
+
+
+def test_renewal_ack_cleanup_failure_alone_cannot_be_reported_as_success(renewal_ack_harness):
+    fixture, _, state = renewal_ack_harness("passed", resume_failure=True)
+    with pytest.raises(OSError, match="private-renewal-resume-diagnostic"):
+        asyncio.run(drill.paused_ack(
+            "owned-promoted", "owned-replacement", fixture, name="replacement-renewal-ack",
+        ))
+    assert state.events.count("observe") == 1
+
+
 def guard_script():
     text = RUNNER.read_text()
     return "owned_promote() {" + text.split("owned_promote() {", 1)[1].split(
@@ -1927,6 +2674,29 @@ def test_main_routes_replacement_from_promoted_node_without_reusing_destroyed_pr
     assert "private-password" not in repr(written)
 
 
+@pytest.mark.parametrize("failed", [False, True])
+def test_main_routes_renewal_only_to_promoted_primary_and_new_replacement(
+    monkeypatch, capsys, failed,
+):
+    events, written = [], []
+
+    async def renewal(directory, promoted, replacement):
+        events.append((directory, promoted, replacement))
+        if failed:
+            raise CommitOutcomeUnknown()
+
+    monkeypatch.setattr(drill, "owned_environment", lambda: (
+        Path("/drill"), "forbidden-destroyed-primary", "owned-promoted", "owned-replacement",
+    ))
+    monkeypatch.setattr(drill, "renewal", renewal)
+    monkeypatch.setattr(drill, "write_new", lambda *args: written.append(args))
+    assert drill.main(["renewal"]) == int(failed)
+    assert events == [(Path("/drill"), "owned-promoted", "owned-replacement")]
+    assert [record[1] for record in written] == (["failure.json"] if failed else [])
+    output = capsys.readouterr()
+    assert output.out == "" and output.err == ("ha_stage_failed\n" if failed else "")
+
+
 @pytest.mark.parametrize("engine,host", [
     ("docker", "unowned-primary"), ("container", "8.8.8.8"), ("container", "127.0.0.1"),
 ])
@@ -2062,6 +2832,7 @@ cleanup
 @pytest.mark.parametrize("missing", [
     None, "uncertain", "synchronous", "preserved", "probe", "artifact", "replacement_evidence",
     "replacement_backup_verified", "original_primary_remains_fenced",
+    "renewal", "renewal_primary_remains_fenced",
 ])
 @pytest.mark.parametrize("initial_status", [0, 1])
 def test_terminal_report_gate_requires_uncertain_evidence_and_preserves_failure(
@@ -2086,6 +2857,8 @@ preserved='{{}}'
 probe='{{}}'
 artifact='{{}}'
 replacement_evidence='{{}}'
+renewal='{{}}'
+renewal_primary_remains_fenced=true
 """
     if missing is not None:
         setup += f"{missing}=null\n"
@@ -2103,7 +2876,7 @@ def test_terminal_report_merges_uncertain_proof_without_promoting_qualification(
     assert 'if [[ -f "$directory/uncertain.json" ]]' in cleanup
     assert '"$directory/uncertain.json")" || status=1' in cleanup
     assert '--argjson uncertain "$uncertain"' in cleanup
-    assert 'format: "pgag-ha-drill-v3"' in cleanup
+    assert 'format: "pgag-ha-drill-v4"' in cleanup
     assert "uncertain_commit_reconciled: $uncertain.uncertain_commit_reconciled" in cleanup
     assert "uncertain: $uncertain" in cleanup
     assert 'if [[ -f "$directory/replacement.json" ]]' in cleanup
@@ -2111,6 +2884,13 @@ def test_terminal_report_merges_uncertain_proof_without_promoting_qualification(
     assert '--argjson replacement "$replacement_evidence"' in cleanup
     assert "replacement_state_matches: $replacement.replacement_state_matches" in cleanup
     assert "replacement: $replacement" in cleanup
+    assert 'if [[ -f "$directory/renewal.json" ]]' in cleanup
+    assert '"$directory/renewal.json")" || status=1' in cleanup
+    assert '--argjson renewal "$renewal"' in cleanup
+    assert "renewal_state_matches: $renewal.renewal_state_matches" in cleanup
+    assert "renewal: $renewal" in cleanup
+    assert '--argjson renewal_fenced "$renewal_primary_remains_fenced"' in cleanup
+    assert "renewal_primary_remains_fenced: $renewal_fenced" in cleanup
     for flag in (
         "production_qualified", "host_failure_domain_independent", "network_partition_qualified",
         "commit_timeout_qualified", "automatic_failover", "automatic_service_start",
@@ -2203,7 +2983,7 @@ def test_runner_rebuilds_only_after_probe_from_promoted_node_then_rechecks_origi
 
 
 @pytest.mark.parametrize("stage,engine_status", [
-    ("replacement", 0), ("verify", 0), ("replacement", 7),
+    ("replacement", 0), ("verify", 0), ("replacement", 7), ("renewal", 0), ("renewal", 7),
 ])
 def test_phase_helper_never_collides_with_replacement_database_and_propagates_failure(
     stage, engine_status,
@@ -2275,3 +3055,21 @@ timeout() {{
     )
     assert result.returncode == (1 if contents else 0)
     assert result.stdout == ("" if contents else "extracted\n") and result.stderr == ""
+
+
+def test_runner_renews_only_after_replacement_and_rechecks_original_fence_afterward():
+    script = RUNNER.read_text()
+    tail = script.split("phase replacement\n", 1)[1]
+    markers = [
+        "failure_code=replacement_fence_recheck_failed\n", "verify_primary_absent\n",
+        "original_primary_remains_fenced=true\n", "phase renewal\n",
+        "failure_code=renewal_fence_recheck_failed\n", "renewal_primary_remains_fenced=true\n",
+    ]
+    positions = [tail.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    final = tail.split("phase renewal\n", 1)[1]
+    assert final.index("verify_primary_absent\n") < final.index(
+        "renewal_primary_remains_fenced=true",
+    )
+    assert script.count("renewal_primary_remains_fenced=true") == 1
+    assert "renewal_primary_remains_fenced=null" in script

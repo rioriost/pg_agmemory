@@ -241,19 +241,43 @@ promoted node supplies an explicit catch-up target beyond the new backup.
 Replaying through that target is an observation of physical streaming, not a
 new memory mutation, a replayed tool effect or proof of future remote durability.
 The host then rechecks the original primary's absence with a responsive engine.
-No synchronous policy is restored: the new sender is asynchronous, the promoted
-writer policy stays `on`, and `serving_authorized` remains false.
+In this replacement stage no synchronous policy is restored: the new sender is
+asynchronous, the promoted writer policy stays `on`, and `serving_authorized`
+remains false.
 This does not qualify `pg_rewind`, stale-directory reuse, partitioned-primary
 rejoin, automatic failback or cross-host/storage failure independence.
 
-The terminal `pgag-ha-drill-v3` report distinguishes measured facts from
+The v4 drill adds a separate **explicit owned synchronous-renewal phase** after
+replacement verification and the host's fence recheck. It first rechecks the
+exact replacement baseline, physical identity, promoted timeline and expected
+asynchronous sender; missing or changed evidence must fail before configuration.
+Only the owned promoted node is then configured with
+`FIRST 1 (pgag_m5_replacement)` and `synchronous_commit=remote_apply`.
+
+The test verifies that policy on a new restricted writer connection, not just
+an administrator snapshot. One uniquely identified synthetic observation uses
+the production COMMIT guard and unchanged five-second query/lock/COMMIT limits.
+A sub-second replay pause on the replacement must produce actual `SyncRep`
+without acknowledgement; replay resumes before successful guarded COMMIT.
+Exact primary/replica state and the single declared write delta are compared,
+preserving prior uncertain-outcome evidence, source decisions, checkpoint and
+dispatched effects. The original primary's absence is checked again afterward.
+
+The earlier asynchronous replacement evidence remains an earlier observation,
+not rewritten as synchronous. Renewal does not retry the uncertain mutation,
+start service/workers, execute effects or authorize production operation.
+Unexpected cancellation, COMMIT uncertainty, a failed partial configuration or
+state mismatch stops the lab without a passing renewal receipt.
+
+The terminal `pgag-ha-drill-v4` report distinguishes measured facts from
 unmeasured nulls. Backup size is bounded to 512 MiB, readiness waits to 90 seconds,
 and promotion wait to 30 seconds. Phase timings are observations, not RTO.
 `uncertain_commit_reconciled` requires the corresponding measured uncertainty
 and replica evidence; a missing stage cannot produce a passing report.
 Replacement backup verification, exact state evidence and the final live fence
-recheck are also mandatory for a passing report.
-References use `pgag-ha-reference-v3`; historical v1/v2 reports do not qualify
+recheck are also mandatory for a passing report. Renewal requires its own
+measured writer/wait/state evidence and final live fence check.
+References use `pgag-ha-reference-v4`; historical v1/v2/v3 reports do not qualify
 the added cases.
 `production_qualified`, `host_failure_domain_independent`,
 `network_partition_qualified`, `commit_timeout_qualified`, `automatic_failover`,

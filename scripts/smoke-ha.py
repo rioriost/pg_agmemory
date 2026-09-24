@@ -41,6 +41,7 @@ from pg_agmemory.models import (
     PlanToolEffect,
     TransitionToolEffect,
 )
+from pg_agmemory.processing_recovery import TABLES as PROCESSING_TABLES
 from pg_agmemory.processing_recovery import (
     ProcessingRecoverySnapshot,
     StateFingerprint,
@@ -141,17 +142,20 @@ class Fixture(Contract):
     acknowledged_ids: Annotated[tuple[UUID, ...], Field(max_length=3)] = ()
     uncertain_id: UUID | None = None
     probe_id: UUID | None = None
+    renewal_id: UUID | None = None
 
 
 class Reference(Contract):
-    format: Literal["pgag-ha-reference-v3"] = "pgag-ha-reference-v3"
+    format: Literal["pgag-ha-reference-v4"] = "pgag-ha-reference-v4"
     service_version: str = __version__
     schema_version: Literal[22] = 22
-    stage: Literal["seed", "acknowledged", "reconciled", "promoted", "post-probe", "replacement"]
+    stage: Literal[
+        "seed", "acknowledged", "reconciled", "promoted", "post-probe", "replacement", "renewed",
+    ]
     fixture: Fixture
     control: pitr.Control
     source_cursor: pitr.SourceCursor
-    episodes: Annotated[tuple[pitr.Episode, ...], Field(min_length=1, max_length=6)]
+    episodes: Annotated[tuple[pitr.Episode, ...], Field(min_length=1, max_length=7)]
     content: tuple[StateFingerprint, ...]
     processing: ProcessingRecoverySnapshot
     effect_status: Literal["dispatched"]
@@ -171,18 +175,24 @@ class Reference(Contract):
                 raise ValueError("unexpected_acknowledgements")
         elif len(self.fixture.acknowledged_ids) != 3:
             raise ValueError("three_acknowledgements_required")
-        if self.stage in ("reconciled", "promoted", "post-probe", "replacement"):
+        if self.stage in ("reconciled", "promoted", "post-probe", "replacement", "renewed"):
             if self.uncertain is None or self.fixture.uncertain_id != self.uncertain.memory_id:
                 raise ValueError("uncertain_evidence_required")
             expected += (self.fixture.uncertain_id,)
         elif self.fixture.uncertain_id is not None or self.uncertain is not None:
             raise ValueError("unexpected_uncertainty")
-        if self.stage in ("post-probe", "replacement"):
+        if self.stage in ("post-probe", "replacement", "renewed"):
             if self.fixture.probe_id is None:
                 raise ValueError("probe_id_required")
             expected += (self.fixture.probe_id,)
         elif self.fixture.probe_id is not None:
             raise ValueError("unexpected_probe")
+        if self.stage == "renewed":
+            if self.fixture.renewal_id is None:
+                raise ValueError("renewal_id_required")
+            expected += (self.fixture.renewal_id,)
+        elif self.fixture.renewal_id is not None:
+            raise ValueError("unexpected_renewal")
         if len(set(expected)) != len(expected) or {e.object_id for e in self.episodes} != set(
             expected
         ) or len(self.episodes) != len(expected):
@@ -300,8 +310,52 @@ class ReplacementEvidence(Contract):
         return self
 
 
+class RenewalEvidence(Contract):
+    renewal_state_matches: Literal[True]
+    synchronous_policy_renewed: Literal[True]
+    writer_policy_verified: Literal[True]
+    writer_synchronous_commit: Literal["remote_apply"]
+    statement_timeout_seconds: Literal[5]
+    lock_timeout_seconds: Literal[5]
+    commit_timeout_seconds: Literal[5]
+    short_pause_blocked_ack: Literal[True]
+    sync_rep_wait_observed: Literal[True]
+    pause_seconds: Annotated[float, Field(gt=0, lt=1, allow_inf_nan=False)]
+    memory_id: UUID
+    uncertain_id: UUID
+    original_outcome_code: Literal["commit_outcome_unknown"]
+    probe_id: UUID
+    system_identifier: Annotated[str, Field(pattern=r"^[0-9]{1,20}$")]
+    timeline: Annotated[int, Field(ge=2)]
+    canonical_state_matches: Literal[True]
+    processing_state_matches: Literal[True]
+    source_state_matches: Literal[True]
+    effect_state_preserved: Literal[True]
+    one_new_observation: Literal[True]
+    no_retry: Literal[True]
+    primary: ReplicationStatus
+    standby: ReplicationStatus
+    production_qualified: Literal[False] = False
+    network_partition_qualified: Literal[False] = False
+    commit_timeout_qualified: Literal[False] = False
+    automatic_failover: Literal[False] = False
+    automatic_service_start: Literal[False] = False
+    serving_authorized: Literal[False] = False
+    effect_reexecution: Literal[False] = False
+
+    @model_validator(mode="after")
+    def renewed_pair(self):
+        if len({self.memory_id, self.uncertain_id, self.probe_id}) != 3:
+            raise ValueError("renewal_identity_reused")
+        try:
+            require_renewal_pair(self.primary, self.standby)
+        except pitr.DrillError:
+            raise ValueError("renewal_synchronous_pair_required") from None
+        return self
+
+
 class Report(Contract):
-    format: Literal["pgag-ha-drill-v3"] = "pgag-ha-drill-v3"
+    format: Literal["pgag-ha-drill-v4"] = "pgag-ha-drill-v4"
     service_version: str = __version__
     api_version: Literal["v1"] = "v1"
     schema_version: Literal[22] = 22
@@ -323,6 +377,8 @@ class Report(Contract):
     replacement_backup_verified: Measured = None
     replacement_state_matches: Measured = None
     original_primary_remains_fenced: Measured = None
+    renewal_state_matches: Measured = None
+    renewal_primary_remains_fenced: Measured = None
     timeline_before: Annotated[int, Field(ge=1)] | None = None
     timeline_after: Annotated[int, Field(ge=2)] | None = None
     artifact: pitr.Artifact | None = None
@@ -331,6 +387,7 @@ class Report(Contract):
     preserved: PreservedEvidence | None = None
     probe: ProbeEvidence | None = None
     replacement: ReplacementEvidence | None = None
+    renewal: RenewalEvidence | None = None
     elapsed_seconds: dict[str, pitr.Seconds]
     production_qualified: Literal[False] = False
     host_failure_domain_independent: Literal[False] = False
@@ -351,6 +408,7 @@ class Report(Contract):
             (self.preserved, ("acknowledged_state_matches", "effect_state_preserved")),
             (self.probe, ("postpromotion_probe_verified",)),
             (self.replacement, ("replacement_state_matches",)),
+            (self.renewal, ("renewal_state_matches",)),
         ):
             if any(getattr(self, field) is not (True if proof is not None else None)
                    for field in fields):
@@ -404,6 +462,24 @@ class Report(Contract):
                     or self.replacement.original_outcome_code != self.uncertain.outcome_code
                     or self.replacement.timeline != self.timeline_after):
                 raise ValueError("replacement_report_identity_mismatch")
+        if self.renewal_primary_remains_fenced and (
+            not self.original_primary_remains_fenced or self.replacement is None
+            or self.renewal is None
+        ):
+            raise ValueError("renewal_fence_not_verified")
+        if self.renewal is not None:
+            if (self.replacement is None or self.synchronous is None
+                    or not self.renewal_primary_remains_fenced):
+                raise ValueError("renewal_before_verified_replacement_and_fence")
+            if (
+                self.renewal.uncertain_id != self.replacement.uncertain_id
+                or self.renewal.probe_id != self.replacement.probe_id
+                or self.renewal.original_outcome_code != self.replacement.original_outcome_code
+                or self.renewal.system_identifier != self.replacement.system_identifier
+                or self.renewal.timeline != self.replacement.timeline
+                or self.renewal.memory_id in self.synchronous.acknowledgements
+            ):
+                raise ValueError("renewal_report_identity_mismatch")
         if self.status == "passed":
             if self.failure_code is not None or not all((
                 self.source_destroyed, self.fencing_verified, self.pre_fence_promotion_rejected,
@@ -412,6 +488,7 @@ class Report(Contract):
                 self.preserved is not None, self.probe is not None,
                 self.replacement is not None, self.original_primary_remains_fenced,
                 self.replacement_backup_verified,
+                self.renewal is not None, self.renewal_primary_remains_fenced,
             )):
                 raise ValueError("incomplete_pass_evidence")
         elif self.failure_code is None:
@@ -523,7 +600,7 @@ def capture(url, stage, fixture, recovery=False, uncertain=None):
         episodes = tuple(pitr.Episode(
             object_id=row["id"], content_sha256=hashlib.sha256(row["content"].encode()).hexdigest(),
         ) for row in conn.execute(
-            "SELECT id,content FROM memory.episode WHERE tenant_id=%s ORDER BY id LIMIT 7",
+            "SELECT id,content FROM memory.episode WHERE tenant_id=%s ORDER BY id LIMIT 8",
             (tenant,),
         ))
         cursor = conn.execute(
@@ -651,7 +728,7 @@ def wait_pair(primary_url, standby_url, synchronous):
             time.sleep(0.2)
 
 
-async def paused_ack(primary_url, standby_url, fixture):
+async def paused_ack(primary_url, standby_url, fixture, name="short-pause-ack"):
     async with principal_connection(runtime_url(primary_url), WRITER) as (writer, identity):
         await writer_policy(writer, "remote_apply")
         async with await psycopg.AsyncConnection.connect(
@@ -664,11 +741,12 @@ async def paused_ack(primary_url, standby_url, fixture):
                     await bind_identity(writer, WRITER, identity)
                     await writer_policy(writer, "remote_apply")
                     receipt = await MemoryService(writer, identity).observe(
-                        observation(fixture.scope_id, "short-pause-ack"), "ha-short-pause-ack",
+                        observation(fixture.scope_id, name), "ha-" + name,
                     )
                 return UUID(receipt["memory_id"])
 
             task = None
+            pending = None
             blocked = False
             began = time.monotonic()
             try:
@@ -695,12 +773,39 @@ async def paused_ack(primary_url, standby_url, fixture):
                     if task.done():
                         break
                     await asyncio.sleep(0.01)
+            except BaseException as exc:
+                pending = exc
+                raise
             finally:
-                # Never cancel a COMMIT, retry a write, or qualify cancellation/partition behavior.
-                await standby.execute("SELECT pg_wal_replay_resume()")
-                elapsed = time.monotonic() - began
-                if task is not None:
-                    acknowledged = await task
+                cleanup_error = None
+                try:
+                    await standby.execute("SELECT pg_wal_replay_resume()")
+                    elapsed = time.monotonic() - began
+                except BaseException as exc:
+                    cleanup_error = exc
+                    try:
+                        await resume_replay(standby_url)
+                    except BaseException:
+                        cleanup_error.add_note("replay_resume_cleanup_failed")
+                try:
+                    if task is not None:
+                        done, _ = await asyncio.wait((task,), timeout=12)
+                        if not done:
+                            writer.pgconn.finish()
+                            done, _ = await asyncio.wait((task,), timeout=2)
+                        require(bool(done), "short_pause_writer_cleanup_failed")
+                        acknowledged = task.result()
+                except BaseException as exc:
+                    if pending is None:
+                        pending = exc
+                    else:
+                        pending.add_note("short_pause_writer_cleanup_failed")
+                if pending is not None:
+                    if cleanup_error is not None:
+                        pending.add_note("short_pause_resume_failed")
+                    raise pending
+                if cleanup_error is not None:
+                    raise cleanup_error
             require(blocked and task is not None and 0 < elapsed < 1, "short_pause_not_qualified")
             return acknowledged, elapsed
 
@@ -1145,14 +1250,7 @@ def replacement(directory, primary_url, replacement_url):
     ), promoted=False)
     wait_replacement_pair(primary_url, replacement_url)
     with psycopg.connect(primary_url, autocommit=True, row_factory=dict_row) as primary:
-        senders = primary.execute(
-            "SELECT application_name,state,sync_state FROM pg_stat_replication "
-            "WHERE usename='pgag_ha_replication'"
-        ).fetchall()
-        require(senders == [{
-            "application_name": REPLACEMENT_APPLICATION, "state": "streaming",
-            "sync_state": "async",
-        }], "owned_replacement_sender_required")
+        require_replacement_sender(primary, "async")
         require(primary.execute(
             "SELECT %s::pg_lsn >= %s::pg_lsn AND %s::pg_lsn > %s::pg_lsn AS fresh",
             (backup.start_lsn, baseline.control.lsn, backup.end_lsn, backup.start_lsn),
@@ -1215,10 +1313,188 @@ def replacement(directory, primary_url, replacement_url):
     write_new(directory, "replacement.json", evidence)
 
 
+def require_renewal_pair(primary, standby):
+    require_pair(primary, standby, True)
+    require(primary.service_version == standby.service_version == __version__
+            and primary.schema_version == standby.schema_version == SCHEMA_VERSION
+            and not primary.receiver.present
+            and standby.synchronous_commit == "on"
+            and not standby.synchronous_standby_configured
+            and standby.senders.total == 0, "renewal_synchronous_pair_required")
+
+
+def require_replacement_sender(conn, sync_state):
+    senders = conn.execute(
+        "SELECT application_name,state,sync_state FROM pg_stat_replication "
+        "WHERE usename='pgag_ha_replication'"
+    ).fetchall()
+    require(senders == [{
+        "application_name": REPLACEMENT_APPLICATION, "state": "streaming",
+        "sync_state": sync_state,
+    }], "owned_replacement_sender_required")
+
+
+def renewal_baseline(directory, primary_url, replacement_url):
+    require(primary_url is not None and replacement_url is not None, "owned_replacement_required")
+    require(conninfo_to_dict(primary_url)["host"] != conninfo_to_dict(replacement_url)["host"],
+            "distinct_owned_database_required")
+    proof = read(directory, "replacement.json", ReplacementEvidence)
+    baseline = read(directory, "post-probe.json", Reference)
+    replaced = read(directory, "replacement-reference.json", Reference)
+    require(baseline.stage == "post-probe" and replaced.stage == "replacement",
+            "renewal_baseline_stage_mismatch")
+    require(baseline.uncertain == read(directory, "uncertain.json", UncertainEvidence),
+            "original_uncertainty_changed")
+    require(proof.uncertain_id == baseline.fixture.uncertain_id
+            and proof.probe_id == baseline.fixture.probe_id
+            and proof.system_identifier == baseline.control.system_identifier
+            and proof.timeline == baseline.control.timeline
+            and proof.backup == read(directory, "replacement-backup.json", pitr.Backup),
+            "renewal_baseline_identity_mismatch")
+    require(proof.artifact == pitr.inspect_tar(
+        directory / "replacement-basebackup.tar", pitr.MAX_BACKUP_BYTES,
+    ), "replacement_backup_artifact_changed")
+    check_preserved(baseline, replaced, promoted=False)
+    require_replacement_pair(replication_status(primary_url), replication_status(replacement_url))
+    for url, recovery in ((primary_url, False), (replacement_url, True)):
+        check_preserved(baseline, capture(
+            url, "post-probe", baseline.fixture, recovery=recovery, uncertain=baseline.uncertain,
+        ), promoted=False)
+    with psycopg.connect(
+        read_only_url(primary_url), autocommit=True, row_factory=dict_row,
+    ) as conn:
+        require_replacement_sender(conn, "async")
+    return baseline
+
+
+def wait_renewal_pair(primary_url, replacement_url):
+    deadline = time.monotonic() + 60
+    while True:
+        primary = replication_status(primary_url)
+        standby = replication_status(replacement_url)
+        try:
+            require_renewal_pair(primary, standby)
+            with psycopg.connect(
+                read_only_url(primary_url), autocommit=True, row_factory=dict_row,
+            ) as conn:
+                require_replacement_sender(conn, "sync")
+            return primary, standby
+        except pitr.DrillError:
+            require(time.monotonic() < deadline, "renewal_synchronous_pair_unavailable")
+            time.sleep(0.1)
+
+
+def check_renewal_delta(before, after):
+    memory_id = after.fixture.renewal_id
+    require(memory_id is not None and memory_id not in {e.object_id for e in before.episodes}
+            and after.fixture == before.fixture.model_copy(update={"renewal_id": memory_id}),
+            "renewal_identity_reused")
+    require(before.uncertain == after.uncertain, "original_uncertainty_changed")
+    require(before.control.system_identifier == after.control.system_identifier
+            and before.control.timeline == after.control.timeline,
+            "renewal_cluster_identity_mismatch")
+    require(tuple(e for e in after.episodes if e.object_id != memory_id) == before.episodes,
+            "renewal_changed_original_episodes")
+    growing = {
+        "memory.episode", "memory.episode_lexical", "memory_ops.audit_event", "memory.object",
+        "memory_ops.source_event", "memory_ops.idempotency",
+    }
+    for old, new in zip(
+        (*before.content, *before.processing.tables),
+        (*after.content, *after.processing.tables), strict=True,
+    ):
+        require(new.table == old.table and (
+            new.rows == old.rows + 1 if old.table in growing else new == old
+        ), "renewal_write_delta_mismatch")
+    require(before.source_cursor == after.source_cursor
+            and before.effect_status == after.effect_status
+            and before.effect_revision == after.effect_revision
+            and before.processing.lineage == after.processing.lineage
+            and before.processing.access_epoch == after.processing.access_epoch
+            and before.processing.deletion_epoch == after.processing.deletion_epoch,
+            "renewal_changed_authority_or_effect")
+
+
+def check_renewal_existing_state(url, baseline, memory_id):
+    predicates = {
+        "memory.episode": sql.SQL("id <> {}").format(sql.Literal(memory_id)),
+        "memory.episode_lexical": sql.SQL("episode_id <> {}").format(sql.Literal(memory_id)),
+        "memory.object": sql.SQL("id <> {}").format(sql.Literal(memory_id)),
+        "memory_ops.audit_event": sql.SQL("target_id <> {}").format(sql.Literal(memory_id)),
+        "memory_ops.source_event": sql.SQL("object_id <> {}").format(sql.Literal(memory_id)),
+        "memory_ops.idempotency": sql.SQL("result->>'memory_id' IS DISTINCT FROM {}").format(
+            sql.Literal(str(memory_id)),
+        ),
+    }
+    with psycopg.connect(read_only_url(url), row_factory=dict_row) as conn:
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        key = bytes(conn.execute(
+            "SELECT dedup_secret FROM memory.tenant WHERE id=%s", (baseline.fixture.tenant_id,),
+        ).fetchone()["dedup_secret"])
+        fingerprints = fingerprint_tables(
+            conn, baseline.fixture.tenant_id, key, CONTENT_TABLES | PROCESSING_TABLES,
+            filters=predicates,
+        )
+    require(fingerprints == (*baseline.content, *baseline.processing.tables),
+            "renewal_mutated_original_state")
+
+
+async def renewal(directory, primary_url, replacement_url):
+    baseline = renewal_baseline(directory, primary_url, replacement_url)
+    with psycopg.connect(primary_url, autocommit=True, row_factory=dict_row) as conn:
+        require_replacement_sender(conn, "async")
+        require(conn.execute(
+            "SELECT pg_is_in_recovery() AS recovering, "
+            "current_setting('synchronous_commit') AS policy, "
+            "current_setting('synchronous_standby_names') AS standbys"
+        ).fetchone() == {"recovering": False, "policy": "on", "standbys": ""},
+            "renewal_requires_degraded_primary")
+        conn.execute(
+            "ALTER SYSTEM SET synchronous_standby_names = 'FIRST 1 (pgag_m5_replacement)'"
+        )
+        conn.execute("ALTER SYSTEM SET synchronous_commit = 'remote_apply'")
+        require(conn.execute("SELECT pg_reload_conf() AS reloaded").fetchone()
+                == {"reloaded": True}, "renewal_config_reload_failed")
+    wait_renewal_pair(primary_url, replacement_url)
+    for url, recovery in ((primary_url, False), (replacement_url, True)):
+        check_preserved(baseline, capture(
+            url, "post-probe", baseline.fixture, recovery=recovery, uncertain=baseline.uncertain,
+        ), promoted=False)
+    memory_id, pause_seconds = await paused_ack(
+        primary_url, replacement_url, baseline.fixture, name="replacement-renewal-ack",
+    )
+    fixture = baseline.fixture.model_copy(update={"renewal_id": memory_id})
+    primary = capture(primary_url, "renewed", fixture, uncertain=baseline.uncertain)
+    standby = capture(
+        replacement_url, "renewed", fixture, recovery=True, uncertain=baseline.uncertain,
+    )
+    check_renewal_delta(baseline, primary)
+    check_preserved(primary, standby, promoted=False)
+    check_renewal_existing_state(primary_url, baseline, memory_id)
+    check_renewal_existing_state(replacement_url, baseline, memory_id)
+    primary_status, standby_status = wait_renewal_pair(primary_url, replacement_url)
+    evidence = RenewalEvidence(
+        renewal_state_matches=True, synchronous_policy_renewed=True,
+        writer_policy_verified=True, writer_synchronous_commit="remote_apply",
+        statement_timeout_seconds=5, lock_timeout_seconds=5, commit_timeout_seconds=5,
+        short_pause_blocked_ack=True, sync_rep_wait_observed=True, pause_seconds=pause_seconds,
+        memory_id=memory_id, uncertain_id=baseline.fixture.uncertain_id,
+        original_outcome_code=baseline.uncertain.outcome_code, probe_id=baseline.fixture.probe_id,
+        system_identifier=baseline.control.system_identifier, timeline=baseline.control.timeline,
+        canonical_state_matches=True, processing_state_matches=True, source_state_matches=True,
+        effect_state_preserved=True, one_new_observation=True, no_retry=True,
+        primary=primary_status, standby=standby_status,
+    )
+    write_new(directory, "renewed-primary.json", primary)
+    write_new(directory, "renewed-standby.json", standby)
+    write_new(directory, "renewal.json", evidence)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=(
-        "seed", "artifact", "synchronous", "uncertain", "prefence", "verify", "replacement",
+        "seed", "artifact", "synchronous", "uncertain", "prefence", "verify",
+        "replacement", "renewal",
     ))
     args = parser.parse_args(argv)
     directory = None
@@ -1239,8 +1515,10 @@ def main(argv=None):
             prefence(directory, standby_url)
         elif args.stage == "verify":
             asyncio.run(verify(directory, standby_url))
-        else:
+        elif args.stage == "replacement":
             replacement(directory, standby_url, replacement_url)
+        else:
+            asyncio.run(renewal(directory, standby_url, replacement_url))
     except (
         AdminError, RuntimeValidationError, ServiceError, CommitOutcomeUnknown,
         psycopg.Error, ValidationError,

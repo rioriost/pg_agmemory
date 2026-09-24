@@ -2,7 +2,39 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: fresh replacement standby
+## M5 development: isolated synchronous renewal
+
+**0.4.0.dev1 / API v1 / schema 22** extends the owned SQL-only HA lab with a
+separate synchronous-renewal phase after fresh replacement and fence verification.
+It revalidates baseline, identity, timeline and asynchronous peer before changing
+the owned promoted node's configuration. The restricted writer then verifies
+`remote_apply` and commits one uniquely identified synthetic observation through
+the shared guard, with unchanged five-second query/lock/COMMIT limits.
+
+A sub-second replacement-replay pause must block acknowledgement in actual
+`SyncRep`; after resume, guarded acknowledgement and exact primary/replica state
+must agree. Only the declared single observation may change state. Prior COMMIT
+uncertainty, checkpoint, source and dispatched-effect state remain intact.
+Historical asynchronous evidence is retained as such; a final host-side fence
+recheck is required. Reports/references advance to v4 rather than retroactively
+qualifying v3.
+
+This is a controlled synchronous-policy rehearsal, not authorization to restart
+service/workers or effects, nor production HA, RPO/RTO, partition/rejoin or
+independent failure-domain qualification. All such authority flags remain false.
+See [the owned HA contract](operations/README.md#explicitly-fenced-owned-ha-rehearsal).
+
+Local Apple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6 passes the full
+v4 lifecycle in **33 seconds**, including a measured **0.0897-second** replacement
+replay pause. The restricted `remote_apply` writer blocks in `SyncRep`, then
+acknowledges the single new observation; exact renewed references and persisted
+v4 report validate. Original uncertainty, earlier asynchronous evidence and
+effect state remain unchanged, and both host fence rechecks succeed.
+Ruff, strict typing for 55 modules and **767 targeted cases / 25 existing
+live-DB skips** pass. No service/schema/dependency change or timeout relaxation
+is introduced. Native CI qualification of this v4 increment is not yet recorded.
+
+## Previous M5 increment: fresh replacement standby
 
 **0.4.0.dev1 / API v1 / schema 22** extends the owned SQL-only HA rehearsal
 after promotion with a fresh asynchronous replacement standby. A new physical
@@ -35,7 +67,9 @@ Ruff, strict typing for 55 modules and **643 targeted cases / 25 existing
 live-DB skips** pass, including nonempty-directory rejection, stale/mismatched
 backup/state/lineage, absent evidence and timeout failures. No service/schema/
 dependency change is introduced. Native CI qualification of this v3 increment
-is not yet recorded.
+is not yet complete: [run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962)
+has passed both native HA, PITR and AGE jobs at `ee2be6f`; the two core jobs
+were still running when the v4 local evidence was recorded.
 
 ## Previous M5 increment: owned HA uncertain-COMMIT reconciliation
 

@@ -15,6 +15,8 @@ v2 HA rehearsalではreplay停止中のCOMMIT期限超過を別途観測し、
 不明な書込みをretryせず、fencing前に物理replicaと照合します。
 v3では昇格先から新しい非同期standbyも構築しますが、
 旧primaryのrejoinやservice再開を承認するものではありません。
+v4 labは続いて同期policyを明示的に再構成し、制限付きwriterが置換先replayを待つことを観測しますが、
+servingは承認しません。
 書込み境界では[COMMIT結果不明](docs/operations/README-jp.md#unconfirmed-commit-outcomes)を拒否します。
 同期待機cancel後のlocal commitをrollbackや複製完了とは扱わず、
 workerは再試行せず照合のため停止します。

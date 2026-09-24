@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.14 / M5 fresh replacement standby, 2026-09-24
+- Document version: 1.15 / M5 isolated synchronous renewal, 2026-09-24
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M5 development continues as 0.4.0.dev1/APIv1/schema22 with bounded revision validation, COMMIT outcome guards, operational/replication observations, paused SQL-only PITR and an explicitly fenced owned HA rehearsal. Application handling of canceled synchronous waits no longer implies rollback or replication success; production HA and partition qualification remain open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform
@@ -921,6 +921,10 @@ The v3 owned lab adds fresh asynchronous replacement from a manifest-verified
 backup of the promoted timeline, read-only exact state and streaming-WAL
 verification, and a final original-primary fence recheck. No old directory,
 partitioned-primary rejoin, synchronous-policy renewal or service restart is authorized.
+The separate v4 lab phase explicitly renews the owned synchronous policy after
+replacement/fence prechecks and measures one guarded restricted-writer COMMIT
+waiting for replacement replay. Exact state, unchanged original uncertainty and
+another host fence check are required; this never authorizes production serving.
 
 The production gate still requires declared host/storage failure domains,
 load and RPO/RTO objectives; HA/partition fencing and failover drills; alert and

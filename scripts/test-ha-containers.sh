@@ -7,8 +7,9 @@ usage() {
     echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY --allow-owned-promotion [container|docker]"
     echo "Owned two-node synchronous SQL HA laboratory, NOT production HA qualification."
     echo "Explicit opt-in permits promotion only after this harness destroys its own primary."
-    echo "No API/worker/service starts; the promoted node is degraded and not serving-authorized."
+    echo "No API/worker/service starts; even renewed lab replication is not serving-authorized."
     echo "A replacement async standby is rebuilt from the promoted node, never old-primary data."
+    echo "The owned lab then explicitly renews synchronous policy and verifies one guarded write."
     echo "Use a NEW project-relative directory with an existing non-symlink parent."
     echo "Private synthetic physical backups remain there, never as release assets."
     echo "PGAG_HA_RUNTIME_IMAGE selects a caller-owned image; otherwise builds the runtime target."
@@ -72,6 +73,7 @@ promotion_executed=null
 backup_verified=null
 replacement_backup_verified=null
 original_primary_remains_fenced=null
+renewal_primary_remains_fenced=null
 primary_host=""
 standby_host=""
 replacement_host=""
@@ -99,7 +101,7 @@ record_elapsed() {
 cleanup() {
     local status=$? cleanup_started=$SECONDS name failed=false
     local synchronous=null uncertain=null preserved=null probe=null artifact=null
-    local replacement_evidence=null
+    local replacement_evidence=null renewal=null
     trap - EXIT INT TERM
     set +e
     for name in ${containers[@]+"${containers[@]}"}; do
@@ -141,12 +143,16 @@ cleanup() {
     if [[ -f "$directory/replacement.json" ]]; then
         replacement_evidence="$(jq -ce . "$directory/replacement.json")" || status=1
     fi
+    if [[ -f "$directory/renewal.json" ]]; then
+        renewal="$(jq -ce . "$directory/renewal.json")" || status=1
+    fi
     if [[ "$source_destroyed" != true || "$fencing_verified" != true \
           || "$pre_fence_promotion_rejected" != true || "$promotion_executed" != true \
           || "$backup_verified" != true || "$synchronous" == null || "$preserved" == null \
           || "$uncertain" == null || "$probe" == null || "$artifact" == null \
           || "$replacement_backup_verified" != true || "$original_primary_remains_fenced" != true \
-          || "$replacement_evidence" == null ]]; then status=1; fi
+          || "$replacement_evidence" == null || "$renewal" == null \
+          || "$renewal_primary_remains_fenced" != true ]]; then status=1; fi
     record_elapsed cleanup "$cleanup_started"
     timings="$(jq -cn --argjson before "$timings" --argjson total "$SECONDS" \
         '$before + {total: $total}')"
@@ -163,8 +169,9 @@ cleanup() {
         --argjson replacement "$replacement_evidence" \
         --argjson replacement_backup "$replacement_backup_verified" \
         --argjson still_fenced "$original_primary_remains_fenced" \
+        --argjson renewal "$renewal" --argjson renewal_fenced "$renewal_primary_remains_fenced" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
-            format: "pgag-ha-drill-v3", service_version: $version, api_version: "v1",
+            format: "pgag-ha-drill-v4", service_version: $version, api_version: "v1",
             schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
@@ -183,6 +190,8 @@ cleanup() {
             replacement_backup_verified: $replacement_backup,
             original_primary_remains_fenced: $still_fenced,
             replacement_state_matches: $replacement.replacement_state_matches,
+            renewal: $renewal, renewal_state_matches: $renewal.renewal_state_matches,
+            renewal_primary_remains_fenced: $renewal_fenced,
             elapsed_seconds: $timings, production_qualified: false,
             host_failure_domain_independent: false, network_partition_qualified: false,
             commit_timeout_qualified: false, automatic_failover: false,
@@ -428,4 +437,8 @@ phase replacement
 failure_code=replacement_fence_recheck_failed
 verify_primary_absent
 original_primary_remains_fenced=true
+phase renewal
+failure_code=renewal_fence_recheck_failed
+verify_primary_absent
+renewal_primary_remains_fenced=true
 failure_code=drill_incomplete

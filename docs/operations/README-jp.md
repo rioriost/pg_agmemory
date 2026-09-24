@@ -204,15 +204,32 @@ read-only recoveryで完全照合し、物理identity、昇格後timeline、元�
 新backupより先の明示的な追従targetを作ります。その位置までのreplayは物理streamingの観測であり、
 新しいmemory mutation、effect再実行、将来のremote durabilityの証明ではありません。
 その後hostは、応答するengineで旧primary不在を再確認します。
-同期policyは復元せず、新senderは非同期、昇格先writer policyは`on`を維持し、
+この置換stageでは同期policyを復元せず、新senderは非同期、昇格先writer policyは`on`を維持し、
 `serving_authorized`はfalseです。`pg_rewind`、古いdirectory再利用、partitionしたprimaryのrejoin、
 自動failback、独立host/storage failure domainは認定しません。
 
-終端`pgag-ha-drill-v3` reportは測定した事実と未測定nullを分けます。
+v4 drillは置換検証とhostのfence再確認の後、別の**明示的な所有同期再構成phase**を追加します。
+設定変更前に置換baselineの完全一致、物理identity、昇格後timeline、期待する非同期senderを
+再確認し、証跡欠落や変更は設定前に拒否します。その後、所有昇格先だけを
+`FIRST 1 (pgag_m5_replacement)`、`synchronous_commit=remote_apply`に設定します。
+
+管理snapshotだけでなく、新しい制限付きwriter接続でpolicyを検証します。
+一意なidentityの合成observe一件を製品共通COMMIT guardと既存のquery/lock/COMMIT 5秒上限で実行します。
+置換先replayを1秒未満停止し、実`SyncRep`と未応答を観測してから再開し、guard対象COMMITの成功を待ちます。
+primary/replicaの完全状態と宣言した一件だけの差分を比較し、
+以前の結果不明証跡、source判断、checkpoint、dispatched effectを維持します。
+最後に旧primary不在を再確認します。
+
+以前の非同期置換証跡を同期状態へ書き換えません。不明mutationのretry、service/worker起動、
+effect実行、本番運用の承認は行いません。予期しないcancel、COMMIT不明、設定途中の失敗、
+状態不一致では成功renewal receiptを作らずlabを停止します。
+
+終端`pgag-ha-drill-v4` reportは測定した事実と未測定nullを分けます。
 backupは512 MiB、readiness待機90秒、昇格待機30秒を上限とし、phase時間をRTOとは扱いません。
 `uncertain_commit_reconciled`には対応する結果不明とreplicaの実測証跡が必要で、
 stage欠落をpassedにはできません。置換backup検証、完全状態証跡、最後のlive fence再確認も必須です。
-referenceは`pgag-ha-reference-v3`を使い、過去v1/v2 reportを追加caseの認定へ読み替えません。
+renewal独自のwriter/wait/状態証跡と最後のlive fence確認も必要です。
+referenceは`pgag-ha-reference-v4`を使い、過去v1/v2/v3 reportを追加caseの認定へ読み替えません。
 `production_qualified`、`host_failure_domain_independent`、
 `network_partition_qualified`、`commit_timeout_qualified`、`automatic_failover`、
 `automatic_service_start`、`serving_authorized`、`effect_reexecution`はfalseを維持します。

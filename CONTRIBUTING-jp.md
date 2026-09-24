@@ -69,6 +69,9 @@ standby replay再開前に実5秒COMMIT期限超過を測り、fencing/昇格前
 v3置換先は昇格後timelineの新しい検証済みbackupから起動し、
 read-only完全状態一致、backup以降のstreaming WAL進行、旧primaryのfence再確認を要求します。
 古いdirectoryの再利用や、非同期置換をserving/同期durability承認へ読み替えることは許しません。
+別のv4 renewalでは設定前に古い前提を拒否し、制限付きwriterの`remote_apply`と、
+置換先replay停止中の実`SyncRep`を確認します。一意な合成書込み一件、元の結果不明、
+既存期限、cleanup cancel、再開禁止の契約を維持してください。
 assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制約を通し、
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で

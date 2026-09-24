@@ -2,7 +2,33 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 新しい置換standbyの構築
+## M5開発: 隔離環境での同期再構成
+
+**0.4.0.dev1 / API v1 / schema 22**で、所有SQL-only HA labの新しい置換先とfenceの検証後に
+独立した同期再構成phaseを追加します。設定前にbaseline、identity、timeline、非同期peerを再検証し、
+所有昇格先だけを変更します。制限付きwriterは`remote_apply`を確認し、一意な合成observe一件を
+共通guardと既存のquery/lock/COMMIT 5秒上限でcommitします。
+
+置換先replayの1秒未満の停止で実際の`SyncRep`と未応答を観測し、
+再開後のguard対象応答とprimary/replicaの完全状態一致を要求します。
+宣言した一件以外の状態変更は認めず、以前のCOMMIT不明、checkpoint、source、
+dispatched effectを維持します。過去の非同期証跡はそのまま保持し、
+最後のhost側fence再確認も必要です。report/referenceはv4へ進め、v3を遡及認定しません。
+
+制御された同期policyのrehearsalであり、service/workerやeffectの再開承認、
+本番HA、RPO/RTO、partition/rejoin、独立failure domainの認定ではありません。
+対応する全authority flagはfalseのままです。
+[所有HA契約](operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)を参照してください。
+
+ローカルApple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6でv4 lifecycle全体が
+**33秒**で成功し、置換先replay停止は実測**0.0897秒**でした。
+制限付き`remote_apply` writerが`SyncRep`で待ってから合成observe一件を確定し、
+renewal後referenceの完全一致と永続v4 reportを検証しています。
+元の不明性、以前の非同期証跡、effect状態は変更せず、host fence再確認も両方成功しました。
+Ruff、55 moduleのstrict型検査、**767 targeted passed / 既存live-DB依存25 skipped**に成功しました。
+service/schema/依存packageの変更やtimeout緩和はありません。このv4 incrementのnative CI認定はまだ記録していません。
+
+## 以前のM5 increment: 新しい置換standbyの構築
 
 **0.4.0.dev1 / API v1 / schema 22**で、所有SQL-only HA rehearsalの昇格後に
 新しい非同期置換standbyを構築します。破棄済み旧primaryではなく、昇格先から新しい物理basebackupを取得し、
@@ -29,7 +55,9 @@ report/referenceは`pgag-ha-drill-v3`と`pgag-ha-reference-v3`を使い、
 
 Ruff、55 moduleのstrict型検査、**643 targeted passed / 既存live-DB依存25 skipped**に成功しました。
 空でないdirectory、古い/不一致のbackup・状態・lineage、証跡欠落、timeoutの拒否も対象です。
-service/schema/依存packageは変更していません。このv3 incrementのnative CI認定はまだ記録していません。
+service/schema/依存packageは変更していません。このv3 incrementのnative CIはまだ全体完了していません。
+`ee2be6f`の[run35972913962](https://github.com/rioriost/pg_agmemory/actions/runs/35972913962)は
+amd64/arm64のHA、PITR、AGEが成功し、v4ローカル証跡の記録時点でcore 2ジョブが実行中でした。
 
 ## 以前のM5 increment: 所有HAでのCOMMIT結果不明の照合
 
