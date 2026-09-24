@@ -67,6 +67,12 @@ A fresh owned fault primary runs the request cases in a separate bounded stage.
 Do not terminate the backend to manufacture a timely client exit, weaken RLS,
 or infer backend termination/rollback/replication from client-side closure.
 See [the request contract](docs/operations/README.md#native-request-deadline).
+The opt-in [owned HA rehearsal](docs/operations/README.md#explicitly-fenced-owned-ha-rehearsal)
+also measures a real five-second COMMIT expiry before resuming standby replay,
+then reconciles exact state read-only before fencing and promotion. Keep the
+uncertain operation separate from acknowledged writes, preserve dispatched
+effects, and never use backend cancellation or replay writes to manufacture
+the measured outcome. Historical v1 reports cannot qualify this v2 case.
 The exact 1,000-revision assertion/relation tests also exercise real deferred
 constraints inside that five-second budget, including replay and history.
 Migration 022 must preserve invoker RLS and all history/evidence/target checks.

@@ -2,7 +2,39 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: Native request deadline
+## M5開発: 所有HAでのCOMMIT結果不明の照合
+
+**0.4.0.dev1 / API v1 / schema 22**でopt-inのSQL-only HA rehearsalに、
+replay停止中のCOMMIT期限超過caseを追加します。制限付きruntime writerは共通guardと
+既存5秒応答上限を使います。replay再開前にclientが`commit_outcome_unknown`で復帰し、
+接続を閉じることを要求し、成功receipt、retry、補償書込みを許しません。
+
+replay再開後、primary/standbyをread-only照合します。結果不明の操作は確定書込み3件と
+分けて保持し、既存の所有primary破棄、fenced昇格、完全状態比較、degraded probeまで検査します。
+checkpoint、source cursor、dispatched effectを保持し、外部effectやdaemonを開始しません。
+report/referenceは`pgag-ha-drill-v2`と`pgag-ha-reference-v2`で、
+過去v1認定をこのcaseへ読み替えません。
+[所有HA契約](operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)を参照してください。
+
+ローカルApple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6でv2 rehearsal全体が成功しました。
+COMMIT待機は**5.001秒**、実`SyncRep`観測は**4.986秒**で、その後read-onlyでreplica一致を確認し、
+timeline **1→2**でも元の結果不明とdispatched effect状態を保持しました。
+clientはreplay再開前に復帰し、drill全体は21秒でしたが、RTOとは扱いません。
+永続reportと照合referenceもv2 modelで検証しています。
+Ruff、55 moduleのstrict型検査、**493 targeted passed / 既存live-DB依存25 skipped**に成功しました。
+このv2 incrementのnative CI認定はまだ記録していません。
+
+最初のlive試行はtestの不正な前提でfail closedしました。
+`SyncRep`中はtransaction配列からまだ除去されず、通常のMVCC snapshotでlocal receiptが
+見えるとは限りません。修正後はCOMMIT前WAL insert位置の下限を観測し、commit recordの
+watermarkとは主張せず、replay再開後だけreceiptを完全照合します。
+成功させるための測定閾値や製品timeoutの緩和はありません。
+
+追加するのは制御された物理replicaでの観測一つであり、汎用照合APIや本番failover controllerではありません。
+fencing前に追従するため、network partition、追従不明replicaの昇格、rejoin、
+独立failure domain、本番RPO/RTOは未認定です。service/effect再開や本番認定flagはfalseを維持します。
+
+## 以前のM5 increment: Native request deadline
 
 **0.4.0.dev1 / API v1 / schema 22**で`/v1/`に累積**30秒のapplication budget**を追加し、
 うち**1秒をエラー応答用**に確保します。認証、受信、接続/admission、handler、COMMIT、
@@ -22,7 +54,12 @@ Ruff、strict型検査（**55 module + 3利用側**）、core **3,695 passed / 1
 **13 request case**（request stageは57.90秒）が成功しました。
 製品既定の累積budget、接続/admission待ち、ACK/cancel channel喪失、応答停滞、
 timer隔離を含みます。optional installとpackaged API/SDK/worker/MCP/hook/recovery smokeも成功しました。
-このincrementのnative amd64/arm64 CI証跡はまだ記録していません。
+実装`df1055b`はその後、
+[run35961680440](https://github.com/rioriost/pg_agmemory/actions/runs/35961680440)で
+native **全8ジョブ**（amd64/arm64のcore、HA、PITR、patched AGE）に成功しました。
+各coreは**3,695 passed / 134 skipped**、別途**18 COMMIT case**と**13 request case**、
+optional installとpackaged lifecycleに成功しています。限定したapplication契約の証跡であり、
+本番HAやnetwork RPO/RTOの認定ではありません。
 
 admission回帰では所有blockerの解放前にclient復帰を測り、その後のbackend cleanupを
 別に観測します。各fault pytest processにはlegacy migration fixture用の新しいclusterを渡し、

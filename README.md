@@ -11,6 +11,8 @@ and service are `pg_agmemory`. Run the commands below from that local checkout.
 include read-only operator/replication observations, paused PITR and an explicitly
 fenced owned HA rehearsal. Reports do not authorize service startup or certify
 production HA, RPO/RTO or backup retention.
+The v2 HA rehearsal separately reconciles a replay-pause COMMIT deadline with
+the physical replica before fencing, without retrying the uncertain write.
 Write boundaries also reject [unconfirmed COMMIT outcomes](docs/operations/README.md#unconfirmed-commit-outcomes):
 local commit after synchronous-wait cancellation is neither rollback nor proof
 of replication. Workers stop for reconciliation instead of retrying.

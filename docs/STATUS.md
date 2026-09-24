@@ -2,7 +2,46 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: Native request deadlines
+## M5 development: owned HA uncertain-COMMIT reconciliation
+
+**0.4.0.dev1 / API v1 / schema 22** extends the opt-in SQL-only HA rehearsal
+with a separate replay-pause COMMIT deadline case. Restricted runtime writers
+use the shared guard and unchanged five-second acknowledgement limit. The
+client must return `commit_outcome_unknown` and close its connection before
+replay resumes; no success receipt, retry or compensating write is allowed.
+
+Read-only primary/standby reconciliation follows replay resumption. The
+uncertain operation remains distinct from the three acknowledged writes,
+including through the existing owned-primary destruction, fenced promotion,
+exact state comparison and degraded probe. Checkpoint, source cursor and
+dispatched-effect state remain intact; no external effect or daemon starts.
+The new report/reference formats are `pgag-ha-drill-v2` and
+`pgag-ha-reference-v2`. Historical v1 qualification does not cover this case.
+See [the owned HA contract](operations/README.md#explicitly-fenced-owned-ha-rehearsal).
+
+Local Apple Container arm64 / PostgreSQL 18.6 / pgvector 0.8.6 passes the
+complete v2 rehearsal: COMMIT wait **5.001 seconds**, observed `SyncRep`
+**4.986 seconds**, then read-only replica agreement and timeline **1→2** with
+original uncertainty and dispatched-effect state preserved. The client exits
+before replay resumes; the entire drill takes 21 seconds, not an RTO claim.
+The persisted report and reconciled reference validate against their v2 models.
+Ruff, strict typing for 55 modules and **493 targeted cases / 25 existing live-DB
+skips** pass. Native CI qualification of this v2 increment is not yet recorded.
+
+The first live attempt correctly failed closed on an invalid test assumption:
+the local receipt is not necessarily visible to an ordinary MVCC snapshot
+during `SyncRep`, before transaction-array removal. The corrected observation
+records a pre-COMMIT WAL-insert lower bound, not a commit-record watermark,
+and checks the exact receipt only after replay resumes. No timing threshold
+or production timeout was relaxed to obtain the passing result.
+
+This adds one controlled physical-replica observation, not a general
+reconciliation API or production failover controller. Catch-up occurs before
+fencing; network partition, uncertain-catch-up promotion, rejoin, independent
+failure domains and production RPO/RTO remain unqualified. All service/effect
+restart and production-qualification flags remain false.
+
+## Previous M5 increment: Native request deadlines
 
 **0.4.0.dev1 / API v1 / schema 22** adds a cumulative **30-second `/v1/`
 application budget**, including **one second reserved for error delivery**.
@@ -25,7 +64,12 @@ unchanged **18 COMMIT cases** and **13 request cases** (57.90 seconds for the
 request stage), including the production-default cumulative budget, startup/
 admission waits, lost ACK/cancel-channel blackhole, response stalls and timer
 isolation. All optional-install and packaged API/SDK/worker/MCP/hook/recovery
-smokes passed. Native amd64/arm64 CI evidence is not yet recorded for this increment.
+smokes passed. The exact implementation `df1055b` subsequently passed **all eight
+native jobs** in [run35961680440](https://github.com/rioriost/pg_agmemory/actions/runs/35961680440):
+core, HA, PITR and patched AGE on both amd64 and arm64. Each core job passes
+**3,695 cases / 134 skips**, **18 separate COMMIT cases**, **13 separate request
+cases**, optional installations and the full packaged lifecycle. These results
+qualify the bounded application contract, not production HA or network RPO/RTO.
 
 The admission regression measures client exit before releasing its owned
 blocker and observes backend cleanup separately. Each fault pytest process

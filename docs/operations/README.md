@@ -192,6 +192,26 @@ During the sub-second pause it observes the writer's `SyncRep` wait and absence
 of acknowledgement, then resumes replay without canceling or retrying COMMIT.
 The replicas' acknowledged state is compared before the quiescent transition.
 
+The v2 drill then pauses replay for a separate synthetic write using the shared
+production COMMIT guard. It observes actual `SyncRep` and requires the fixed
+five-second acknowledgement watchdog to return `commit_outcome_unknown`, with
+the client connection closed and no success receipt released. The measured client
+exit must occur **before replay resumes**; backend cancellation or termination
+cannot manufacture that result. The existing query/lock/COMMIT limits remain.
+While `SyncRep` is waiting, PostgreSQL has not yet removed the transaction from
+the active-transaction array: another normal snapshot need not see its receipt.
+The pre-exit evidence therefore records the wait and a local WAL-flush lower
+bound, not MVCC receipt visibility or a commit-record/replication watermark.
+Receipt visibility and exact contents are checked only after replay resumes.
+
+After that observation, the harness resumes replay and performs read-only
+reconciliation of the exact primary/standby state. The uncertain write has its
+own identity, separate from the three acknowledged writes. No same-key replay,
+retry, compensating mutation or effect execution is used to establish agreement.
+`reconciled.json` records this later observation; it does not retroactively turn
+the original unknown outcome into an acknowledged receipt. Only after agreement
+does the existing fence/promotion sequence proceed.
+
 An actual call to the promotion guard must first be refused while the original
 primary exists. Only after targeted primary destruction, unsuccessful inspection/
 execution of that exact primary, and a still-responsive container engine may
@@ -200,7 +220,7 @@ and read-only recovery role before issuing `pg_promote`. Fencing is a live
 owned-harness fact, not an accepted JSON assertion or a `replication-status`
 recommendation.
 
-After timeline advancement, exact acknowledged content/processing fingerprints,
+After timeline advancement, exact reconciled content/processing fingerprints,
 source cursor and the dispatched tool-effect state must survive. No effect is
 executed or retried. One named Native service read/write probe is then allowed;
 no HTTP service, agent or worker daemon starts. The promoted node has **no new
@@ -208,21 +228,28 @@ synchronous standby** and is explicitly degraded, so `serving_authorized` stays
 false. This is an isolated test transition, not a generally reusable automatic
 failover controller or a continued zero-loss deployment.
 
-The terminal `pgag-ha-drill-v1` report distinguishes measured facts from
+The terminal `pgag-ha-drill-v2` report distinguishes measured facts from
 unmeasured nulls. Backup size is bounded to 512 MiB, readiness waits to 90 seconds,
 and promotion wait to 30 seconds. Phase timings are observations, not RTO.
+`uncertain_commit_reconciled` requires the corresponding measured uncertainty
+and replica evidence; a missing stage cannot produce a passing report.
+References use `pgag-ha-reference-v2`; historical v1 reports do not qualify this
+additional case.
 `production_qualified`, `host_failure_domain_independent`,
 `network_partition_qualified`, `commit_timeout_qualified`, `automatic_failover`,
 `automatic_service_start`, `serving_authorized` and `effect_reexecution` remain
 false. Physical copies/reference files remain private and are not release assets.
 
-**Synchronous wait cancellation is a separate production gate.** PostgreSQL
+**General synchronous wait cancellation remains a production gate.** PostgreSQL
 18.6's [`SyncRepWaitForLSN`](https://github.com/postgres/postgres/blob/REL_18_6/src/backend/replication/syncrep.c)
 can stop waiting with a warning after the transaction has already committed
 locally. A timeout/cancellation therefore cannot be treated as proof of rollback
-or remote durability. This lab rejects commit notices and keeps its controlled
-pause below one second; it does not qualify application-wide timeout/cancel,
-network partition, lost-acknowledgement or rejoin semantics. Do not infer a
+or remote durability. The short acknowledged pause and the separate
+watchdog-expiry/reconciliation case do not qualify all application-wide
+timeout/cancel, network partition, lost-acknowledgement or rejoin semantics. In
+particular, replay is resumed and agreement checked before fencing: this is not
+promotion of a replica with unknown catch-up or recovery of a partitioned primary.
+Do not infer a
 production RPO-zero contract from `remote_apply` or from this passing drill.
 
 ### Unconfirmed COMMIT outcomes

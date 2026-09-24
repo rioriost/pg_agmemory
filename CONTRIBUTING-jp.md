@@ -62,6 +62,10 @@ request単位の接続所有と既存のphase上限を維持してください�
 clientの期限内終了を作るためにbackendを停止したり、RLSを緩和したり、
 client切断からbackend停止/rollback/複製完了を推論したりしないでください。
 [request契約](docs/operations/README-jp.md#native-request-deadline)を参照してください。
+opt-inの[所有HA rehearsal](docs/operations/README-jp.md#explicitly-fenced-owned-ha-rehearsal)では、
+standby replay再開前に実5秒COMMIT期限超過を測り、fencing/昇格前に完全な状態をread-only照合します。
+不明な操作を確定書込みと分け、dispatched effectを維持し、backend cancelやreplay書込みで
+測定結果を作ってはいけません。過去v1 reportはこのv2 caseを認定しません。
 assertion/relationの実1,000 revision境界も同じ5秒budget内の遅延制約を通し、
 replayとhistoryを検査します。migration022ではinvoker RLSとhistory/evidence/target検査を
 維持します。timeout延長、fixtureの`ANALYZE`、制約無効化、出荷済みmigrationの編集で

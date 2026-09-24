@@ -93,7 +93,7 @@ record_elapsed() {
 
 cleanup() {
     local status=$? cleanup_started=$SECONDS name failed=false
-    local synchronous=null preserved=null probe=null artifact=null
+    local synchronous=null uncertain=null preserved=null probe=null artifact=null
     trap - EXIT INT TERM
     set +e
     for name in ${containers[@]+"${containers[@]}"}; do
@@ -119,6 +119,9 @@ cleanup() {
     if [[ -f "$directory/synchronous.json" ]]; then
         synchronous="$(jq -ce . "$directory/synchronous.json")" || status=1
     fi
+    if [[ -f "$directory/uncertain.json" ]]; then
+        uncertain="$(jq -ce . "$directory/uncertain.json")" || status=1
+    fi
     if [[ -f "$directory/preserved.json" ]]; then
         preserved="$(jq -ce . "$directory/preserved.json")" || status=1
     fi
@@ -131,7 +134,7 @@ cleanup() {
     if [[ "$source_destroyed" != true || "$fencing_verified" != true \
           || "$pre_fence_promotion_rejected" != true || "$promotion_executed" != true \
           || "$backup_verified" != true || "$synchronous" == null || "$preserved" == null \
-          || "$probe" == null || "$artifact" == null ]]; then status=1; fi
+          || "$uncertain" == null || "$probe" == null || "$artifact" == null ]]; then status=1; fi
     record_elapsed cleanup "$cleanup_started"
     timings="$(jq -cn --argjson before "$timings" --argjson total "$SECONDS" \
         '$before + {total: $total}')"
@@ -143,9 +146,10 @@ cleanup() {
         --argjson destroyed "$source_destroyed" --argjson fenced "$fencing_verified" \
         --argjson rejected "$pre_fence_promotion_rejected" --argjson promoted "$promotion_executed" \
         --argjson backup "$backup_verified" --argjson timeline "$timeline_before" \
-        --argjson synchronous "$synchronous" --argjson preserved "$preserved" \
+        --argjson synchronous "$synchronous" --argjson uncertain "$uncertain" \
+        --argjson preserved "$preserved" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
-            format: "pgag-ha-drill-v1", service_version: $version, api_version: "v1",
+            format: "pgag-ha-drill-v2", service_version: $version, api_version: "v1",
             schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
@@ -153,11 +157,13 @@ cleanup() {
             pre_fence_promotion_rejected: $rejected, promotion_executed: $promoted,
             backup_verified: $backup, writer_policy_verified: $synchronous.writer_policy_verified,
             short_pause_blocked_ack: $synchronous.short_pause_blocked_ack,
+            uncertain_commit_reconciled: $uncertain.uncertain_commit_reconciled,
             acknowledged_state_matches: $preserved.acknowledged_state_matches,
             effect_state_preserved: $preserved.effect_state_preserved,
             postpromotion_probe_verified: $probe.postpromotion_probe_verified,
             timeline_before: $timeline, timeline_after: $preserved.timeline_after,
-            artifact: $artifact, synchronous: $synchronous, preserved: $preserved, probe: $probe,
+            artifact: $artifact, synchronous: $synchronous, uncertain: $uncertain,
+            preserved: $preserved, probe: $probe,
             elapsed_seconds: $timings, production_qualified: false,
             host_failure_domain_independent: false, network_partition_qualified: false,
             commit_timeout_qualified: false, automatic_failover: false,
@@ -322,6 +328,7 @@ wait_database "$standby"
 standby_host="$(container_host "$standby")"
 record_elapsed standby_start "$started"
 phase synchronous
+phase uncertain
 
 failure_code=pre_fence_guard_failed
 if owned_promote; then

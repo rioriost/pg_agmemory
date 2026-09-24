@@ -165,32 +165,52 @@ slotを作らず一つのphysical streaming peerを確立します。
 1秒未満のpause中にwriterの`SyncRep`待機と未応答を観測してからresumeし、
 COMMITのcancel/retryはしません。静止状態の切替前に、確定状態がreplicaへ一致していることも確認します。
 
+v2 drillでは別の合成書込みに対してreplayを停止し、製品共通COMMIT guardを使います。
+実際の`SyncRep`を観測し、固定5秒の応答watchdogで`commit_outcome_unknown`となり、
+client接続が閉じ、成功receiptを返さないことを要求します。
+**replay再開前**にclientの復帰を測定し、backend cancel/停止で結果を作りません。
+既存のquery/lock/COMMIT上限は維持します。
+`SyncRep`待機中はPostgreSQLのactive-transaction配列からまだtransactionが除去されず、
+別の通常snapshotからreceiptが見えるとは限りません。復帰前の証跡は待機とlocal WAL flushの
+下限の観測であり、MVCC上のreceipt可視性やcommit record/複製のwatermarkとは扱いません。
+receiptの可視性と完全な内容はreplay再開後に確認します。
+
+その後replayを再開し、primary/standbyの完全な状態をread-onlyで照合します。
+結果不明の書込みidentityは確定済み3件と分けて保持し、same-key replay、
+retry、補償mutation、effect実行で一致を作りません。
+`reconciled.json`は後の観測であり、元の結果不明を確定receiptへ遡及変更しません。
+一致を確認してから既存のfence/promotion手順へ進みます。
+
 元primaryが存在する間の実promotion guard呼出しは拒否しなければなりません。
 そのprimaryだけを破棄し、同一IDのinspect/execが失敗し、engine自体は応答することを確認して
 初めてgateを開きます。candidateの物理system identity、timeline、
 read-only recovery roleを再確認してから`pg_promote`を実行します。
 fencingはliveな所有harnessの事実であり、JSON宣言や`replication-status`の推奨で代用しません。
 
-timeline更新後、確定済みcontent/processing fingerprint、source cursor、
+timeline更新後、照合済みcontent/processing fingerprint、source cursor、
 dispatched tool-effect状態の完全一致が必要です。effectは実行/retryしません。
 その後に名前を固定したNative serviceのread/write probe一つだけを実行し、
 HTTP service、agent、worker daemonは起動しません。
 昇格先には**新しい同期standbyがない**ためdegradedを明示し、`serving_authorized`はfalseです。
 隔離testの切替であり、汎用自動failover controllerや継続的な損失ゼロ配置ではありません。
 
-終端`pgag-ha-drill-v1` reportは測定した事実と未測定nullを分けます。
+終端`pgag-ha-drill-v2` reportは測定した事実と未測定nullを分けます。
 backupは512 MiB、readiness待機90秒、昇格待機30秒を上限とし、phase時間をRTOとは扱いません。
+`uncertain_commit_reconciled`には対応する結果不明とreplicaの実測証跡が必要で、
+stage欠落をpassedにはできません。referenceは`pgag-ha-reference-v2`を使い、
+過去v1 reportを追加caseの認定へ読み替えません。
 `production_qualified`、`host_failure_domain_independent`、
 `network_partition_qualified`、`commit_timeout_qualified`、`automatic_failover`、
 `automatic_service_start`、`serving_authorized`、`effect_reexecution`はfalseを維持します。
 物理copy/reference fileは非公開で、release assetにはしません。
 
-**同期waitのcancelは別の本番gateです。**
+**一般的な同期wait cancelは引き続き本番gateです。**
 PostgreSQL 18.6の[`SyncRepWaitForLSN`](https://github.com/postgres/postgres/blob/REL_18_6/src/backend/replication/syncrep.c)は、
 local commit済みでもwarningで同期待機を中断する場合があります。
 timeout/cancelをrollbackやremote durabilityの証明にしてはいけません。
-このlabはcommit noticeがあれば認定を拒否し、制御するpauseを1秒未満に保ちます。
-application全体のtimeout/cancel、network partition、応答喪失、rejoinは未認定です。
+短い確定pauseと別のwatchdog期限超過/照合caseは、application全体のtimeout/cancel、
+network partition、応答喪失、rejoinの認定ではありません。特にfencing前にreplayを再開して
+一致を確認するため、追従状況が不明なreplicaの昇格やpartitionしたprimaryの復帰ではありません。
 `remote_apply`やこのdrill成功から、本番RPOゼロを推論しないでください。
 
 ### Unconfirmed COMMIT outcomes
