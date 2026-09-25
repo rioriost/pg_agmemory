@@ -34,7 +34,12 @@ passes 4,688 core cases but fails six wrapper-argument tests on each architectur
 because the test image omitted the shell wrapper. The COPY list is corrected,
 and a standalone image without a source overlay passes all 205 focused offline
 cases / 13 expected database skips; production/query code and measured recipes
-are unchanged by that packaging correction. Final native qualification is pending.
+are unchanged by that packaging correction. Final **`f28aa44`** passes
+**all eight native jobs** in [run36120398956](https://github.com/rioriost/pg_agmemory/actions/runs/36120398956).
+Each core passes **4,694 cases / 134 skips**, then 18 COMMIT and 13 request
+cases, all packaged/optional-install lifecycles and six offline bridge tests.
+HA, PITR and patched AGE pass on both architectures. This qualifies the
+implementation increment, not generalization beyond the measured cohort.
 
 ## Previous product-usefulness pilot: retention works, retrieval remains inadequate
 

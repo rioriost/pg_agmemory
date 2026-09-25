@@ -29,7 +29,13 @@ end-to-end高速化ではありません。[v2証跡](../examples/copilot-memory
 core 4,688件に成功しましたが、test imageへのshell wrapper同梱漏れで引数検査6件が失敗しました。
 COPY listを修正し、source overlayなしのstandalone imageで
 offline 205件成功 / DB依存13件skipを確認しました。
-このpackaging補正で製品/query codeや測定recipeは変更していません。最終native認定は実行待ちです。
+このpackaging補正で製品/query codeや測定recipeは変更していません。
+最終**`f28aa44`**は
+[run36120398956](https://github.com/rioriost/pg_agmemory/actions/runs/36120398956)で
+native **全8ジョブ**に成功しました。各coreは**4,694 passed / 134 skipped**、
+その後18 COMMIT/13 request case、全packaged/optional-install lifecycle、
+offline bridge 6件に成功し、HA/PITR/patched AGEも両architectureで成功しています。
+実装incrementの確認であり、測定cohort以外への一般化を認定しません。
 
 ## 以前の製品実用性pilot: 保持は成功、検索は不十分
 
