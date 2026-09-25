@@ -17,6 +17,27 @@ v3 recipeで実cohort/scorer/query hashを記録します。
 製品serving、worker、SQL検索、認可、schemaの動作は変更しません。
 [cohort契約](EVALUATION-jp.md#別途固定した評価cohortの選択)を参照してください。
 
+**`c521329`**の初回実測は100 callを完走しましたが、
+Native正答は**9/20**、直近履歴は**8/20**、記憶なしは**4/20**でした。
+回答可能な16問では順に**5 / 4 / 0**で、忘却に伴う適切な回答辞退4件は維持しました。
+必要根拠の取得coverageは**34.375%**で、不完全な根拠chainから誤答が1件出ています。
+gold keep 49件中48件は残り、gold forget 90件は全て消去しましたが、
+無関係な継続制約を1件余分に削除しました。この誤削除は、その質問の回答根拠ではありません。
+
+前回20/20の結果は、この新しい合成cohortへ**十分には一般化していません**。
+語彙/語形、訂正context、段階的な根拠探索が製品側の残作業で、
+保守的な保持判断にも注意が必要です。測定後にmodel/query/prompt/goldは変更していません。
+Native recall p95は**56.27 ms**、model query/recall/回答合計p95は
+CLI/bridge込みで**23.25秒**であり、本番SLAではありません。
+[詳細](EVALUATION-jp.md#新cohort初回結果-一般化はなお不十分)と
+[確認済み集計](../examples/copilot-memory-unseen-result.json)を参照してください。
+
+同一sourceの工程検証は
+[run36136175922](https://github.com/rioriost/pg_agmemory/actions/runs/36136175922)で
+native全8ジョブに成功しました。両coreは**4,835 passed / 134 skipped**、
+別途18 COMMIT/13 request case、offline bridge 6件も成功しています。
+packaged install、HA/PITR/patched AGEも成功ですが、製品品質の不十分な結果を上書きしません。
+
 ## 以前のQuery連携: 明示的なlexical計画と既存検索契約
 
 初回pilotの問題を、認可の拡大やlexical検索の無断置換ではなく、連携契約として修正します。

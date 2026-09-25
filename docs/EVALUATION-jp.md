@@ -48,6 +48,60 @@ source hashの変更は正しく記録し、`pgag-agent-memory-cohort-recipe-v3`
 検索済みなら後段の回答失敗でも観測contextを消しません。
 過去の指標や公開scoreを別ルールで再計算しません。
 
+### 新cohort初回結果: 一般化はなお不十分
+
+**`c521329`**で`unseen-synthetic-v1`初回を実行し、
+GPT-6 Astra/high・Copilot CLI 1.0.88で**100 call / 60観測**を完走しました。
+model呼出しの失敗・応答修復・retryはゼロです。
+query計画module hashは、前回20/20となった回帰評価と同一です。
+[確認済み集計](../examples/copilot-memory-unseen-result.json)は別途固定したcohort、
+実scorer、recipe、非公開artifactに結び付いています。
+
+| arm | 正答 / 20 | 回答可能な問題の正答 / 16 | 回答辞退 |
+|---|---:|---:|---:|
+| 記憶なし | 4（20%） | 0 | 20 |
+| 直近2 event | 8（40%） | 4 | 16 |
+| Native lexical memory | **9（45%）** | **5** | 14 |
+
+明示忘却の4問は全armが適切に回答辞退しました。
+Nativeでは回答可能な5件で必要根拠が全部届き、1件は2 eventのchainの半分、
+10件は必要根拠なしでした。取得coverageは、分母不明なしの16問平均で**34.375%**です。
+今回の引用recallは偶然同じ値ですが、二つは別計算です。
+何らかのcontextが返ったのは12 queryであり、非空結果だけでは取り逃しを見落とします。
+直近履歴との差5 percentage pointsは広く信頼できる記憶の証拠ではなく、
+異なる旧cohortとの因果的な比較でもありません。
+
+traceから三つの課題を区別できます。
+
+- **語彙と訂正context:** `triage inbox`は保存文の「support shifts」と一致せず、
+  `Pebblegate warranty`は保持した訂正文の複数形「warranties」と一致しません。
+  短いqueryでも全lexeme一致が必要で、訂正文は元の説明をすべて繰り返すとは限りません。
+- **根拠chain:** `Copperwheel billing`はrouting ruleだけを取得し、
+  担当deskを示す別directory entryを取得しませんでした。
+  必要な`Billing desk`ではなく`Ledger`と回答し、
+  実在sourceへのcitationがあっても回答は誤りです。誤った非辞退回答は1件です。
+- **保持判断:** gold keep 49件中48件を保持し、gold forget 90件は全て消去しましたが、
+  継続的な制約をもう1件余分に消去しました。
+  `unseen-02-e5`は別teamの継続review方針で、質問の回答根拠そのものではありません。
+  回答根拠は残っていましたが検索で取り逃しています。
+  keep recall 98.33%、forget precision 99.17%はcase平均であり、全件合算の比率ではありません。
+
+これは基盤障害ではなく製品品質の課題です。本番dataは使わず、
+model選択purgeは明示同意した所有合成fixtureだけに適用しました。
+本番自動削除の承認でも、model交換だけで解決する証拠でもありません。
+今回の結果を見てcase・gold・query prompt・採点を調整していません。
+次の検索/保持変更では別recipeを使い、このcohortは測定済みdataの再利用として報告します。
+
+Native recall 20回は**p50 43.10 ms / p95 56.27 ms**、
+新CLI/bridge込みCopilotは**p50 9.41秒 / p95 12.78秒**でした。
+query生成・recall・回答の合計は、保持/準備を除いて
+**p50 19.34秒 / p95 23.25秒**です。
+usageは**input 344,416 / output 7,254 token**、reported premium request 100件で、
+今回のincrementに追加診断model呼出しはありません。
+観測usage単位であり、検証済み請求額や本番latency認定ではありません。
+件数は評価transportだけを対象とし、実装やcohort作成に使ったassistantのusageは含みません。
+セッション全体の請求額を測ったものではありません。
+
 ## 固定modelのCopilot agent-memory pilot（2026-09-25）
 
 2026-09-25に依頼された製品評価はDB契約・本番HA認定とは別で、

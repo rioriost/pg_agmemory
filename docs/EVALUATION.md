@@ -56,6 +56,66 @@ unknown-before-retrieval outcomes, and non-applicable abstention cases.
 An answer failure after a known retrieval does not erase that measured context.
 No historical metric or published score is recalculated under a different rule.
 
+### First new-cohort result: generalization remains insufficient
+
+At **`c521329`**, the first `unseen-synthetic-v1` run completed **100 calls /
+60 observations** with GPT-6 Astra/high and Copilot CLI 1.0.88. No model call
+failed, required response repair or was retried. The query-planning module
+hash is exactly the one used in the prior 20/20 regression result.
+The [reviewed aggregate](../examples/copilot-memory-unseen-result.json) binds
+the separately frozen cohort, actual scorer, recipe and private artifacts.
+
+| Arm | Correct / 20 | Correct on answerable questions / 16 | Abstentions |
+|---|---:|---:|---:|
+| No memory | 4 (20%) | 0 | 20 |
+| Recent two events | 8 (40%) | 4 | 16 |
+| Native lexical memory | **9 (45%)** | **5** | 14 |
+
+All arms correctly abstained on the four explicit-forget questions. In the
+Native arm, five answerable cases received complete required evidence, one
+received half of its two-event chain, and ten received no required evidence.
+Direct retrieved coverage is **34.375%**, averaged across all 16 answerable
+cases with no unknown denominator. Citation recall happens to equal that value
+in this run; the two metrics are still computed separately. Twelve queries
+returned some context, so "nonempty recall" alone would hide substantial misses.
+The five-point advantage over recent context is not evidence of broadly
+reliable memory, nor a controlled causal comparison with the different old cohort.
+
+The traces identify three distinct gaps:
+
+- **Literal vocabulary and incomplete correction context:** `triage inbox`
+  misses the stored wording "support shifts"; `Pebblegate warranty` misses
+  the retained correction's plural "warranties". Short queries still require
+  every lexeme, and a correction need not repeat the original description.
+- **Evidence-chain retrieval:** `Copperwheel billing` retrieves the routing
+  rule but not the separate directory entry naming the desk. The answer
+  returns `Ledger` instead of the required `Billing desk`. This is one
+  incorrect non-abstained answer, despite a citation pointing to a real source.
+- **Retention:** 48 of 49 gold-keep events were kept; all 90 gold-forget
+  events were removed, but one additional durable constraint was purged.
+  The mistaken event `unseen-02-e5` belongs to another team's continuing
+  review workflow. It is not that question's answer evidence; the relevant
+  answer event survived but was missed by retrieval. Aggregate keep recall
+  98.33% and forget precision 99.17% are per-case means, not micro-averages.
+
+These are product-quality gaps, not infrastructure failures. No production
+data was used: model-selected purge affected only the explicitly consented,
+owned synthetic fixture. The finding does not authorize automatic production
+deletion or demonstrate that simply replacing the model will solve the problem.
+No case, gold label, query prompt or score was tuned after this measurement.
+Future retrieval/retention changes require a new recipe and separately reported
+reuse of this now-measured cohort.
+
+Native recall latency was **p50 43.10 ms / p95 56.27 ms** over 20 calls.
+Copilot calls, including fresh CLI/bridge overhead, were **p50 9.41 s /
+p95 12.78 s**. Query-generation + recall + answer sums were **p50 19.34 s /
+p95 23.25 s**, excluding retention/setup. Usage was **344,416 input /
+7,254 output tokens**, 100 reported premium requests, with no additional
+diagnostic model calls in this increment. These are observed usage units,
+not a verified bill or production latency qualification.
+These counts cover the evaluation transport only, not development or
+cohort-authoring assistant usage; total session billing is not measured here.
+
 ## Fixed-model Copilot agent-memory pilot (2026-09-25)
 
 The product evaluation requested on 2026-09-25 is separate from database

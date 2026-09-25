@@ -19,6 +19,31 @@ separately from historical citation-based source recall. No production serving,
 worker, SQL search, authority or schema behavior changes.
 See [the cohort contract](EVALUATION.md#selecting-a-separately-frozen-evaluation-cohort).
 
+The first run at **`c521329`** completes 100 calls, but Native answers only
+**9/20** correctly versus **8/20** for recent context and **4/20** without memory.
+On the 16 answerable questions the figures are **5 / 4 / 0**, respectively.
+All four forget/abstention questions remain correct. Retrieved required-source
+coverage is **34.375%**; one incomplete evidence chain produces a wrong answer.
+Of 49 gold-keep events, 48 survive; all 90 gold-forget events are purged, plus
+one unrelated durable constraint incorrectly selected for deletion. The lost
+event is not the missing answer source in that case.
+
+The earlier 20/20 result therefore **does not generalize adequately** to this
+new synthetic cohort. Literal vocabulary/inflection, correction context and
+multi-step evidence retrieval remain product work; conservative retention also
+needs attention. No model/query/prompt/gold change was made after this run.
+Native recall p95 is **56.27 ms**; the model-query/recall/answer sum p95 is
+**23.25 s**, including CLI/bridge overhead, not a production SLA.
+See [full findings](EVALUATION.md#first-new-cohort-result-generalization-remains-insufficient)
+and [reviewed aggregate](../examples/copilot-memory-unseen-result.json).
+
+Engineering qualification of that exact source passes all eight native jobs
+in [run36136175922](https://github.com/rioriost/pg_agmemory/actions/runs/36136175922):
+both core architectures report **4,835 passed / 134 skipped**, plus separate
+18 COMMIT/13 request cases and six offline bridge checks. Packaged installation,
+HA, PITR and patched AGE remain successful. That does not override the
+unsatisfactory product-quality finding.
+
 ## Previous query integration: explicit lexical plans, unchanged search semantics
 
 The first pilot exposed an interface gap, not a need to broaden authorization
