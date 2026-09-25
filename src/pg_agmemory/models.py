@@ -14,6 +14,9 @@ from pydantic import (
     model_validator,
 )
 
+from pg_agmemory.query_planning import LEXICAL_QUERY_GUIDANCE
+from pg_agmemory.query_planning import SearchProfile as SearchProfile
+
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
 Content = Annotated[str, Field(min_length=1, max_length=65536)]
 Revision = Annotated[int, Field(ge=1, le=1000, strict=True)]
@@ -22,7 +25,6 @@ EntityType = Literal[
     "person", "organization", "project", "component", "incident", "task", "decision", "other"
 ]
 RelationType = Literal["depends_on", "part_of", "affects", "works_for", "decides"]
-SearchProfile = Literal["simple-v1", "ja-janome-0.5.0-v1"]
 RetrievalMode = Literal["lexical", "vector", "hybrid"]
 
 
@@ -224,7 +226,7 @@ class RecallFilters(Contract):
 
 
 class Recall(Contract):
-    query: Annotated[str, Field(max_length=4096)] = ""
+    query: Annotated[str, Field(max_length=4096, description=LEXICAL_QUERY_GUIDANCE)] = ""
     scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
     purpose: ShortText
     as_of: AwareDatetime | None = None

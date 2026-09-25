@@ -2909,6 +2909,47 @@ source purge `object_count: 3` → head `409 checkpoint_invalidated`をassertし
 [ADR 0018](../adr/0018-checkpoint-head-jp.md)、
 [検証済み証拠](../STATUS-jp.md#v0018--schema-10)を参照してください。
 
+## Lexical query planning
+
+`GET /v1/capabilities`の`lexical_query`はformat
+`pgag-lexical-query-v1`で**既存**の検索契約を示します。
+lexical検索とhybridのlexical側は`plainto_tsquery('simple', ...)`で生成したlexemeをAND結合します。
+`simple-v1`には英語stemmingや疑問詞の自動除去がありません。
+日本語profileはJanomeで日本語runを分割後、同じsimple辞書を使います。
+quote、`OR`、`NOT`、wildcardはoperatorを有効にしません。
+記号だけの非空queryは一致せず、空白/空queryは明示的な認可済みbrowseのままです。
+
+Native/OpenAPIとhookのquery説明、MCP recall toolでも同じ説明を使います。
+既存string query、4,096文字上限、ranking、RLS、時間条件、削除確認、byte予算は維持します。
+server側のLLM、書換え、query拡大、retry、空query fallbackは追加しません。
+
+provider非依存のplannerをcallerから利用できます。
+
+```python
+from pg_agmemory.models import Recall
+from pg_agmemory.query_planning import (
+    lexical_query_prompt, parse_lexical_query_plan,
+)
+
+prompt = lexical_query_prompt(question, search_profile="simple-v1")
+# 明示選択した生成providerからmodel_responseを取得する。
+plan = parse_lexical_query_plan(model_response)
+request = Recall(
+    query=plan.query, scope_ids=[scope_id], purpose="agent-memory",
+    search_profile="simple-v1",
+)
+result = await client.recall(request)
+```
+
+日本語には日本語profileを明示選択します。連携開始時に実serverの宣言契約を確認し、
+改訂評価では合成fixtureの破壊操作前にも確認します。
+`LexicalQueryPlan`は各64文字以下、空白なし、重複なしのterm 1～3個を受け付けます。
+termはliteralなchunkであり、PostgreSQL lexeme一個とは限りません。
+space結合でqueryを作り、正答値の代入やmodel/provider変更は行いません。
+空・重複・不正・非有限・余分なfieldの計画は明示失敗し、全件browseへ切り替えません。
+term選択はcallerの責任であり、stemming/vector検索がない場合、
+語形や同義語の違いで必要eventを取り逃す可能性は残ります。
+
 ## Exact structured recall filters
 
 **既存recall filter契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**

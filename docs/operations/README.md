@@ -3263,6 +3263,52 @@ source purge `object_count: 3` → head `409 checkpoint_invalidated`.
 See [the contract](../STATUS.md#checkpoint-head-lookup),
 [ADR 0018](../adr/0018-checkpoint-head.md), and [verified evidence](../STATUS.md#v0018--schema-10).
 
+## Lexical query planning
+
+`GET /v1/capabilities` advertises `lexical_query`, format
+`pgag-lexical-query-v1`. This describes the **existing** lexical predicate and
+the lexical branch of hybrid retrieval: `plainto_tsquery('simple', ...)` joins
+its resulting lexemes with AND. `simple-v1` has no English stemming or automatic
+question-word removal. The Japanese profile first segments Japanese runs with
+Janome and then uses the same simple dictionary. Quoting, `OR`, `NOT` and
+wildcards do not enable operators. A nonempty punctuation-only query matches
+nothing; an empty/whitespace query retains explicit authorized browsing.
+
+The identical guidance appears in Native/OpenAPI and hook query descriptions
+and the MCP recall tool. Existing string queries remain accepted with the same
+4,096-character limit, ranking, RLS, temporal eligibility, deletion checks and
+byte budgets. There is no server-side LLM, automatic rewrite, query broadening,
+retry or empty-query fallback.
+
+Callers can use the provider-neutral planner:
+
+```python
+from pg_agmemory.models import Recall
+from pg_agmemory.query_planning import (
+    lexical_query_prompt, parse_lexical_query_plan,
+)
+
+prompt = lexical_query_prompt(question, search_profile="simple-v1")
+# Obtain model_response from the explicitly selected generation provider.
+plan = parse_lexical_query_plan(model_response)
+request = Recall(
+    query=plan.query, scope_ids=[scope_id], purpose="agent-memory",
+    search_profile="simple-v1",
+)
+result = await client.recall(request)
+```
+
+Choose the Japanese profile explicitly for Japanese queries. Validate the
+actual server's advertised contract at integration startup; the revised
+evaluation additionally checks it before a destructive fixture operation.
+`LexicalQueryPlan` accepts 1–3 distinct whitespace-free terms of at most 64
+characters each. The terms are literal chunks, not necessarily single
+PostgreSQL lexemes. Compilation joins them with spaces; it never substitutes
+an answer value or changes the model/provider. Empty, duplicate, malformed,
+nonfinite and extra-field plans fail explicitly rather than browsing all memory.
+The caller remains responsible for term selection: without stemming or vector
+retrieval, a different word form or synonym can still miss the intended event.
+
 ## Exact structured recall filters
 
 **Retained recall-filter contract; v0.0.26 implementation verified locally and in native CI.**

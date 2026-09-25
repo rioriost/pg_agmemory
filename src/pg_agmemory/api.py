@@ -100,6 +100,7 @@ from pg_agmemory.models import (
     WorkingSnapshot,
 )
 from pg_agmemory.processing import Processing
+from pg_agmemory.query_planning import lexical_query_contract
 from pg_agmemory.request_deadline import (
     ERROR_RESPONSE_RESERVE_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
@@ -634,6 +635,7 @@ def create_app(
             "vector_search": True,
             "retrieval_modes": ["lexical", "vector", "hybrid"],
             "default_retrieval_mode": "lexical",
+            "lexical_query": lexical_query_contract(),
             "required_context": {
                 "retrieval_modes": ["lexical"],
                 "max_refs": 16,

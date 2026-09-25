@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -313,6 +314,7 @@ def test_smaller_declared_call_ceiling_is_enforced(transport):
 class DecisionBridge:
     def __init__(
         self, case, *, invalid_retention=False, query="report locale", answer="en-GB",
+        query_policy="legacy-v1", recall_raw=None,
     ):
         self.calls = []
         self.prompts = []
@@ -320,6 +322,8 @@ class DecisionBridge:
         self.invalid_retention = invalid_retention
         self.query = query
         self.answer = answer
+        self.query_policy = query_policy
+        self.recall_raw = recall_raw
 
     async def call(self, prompt, *, case_id, phase):
         self.prompts.append((phase, prompt))
@@ -336,6 +340,10 @@ class DecisionBridge:
                 ],
             })
         if phase == "recall_query":
+            if self.recall_raw is not None:
+                return self.recall_raw
+            if self.query_policy == "lexical-v2":
+                return json.dumps({"terms": self.query.split(" ")}, ensure_ascii=False)
             return json.dumps({"query": self.query})
         return json.dumps({
             "answer": self.answer, "source_event_ids": [self.case.events[1].event_id],
@@ -391,10 +399,20 @@ def native_fixture(tmp_path, monkeypatch):
         requests.append((request.method, request.url.path, data, dict(request.headers)))
         assert request.headers["authorization"] == "Bearer a.b.c"
         if request.url.path == "/v1/capabilities":
-            return native_response(200, json={
+            capabilities = {
                 "api_version": "v1", "service_version": __version__,
                 "schema_version": SCHEMA_VERSION,
-            })
+            }
+            if not failure.get("omit_lexical_contract"):
+                capabilities["lexical_query"] = failure.get(
+                    "lexical_query_contract", runner.query_planning.lexical_query_contract(),
+                )
+            if (
+                failure.get("change_contract_after_startup")
+                and sum(path == "/v1/capabilities" for _, path, _, _ in requests) > 2
+            ):
+                capabilities["lexical_query"] = {"format": "changed-contract"}
+            return native_response(200, json=capabilities)
         if request.url.path == "/v1/observe":
             assert data["scope_id"] == str(identity.scope_id)
             assert not data.get("auto_extract") and not data.get("auto_embed")
@@ -468,11 +486,12 @@ def native_fixture(tmp_path, monkeypatch):
     }
 
 
-def memory_case(fixture, bridge):
+def memory_case(fixture, bridge, *, query_policy="legacy-v1"):
     return asyncio.run(runner.memory_arm(
         fixture["case"], fixture["identity"], "owned-subject", fixture["foreign"],
         fixture["sentinel_id"], fixture["config"], b"private-key-not-exported",
         bridge, fixture["journal"],
+        query_policy=query_policy,
     ))
 
 
@@ -641,6 +660,7 @@ def test_startup_failure_persists_every_unmeasured_slot_without_zero_scores(tmp_
     journal = runner.Journal(tmp_path / "failed-run")
     summary = asyncio.run(runner.run(Namespace(
         api_url="http://127.0.0.1:58000", bridge=tmp_path / "unused-bridge",
+        query_policy="legacy-v1",
     ), journal))
     assert summary["status"] == "failed"
     assert summary["fatal_error"]["code"] == "owned_run_required"
@@ -729,7 +749,9 @@ def test_signed_native_startup_handles_only_bounded_guest_clock_skew(
     monkeypatch.setattr(httpx, "AsyncClient", http_client)
 
     async def connect():
-        async with runner.authenticated_client(config, subject, private_key, journal, "sentinel"):
+        async with runner.authenticated_client(
+            config, subject, private_key, journal, "sentinel", query_policy="legacy-v1",
+        ):
             pass
 
     if runner_ahead_seconds > runner.JWT_BACKDATE_SECONDS:
@@ -777,12 +799,13 @@ def test_unbackdated_token_reproduces_one_second_strict_iat_failure(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("query_policy", ["legacy-v1", "lexical-v2"])
 @pytest.mark.parametrize("case_index,query,answer", [
     (0, "report locale", "en-GB"),
     (2, "日付表記", "ISO8601"),
 ])
 def test_real_native_rls_purge_roundtrip_without_model(
-    env, api_process, tmp_path, case_index, query, answer,
+    env, api_process, tmp_path, case_index, query, answer, query_policy,
 ):
     """Scripted decisions test interoperability; every Native call uses real HTTP/PostgreSQL."""
     case = runner.recipe.pilot_cases()[case_index]
@@ -803,9 +826,11 @@ def test_real_native_rls_purge_roundtrip_without_model(
         )
         sentinel_id = await runner.seed_sentinel(
             config, foreign, env.subjects[1], env.private_key, journal,
+            query_policy=query_policy,
         )
         async with runner.authenticated_client(
             config, env.subjects[0], env.private_key, journal, case.case_id,
+            query_policy=query_policy,
         ) as client:
             hidden = await client.recall(runner.recall_request(foreign.scope_id, ""))
             assert isinstance(hidden, runner.RecallResult)
@@ -820,10 +845,11 @@ def test_real_native_rls_purge_roundtrip_without_model(
                 client, case.case_id, foreign, sentinel_id, journal,
             )
 
-        bridge = DecisionBridge(case, query=query, answer=answer)
+        bridge = DecisionBridge(case, query=query, answer=answer, query_policy=query_policy)
         measured, detail = await runner.memory_arm(
             case, identity, env.subjects[0], foreign, sentinel_id, config,
             env.private_key, bridge, journal,
+            query_policy=query_policy,
         )
         assert measured.error is None, detail
         assert detail["status"] == "completed"
@@ -841,6 +867,7 @@ def test_real_native_rls_purge_roundtrip_without_model(
         retained_id = UUID(detail["observed_event_ids"][case.events[1].event_id])
         async with runner.authenticated_client(
             config, env.subjects[0], env.private_key, journal, case.case_id,
+            query_policy=query_policy,
         ) as client:
             recalled = await client.recall(runner.recall_request(
                 identity.scope_id, "", language=case.language,
@@ -856,6 +883,7 @@ def test_real_native_rls_purge_roundtrip_without_model(
             )
         async with runner.authenticated_client(
             config, env.subjects[1], env.private_key, journal, "sentinel",
+            query_policy=query_policy,
         ) as foreign_client:
             source = await foreign_client.explain(runner.Explain(memory_id=sentinel_id))
             assert "ONLY_FOREIGN_" in source.source.content
@@ -867,3 +895,250 @@ def test_real_native_rls_purge_roundtrip_without_model(
 
     with api_process(f"agent-memory-native-{case.language}.log") as (http, _):
         asyncio.run(scenario(str(http.base_url)))
+
+
+def test_legacy_recipe_and_case_cohort_remain_byte_identical():
+    original = hashlib.sha256(Path(runner.recipe.__file__).read_bytes()).hexdigest()
+    assert original == "f5b7120d3cd44235e7165da6151030a4966d964959d66186ee8d81be0b293b13"
+    assert runner.recipe_digest("legacy-v1") == original
+    assert runner.recipe_digest() == original
+    assert hashlib.sha256(runner.json_bytes([
+        case.model_dump() for case in runner.recipe.pilot_cases()
+    ])).hexdigest() == "caf75aebb12ae11f8da4b85b7cf08e53cd1eb3b21d9682da1a07a6c0077aa398"
+    legacy = runner.query_policy_metadata("legacy-v1")
+    assert legacy["recipe_sha256"] == original
+    assert legacy["query_planning_contract"] is None
+    assert legacy["query_planning_sha256"] is None
+    lexical = runner.query_policy_metadata("lexical-v2")
+    assert lexical["base_recipe_sha256"] == original
+    assert lexical["recipe_sha256"] != original
+    assert lexical["recipe_sha256"] == hashlib.sha256(
+        runner.json_bytes(lexical["recipe_components"]),
+    ).hexdigest()
+    assert lexical["query_planning_sha256"] == hashlib.sha256(
+        Path(runner.query_planning.__file__).read_bytes(),
+    ).hexdigest()
+    assert lexical["query_planning_contract"] == runner.query_planning.lexical_query_contract()
+
+
+@pytest.mark.parametrize("query_policy", ["legacy-v1", "lexical-v2"])
+def test_query_policy_uses_question_only_and_keeps_other_prompts_identical(tmp_path, query_policy):
+    case = runner.recipe.pilot_cases()[0]
+    poisoned = case.model_copy(update={
+        "events": (), "expected_answer": "PRIVATE_GOLD_CANARY",
+        "expected_keep_ids": ("PRIVATE_GOLD_CANARY",),
+        "required_source_ids": ("PRIVATE_GOLD_CANARY",),
+        "forbidden_answers": ("PRIVATE_GOLD_CANARY",),
+    })
+    journal = runner.Journal(tmp_path / "query-prompts")
+    bridge = DecisionBridge(case, query_policy=query_policy)
+    compiled, detail = asyncio.run(runner.plan_recall_query(
+        poisoned, bridge, journal, query_policy,
+    ))
+    expected_prompt = (
+        runner.recipe.recall_prompt(case) if query_policy == "legacy-v1"
+        else runner.query_planning.lexical_query_prompt(case.question, "simple-v1")
+    )
+    assert bridge.prompts == [("recall_query", expected_prompt)]
+    assert compiled == "report locale" and detail["compiled_query"] == compiled
+    assert "PRIVATE_GOLD_CANARY" not in bridge.prompts[0][1]
+    assert all(event.text not in bridge.prompts[0][1] for event in case.events)
+    assert detail["query_policy"] == query_policy
+    assert detail["query_plan"] == (
+        {"terms": ["report", "locale"]} if query_policy == "lexical-v2" else None
+    )
+    frozen_prompts = runner.fixed_prompt_hashes((case,))[case.case_id]
+    assert frozen_prompts == {
+        "retention": hashlib.sha256(runner.recipe.retention_prompt(case).encode()).hexdigest(),
+        "no_memory": hashlib.sha256(runner.recipe.answer_prompt(case, ()).encode()).hexdigest(),
+        "recent_window": hashlib.sha256(runner.recipe.answer_prompt(
+            case, runner.recipe.recent_context(case),
+        ).encode()).hexdigest(),
+    }
+
+
+def test_v2_query_plan_compiles_once_and_is_private_causality_evidence(native_fixture):
+    bridge = DecisionBridge(native_fixture["case"], query_policy="lexical-v2")
+    measured, detail = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    assert measured.error is None
+    assert detail["query_policy"] == "lexical-v2"
+    assert detail["query_plan"] == {"terms": ["report", "locale"]}
+    assert json.loads(detail["query_plan_raw"]) == detail["query_plan"]
+    assert detail["compiled_query"] == "report locale"
+    assert detail["recall_decision"] == {"query": "report locale"}
+    assert len(bridge.calls) == 3
+    owner_queries = [
+        body for _, path, body, _ in native_fixture["requests"]
+        if path == "/v1/recall"
+        and body["scope_ids"] == [str(native_fixture["identity"].scope_id)]
+    ]
+    assert len(owner_queries) == 1 and owner_queries[0]["query"] == "report locale"
+    events = [
+        json.loads(line) for line in native_fixture["journal"].path.read_text().splitlines()
+    ]
+    plans = [event for event in events if event["phase"] == "query_plan_compiled"]
+    assert len(plans) == 1
+    assert plans[0]["query_plan_raw"] == detail["query_plan_raw"]
+    assert plans[0]["compiled_query"] == owner_queries[0]["query"]
+    assert native_fixture["journal"].path.stat().st_mode & 0o077 == 0
+    compiled_at = next(
+        i for i, event in enumerate(events) if event["phase"] == "query_plan_compiled"
+    )
+    recall_at = next(
+        i for i, event in enumerate(events)
+        if event["phase"] == "native_intent" and event["operation"] == "recall"
+    )
+    assert compiled_at < recall_at
+    retained = native_fixture["case"].events[1]
+    prompts = dict(bridge.prompts)
+    assert prompts["retention"] == runner.recipe.retention_prompt(native_fixture["case"])
+    assert prompts["pg_agmemory"] == runner.recipe.answer_prompt(
+        native_fixture["case"], (retained,),
+    )
+
+
+@pytest.mark.parametrize("raw", [
+    '{"terms":[]}', '{"terms":["report locale"]}', '{"terms":["REPORT","report"]}',
+    '{"terms":["one","two","three","four"]}', '{"query":"report locale"}',
+    '{"terms":["report"],"extra":true}', '{"terms":["report"],"terms":["locale"]}',
+    '{"terms":[NaN]}',
+])
+def test_v2_invalid_plan_stops_without_retry_browse_or_broadening(native_fixture, raw):
+    bridge = DecisionBridge(
+        native_fixture["case"], query_policy="lexical-v2", recall_raw=raw,
+    )
+    measured, detail = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    assert measured.error == "invalid_query_plan"
+    assert measured.answer is None and detail["rollback_claimed"] is False
+    assert detail["stopped_at_phase"] == "recall_decision"
+    assert [phase for phase, _ in bridge.prompts] == ["retention", "recall_query"]
+    assert not any(
+        path == "/v1/recall" and body["scope_ids"] == [str(native_fixture["identity"].scope_id)]
+        for _, path, body, _ in native_fixture["requests"]
+    )
+    events = [
+        json.loads(line) for line in native_fixture["journal"].path.read_text().splitlines()
+    ]
+    raw_events = [event for event in events if event["phase"] == "query_plan_received"]
+    assert len(raw_events) == 1 and raw_events[0]["raw_response"] == raw
+    assert not any(event["phase"] == "query_plan_compiled" for event in events)
+
+
+@pytest.mark.parametrize("changed", [None, {"format": "different-contract"}])
+def test_v2_capability_mismatch_prevents_model_dispatch_and_observe(native_fixture, changed):
+    native_fixture["failure"]["lexical_query_contract"] = changed
+    bridge = DecisionBridge(native_fixture["case"], query_policy="lexical-v2")
+    measured, detail = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    assert measured.error == "lexical_query_contract_mismatch"
+    assert detail["stopped_at_phase"] == "native_connect"
+    assert not bridge.calls and not native_fixture["stored"]
+    assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
+
+
+def test_v2_contract_is_rechecked_before_purge_without_model_retry(native_fixture):
+    native_fixture["failure"]["change_contract_after_startup"] = True
+    bridge = DecisionBridge(native_fixture["case"], query_policy="lexical-v2")
+    measured, detail = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    assert measured.error == "lexical_query_contract_mismatch"
+    assert detail["stopped_at_phase"] == "query_contract_before_purge"
+    assert len(bridge.calls) == 1
+    assert len(native_fixture["stored"]) == len(native_fixture["case"].events)
+    assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
+
+
+def test_v2_contract_comparison_does_not_coerce_boolean_to_integer(native_fixture):
+    altered = runner.query_planning.lexical_query_contract()
+    altered["english_stemming"] = 0
+    native_fixture["failure"]["lexical_query_contract"] = altered
+    bridge = DecisionBridge(native_fixture["case"], query_policy="lexical-v2")
+    measured, _ = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    assert measured.error == "lexical_query_contract_mismatch"
+    assert not bridge.calls and not native_fixture["stored"]
+
+
+def test_v2_run_checks_real_capability_before_any_control_model_dispatch(
+    tmp_path, native_fixture, transport, monkeypatch,
+):
+    from argparse import Namespace
+
+    _, environment = owned_environment(tmp_path)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setenv("PGAG_AGENT_EVAL_SOURCE_REVISION", "a" * 40)
+    key_path = tmp_path / "fixture-key"
+    key_path.write_bytes(b"unit-test-bearer-is-stubbed")
+    key_path.chmod(0o600)
+    monkeypatch.setenv("PGAG_AGENT_EVAL_JWT_PRIVATE_KEY_FILE", str(key_path))
+    native_fixture["failure"]["omit_lexical_contract"] = True
+
+    async def provision_without_database(*args):
+        return native_fixture["foreign"]
+
+    monkeypatch.setattr(runner, "provision", provision_without_database)
+    journal = runner.Journal(tmp_path / "v2-failed-startup")
+    summary = asyncio.run(runner.run(Namespace(
+        api_url=native_fixture["config"].api_url, bridge=transport.directory,
+        query_policy="lexical-v2",
+    ), journal))
+    assert summary["fatal_error"]["code"] == "lexical_query_contract_mismatch"
+    assert summary["calls_dispatched"] == 0
+    assert summary["query_policy"] == "lexical-v2"
+    assert summary["evaluation_cohort"]["held_out"] is False
+    assert not list(transport.queue.iterdir())
+    assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
+
+
+def test_explicit_legacy_replay_does_not_require_new_capability(native_fixture):
+    native_fixture["failure"]["omit_lexical_contract"] = True
+    measured, detail = memory_case(
+        native_fixture, DecisionBridge(native_fixture["case"]), query_policy="legacy-v1",
+    )
+    assert measured.error is None
+    assert detail["query_policy"] == "legacy-v1"
+    assert detail["query_plan"] is None
+    assert detail["recall_decision"] == {"query": "report locale"}
+
+
+@pytest.mark.parametrize("option,expected", [
+    ([], "lexical-v2"),
+    (["--query-policy", "lexical-v2"], "lexical-v2"),
+    (["--query-policy", "legacy-v1"], "legacy-v1"),
+])
+def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option, expected):
+    selected = []
+
+    async def capture_arguments(args, journal):
+        selected.append(args.query_policy)
+        return {"status": "completed", "calls_dispatched": 0}
+
+    monkeypatch.setattr(runner, "run", capture_arguments)
+    monkeypatch.setenv("PGAG_AGENT_EVAL_API_URL", "http://127.0.0.1:58000")
+    monkeypatch.setattr(sys, "argv", [
+        "evaluate-agent-memory.py", "--output", str(tmp_path / "cli-output"),
+        "--bridge", str(tmp_path / "cli-bridge"), *option,
+    ])
+    assert runner.main() == 0
+    assert selected == [expected]
+    assert json.loads(capsys.readouterr().out)["calls_dispatched"] == 0
+
+
+@pytest.mark.parametrize("option,accepted", [
+    ([], True), (["--query-policy", "lexical-v2"], True),
+    (["--query-policy", "legacy-v1"], True), (["--query-policy", "unknown"], False),
+    (["--wrong-flag", "lexical-v2"], False), (["--query-policy"], False),
+])
+def test_owned_shell_accepts_only_versioned_query_policy_without_starting_guests(option, accepted):
+    result = subprocess.run(
+        [
+            "bash", str(ROOT / "scripts/evaluate-agent-memory-containers.sh"),
+            f"query-policy-parser-test-{uuid4().hex}",
+            "gpt-6-astra", "high", "--allow-copilot", *option,
+        ],
+        cwd=ROOT, env={**os.environ, "PGAG_DATABASE_URL": "forbidden-parser-test-target"},
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    assert result.returncode == 2
+    assert ("external_database_target_forbidden" in result.stderr) is accepted
+    if not accepted:
+        assert "Usage:" in result.stderr

@@ -714,6 +714,23 @@ See [the contract](docs/STATUS.md#checkpoint-head-lookup),
 [the practical lookup and upgrade](docs/operations/README.md#checkpoint-head-lookup),
 and [ADR 0018](docs/adr/0018-checkpoint-head.md).
 
+## Query planning for lexical recall
+
+Lexical recall is **all-lexeme matching**, not natural-language semantic search.
+It does not stem English words; adding question grammar or synonyms can prevent
+a match. The Native `Recall.query` schema, MCP tool, hook schema and authenticated
+capabilities now share `pgag-lexical-query-v1` guidance. SQL ranking, permissions,
+time/deletion filters, request limits and default retrieval mode are unchanged.
+
+Use `pg_agmemory.query_planning.lexical_query_prompt(question, search_profile)`
+with the selected LLM, then validate its `{"terms":[...]}` response with
+`parse_lexical_query_plan`. Pass the resulting `plan.query` to the normal
+`Recall` request. Plans admit one to three short literal terms, not an invented
+answer, search operators or a silently substituted empty query.
+No model call, query rewrite, OR search or browse fallback is added to the server.
+See [the query contract](docs/operations/README.md#lexical-query-planning)
+and [the separately versioned comparison](docs/EVALUATION.md#lexical-v2-query-planning-comparison).
+
 ## Exact structured recall filters
 
 **Retained recall-filter contract; v0.0.26 implementation verified locally and in native CI.**

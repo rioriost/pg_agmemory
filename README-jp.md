@@ -662,6 +662,22 @@ schema 11はcapture policy migration 011を要求し、依存version/artifact固
 [照会例と更新](docs/operations/README-jp.md#checkpoint-head-lookup)、
 [ADR 0018](docs/adr/0018-checkpoint-head-jp.md)を参照してください。
 
+## Lexical recallのquery計画
+
+Lexical recallは**全lexeme一致**であり、自然文の意味検索ではありません。
+英語stemmingもないため、疑問文の文法語や同義語を足すと一致しなくなります。
+Native `Recall.query` schema、MCP tool、hook schema、認証済みcapabilitiesで
+`pgag-lexical-query-v1`の説明を共有します。SQL ranking、認可、時間/削除filter、
+request上限、既定の検索modeは変更しません。
+
+選択したLLMへ`pg_agmemory.query_planning.lexical_query_prompt(question, search_profile)`を渡し、
+`{"terms":[...]}`応答を`parse_lexical_query_plan`で検証します。
+`plan.query`を通常の`Recall`へ渡します。計画は短いliteral term 1～3個に限定し、
+正答の推測や検索operator、空queryへの無断置換を行いません。
+serverへのLLM呼出し、query書換え、OR検索、browse fallbackは追加しません。
+[query契約](docs/operations/README-jp.md#lexical-query-planning)と
+[別versionの比較](docs/EVALUATION-jp.md#lexical-v2-query-planning-comparison)を参照してください。
+
 ## Exact structured recall filters
 
 **既存recall filter契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**

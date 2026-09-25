@@ -22,6 +22,9 @@ Directories must be private (0700), files private (0600), and queue/output empty
 No secret is accepted as a command-line argument or included in reports.
 Fixture JWT issued-at times are backdated by at most 30 seconds for independent
 guest clocks. Expiration and the Native API's strict authentication are unchanged.
+Query policy defaults to lexical-v2, which verifies the shared Native lexical
+planning contract before model dispatch. Explicit legacy-v1 preserves the original
+query prompt/parser and recipe digest. This is the same regression cohort, not held-out data.
 """
 
 from __future__ import annotations
@@ -50,7 +53,16 @@ import jwt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pg_agmemory import agent_evaluation as recipe
-from pg_agmemory.models import Explain, Forget, Observe, Recall, RecallFilters, RecallResult
+from pg_agmemory import query_planning
+from pg_agmemory.models import (
+    Explain,
+    Forget,
+    Observe,
+    Recall,
+    RecallFilters,
+    RecallResult,
+    SearchProfile,
+)
 from pg_agmemory.native_client import NativeSettings
 from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 
@@ -60,6 +72,8 @@ RESPONSE_TIMEOUT = 180.0
 JWT_BACKDATE_SECONDS = 30
 RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
+QueryPolicy = Literal["legacy-v1", "lexical-v2"]
+QUERY_POLICIES = ("legacy-v1", "lexical-v2")
 
 
 class EvaluationFailure(Exception):
@@ -486,7 +500,9 @@ def bearer(subject: str, key: bytes, config: OwnedConfig) -> str:
 @asynccontextmanager
 async def authenticated_client(
     config: OwnedConfig, subject: str, key: bytes, journal: Journal, case_id: str,
+    *, query_policy: QueryPolicy = "lexical-v2",
 ) -> AsyncIterator[AsyncMemoryClient]:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
     connected = False
     started = time.monotonic()
     journal.emit("native_intent", case_id=case_id, operation="capabilities", mutation=False)
@@ -497,6 +513,8 @@ async def authenticated_client(
                 "native_completed", case_id=case_id, operation="capabilities",
                 elapsed_seconds=time.monotonic() - started,
             )
+            if query_policy == "lexical-v2":
+                await verify_query_contract(client, journal, case_id)
             yield client
     except BaseException as exc:
         if not connected:
@@ -505,6 +523,39 @@ async def authenticated_client(
                 elapsed_seconds=time.monotonic() - started, error=safe_error(exc),
             )
         raise
+
+
+async def verify_query_contract(
+    client: AsyncMemoryClient, journal: Journal, case_id: str,
+) -> None:
+    journal.emit(
+        "native_intent", case_id=case_id, operation="lexical_query_contract", mutation=False,
+    )
+    started = time.monotonic()
+    try:
+        status, capabilities = await client._connection().exchange("/v1/capabilities")
+        expected = query_planning.lexical_query_contract()
+        received = capabilities.get("lexical_query") if isinstance(capabilities, dict) else None
+        journal.emit(
+            "query_contract_received", case_id=case_id, query_policy="lexical-v2",
+            lexical_query=received,
+            expected_contract_sha256=hashlib.sha256(json_bytes(expected)).hexdigest(),
+        )
+        require(
+            status == 200 and isinstance(received, dict)
+            and json_bytes(received) == json_bytes(expected),
+            "lexical_query_contract_mismatch",
+        )
+    except BaseException as exc:
+        journal.emit(
+            "native_failure", case_id=case_id, operation="lexical_query_contract",
+            elapsed_seconds=time.monotonic() - started, error=safe_error(exc),
+        )
+        raise
+    journal.emit(
+        "native_completed", case_id=case_id, operation="lexical_query_contract",
+        elapsed_seconds=time.monotonic() - started,
+    )
 
 
 async def native_call(
@@ -529,12 +580,16 @@ async def native_call(
     return result
 
 
+def lexical_profile(language: str) -> SearchProfile:
+    return "ja-janome-0.5.0-v1" if language == "ja" else "simple-v1"
+
+
 def recall_request(scope_id: UUID, query: str, *, language: str = "en") -> Recall:
     return Recall(
         query=query, scope_ids=[scope_id], purpose="owned-synthetic-agent-memory-evaluation",
         mode="explicit", max_items=8, token_budget=8000,
         filters=RecallFilters(kind="episode"), retrieval_mode="lexical",
-        search_profile="ja-janome-0.5.0-v1" if language == "ja" else "simple-v1",
+        search_profile=lexical_profile(language),
     )
 
 
@@ -654,10 +709,46 @@ async def verify_isolation(
             )
 
 
+async def plan_recall_query(
+    case: recipe.AgentMemoryCase, bridge: FileBridge, journal: Journal,
+    query_policy: QueryPolicy,
+) -> tuple[str, dict[str, Any]]:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    profile = lexical_profile(case.language)
+    prompt = (
+        recipe.recall_prompt(case) if query_policy == "legacy-v1"
+        else query_planning.lexical_query_prompt(case.question, profile)
+    )
+    raw = await bridge.call(prompt, case_id=case.case_id, phase="recall_query")
+    journal.emit(
+        "query_plan_received", case_id=case.case_id, query_policy=query_policy,
+        search_profile=profile, raw_response=raw,
+    )
+    try:
+        if query_policy == "legacy-v1":
+            compiled = recipe.validate_recall(raw).query
+            plan = None
+        else:
+            parsed = query_planning.parse_lexical_query_plan(raw)
+            compiled = parsed.query
+            plan = parsed.model_dump(mode="json")
+    except (ValueError, TypeError):
+        raise EvaluationFailure(
+            "invalid_recall_decision" if query_policy == "legacy-v1" else "invalid_query_plan",
+        ) from None
+    detail = {
+        "query_policy": query_policy, "query_plan_raw": raw, "query_plan": plan,
+        "compiled_query": compiled, "search_profile": profile,
+    }
+    journal.emit("query_plan_compiled", case_id=case.case_id, **detail)
+    return compiled, detail
+
+
 async def memory_arm(
     case: recipe.AgentMemoryCase, identity: Provisioned, subject: str,
     foreign: Provisioned, sentinel_id: UUID, config: OwnedConfig, key: bytes,
     bridge: FileBridge, journal: Journal,
+    *, query_policy: QueryPolicy = "lexical-v2",
 ) -> tuple[recipe.ArmObservation, dict[str, Any]]:
     start = len(bridge.calls)
     context: tuple[recipe.Event, ...] = ()
@@ -666,7 +757,9 @@ async def memory_arm(
     answer = None
     error = None
     native_latencies = []
-    detail: dict[str, Any] = {"arm": "pg_agmemory", "status": "started"}
+    detail: dict[str, Any] = {
+        "arm": "pg_agmemory", "status": "started", "query_policy": query_policy,
+    }
     phase = "native_connect"
     journal.emit("arm_started", case_id=case.case_id, arm="pg_agmemory")
 
@@ -682,7 +775,9 @@ async def memory_arm(
             native_latencies.append(float((time.monotonic() - started) * 1000))
 
     try:
-        async with authenticated_client(config, subject, key, journal, case.case_id) as client:
+        async with authenticated_client(
+            config, subject, key, journal, case.case_id, query_policy=query_policy,
+        ) as client:
             phase = "rls_probe"
             await verify_isolation(client, case.case_id, foreign, sentinel_id, journal)
             detail["isolation_denials_verified"] = 2
@@ -722,6 +817,9 @@ async def memory_arm(
                 "retention_validated", case_id=case.case_id, decision=retention.model_dump(),
             )
             if retention.forget_ids:
+                if query_policy == "lexical-v2":
+                    phase = "query_contract_before_purge"
+                    await verify_query_contract(client, journal, case.case_id)
                 targets = [memory_ids[event_id] for event_id in retention.forget_ids]
                 for mode in ("preview", "purge"):
                     phase = f"forget_{mode}"
@@ -761,18 +859,15 @@ async def memory_arm(
                         raise EvaluationFailure("purged_episode_still_visible")
                 detail["purged_objects_verified_absent"] = len(targets)
             phase = "recall_decision"
-            raw = await bridge.call(
-                recipe.recall_prompt(case), case_id=case.case_id, phase="recall_query",
+            compiled_query, query_detail = await plan_recall_query(
+                case, bridge, journal, query_policy,
             )
-            try:
-                decision = recipe.validate_recall(raw)
-            except (ValueError, TypeError):
-                raise EvaluationFailure("invalid_recall_decision") from None
-            detail["recall_decision"] = decision.model_dump()
+            detail.update(query_detail)
+            detail["recall_decision"] = {"query": compiled_query}
             phase = "recall"
             result = await native(
                 "recall", lambda: client.recall(recall_request(
-                    identity.scope_id, decision.query, language=case.language,
+                    identity.scope_id, compiled_query, language=case.language,
                 )),
             )
             context, mapping = returned_context(case, result, memory_ids)
@@ -816,8 +911,11 @@ async def memory_arm(
 
 async def seed_sentinel(
     config: OwnedConfig, foreign: Provisioned, subject: str, key: bytes, journal: Journal,
+    *, query_policy: QueryPolicy = "lexical-v2",
 ) -> UUID:
-    async with authenticated_client(config, subject, key, journal, "sentinel") as client:
+    async with authenticated_client(
+        config, subject, key, journal, "sentinel", query_policy=query_policy,
+    ) as client:
         idempotency_key = f"{config.run_id}:sentinel:observe"
         request = Observe(
             scope_id=foreign.scope_id, source_namespace=config.run_id,
@@ -834,9 +932,56 @@ async def seed_sentinel(
         return result.memory_id
 
 
-def recipe_digest() -> str:
+def recipe_digest(query_policy: QueryPolicy = "legacy-v1") -> str:
     source = Path(recipe.__file__).read_bytes()
-    return hashlib.sha256(source).hexdigest()
+    original = hashlib.sha256(source).hexdigest()
+    if query_policy == "legacy-v1":
+        return original
+    return query_policy_metadata(query_policy)["recipe_sha256"]
+
+
+def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    base_digest = recipe_digest("legacy-v1")
+    contract = query_planning.lexical_query_contract() if query_policy == "lexical-v2" else None
+    module_digest = (
+        hashlib.sha256(Path(query_planning.__file__).read_bytes()).hexdigest()
+        if query_policy == "lexical-v2" else None
+    )
+    components = {
+        "format": "pgag-agent-memory-query-recipe-v2", "query_policy": query_policy,
+        "base_recipe_sha256": base_digest, "query_planning_sha256": module_digest,
+        "query_planning_contract": contract,
+    }
+    return {
+        "query_policy": query_policy, "base_recipe_sha256": base_digest,
+        "query_planning_sha256": module_digest, "query_planning_contract": contract,
+        "recipe_digest_format": (
+            components["format"] if query_policy == "lexical-v2"
+            else "sha256-agent-evaluation-source-v1"
+        ),
+        "recipe_sha256": (
+            base_digest if query_policy == "legacy-v1"
+            else hashlib.sha256(json_bytes(components)).hexdigest()
+        ),
+        "query_planning_contract_sha256": (
+            hashlib.sha256(json_bytes(contract)).hexdigest() if contract is not None else None
+        ),
+        "recipe_components": components if query_policy == "lexical-v2" else None,
+    }
+
+
+def fixed_prompt_hashes(cases: tuple[recipe.AgentMemoryCase, ...]) -> dict[str, Any]:
+    def digest(prompt: str) -> str:
+        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+    return {
+        case.case_id: {
+            "retention": digest(recipe.retention_prompt(case)),
+            "no_memory": digest(recipe.answer_prompt(case, ())),
+            "recent_window": digest(recipe.answer_prompt(case, recipe.recent_context(case))),
+        } for case in cases
+    }
 
 
 def latency_summary(values: list[float]) -> dict[str, float | int | None]:
@@ -857,6 +1002,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
     config = None
     fatal = None
     manifest: dict[str, Any] = {
+        **query_policy_metadata(args.query_policy),
         "format": "pgag-agent-memory-evaluation-v1",
         "benchmark_qualified": False, "automatic_effects": False,
         "synthetic_fixture_only": True, "fixture_purge_consent_required": True,
@@ -869,7 +1015,11 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             "authentication_retries": 0,
         },
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "recipe_sha256": recipe_digest(),
+        "fixed_prompt_sha256": fixed_prompt_hashes(cases),
+        "evaluation_cohort": {
+            "kind": "same_20_case_regression_cohort", "held_out": False,
+            "baseline_revision": "9c84c7f",
+        },
         "cases_sha256": hashlib.sha256(
             json_bytes([case.model_dump() for case in cases]),
         ).hexdigest(),
@@ -917,7 +1067,9 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         # below never uses admin credentials or bypasses the HTTP authorization boundary.
         foreign_subject = f"{config.run_id}:foreign-sentinel"
         foreign = await provision(foreign_subject, os.environ["PGAG_ADMIN_DATABASE_URL"], journal)
-        sentinel_id = await seed_sentinel(config, foreign, foreign_subject, key, journal)
+        sentinel_id = await seed_sentinel(
+            config, foreign, foreign_subject, key, journal, query_policy=args.query_policy,
+        )
         identities = [foreign]
         for case in cases:
             detail: dict[str, Any] = {
@@ -945,12 +1097,15 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             detail["identity"] = identity.model_dump(mode="json")
             measured, arm_detail = await memory_arm(
                 case, identity, subject, foreign, sentinel_id, config, key, bridge, journal,
+                query_policy=args.query_policy,
             )
             observations[(case.case_id, "pg_agmemory")] = measured
             detail["arms"]["pg_agmemory"] = arm_detail
             journal.emit("case_completed", case_id=case.case_id)
             if measured.error in ("isolation_breach", "foreign_or_invalid_recall_item"):
                 raise EvaluationFailure("isolation_breach")
+            if measured.error == "lexical_query_contract_mismatch":
+                raise EvaluationFailure("lexical_query_contract_mismatch")
             if bridge.poisoned:
                 raise EvaluationFailure("bridge_outcome_unknown", outcome_unknown=True)
     except Exception as exc:
@@ -1012,6 +1167,10 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path, help="New or empty private directory")
     parser.add_argument(
         "--bridge", required=True, type=Path, help="Private host file-queue directory",
+    )
+    parser.add_argument(
+        "--query-policy", choices=QUERY_POLICIES, default="lexical-v2",
+        help="Versioned query planning; legacy-v1 explicitly replays the original query recipe",
     )
     args = parser.parse_args()
     if not args.api_url:

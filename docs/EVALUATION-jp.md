@@ -24,7 +24,7 @@ host Copilot processへ渡しません。
 ```bash
 mkdir -p .review-artifacts
 bash scripts/evaluate-agent-memory-containers.sh \
-  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot
+  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot --query-policy legacy-v1
 ```
 
 cleanなcommit済みcheckout、Apple Container、Node.js、認証済みhost Copilot CLIが必要です。
@@ -52,6 +52,28 @@ semantic vector品質、自由記述推論、multimodal memory、公開benchmark
 768次元の宣言embedding契約は維持します。CLI bridgeは評価専用で、製品推論backendの追加ではありません。
 raw prompt/responseとjournalは新規出力先で非公開保持し、公開は確認した集計値だけにします。
 harnessは所有DB/APIと一時credentialだけをcleanupし、外部datasetは削除しません。
+
+### Lexical-v2 query planning comparison
+
+改訂policyは`--query-policy lexical-v2`で明示し、wrapperの新defaultもv2です。
+実Native APIが公開する製品側query計画契約を使い、選択modelへliteral term 1～3個を要求します。
+構造化計画を検証し、結合したqueryを通常SDKで送信します。
+server契約不一致はmodel dispatch前に失敗し、fixture purge前にも再確認します。
+serverのmatching/rankingや認可規則は変えません。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-pilot-v2-01 gpt-6-astra high --allow-copilot \
+  --query-policy lexical-v2
+```
+
+元の`agent_evaluation.py`、scenario/gold、保持/回答prompt、採点はbyte単位で維持します。
+`legacy-v1`は元のrecipe digestと非構造化query生成を維持します。
+v2は元recipe、query計画module、公開契約を含む別recipe digestへ結び、
+raw計画・結合query・policyを非公開で記録します。
+100 call上限、context、model選択、retry禁止、失敗の分母は同じです。
+これは**初回診断後の同一回帰cohort再測定**であり、盲検held-out評価、
+model比較、一般的な製品受入れではありません。初回結果は上書きしません。
 
 ### 初回Copilot実測: 記憶の実用性は未認定
 

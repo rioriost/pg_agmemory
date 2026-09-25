@@ -31,7 +31,7 @@ are never passed in model prompts or copied into the host Copilot process.
 ```bash
 mkdir -p .review-artifacts
 bash scripts/evaluate-agent-memory-containers.sh \
-  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot
+  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot --query-policy legacy-v1
 ```
 
 This requires a clean committed checkout, Apple Container, Node.js and an
@@ -70,6 +70,31 @@ The CLI bridge is evaluation-only, not a new production inference backend.
 Raw prompts/responses and journals stay private in the new output directory;
 publish only reviewed aggregate results. The harness destroys its owned
 database/API and removes temporary credentials, never an external dataset.
+
+### Lexical-v2 query planning comparison
+
+The improved policy is explicit: `--query-policy lexical-v2` (the wrapper's new
+default). It consumes the same production query-planning contract advertised by
+the real Native API, asks the selected model for 1–3 literal terms, validates
+the structured plan, and submits its compiled query through the normal SDK.
+An incompatible server contract fails before model dispatch and is rechecked
+before fixture purge. No server matching/ranking or authorization rule changes.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-pilot-v2-01 gpt-6-astra high --allow-copilot \
+  --query-policy lexical-v2
+```
+
+The original `agent_evaluation.py` source, scenario/gold data, retention/answer
+prompts and scoring remain byte-identical. `legacy-v1` preserves the original
+recipe digest and unstructured query generation. V2 binds a different recipe
+digest containing the original recipe, query-planning module and advertised
+contract; raw model plans, compiled queries and policy are retained privately.
+The 100-call limit, contexts, model choice, no-retry rule and failure denominators
+are unchanged. This is a **post-diagnostic repeat of the same regression cohort**,
+not blinded held-out evaluation, a model comparison or general product acceptance.
+The first result below is never overwritten by a later improvement.
 
 ### First complete Copilot measurement: product usefulness not qualified
 

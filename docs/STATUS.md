@@ -2,7 +2,26 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## Product-usefulness pilot: retention works, retrieval remains inadequate
+## Query integration: explicit lexical plans, unchanged search semantics
+
+The first pilot exposed an interface gap, not a need to broaden authorization
+or silently replace lexical search. Native capabilities now declare
+`pgag-lexical-query-v1`; the same all-lexeme/no-stemming guidance appears in the
+Native query schema, MCP recall tool and hook schema. The provider-independent
+planner requests 1–3 short literal terms and validates/compiles them into the
+existing string query. Invalid plans never fall back to empty-query browsing.
+
+SQL matching, ranking, RLS, deletion/time filters, model selection and request
+limits are unchanged. The opt-in evaluator defaults to explicit `lexical-v2`,
+checks the real server's contract before dispatch and before purge, and records
+raw plans/compiled queries under a new recipe digest. `legacy-v1` remains
+available with its original recipe. The case/scorer/retention/answer source and
+the first published measurement are untouched. Any repeat is a regression
+comparison on already-diagnosed cases, not held-out product qualification.
+See [the query contract](operations/README.md#lexical-query-planning) and
+[comparison method](EVALUATION.md#lexical-v2-query-planning-comparison).
+
+## Previous product-usefulness pilot: retention works, retrieval remains inadequate
 
 The first complete fixed-model Copilot experiment at **`862fb2b`** ran
 **GPT-6 Astra/high**, 20 bilingual synthetic scenarios and 100 calls.

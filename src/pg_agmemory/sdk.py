@@ -328,6 +328,7 @@ class AsyncMemoryClient:
         )
 
     async def recall(self, request: Recall) -> RecallResult:
+        """Recall scoped evidence; lexical terms are ANDed without English stemming."""
         return await self._post(
             "/v1/recall", request, Recall, TypeAdapter(RecallResult), mutation=False
         )

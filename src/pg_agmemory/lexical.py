@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING, Any
 
 import psycopg
 
+from pg_agmemory.query_planning import JAPANESE_PROFILE as JAPANESE_PROFILE
+from pg_agmemory.query_planning import SEARCH_PROFILES as SEARCH_PROFILES
+
 if TYPE_CHECKING:
     from janome.tokenizer import Tokenizer
 
-JAPANESE_PROFILE = "ja-janome-0.5.0-v1"
-SEARCH_PROFILES = ["simple-v1", JAPANESE_PROFILE]
 JAPANESE_RUN = re.compile(
     r"[\u3005-\u3007\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
     r"\uf900-\ufaff\U00020000-\U0002fa1f]+"

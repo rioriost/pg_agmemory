@@ -2,7 +2,23 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## 製品実用性pilot: 保持は成功、検索は不十分
+## Query連携: 明示的なlexical計画と既存検索契約
+
+初回pilotの問題を、認可の拡大やlexical検索の無断置換ではなく、連携契約として修正します。
+Native capabilitiesに`pgag-lexical-query-v1`を公開し、
+全lexeme一致・stemmingなしの説明をNative query schema、MCP recall、hook schemaで共有します。
+provider非依存plannerは短いliteral term 1～3個を要求し、
+検証・結合して既存string queryへ渡します。不正計画を空query browseへ切り替えません。
+
+SQL matching/ranking、RLS、削除/時間filter、model選択、request上限は変更しません。
+opt-in評価は`lexical-v2`をdefaultとし、実server契約をdispatch前・purge前に確認して、
+raw計画/結合queryを別recipe digestで記録します。`legacy-v1`も元recipeで利用できます。
+case/採点/保持/回答のsourceと初回公開結果は変更していません。
+再実行は診断済みcaseでの回帰比較であり、held-out製品認定ではありません。
+[query契約](operations/README-jp.md#lexical-query-planning)と
+[比較方法](EVALUATION-jp.md#lexical-v2-query-planning-comparison)を参照してください。
+
+## 以前の製品実用性pilot: 保持は成功、検索は不十分
 
 固定modelの初回Copilot実験を**`862fb2b`**で完走しました。
 **GPT-6 Astra/high**、英日合成20 scenario、100 callです。
