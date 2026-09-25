@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory import __version__
 from pg_agmemory.database import SCHEMA_VERSION
+from pg_agmemory.models import QueryEpisodes
 from pg_agmemory.native_client import NativeSettings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -310,11 +311,15 @@ def test_smaller_declared_call_ceiling_is_enforced(transport):
 
 
 class DecisionBridge:
-    def __init__(self, case, *, invalid_retention=False):
+    def __init__(
+        self, case, *, invalid_retention=False, query="report locale", answer="en-GB",
+    ):
         self.calls = []
         self.prompts = []
         self.case = case
         self.invalid_retention = invalid_retention
+        self.query = query
+        self.answer = answer
 
     async def call(self, prompt, *, case_id, phase):
         self.prompts.append((phase, prompt))
@@ -331,9 +336,9 @@ class DecisionBridge:
                 ],
             })
         if phase == "recall_query":
-            return '{"query":"report locale"}'
+            return json.dumps({"query": self.query})
         return json.dumps({
-            "answer": "en-GB", "source_event_ids": [self.case.events[1].event_id],
+            "answer": self.answer, "source_event_ids": [self.case.events[1].event_id],
             "abstained": False,
         })
 
@@ -350,6 +355,23 @@ def native_response(status, *, json):
     return httpx.Response(
         status, headers={"content-type": "application/json"}, stream=NativeBody(json),
     )
+
+
+def hidden_recall_payload():
+    return {
+        "items": [],
+        "context_pack": {
+            "format": "memory-context-v1", "text": "", "tokenizer_id": "utf8-bytes-v1",
+            "token_count": None, "budget_unit": "utf8_bytes", "byte_count": 160,
+            "exact_token_count": False,
+        },
+        "coverage": {
+            "retrieval_complete": True, "synthesis_pending": False,
+            "graph_used": False, "truncated": False,
+        },
+        "consistency": {"access_epoch": 1, "deletion_epoch": 1},
+        "search_profile": "simple-v1", "empty_reason": "not_found",
+    }
 
 
 @pytest.fixture
@@ -420,6 +442,10 @@ def native_fixture(tmp_path, monkeypatch):
                 "consistency": {"access_epoch": 0, "deletion_epoch": 1},
                 "search_profile": "simple-v1", "empty_reason": None,
             })
+        if request.url.path == "/v1/recall" and not failure.get("foreign_recall_denied"):
+            return native_response(
+                200, json=failure.get("foreign_recall_payload", hidden_recall_payload()),
+            )
         if request.url.path in ("/v1/explain", "/v1/recall"):
             return native_response(404, json={
                 "code": "not_found", "request_id": str(uuid4()), "retryable": False,
@@ -520,6 +546,35 @@ def test_unknown_purge_stops_native_case_preserves_uncertainty(native_fixture):
         if path == "/v1/forget" and body["mode"] == "purge"
     ]
     assert len(purges) == 1
+
+
+def test_foreign_scope_explicit_not_found_denial_remains_supported(native_fixture):
+    native_fixture["failure"]["foreign_recall_denied"] = True
+    measured, detail = memory_case(native_fixture, DecisionBridge(native_fixture["case"]))
+    assert measured.error is None
+    assert detail["isolation_denials_verified"] == 2
+
+
+@pytest.mark.parametrize("leak", ["items", "context", "other_empty_reason"])
+def test_foreign_scope_probe_rejects_any_content_or_non_denial_empty_result(native_fixture, leak):
+    payload = hidden_recall_payload()
+    if leak == "items":
+        payload["items"] = [{
+            "memory_id": str(native_fixture["sentinel_id"]), "revision": 1,
+            "type": "episode", "content": "FOREIGN_PRIVATE_SENTINEL",
+            "recorded_at": "2026-08-01T00:00:00Z", "occurred_at": "2026-08-01T00:00:00Z",
+        }]
+    elif leak == "context":
+        payload["context_pack"]["text"] = "FOREIGN_PRIVATE_SENTINEL"
+    else:
+        payload["empty_reason"] = "budget_exhausted"
+    native_fixture["failure"]["foreign_recall_payload"] = payload
+    bridge = DecisionBridge(native_fixture["case"])
+    measured, detail = memory_case(native_fixture, bridge)
+    assert measured.error == "isolation_breach"
+    assert detail["stopped_at_phase"] == "rls_probe"
+    assert not bridge.calls
+    assert not native_fixture["stored"]
 
 
 def test_native_context_never_substitutes_fixture_oracle_text():
@@ -719,3 +774,96 @@ def test_unbackdated_token_reproduces_one_second_strict_iat_failure(
             issuer=config.jwt_issuer, audience=config.jwt_audience,
             options={"require": ["exp", "iat", "sub", "iss", "aud"]},
         )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("case_index,query,answer", [
+    (0, "report locale", "en-GB"),
+    (2, "日付表記", "ISO8601"),
+])
+def test_real_native_rls_purge_roundtrip_without_model(
+    env, api_process, tmp_path, case_index, query, answer,
+):
+    """Scripted decisions test interoperability; every Native call uses real HTTP/PostgreSQL."""
+    case = runner.recipe.pilot_cases()[case_index]
+    identity = runner.Provisioned(
+        tenant_id=env.tenants[0], principal_id=env.principals[0], scope_id=env.scopes[0],
+    )
+    foreign = runner.Provisioned(
+        tenant_id=env.tenants[1], principal_id=env.principals[1], scope_id=env.scopes[1],
+    )
+    journal = runner.Journal(tmp_path / "native-integration")
+
+    async def scenario(url):
+        config = runner.OwnedConfig(
+            format="pgag-agent-eval-owned-v1", run_id="agent-eval-integration01", api_url=url,
+            admin_url_hash=hashlib.sha256(env.admin_url.encode()).hexdigest(),
+            jwt_issuer=env.settings.jwt_issuer, jwt_audience=env.settings.jwt_audience,
+            synthetic_fixture_purge_consent=True,
+        )
+        sentinel_id = await runner.seed_sentinel(
+            config, foreign, env.subjects[1], env.private_key, journal,
+        )
+        async with runner.authenticated_client(
+            config, env.subjects[0], env.private_key, journal, case.case_id,
+        ) as client:
+            hidden = await client.recall(runner.recall_request(foreign.scope_id, ""))
+            assert isinstance(hidden, runner.RecallResult)
+            assert hidden.items == [] and hidden.context_pack.text == ""
+            assert hidden.empty_reason == "not_found"
+            with pytest.raises(runner.MemoryClientError) as denied:
+                await client.explain(runner.Explain(memory_id=sentinel_id))
+            assert denied.value.error.code == "not_found"
+            assert denied.value.error.native_status == 404
+            assert not denied.value.error.outcome_unknown
+            await runner.verify_isolation(
+                client, case.case_id, foreign, sentinel_id, journal,
+            )
+
+        bridge = DecisionBridge(case, query=query, answer=answer)
+        measured, detail = await runner.memory_arm(
+            case, identity, env.subjects[0], foreign, sentinel_id, config,
+            env.private_key, bridge, journal,
+        )
+        assert measured.error is None, detail
+        assert detail["status"] == "completed"
+        assert detail["isolation_denials_verified"] == 2
+        assert detail["purged_objects_verified_absent"] == len(case.events) - 1
+        assert detail["forget_preview"]["changed"] is False
+        assert detail["forget_purge"]["state"] == "active_store_purged"
+        assert detail["forget_purge"]["object_count"] == len(case.events) - 1
+        assert measured.context_events == (case.events[1],)
+        assert measured.answer.answer == answer
+        assert len(bridge.calls) == 3
+        assert [phase for phase, _ in bridge.prompts] == [
+            "retention", "recall_query", "pg_agmemory",
+        ]
+        retained_id = UUID(detail["observed_event_ids"][case.events[1].event_id])
+        async with runner.authenticated_client(
+            config, env.subjects[0], env.private_key, journal, case.case_id,
+        ) as client:
+            recalled = await client.recall(runner.recall_request(
+                identity.scope_id, "", language=case.language,
+            ))
+            assert [item.memory_id for item in recalled.items] == [retained_id]
+            assert recalled.items[0].content == case.events[1].text
+            episodes = await client.query_episodes(QueryEpisodes(
+                scope_ids=[identity.scope_id], max_items=8,
+            ))
+            assert [episode.memory_id for episode in episodes.episodes] == [retained_id]
+            await runner.verify_isolation(
+                client, case.case_id, foreign, sentinel_id, journal,
+            )
+        async with runner.authenticated_client(
+            config, env.subjects[1], env.private_key, journal, "sentinel",
+        ) as foreign_client:
+            source = await foreign_client.explain(runner.Explain(memory_id=sentinel_id))
+            assert "ONLY_FOREIGN_" in source.source.content
+            # A wrong-principal probe really sees the sentinel and must fail closed.
+            with pytest.raises(runner.EvaluationFailure, match="isolation_breach"):
+                await runner.verify_isolation(
+                    foreign_client, case.case_id, foreign, sentinel_id, journal,
+                )
+
+    with api_process(f"agent-memory-native-{case.language}.log") as (http, _):
+        asyncio.run(scenario(str(http.base_url)))

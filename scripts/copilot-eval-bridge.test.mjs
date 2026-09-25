@@ -12,7 +12,7 @@ const model = "gpt-6-astra";
 function events(changes = {}) {
   return [
     { type: "session.usage_checkpoint", data: { promptCacheBreakState: [
-      { models: { [model]: { model, tool_count: 0, ...changes } } },
+      { models: { [model]: { model, tool_count: 0, reasoning_effort: "high", ...changes } } },
     ] } },
     { type: "assistant.message", data: { content: '{"answer":"synthetic"}' } },
     { type: "result", exitCode: 0 },
@@ -40,6 +40,7 @@ test("responses require evidence of zero tools and exact requested model", () =>
   assert.equal(auditEvents(events(), model), '{"answer":"synthetic"}');
   assert.throws(() => auditEvents(events({ tool_count: 1 }), model));
   assert.throws(() => auditEvents(events({ model: "different" }), model));
+  assert.throws(() => auditEvents(events({ reasoning_effort: "low" }), model));
   assert.throws(() => auditEvents(events({ tool_count: null }), model));
   assert.throws(() => auditEvents(events() + '\n{"type":"tool.execution_start"}', model));
   assert.throws(() => auditEvents('{"type":"result","exitCode":0}', model));

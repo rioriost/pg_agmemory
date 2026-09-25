@@ -50,7 +50,7 @@ import jwt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pg_agmemory import agent_evaluation as recipe
-from pg_agmemory.models import Explain, Forget, Observe, Recall, RecallFilters
+from pg_agmemory.models import Explain, Forget, Observe, Recall, RecallFilters, RecallResult
 from pg_agmemory.native_client import NativeSettings
 from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 
@@ -634,7 +634,7 @@ async def verify_isolation(
         ("rls_foreign_object", lambda: client.explain(Explain(memory_id=sentinel_id))),
     ):
         try:
-            await native_call(journal, case_id, operation, request)
+            result = await native_call(journal, case_id, operation, request)
         except MemoryClientError as exc:
             require(
                 exc.error.code == "not_found" and exc.error.native_status == 404
@@ -642,7 +642,16 @@ async def verify_isolation(
             )
             journal.emit("rls_denial_verified", case_id=case_id, operation=operation)
         else:
-            raise EvaluationFailure("isolation_breach")
+            require(
+                operation == "rls_foreign_scope" and isinstance(result, RecallResult)
+                and result.items == [] and result.context_pack.text == ""
+                and result.empty_reason == "not_found",
+                "isolation_breach",
+            )
+            journal.emit(
+                "rls_denial_verified", case_id=case_id, operation=operation,
+                enforcement="empty_scoped_recall",
+            )
 
 
 async def memory_arm(

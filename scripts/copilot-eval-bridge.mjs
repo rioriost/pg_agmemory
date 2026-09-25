@@ -47,7 +47,7 @@ export function validateRequest(value, callId) {
   return value;
 }
 
-export function auditEvents(text, model) {
+export function auditEvents(text, model, reasoningEffort = "high") {
   const events = text.trim().split("\n").map((line) => JSON.parse(line));
   const results = events.filter((event) => event.type === "result");
   if (results.length !== 1 || results[0].exitCode !== 0) {
@@ -61,7 +61,7 @@ export function auditEvents(text, model) {
     .flatMap((event) => event.data?.promptCacheBreakState ?? [])
     .flatMap((conversation) => Object.values(conversation.models ?? {}));
   if (!observations.length || observations.some((item) =>
-    item.model !== model || item.tool_count !== 0)) {
+    item.model !== model || item.tool_count !== 0 || item.reasoning_effort !== reasoningEffort)) {
     throw new Error("copilot_model_or_tool_audit_failed");
   }
   const messages = events.filter((event) => event.type === "assistant.message");
@@ -206,7 +206,7 @@ async function invokeCopilot(config, callId, prompt) {
     await stdoutFile.sync();
     if (interrupted) throw new Error("copilot_interrupted");
     if (failed || result !== 0) throw new Error(failed ?? "copilot_unsuccessful");
-    const content = auditEvents(output, config.model);
+    const content = auditEvents(output, config.model, config.reasoning_effort);
     const usage = usageSummary(JSON.parse(await readPrivate(usageFile, MAX_EVENT_BYTES)), config.model);
     return { content, usage };
   } finally {
