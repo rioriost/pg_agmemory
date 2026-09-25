@@ -20,6 +20,8 @@ custom_instructions=false, tools_allowed=false, model_weights_revision_verified=
 and optional model_revision (null when unknown).
 Directories must be private (0700), files private (0600), and queue/output empty.
 No secret is accepted as a command-line argument or included in reports.
+Fixture JWT issued-at times are backdated by at most 30 seconds for independent
+guest clocks. Expiration and the Native API's strict authentication are unchanged.
 """
 
 from __future__ import annotations
@@ -35,7 +37,8 @@ import re
 import stat
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +57,7 @@ from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 MAX_CALLS = 100
 MAX_BYTES = 65536
 RESPONSE_TIMEOUT = 180.0
+JWT_BACKDATE_SECONDS = 30
 RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
 
@@ -475,8 +479,32 @@ def bearer(subject: str, key: bytes, config: OwnedConfig) -> str:
     now = int(time.time())
     return jwt.encode({
         "sub": subject, "iss": config.jwt_issuer, "aud": config.jwt_audience,
-        "iat": now, "exp": now + 86400,
+        "iat": now - JWT_BACKDATE_SECONDS, "exp": now + 86400,
     }, key, algorithm="RS256")
+
+
+@asynccontextmanager
+async def authenticated_client(
+    config: OwnedConfig, subject: str, key: bytes, journal: Journal, case_id: str,
+) -> AsyncIterator[AsyncMemoryClient]:
+    connected = False
+    started = time.monotonic()
+    journal.emit("native_intent", case_id=case_id, operation="capabilities", mutation=False)
+    try:
+        async with OwnedMemoryClient(config, bearer(subject, key, config)) as client:
+            connected = True
+            journal.emit(
+                "native_completed", case_id=case_id, operation="capabilities",
+                elapsed_seconds=time.monotonic() - started,
+            )
+            yield client
+    except BaseException as exc:
+        if not connected:
+            journal.emit(
+                "native_failure", case_id=case_id, operation="capabilities",
+                elapsed_seconds=time.monotonic() - started, error=safe_error(exc),
+            )
+        raise
 
 
 async def native_call(
@@ -645,7 +673,7 @@ async def memory_arm(
             native_latencies.append(float((time.monotonic() - started) * 1000))
 
     try:
-        async with OwnedMemoryClient(config, bearer(subject, key, config)) as client:
+        async with authenticated_client(config, subject, key, journal, case.case_id) as client:
             phase = "rls_probe"
             await verify_isolation(client, case.case_id, foreign, sentinel_id, journal)
             detail["isolation_denials_verified"] = 2
@@ -780,7 +808,7 @@ async def memory_arm(
 async def seed_sentinel(
     config: OwnedConfig, foreign: Provisioned, subject: str, key: bytes, journal: Journal,
 ) -> UUID:
-    async with OwnedMemoryClient(config, bearer(subject, key, config)) as client:
+    async with authenticated_client(config, subject, key, journal, "sentinel") as client:
         idempotency_key = f"{config.run_id}:sentinel:observe"
         request = Observe(
             scope_id=foreign.scope_id, source_namespace=config.run_id,
@@ -826,6 +854,11 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         "rollback_claimed": False, "provider_or_dataset_downloads": False,
         "source_code_git_sha": os.environ.get("PGAG_AGENT_EVAL_SOURCE_REVISION"),
         "source_revision_attested": False,
+        "fixture_authentication": {
+            "iat_backdate_seconds": JWT_BACKDATE_SECONDS,
+            "api_authentication_leeway_changed": False,
+            "authentication_retries": 0,
+        },
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "recipe_sha256": recipe_digest(),
         "cases_sha256": hashlib.sha256(

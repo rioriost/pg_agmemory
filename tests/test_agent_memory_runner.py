@@ -11,6 +11,8 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory import __version__
 from pg_agmemory.database import SCHEMA_VERSION
@@ -598,3 +600,122 @@ def test_startup_failure_persists_every_unmeasured_slot_without_zero_scores(tmp_
         item["answer"]["failed"] and item["answer"]["accuracy"] is None
         for item in summary["metrics"]["cases"]
     )
+
+
+@pytest.fixture(scope="module")
+def fixture_signing_key():
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return (
+        key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+        key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+        ),
+    )
+
+
+@pytest.mark.parametrize("runner_ahead_seconds", [0, 1, 29, 30, 31])
+def test_signed_native_startup_handles_only_bounded_guest_clock_skew(
+    tmp_path, monkeypatch, fixture_signing_key, runner_ahead_seconds,
+):
+    runner_now = 1_800_000_000
+    api_now = runner_now - runner_ahead_seconds
+
+    class APIClock(runner.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return runner.datetime.fromtimestamp(api_now, tz=tz)
+
+    monkeypatch.setattr(runner.time, "time", lambda: runner_now)
+    monkeypatch.setattr(runner.jwt.api_jwt, "datetime", APIClock)
+    config_data, _ = owned_environment(tmp_path)
+    config_data["api_url"] = "http://192.168.64.2:8000"
+    config = runner.OwnedConfig.model_validate(config_data)
+    journal = runner.Journal(tmp_path / "startup-auth")
+    private_key, public_key = fixture_signing_key
+    subject = f"{config.run_id}:foreign-sentinel"
+    token = runner.bearer(subject, private_key, config)
+    requests = []
+
+    def handler(request):
+        requests.append((request.method, request.url.path))
+        authorization = request.headers["authorization"]
+        assert authorization.startswith("Bearer ")
+        assert authorization[7:] == token
+        try:
+            claims = runner.jwt.decode(
+                authorization[7:], public_key, algorithms=["RS256"],
+                issuer=config.jwt_issuer, audience=config.jwt_audience,
+                options={"require": ["exp", "iat", "sub", "iss", "aud"]},
+            )
+        except runner.jwt.ImmatureSignatureError:
+            return native_response(401, json={
+                "code": "unauthenticated", "request_id": str(uuid4()), "retryable": False,
+            })
+        assert claims == {
+            "sub": subject, "iss": config.jwt_issuer, "aud": config.jwt_audience,
+            "iat": runner_now - runner.JWT_BACKDATE_SECONDS, "exp": runner_now + 86400,
+        }
+        return native_response(200, json={
+            "api_version": "v1", "service_version": __version__, "schema_version": SCHEMA_VERSION,
+        })
+
+    original_client = httpx.AsyncClient
+
+    def http_client(*args, **kwargs):
+        assert kwargs["base_url"] == config.api_url
+        assert kwargs["follow_redirects"] is False
+        assert kwargs["trust_env"] is False
+        return original_client(*args, **kwargs, transport=httpx.MockTransport(handler))
+
+    # Exercise the SDK's real bearer-header construction, not the fixture's a.b.c stub.
+    monkeypatch.setattr(httpx, "AsyncClient", http_client)
+
+    async def connect():
+        async with runner.authenticated_client(config, subject, private_key, journal, "sentinel"):
+            pass
+
+    if runner_ahead_seconds > runner.JWT_BACKDATE_SECONDS:
+        with pytest.raises(runner.MemoryClientError) as failure:
+            asyncio.run(connect())
+        assert failure.value.error.code == "unauthenticated"
+        assert failure.value.error.native_status == 401
+        assert failure.value.error.outcome_unknown is False
+    else:
+        asyncio.run(connect())
+    assert requests == [("GET", "/v1/capabilities")]
+    events = [json.loads(line) for line in journal.path.read_text().splitlines()]
+    assert [event["operation"] for event in events] == ["capabilities", "capabilities"]
+    assert [event["phase"] for event in events] == [
+        "native_intent",
+        "native_failure" if runner_ahead_seconds > runner.JWT_BACKDATE_SECONDS
+        else "native_completed",
+    ]
+
+
+def test_unbackdated_token_reproduces_one_second_strict_iat_failure(
+    tmp_path, monkeypatch, fixture_signing_key,
+):
+    runner_now = 1_800_000_000
+
+    class APIClock(runner.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return runner.datetime.fromtimestamp(runner_now - 1, tz=tz)
+
+    monkeypatch.setattr(runner.jwt.api_jwt, "datetime", APIClock)
+    config_data, _ = owned_environment(tmp_path)
+    config = runner.OwnedConfig.model_validate(config_data)
+    private_key, public_key = fixture_signing_key
+    token = runner.jwt.encode({
+        "sub": "owned-sentinel", "iss": config.jwt_issuer, "aud": config.jwt_audience,
+        "iat": runner_now, "exp": runner_now + 86400,
+    }, private_key, algorithm="RS256")
+    with pytest.raises(runner.jwt.ImmatureSignatureError):
+        runner.jwt.decode(
+            token, public_key, algorithms=["RS256"],
+            issuer=config.jwt_issuer, audience=config.jwt_audience,
+            options={"require": ["exp", "iat", "sub", "iss", "aud"]},
+        )
