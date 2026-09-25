@@ -236,7 +236,7 @@ export async function main(argv) {
   while (!interrupted && completed < config.max_calls) {
     if (await present(path.join(config.directory, "stop.json"))) break;
     const callId = String(completed + 1).padStart(6, "0");
-    const requestFile = path.join(config.directory, `${callId}.request.json`);
+    const requestFile = path.join(config.directory, "queue", `${callId}.request.json`);
     if (!await present(requestFile)) {
       await sleep(100);
       continue;
@@ -258,7 +258,7 @@ export async function main(argv) {
       error = safe.has(failure.message) ? failure.message : "copilot_transport_failed";
       errors += 1;
     }
-    await writeNew(path.join(config.directory, `${callId}.response.json`), {
+    await writeNew(path.join(config.directory, "queue", `${callId}.response.json`), {
       format: "pgag-copilot-response-v1", call_id: callId, status: error ? "error" : "ok",
       content, error, duration_seconds: (performance.now() - started) / 1000,
       model: config.model, reasoning_effort: config.reasoning_effort, usage,

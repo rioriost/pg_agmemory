@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { auditEvents, parseArguments, usageSummary, validateRequest } from "./copilot-eval-bridge.mjs";
 
@@ -76,3 +80,60 @@ container_host owned-node`], { encoding: "utf8" });
     }
   }
 });
+
+test("bridge interoperates with the guest queue directory without model calls",
+  { timeout: 10000 }, async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "pgag-bridge-test-"));
+    const canonical = await fs.realpath(directory);
+    const bridge = path.join(canonical, "bridge");
+    const bin = path.join(canonical, "bin");
+    await fs.mkdir(bridge, { mode: 0o700 });
+    await fs.mkdir(bin, { mode: 0o700 });
+    const fake = `#!${process.execPath}
+const fs = require("node:fs");
+if (process.argv.includes("--version")) {
+  console.log("GitHub Copilot CLI 1.0.88.");
+} else {
+  const usage = {currentModel:"gpt-6-astra",totalApiDurationMs:1,
+    modelMetrics:{"gpt-6-astra":{requests:{count:1,cost:1},
+      usage:{inputTokens:10,outputTokens:5,cacheReadTokens:0,cacheWriteTokens:0}}}};
+  fs.writeFileSync(process.argv[process.argv.indexOf("--usage-output-file")+1],
+    JSON.stringify(usage),{mode:0o600});
+  process.stdout.write(${JSON.stringify(events())});
+}
+`;
+    await fs.writeFile(path.join(bin, "copilot"), fake, { mode: 0o700 });
+    const child = spawn(process.execPath, [
+      new URL("./copilot-eval-bridge.mjs", import.meta.url).pathname,
+      "--directory", bridge, "--model", model, "--reasoning-effort", "high",
+      "--max-calls", "1", "--run-id", "agent-eval-0123456789abcdef",
+    ], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: "pipe" });
+    let diagnostics = "";
+    child.stderr.on("data", (chunk) => { diagnostics += chunk; });
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    try {
+      for (let i = 0; i < 100; i += 1) {
+        const entries = await fs.readdir(bridge);
+        if (entries.includes("transport.json")) break;
+        if (child.exitCode !== null) throw new Error(diagnostics || "test bridge exited");
+        await sleep(20);
+      }
+      assert.equal(JSON.parse(await fs.readFile(path.join(bridge, "transport.json"))).tools_allowed, false);
+      await fs.mkdir(path.join(bridge, "queue"), { mode: 0o700 });
+      await fs.writeFile(path.join(bridge, "queue", "000001.request.json"), JSON.stringify({
+        format: "pgag-copilot-request-v1", call_id: "000001", prompt: "Synthetic transport test.",
+      }), { mode: 0o600 });
+      assert.equal(await exited, 0, diagnostics);
+      const response = JSON.parse(await fs.readFile(path.join(bridge, "queue", "000001.response.json")));
+      assert.equal(response.status, "ok");
+      assert.equal(response.content, '{"answer":"synthetic"}');
+      assert.equal(response.usage.input_tokens, 10);
+      assert.equal(JSON.parse(await fs.readFile(path.join(bridge, "bridge-summary.json"))).calls, 1);
+    } finally {
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await exited;
+      }
+      await fs.rm(canonical, { recursive: true });
+    }
+  });
