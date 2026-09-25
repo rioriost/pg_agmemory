@@ -2,6 +2,52 @@
 
 [English](EVALUATION.md)
 
+## 別途固定した評価cohortの選択
+
+既定の`--cohort pilot-v1`は従来の20件を選びます。
+`--cohort unseen-synthetic-v1`は新規に作成した20履歴を選択し、
+元caseや固定済み`lexical-v2` query plannerを変更しません。
+model呼出し前に、datasetと実装をcleanなcommitへ固定します。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-unseen-01 gpt-6-astra high --allow-copilot \
+  --query-policy lexical-v2 --cohort unseen-synthetic-v1
+```
+
+新cohortは**139 event / 20 case**、英日各10件で、
+sessionをまたぐ嗜好、project制約、訂正値、明示忘却、失敗からの手順知識を扱います。
+各履歴6～8件、根拠位置の変更、類似名のdistractor、根拠chainが必要な2問、
+二度訂正される3履歴を含みます。回答可能な4件は直近履歴にも根拠を置き、
+controlを構成上いつも不利にすることを避けます。
+goldは**keep 49 / forget 90、scalar正答16件、回答辞退4件**です。
+
+作者は公開event/保持契約から作成し、評価modelの回答や以前の非公開traceは使っていません。
+履歴とlabelは推論前に確認しましたが、**projectを知るAIによる合成作成**であり、
+独立した人間の履歴、盲検review、公開benchmark、学習data除外の証明ではありません。
+「未使用」はこのcohortの初回評価を指し、再実行時には既使用です。
+新出力directoryだけで未使用とは証明できず、reportも外部held-out/一般的認定をfalseとし、
+modelの過去の接触は認定しません。
+
+model、query計画source、保持/回答prompt、case単位の採点式は維持します。
+採点を重複実装せず、reportへcase集合を指定できる最小限の一般化を行いました。
+source hashの変更は正しく記録し、`pgag-agent-memory-cohort-recipe-v3`でdataset、
+実scorer、保護したprompt/case/採点prefix、query recipeを結び付けます。
+過去の公開結果は元identityを維持し、厳密な再現には現在のfile hashではなく
+各結果の記録source revisionを使います。
+
+21個の隔離tenant identity、最大100 model call、retry・query拡大・空query fallbackなしは同じです。
+不正・未測定を含む全arm/caseを残します。toolなしのmodelへ選択根拠だけを渡すことで
+隠れたfileからの取得を防ぎますが、自律した実務agentやbackground workerの試験ではありません。
+
+**検索とcitationの測定を分離します。** 過去の`required_source_recall`は
+必要IDのうち*引用された*IDから算出しており、直接の取得coverageではありません。
+新しい`evidence_coverage`の`retrieved_required_source_recall`は、
+検証・予算制限後に回答側へ渡すcontextから算出します。
+有効な分母、検索前の不明結果、回答辞退問題の非適用を区別し、
+検索済みなら後段の回答失敗でも観測contextを消しません。
+過去の指標や公開scoreを別ルールで再計算しません。
+
 ## 固定modelのCopilot agent-memory pilot（2026-09-25）
 
 2026-09-25に依頼された製品評価はDB契約・本番HA認定とは別で、
@@ -67,8 +113,9 @@ bash scripts/evaluate-agent-memory-containers.sh \
   --query-policy lexical-v2
 ```
 
-元の`agent_evaluation.py`、scenario/gold、保持/回答prompt、採点はbyte単位で維持します。
-`legacy-v1`は元のrecipe digestと非構造化query生成を維持します。
+測定した`0a8be6e`の比較では、元の`agent_evaluation.py`、scenario/gold、
+保持/回答prompt、採点をbyte単位で維持しました。
+そのrevisionの`legacy-v1`は元のrecipe digestと非構造化query生成を維持します。
 v2は元recipe、query計画module、公開契約を含む別recipe digestへ結び、
 raw計画・結合query・policyを非公開で記録します。
 100 call上限、context、model選択、retry禁止、失敗の分母は同じです。

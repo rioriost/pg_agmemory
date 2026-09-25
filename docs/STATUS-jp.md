@@ -2,7 +2,22 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## Query連携: 明示的なlexical計画と既存検索契約
+## 新しい合成cohort: modelとquery policyを固定
+
+`unseen-synthetic-v1`は別途作成した英日20 scenario、139 eventです。
+根拠位置を変え、類似topicのdistractor、根拠chain 2件、二度の訂正3件を含み、
+回答可能な4件は直近履歴にも根拠を置きます。
+cohortは明示選択し、既定は従来の`pilot-v1`のままです。
+model利用前に履歴とgoldを確認・固定しますが、独立した人間のdataや盲検実務評価ではありません。
+
+query計画module、Copilot transport、元case生成、prompt、採点式は変更しません。
+reportへcase集合を指定可能にし、元のsource identityを偽らず、
+v3 recipeで実cohort/scorer/query hashを記録します。
+直接の取得根拠coverageは、従来の引用ベースsource recallと分けて報告します。
+製品serving、worker、SQL検索、認可、schemaの動作は変更しません。
+[cohort契約](EVALUATION-jp.md#別途固定した評価cohortの選択)を参照してください。
+
+## 以前のQuery連携: 明示的なlexical計画と既存検索契約
 
 初回pilotの問題を、認可の拡大やlexical検索の無断置換ではなく、連携契約として修正します。
 Native capabilitiesに`pgag-lexical-query-v1`を公開し、

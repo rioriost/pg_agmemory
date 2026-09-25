@@ -2,7 +2,24 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## Query integration: explicit lexical plans, unchanged search semantics
+## New synthetic cohort: fixed model and query policy
+
+`unseen-synthetic-v1` adds 20 separately authored English/Japanese scenarios,
+139 events and more varied evidence positions, including near-topic distractors,
+two evidence chains and three double corrections. Four answerable cases also
+have recent-window evidence. The selected cohort is explicit; `pilot-v1`
+remains the default. Histories and gold labels are reviewed/frozen before model
+use; they are not independent human or blinded real-world data.
+
+The query-planning module, Copilot transport, original case generator, prompts
+and scoring formulas remain unchanged. Reports accept an explicit case set and
+bind actual cohort/scorer/query hashes using a v3 recipe, rather than faking
+the old source identity. Direct retrieved evidence coverage is now reported
+separately from historical citation-based source recall. No production serving,
+worker, SQL search, authority or schema behavior changes.
+See [the cohort contract](EVALUATION.md#selecting-a-separately-frozen-evaluation-cohort).
+
+## Previous query integration: explicit lexical plans, unchanged search semantics
 
 The first pilot exposed an interface gap, not a need to broaden authorization
 or silently replace lexical search. Native capabilities now declare

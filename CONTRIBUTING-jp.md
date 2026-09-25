@@ -10,6 +10,12 @@ repositoryを再初期化せずbranchで作業してください。段階的な�
 
 ## Containerを使った検証
 
+実modelの記憶評価は、推論前にcohort・prompt・query policy・採点を固定してください。
+旧結果と失敗呼出しを保持し、測定済みcaseを調整して未使用と呼び直してはいけません。
+新cohortは有料model実行前に、実Native HTTP/SQL/RLS/purgeとstandalone test imageを確認します。
+検索coverageと引用recallは別指標で、不明結果を測定済みゼロとして扱いません。
+[評価の境界](docs/EVALUATION-jp.md)を参照してください。
+
 ローカル検証は**Apple Container**を使い、Docker Desktopや無断のhost fallbackへ
 切り替えません。Apple Containerを導入・起動し、`jq`を利用可能にしたうえで、
 repository rootから実行してください。

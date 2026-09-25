@@ -2,6 +2,60 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Selecting a separately frozen evaluation cohort
+
+`--cohort pilot-v1` remains the default and selects the original 20 cases.
+`--cohort unseen-synthetic-v1` selects 20 newly authored histories; it does not
+modify the original cases or the fixed `lexical-v2` query planner. Freeze the
+chosen dataset and implementation in a clean commit before model calls:
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-unseen-01 gpt-6-astra high --allow-copilot \
+  --query-policy lexical-v2 --cohort unseen-synthetic-v1
+```
+
+The new cohort has **139 events / 20 cases**, 10 English and 10 Japanese:
+cross-session preferences, project constraints, corrected values, explicit
+forgetting, and workflow failure lessons. Histories contain 6–8 events with
+varied evidence positions, similarly named distractors, two evidence-chain
+questions and three twice-corrected histories. Four answerable cases place
+their evidence in the recent window, rather than making that control empty
+of useful information by construction. Gold labels comprise **49 keeps /
+90 forgets, 16 scalar answers and four abstentions**.
+
+The author used the public event/retention contracts, not the evaluation
+model's answers or private previous traces. The histories and labels were
+reviewed before inference; they are nevertheless **project-aware synthetic
+authorship**, not independent human histories, blinded review, a public
+benchmark or proof of training-data exclusion. "Unseen" refers to this cohort's
+first evaluation use. Repeated runs reuse it; a new output directory is not
+proof of unseen data. Reports keep external held-out/general qualification
+flags false and do not certify prior model exposure.
+
+Model, query-planning source, retention/answer prompts and per-case scoring
+formulas are unchanged. A small report generalization supplies the selected
+case collection instead of duplicating scoring logic. Its source hash changes
+honestly: `pgag-agent-memory-cohort-recipe-v3` binds the dataset, actual scorer,
+protected prompt/case/scoring prefix, and query recipe. Previous published
+results retain their original identities. Use their recorded source revision
+for exact historical reproduction, not the current file hash.
+
+The run still uses 21 isolated tenant identities and at most 100 model calls,
+with no retry, query expansion or empty-query fallback. Every arm/case remains
+in the report, including invalid and unmeasured outcomes. Keeping model calls
+tool-free and passing only selected evidence prevents retrieval from hidden
+files, but is not an autonomous real-world agent or a background worker test.
+
+**Retrieval and citation are separate measurements.** Historical
+`required_source_recall` is computed from *cited* required IDs; it must not be
+interpreted as direct retrieval coverage. The new `evidence_coverage` report
+adds `retrieved_required_source_recall` from the validated, budgeted context
+actually delivered to the answerer. It preserves a valid denominator,
+unknown-before-retrieval outcomes, and non-applicable abstention cases.
+An answer failure after a known retrieval does not erase that measured context.
+No historical metric or published score is recalculated under a different rule.
+
 ## Fixed-model Copilot agent-memory pilot (2026-09-25)
 
 The product evaluation requested on 2026-09-25 is separate from database
@@ -86,9 +140,10 @@ bash scripts/evaluate-agent-memory-containers.sh \
   --query-policy lexical-v2
 ```
 
-The original `agent_evaluation.py` source, scenario/gold data, retention/answer
-prompts and scoring remain byte-identical. `legacy-v1` preserves the original
-recipe digest and unstructured query generation. V2 binds a different recipe
+In the measured `0a8be6e` comparison, the original `agent_evaluation.py` source,
+scenario/gold data, retention/answer prompts and scoring were byte-identical.
+At that revision, `legacy-v1` preserves the original recipe digest and
+unstructured query generation. V2 binds a different recipe
 digest containing the original recipe, query-planning module and advertised
 contract; raw model plans, compiled queries and policy are retained privately.
 The 100-call limit, contexts, model choice, no-retry rule and failure denominators

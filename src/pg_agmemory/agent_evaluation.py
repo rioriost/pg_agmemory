@@ -418,10 +418,24 @@ def _percentile(values: Sequence[float], fraction: float) -> float | None:
     return sorted(values)[max(0, math.ceil(len(values) * fraction) - 1)] if values else None
 
 
-def pilot_report(observations: Sequence[ArmObservation]) -> dict[str, object]:
+def pilot_report(
+    observations: Sequence[ArmObservation], *, cases: Sequence[AgentMemoryCase] | None = None,
+) -> dict[str, object]:
     """Require all slots; accuracy includes failures, other means use known measurements."""
-    cases = {case.case_id: case for case in pilot_cases()}
-    expected = {(case_id, arm) for case_id in cases for arm in ARMS}
+    dataset = tuple(pilot_cases() if cases is None else cases)
+    if len(dataset) != 20 or len({case.case_id for case in dataset}) != 20:
+        raise ValueError("Report requires 20 unique cases")
+    languages = {
+        language: sum(case.language == language for case in dataset) for language in ("en", "ja")
+    }
+    categories = {
+        category: sum(case.category == category for case in dataset)
+        for category in sorted({case.category for case in dataset})
+    }
+    if languages != {"en": 10, "ja": 10} or len(categories) != 5 or set(categories.values()) != {4}:
+        raise ValueError("Report requires 10 English/10 Japanese cases and five categories of four")
+    case_by_id = {case.case_id: case for case in dataset}
+    expected = {(case_id, arm) for case_id in case_by_id for arm in ARMS}
     measured = {(item.case_id, item.arm) for item in observations}
     if measured != expected or len(observations) != len(expected):
         raise ValueError("Report requires exactly one observation for each of 20 cases and 3 arms")
@@ -429,7 +443,7 @@ def pilot_report(observations: Sequence[ArmObservation]) -> dict[str, object]:
     retention_scores: list[RetentionScore] = []
     details: list[dict[str, object]] = []
     for item in sorted(observations, key=lambda item: (item.case_id, item.arm)):
-        case = cases[item.case_id]
+        case = case_by_id[item.case_id]
         _check_context(case, item.context_events)
         if item.arm == "no_memory" and item.context_events:
             raise ValueError("No-memory context must be empty")
@@ -479,10 +493,8 @@ def pilot_report(observations: Sequence[ArmObservation]) -> dict[str, object]:
     return {
         "disclaimer": PILOT_DISCLAIMER, "release_qualified": False,
         "expected_cases": 20, "expected_observations": 60,
-        "expected_languages": {"en": 10, "ja": 10},
-        "expected_categories": {
-            category: 4 for category in sorted({c.category for c in cases.values()})
-        },
+        "expected_languages": languages,
+        "expected_categories": categories,
         "arms": arms, "cases": details,
         "retention": {
             "cases": len(retention_scores), "failures": sum(s.failed for s in retention_scores),

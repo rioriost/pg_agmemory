@@ -4,23 +4,36 @@ set -Eeuo pipefail
 umask 077
 
 usage() {
-    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1]"
+    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1] [--cohort pilot-v1|unseen-synthetic-v1]"
     echo "Apple Container only; at most 100 fresh Copilot calls using the selected model."
     echo "Synthetic fixtures only; model-selected purge applies only to this owned disposable DB."
     echo "Uses existing host Copilot authentication without copying credentials into guests."
     echo "No embeddings, background worker, production data, or external effect execution."
-    echo "Default query policy: lexical-v2. Same 20-case regression cohort, not held-out data."
+    echo "Defaults: query policy lexical-v2; cohort pilot-v1. No externally held-out claim."
 }
 if [[ "${1:-}" == --help ]]; then usage; exit 0; fi
-if [[ $# != 4 && $# != 6 ]]; then usage >&2; exit 2; fi
+if [[ $# != 4 && $# != 6 && $# != 8 ]]; then usage >&2; exit 2; fi
 if [[ "$4" != --allow-copilot ]]; then usage >&2; exit 2; fi
 directory="$1" model="$2" effort="$3"
 query_policy=lexical-v2
-if [[ $# == 6 ]]; then
-    [[ "$5" == --query-policy ]] || { usage >&2; exit 2; }
-    query_policy="$6"
-fi
+cohort=pilot-v1
+query_seen=false cohort_seen=false
+shift 4
+while [[ $# -gt 0 ]]; do
+    [[ $# -ge 2 && "$2" != --* ]] || { usage >&2; exit 2; }
+    case "$1" in
+        --query-policy)
+            [[ "$query_seen" == false ]] || { usage >&2; exit 2; }
+            query_policy="$2" query_seen=true ;;
+        --cohort)
+            [[ "$cohort_seen" == false ]] || { usage >&2; exit 2; }
+            cohort="$2" cohort_seen=true ;;
+        *) usage >&2; exit 2 ;;
+    esac
+    shift 2
+done
 case "$query_policy" in lexical-v2|legacy-v1) ;; *) usage >&2; exit 2 ;; esac
+case "$cohort" in pilot-v1|unseen-synthetic-v1) ;; *) usage >&2; exit 2 ;; esac
 [[ "$model" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || exit 2
 case "$effort" in low|medium|high|xhigh) ;; *) exit 2 ;; esac
 cd -P "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -77,9 +90,10 @@ cleanup() {
     rm -f "$directory/credentials.env" "$directory/jwt-private.pem" || cleanup_failed=true
     if [[ "$cleanup_failed" == true ]]; then result=1; failure_code=owned_cleanup_failed; fi
     jq -n --arg run "$run_id" --arg revision "$source_revision" --arg policy "$query_policy" \
+        --arg cohort "$cohort" \
         --arg failure "$failure_code" --argjson success "$([[ $result == 0 ]] && echo true || echo false)" \
         '{format:"pgag-agent-eval-harness-v1",run_id:$run,source_revision:$revision,
-          query_policy:$policy,held_out:false,
+          query_policy:$policy,cohort_id:$cohort,held_out:false,held_out_external:false,
           completed:$success,failure_code:(if $success then null else $failure end),
           production_qualified:false,external_effects_executed:false}' \
         > "$directory/harness.json" || result=1
@@ -198,11 +212,11 @@ container run --name "${run_id}-runner" --user "$(id -u):$(id -g)" \
     -e "PGAG_AGENT_EVAL_SOURCE_REVISION=$source_revision" \
     -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/work/src \
     "$image" timeout 2400s python /work/scripts/evaluate-agent-memory.py \
-        --output /drill/results --bridge /bridge --query-policy "$query_policy" \
+        --output /drill/results --bridge /bridge --query-policy "$query_policy" --cohort "$cohort" \
         > "$directory/runner.log" 2>&1
 failure_code=bridge_shutdown_failed
 printf '{"run_id":"%s"}\n' "$run_id" > "$directory/bridge/stop.json"
 wait "$bridge_pid"
 bridge_pid=""
 failure_code=evaluation_incomplete
-echo "Synthetic agent evaluation completed; inspect private results and failure counts."
+echo "Synthetic agent evaluation completed for $cohort; inspect private results and failure counts."

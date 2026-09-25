@@ -48,9 +48,9 @@ def gold_answer(case):
     )
 
 
-def observations(failed=False):
+def observations(failed=False, cases=None):
     result = []
-    for case in pilot_cases():
+    for case in pilot_cases() if cases is None else cases:
         for arm in ARMS:
             context = (
                 case.events if arm == "pg_agmemory"
@@ -362,3 +362,44 @@ def test_report_rejects_unfair_baselines_and_mixed_failure_success():
         changed[index] = changed[index].model_copy(update=updates)
         with pytest.raises(ValueError):
             pilot_report(changed)
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_explicit_original_cases_preserve_exact_default_report(failed):
+    rows = observations(failed=failed)
+    assert pilot_report(rows) == pilot_report(rows, cases=pilot_cases())
+    assert pilot_report(rows) == pilot_report(rows, cases=tuple(reversed(pilot_cases())))
+
+
+@pytest.mark.parametrize("kind", ["missing", "duplicate", "language", "category"])
+def test_report_rejects_invalid_cohort_before_overwriting_case_ids(kind):
+    cases = list(pilot_cases())
+    if kind == "missing":
+        cases.pop()
+    elif kind == "duplicate":
+        cases[-1] = cases[0]
+    elif kind == "language":
+        cases[0] = cases[0].model_copy(update={"language": "ja"})
+    else:
+        cases[0] = cases[0].model_copy(update={"category": "different_category"})
+    with pytest.raises(ValueError, match="Report requires"):
+        pilot_report(observations(), cases=cases)
+
+
+def test_new_cohort_report_preserves_failed_slots_and_rejects_original_observations():
+    from pg_agmemory.agent_evaluation_unseen import unseen_cases
+
+    cases = unseen_cases()
+    report = pilot_report(observations(failed=True, cases=cases), cases=cases)
+    assert len(report["cases"]) == 60
+    assert {row["case_id"] for row in report["cases"]} == {case.case_id for case in cases}
+    for arm in ARMS:
+        assert report["arms"][arm]["failures"] == 20
+        assert report["arms"][arm]["accuracy_denominator"] == 20
+        assert report["arms"][arm]["valid_answer_accuracy"] is None
+    assert report["retention"]["unsafe_deleted"] is None
+    assert report["retention"]["failures"] == 20
+    with pytest.raises(ValueError, match="exactly one"):
+        pilot_report(observations(), cases=cases)
+    with pytest.raises(ValueError, match="exactly one"):
+        pilot_report(observations(failed=True, cases=cases))

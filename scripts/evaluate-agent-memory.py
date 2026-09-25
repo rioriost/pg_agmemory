@@ -24,7 +24,8 @@ Fixture JWT issued-at times are backdated by at most 30 seconds for independent
 guest clocks. Expiration and the Native API's strict authentication are unchanged.
 Query policy defaults to lexical-v2, which verifies the shared Native lexical
 planning contract before model dispatch. Explicit legacy-v1 preserves the original
-query prompt/parser and recipe digest. This is the same regression cohort, not held-out data.
+query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 selects the
+separately authored synthetic dataset, not blinded or externally held-out real-world data.
 """
 
 from __future__ import annotations
@@ -74,6 +75,8 @@ RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
 QueryPolicy = Literal["legacy-v1", "lexical-v2"]
 QUERY_POLICIES = ("legacy-v1", "lexical-v2")
+Cohort = Literal["pilot-v1", "unseen-synthetic-v1"]
+COHORTS = ("pilot-v1", "unseen-synthetic-v1")
 
 
 class EvaluationFailure(Exception):
@@ -671,6 +674,7 @@ async def answer_arm(
     result = observation(case, arm, bridge, start, context, answer=answer, error=error)
     detail = {
         "arm": arm, "status": "failed" if error else "completed", "error": error,
+        "context_available": True,
         "answer": None if answer is None else answer.model_dump(),
         "context_events": [event.model_dump() for event in context],
         "context_prompt_bytes": len(recipe.answer_prompt(case, context).encode("utf-8")),
@@ -759,6 +763,7 @@ async def memory_arm(
     native_latencies = []
     detail: dict[str, Any] = {
         "arm": "pg_agmemory", "status": "started", "query_policy": query_policy,
+        "context_available": False,
     }
     phase = "native_connect"
     journal.emit("arm_started", case_id=case.case_id, arm="pg_agmemory")
@@ -875,6 +880,11 @@ async def memory_arm(
                 not set(retention.forget_ids) & {event.event_id for event in context},
                 "purged_episode_recalled",
             )
+            detail["context_available"] = True
+            journal.emit(
+                "answer_context_ready", case_id=case.case_id,
+                context_events=[event.model_dump() for event in context],
+            )
             detail["recall_mapping"] = mapping
             detail["recall_context_pack"] = result.context_pack.model_dump()
             detail["recall_coverage"] = result.coverage.model_dump()
@@ -984,6 +994,89 @@ def fixed_prompt_hashes(cases: tuple[recipe.AgentMemoryCase, ...]) -> dict[str, 
     }
 
 
+def select_cohort(cohort: str) -> tuple[recipe.AgentMemoryCase, ...]:
+    require(cohort in COHORTS, "invalid_cohort")
+    if cohort == "pilot-v1":
+        cases = recipe.pilot_cases()
+    else:
+        from pg_agmemory.agent_evaluation_unseen import COHORT_ID, unseen_cases
+
+        require(COHORT_ID == cohort, "cohort_identity_mismatch")
+        cases = unseen_cases()
+    require(
+        isinstance(cases, tuple) and len(cases) == 20
+        and all(isinstance(case, recipe.AgentMemoryCase) for case in cases)
+        and len({case.case_id for case in cases}) == 20,
+        "invalid_cohort_cases",
+    )
+    require(
+        sum(case.language == "en" for case in cases) == 10
+        and sum(case.language == "ja" for case in cases) == 10
+        and len({case.category for case in cases}) == 5
+        and all(sum(other.category == case.category for other in cases) == 4 for case in cases)
+        and sum(case.expected_answer is None for case in cases) == 4,
+        "invalid_cohort_balance",
+    )
+    return cases
+
+
+def cohort_metadata(
+    cohort: str, cases: tuple[recipe.AgentMemoryCase, ...], query_policy: QueryPolicy,
+) -> dict[str, Any]:
+    require(cases == select_cohort(cohort), "cohort_dataset_mismatch")
+    if cohort == "pilot-v1":
+        dataset_source = Path(recipe.__file__)
+    else:
+        from pg_agmemory import agent_evaluation_unseen
+
+        dataset_source = Path(agent_evaluation_unseen.__file__)
+    scorer_source = Path(recipe.__file__).read_bytes()
+    query_metadata = query_policy_metadata(query_policy)
+    dataset_sha = hashlib.sha256(json_bytes([case.model_dump() for case in cases])).hexdigest()
+    protected_sha = hashlib.sha256(scorer_source.split(b"def pilot_report(")[0]).hexdigest()
+    components = {
+        "format": "pgag-agent-memory-cohort-recipe-v3", "cohort_id": cohort,
+        "query_policy": query_policy, "query_recipe_sha256": query_metadata["recipe_sha256"],
+        "query_recipe_components": query_metadata["recipe_components"],
+        "dataset_sha256": dataset_sha,
+        "dataset_source_sha256": hashlib.sha256(dataset_source.read_bytes()).hexdigest(),
+        "scorer_source_sha256": hashlib.sha256(scorer_source).hexdigest(),
+        "protected_prompt_case_scoring_source_sha256": protected_sha,
+    }
+    return {
+        **query_metadata, "cohort_id": cohort, "dataset_sha256": dataset_sha,
+        "cases_sha256": dataset_sha,
+        "dataset_source_sha256": components["dataset_source_sha256"],
+        "scorer_source_sha256": components["scorer_source_sha256"],
+        "protected_prompt_case_scoring_source_sha256": protected_sha,
+        "query_recipe_sha256": query_metadata["recipe_sha256"],
+        "query_recipe_components": query_metadata["recipe_components"],
+        "recipe_digest_format": components["format"], "recipe_components": components,
+        "recipe_sha256": hashlib.sha256(json_bytes(components)).hexdigest(),
+        "fixed_prompt_sha256": fixed_prompt_hashes(cases),
+        "evaluation_cohort": {
+            "id": cohort,
+            "kind": "same_20_case_regression_cohort" if cohort == "pilot-v1" else "new_synthetic",
+            "held_out": False, "held_out_external": False, "blinded_real_world": False,
+            "first_use_in_owned_run": True, "first_use_scope": "fresh_output_directory_only",
+            "prior_model_exposure_verified": False,
+            "baseline_revision": "9c84c7f" if cohort == "pilot-v1" else None,
+        },
+    }
+
+
+def verify_cohort_metadata(
+    metadata: Mapping[str, Any], cohort: str, cases: tuple[recipe.AgentMemoryCase, ...],
+    query_policy: QueryPolicy,
+) -> None:
+    expected = cohort_metadata(cohort, cases, query_policy)
+    require(
+        all(key in metadata and json_bytes(metadata[key]) == json_bytes(value)
+            for key, value in expected.items()),
+        "cohort_metadata_mismatch",
+    )
+
+
 def latency_summary(values: list[float]) -> dict[str, float | int | None]:
     ordered = sorted(values)
     return {
@@ -993,8 +1086,62 @@ def latency_summary(values: list[float]) -> dict[str, float | int | None]:
     }
 
 
+def evidence_coverage(
+    case: recipe.AgentMemoryCase, detail: Mapping[str, Any],
+) -> dict[str, Any]:
+    required = set(case.required_source_ids)
+    result: dict[str, Any] = {
+        "required_source_count": len(required), "applicable": bool(required),
+        "context_available": False, "retrieved_required_source_recall": None,
+        "retrieved_required_source_ids": None, "missing_required_source_ids": None,
+    }
+    if detail.get("context_available") is not True:
+        return result
+    try:
+        raw_events = detail.get("context_events")
+        if not isinstance(raw_events, list):
+            raise ValueError("Context not recorded")
+        events = tuple(recipe.Event.model_validate(event) for event in raw_events)
+        if recipe.bounded_context(case, events) != events:
+            raise ValueError("Context exceeds delivered budget")
+    except (ValueError, TypeError):
+        return result | {"error": "invalid_evidence_context"}
+    retrieved = required & {event.event_id for event in events}
+    return result | {
+        "context_available": True,
+        "retrieved_required_source_recall": len(retrieved) / len(required) if required else None,
+        "retrieved_required_source_ids": sorted(retrieved),
+        "missing_required_source_ids": sorted(required - retrieved),
+    }
+
+
+def evidence_coverage_summary(
+    cases: tuple[recipe.AgentMemoryCase, ...], details: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    arms: dict[str, Any] = {}
+    for arm in ARMS:
+        rows = [details[case.case_id]["arms"][arm]["evidence_coverage"] for case in cases]
+        values = [
+            row["retrieved_required_source_recall"] for row in rows
+            if row["retrieved_required_source_recall"] is not None
+        ]
+        applicable = sum(row["applicable"] for row in rows)
+        arms[arm] = {
+            "retrieved_required_source_recall": sum(values) / len(values) if values else None,
+            "valid_denominator": len(values), "answerable_cases": applicable,
+            "unknown_answerable_cases": applicable - len(values),
+            "not_applicable_cases": len(rows) - applicable,
+        }
+    return {
+        "definition": "Required-source coverage of validated context available to the reader; "
+        "independent of answer citations. Post-context answer failures remain measurable.",
+        "historical_required_source_recall": "citation-based; unchanged in metrics",
+        "arms": arms,
+    }
+
+
 async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
-    cases = recipe.pilot_cases()
+    cases = select_cohort(args.cohort)
     require(len(cases) == 20, "fixed_case_count_required")
     case_details: dict[str, dict[str, Any]] = {}
     observations: dict[tuple[str, str], recipe.ArmObservation] = {}
@@ -1002,7 +1149,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
     config = None
     fatal = None
     manifest: dict[str, Any] = {
-        **query_policy_metadata(args.query_policy),
+        **cohort_metadata(args.cohort, cases, args.query_policy),
         "format": "pgag-agent-memory-evaluation-v1",
         "benchmark_qualified": False, "automatic_effects": False,
         "synthetic_fixture_only": True, "fixture_purge_consent_required": True,
@@ -1015,14 +1162,6 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             "authentication_retries": 0,
         },
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "fixed_prompt_sha256": fixed_prompt_hashes(cases),
-        "evaluation_cohort": {
-            "kind": "same_20_case_regression_cohort", "held_out": False,
-            "baseline_revision": "9c84c7f",
-        },
-        "cases_sha256": hashlib.sha256(
-            json_bytes([case.model_dump() for case in cases]),
-        ).hexdigest(),
         "budget": {
             "llm_calls_maximum": MAX_CALLS, "call_retries": 0,
             "response_timeout_seconds": RESPONSE_TIMEOUT,
@@ -1063,6 +1202,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             "tools_allowed": False,
         }
         journal.emit("run_started", manifest=manifest)
+        verify_cohort_metadata(manifest, args.cohort, cases, args.query_policy)
         # Provisioning is restricted to the matched owned admin target; runtime traffic
         # below never uses admin credentials or bypasses the HTTP authorization boundary.
         foreign_subject = f"{config.run_id}:foreign-sentinel"
@@ -1127,14 +1267,18 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
                     )
                     detail["arms"][arm] = {
                         "status": "not_measured",
+                        "context_available": False,
                         "error": fatal or {"code": "run_aborted_before_arm"},
                         "answer": None, "context_events": [event.model_dump() for event in context],
                         "call_ids": [],
                     }
+                detail["arms"][arm]["evidence_coverage"] = evidence_coverage(
+                    case, detail["arms"][arm],
+                )
             detail["metadata"] = manifest
             journal.save(f"case-{case.case_id}.json", detail)
     calls = [] if bridge is None else bridge.calls
-    metrics = recipe.pilot_report(tuple(observations.values()))
+    metrics = recipe.pilot_report(tuple(observations.values()), cases=cases)
     failures = sum(item.answer is None for item in observations.values())
     summary = {
         **manifest, "status": "failed" if fatal or failures else "completed",
@@ -1150,6 +1294,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             float(call["duration_seconds"]) for call in calls if "duration_seconds" in call
         ]),
         "metrics": metrics,
+        "evidence_coverage": evidence_coverage_summary(cases, case_details),
     }
     journal.save("summary.json", summary)
     journal.emit(
@@ -1172,6 +1317,10 @@ def main() -> int:
         "--query-policy", choices=QUERY_POLICIES, default="lexical-v2",
         help="Versioned query planning; legacy-v1 explicitly replays the original query recipe",
     )
+    parser.add_argument(
+        "--cohort", choices=COHORTS, default="pilot-v1",
+        help="Fixed synthetic dataset selection; no arbitrary dataset paths",
+    )
     args = parser.parse_args()
     if not args.api_url:
         parser.error("PGAG_AGENT_EVAL_API_URL or --api-url is required")
@@ -1183,6 +1332,7 @@ def main() -> int:
         return 1
     print(json.dumps({
         "status": result["status"], "calls_dispatched": result["calls_dispatched"],
+        "cohort_id": args.cohort,
         "report": str(journal.output / "summary.json"),
     }), flush=True)
     return 0 if result["status"] == "completed" else 1

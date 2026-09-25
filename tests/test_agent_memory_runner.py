@@ -314,7 +314,7 @@ def test_smaller_declared_call_ceiling_is_enforced(transport):
 class DecisionBridge:
     def __init__(
         self, case, *, invalid_retention=False, query="report locale", answer="en-GB",
-        query_policy="legacy-v1", recall_raw=None,
+        query_policy="legacy-v1", recall_raw=None, keep_event_ids=None,
     ):
         self.calls = []
         self.prompts = []
@@ -324,6 +324,9 @@ class DecisionBridge:
         self.answer = answer
         self.query_policy = query_policy
         self.recall_raw = recall_raw
+        self.keep_event_ids = (
+            [case.events[1].event_id] if keep_event_ids is None else list(keep_event_ids)
+        )
 
     async def call(self, prompt, *, case_id, phase):
         self.prompts.append((phase, prompt))
@@ -334,9 +337,10 @@ class DecisionBridge:
             if self.invalid_retention:
                 return '{"keep_ids":[],"forget_ids":[]}'
             return json.dumps({
-                "keep_ids": [self.case.events[1].event_id],
+                "keep_ids": self.keep_event_ids,
                 "forget_ids": [
-                    event.event_id for event in self.case.events if event != self.case.events[1]
+                    event.event_id for event in self.case.events
+                    if event.event_id not in self.keep_event_ids
                 ],
             })
         if phase == "recall_query":
@@ -346,7 +350,7 @@ class DecisionBridge:
                 return json.dumps({"terms": self.query.split(" ")}, ensure_ascii=False)
             return json.dumps({"query": self.query})
         return json.dumps({
-            "answer": self.answer, "source_event_ids": [self.case.events[1].event_id],
+            "answer": self.answer, "source_event_ids": self.keep_event_ids,
             "abstained": False,
         })
 
@@ -660,7 +664,7 @@ def test_startup_failure_persists_every_unmeasured_slot_without_zero_scores(tmp_
     journal = runner.Journal(tmp_path / "failed-run")
     summary = asyncio.run(runner.run(Namespace(
         api_url="http://127.0.0.1:58000", bridge=tmp_path / "unused-bridge",
-        query_policy="legacy-v1",
+        query_policy="legacy-v1", cohort="pilot-v1",
     ), journal))
     assert summary["status"] == "failed"
     assert summary["fatal_error"]["code"] == "owned_run_required"
@@ -809,6 +813,14 @@ def test_real_native_rls_purge_roundtrip_without_model(
 ):
     """Scripted decisions test interoperability; every Native call uses real HTTP/PostgreSQL."""
     case = runner.recipe.pilot_cases()[case_index]
+    real_native_roundtrip(env, api_process, tmp_path, case, query, answer, query_policy)
+
+
+def real_native_roundtrip(
+    env, api_process, tmp_path, case, query, answer, query_policy, *, retained_event_id=None,
+):
+    retained_event_id = retained_event_id or case.events[1].event_id
+    retained_event = next(event for event in case.events if event.event_id == retained_event_id)
     identity = runner.Provisioned(
         tenant_id=env.tenants[0], principal_id=env.principals[0], scope_id=env.scopes[0],
     )
@@ -845,7 +857,10 @@ def test_real_native_rls_purge_roundtrip_without_model(
                 client, case.case_id, foreign, sentinel_id, journal,
             )
 
-        bridge = DecisionBridge(case, query=query, answer=answer, query_policy=query_policy)
+        bridge = DecisionBridge(
+            case, query=query, answer=answer, query_policy=query_policy,
+            keep_event_ids=[retained_event_id],
+        )
         measured, detail = await runner.memory_arm(
             case, identity, env.subjects[0], foreign, sentinel_id, config,
             env.private_key, bridge, journal,
@@ -858,13 +873,13 @@ def test_real_native_rls_purge_roundtrip_without_model(
         assert detail["forget_preview"]["changed"] is False
         assert detail["forget_purge"]["state"] == "active_store_purged"
         assert detail["forget_purge"]["object_count"] == len(case.events) - 1
-        assert measured.context_events == (case.events[1],)
+        assert measured.context_events == (retained_event,)
         assert measured.answer.answer == answer
         assert len(bridge.calls) == 3
         assert [phase for phase, _ in bridge.prompts] == [
             "retention", "recall_query", "pg_agmemory",
         ]
-        retained_id = UUID(detail["observed_event_ids"][case.events[1].event_id])
+        retained_id = UUID(detail["observed_event_ids"][retained_event_id])
         async with runner.authenticated_client(
             config, env.subjects[0], env.private_key, journal, case.case_id,
             query_policy=query_policy,
@@ -873,7 +888,7 @@ def test_real_native_rls_purge_roundtrip_without_model(
                 identity.scope_id, "", language=case.language,
             ))
             assert [item.memory_id for item in recalled.items] == [retained_id]
-            assert recalled.items[0].content == case.events[1].text
+            assert recalled.items[0].content == retained_event.text
             episodes = await client.query_episodes(QueryEpisodes(
                 scope_ids=[identity.scope_id], max_items=8,
             ))
@@ -897,9 +912,35 @@ def test_real_native_rls_purge_roundtrip_without_model(
         asyncio.run(scenario(str(http.base_url)))
 
 
-def test_legacy_recipe_and_case_cohort_remain_byte_identical():
+@pytest.mark.integration
+@pytest.mark.parametrize("case_id,query,answer,retained_id", [
+    ("unseen-01", "support", "oldest unanswered", "unseen-01-e1"),
+    ("unseen-03", "舟灯り", "返信待ち順", "unseen-03-e3"),
+])
+def test_real_native_unseen_lifecycle_without_model(
+    env, api_process, tmp_path, case_id, query, answer, retained_id,
+):
+    case = next(
+        case for case in runner.select_cohort("unseen-synthetic-v1")
+        if case.case_id == case_id
+    )
+    # Author-supplied source literals test HTTP interoperability, not planner quality.
+    # This scripted bridge is never used by the real runner.
+    real_native_roundtrip(
+        env, api_process, tmp_path, case, query, answer, "lexical-v2",
+        retained_event_id=retained_id,
+    )
+
+
+def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
     original = hashlib.sha256(Path(runner.recipe.__file__).read_bytes()).hexdigest()
-    assert original == "f5b7120d3cd44235e7165da6151030a4966d964959d66186ee8d81be0b293b13"
+    assert hashlib.sha256(
+        Path(runner.recipe.__file__).read_bytes().split(b"def pilot_report(")[0],
+    ).hexdigest() == "5240b3e0ee9385a8f451809570c4dfe45f5db4872fb0a78028def1d96ba4752b"
+    assert original != "f5b7120d3cd44235e7165da6151030a4966d964959d66186ee8d81be0b293b13"
+    assert hashlib.sha256(
+        Path(runner.query_planning.__file__).read_bytes(),
+    ).hexdigest() == "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746"
     assert runner.recipe_digest("legacy-v1") == original
     assert runner.recipe_digest() == original
     assert hashlib.sha256(runner.json_bytes([
@@ -1079,7 +1120,7 @@ def test_v2_run_checks_real_capability_before_any_control_model_dispatch(
     journal = runner.Journal(tmp_path / "v2-failed-startup")
     summary = asyncio.run(runner.run(Namespace(
         api_url=native_fixture["config"].api_url, bridge=transport.directory,
-        query_policy="lexical-v2",
+        query_policy="lexical-v2", cohort="pilot-v1",
     ), journal))
     assert summary["fatal_error"]["code"] == "lexical_query_contract_mismatch"
     assert summary["calls_dispatched"] == 0
@@ -1110,6 +1151,7 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
 
     async def capture_arguments(args, journal):
         selected.append(args.query_policy)
+        assert args.cohort == "pilot-v1"
         return {"status": "completed", "calls_dispatched": 0}
 
     monkeypatch.setattr(runner, "run", capture_arguments)
@@ -1127,6 +1169,15 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
     ([], True), (["--query-policy", "lexical-v2"], True),
     (["--query-policy", "legacy-v1"], True), (["--query-policy", "unknown"], False),
     (["--wrong-flag", "lexical-v2"], False), (["--query-policy"], False),
+    (["--cohort", "pilot-v1"], True), (["--cohort", "unseen-synthetic-v1"], True),
+    (["--cohort", "unseen-synthetic-v1", "--query-policy", "lexical-v2"], True),
+    (["--query-policy", "legacy-v1", "--cohort", "pilot-v1"], True),
+    (["--cohort", "unknown"], False), (["--cohort", "/arbitrary/data.json"], False),
+    (["--cohort", "pilot-v1", "--cohort", "pilot-v1"], False),
+    (["--query-policy", "legacy-v1", "--query-policy", "lexical-v2"], False),
+    (["--cohort", "--query-policy"], False),
+    (["--cohort", "--query-policy", "lexical-v2", "pilot-v1"], False),
+    (["--cohort"], False),
 ])
 def test_owned_shell_accepts_only_versioned_query_policy_without_starting_guests(option, accepted):
     result = subprocess.run(
@@ -1142,3 +1193,235 @@ def test_owned_shell_accepts_only_versioned_query_policy_without_starting_guests
     assert ("external_database_target_forbidden" in result.stderr) is accepted
     if not accepted:
         assert "Usage:" in result.stderr
+
+
+@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
+@pytest.mark.parametrize("query_policy", ["legacy-v1", "lexical-v2"])
+def test_cohort_metadata_binds_dataset_scorer_and_query_policy(cohort, query_policy):
+    cases = runner.select_cohort(cohort)
+    metadata = runner.cohort_metadata(cohort, cases, query_policy)
+    assert metadata["cohort_id"] == metadata["evaluation_cohort"]["id"] == cohort
+    assert metadata["dataset_sha256"] == metadata["cases_sha256"] == hashlib.sha256(
+        runner.json_bytes([case.model_dump() for case in cases]),
+    ).hexdigest()
+    assert metadata["scorer_source_sha256"] == hashlib.sha256(
+        Path(runner.recipe.__file__).read_bytes(),
+    ).hexdigest()
+    assert metadata["recipe_sha256"] == hashlib.sha256(
+        runner.json_bytes(metadata["recipe_components"]),
+    ).hexdigest()
+    assert metadata["recipe_digest_format"] == "pgag-agent-memory-cohort-recipe-v3"
+    assert metadata["query_recipe_sha256"] == runner.query_policy_metadata(
+        query_policy,
+    )["recipe_sha256"]
+    assert metadata["evaluation_cohort"]["held_out_external"] is False
+    assert metadata["evaluation_cohort"]["first_use_scope"] == "fresh_output_directory_only"
+    runner.verify_cohort_metadata(metadata, cohort, cases, query_policy)
+    for field in (
+        "dataset_sha256", "cases_sha256", "scorer_source_sha256", "recipe_sha256",
+        "query_recipe_sha256", "dataset_source_sha256",
+        "protected_prompt_case_scoring_source_sha256",
+    ):
+        with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+            runner.verify_cohort_metadata(
+                metadata | {field: "0" * 64}, cohort, cases, query_policy,
+            )
+
+
+def test_fixed_cohort_selection_rejects_paths_or_modified_dataset():
+    for value in ("unknown", "/private/data.json", "../unseen-synthetic-v1", ""):
+        with pytest.raises(runner.EvaluationFailure, match="invalid_cohort"):
+            runner.select_cohort(value)
+    cases = runner.select_cohort("unseen-synthetic-v1")
+    altered = (cases[0].model_copy(update={"question": "tampered question"}), *cases[1:])
+    with pytest.raises(runner.EvaluationFailure, match="cohort_dataset_mismatch"):
+        runner.cohort_metadata("unseen-synthetic-v1", altered, "lexical-v2")
+    with pytest.raises(runner.EvaluationFailure, match="cohort_dataset_mismatch"):
+        runner.cohort_metadata("pilot-v1", cases, "lexical-v2")
+    original_ids = {case.case_id for case in runner.select_cohort("pilot-v1")}
+    assert not original_ids & {case.case_id for case in cases}
+
+
+def test_unseen_planning_uses_only_question_with_no_corpus_or_gold(tmp_path):
+    journal = runner.Journal(tmp_path / "unseen-query-only")
+    for case in runner.select_cohort("unseen-synthetic-v1"):
+        poisoned = case.model_copy(update={
+            "events": (), "expected_answer": "PRIVATE_GOLD_CANARY",
+            "expected_keep_ids": ("PRIVATE_GOLD_CANARY",),
+            "required_source_ids": ("PRIVATE_GOLD_CANARY",),
+            "forbidden_answers": ("PRIVATE_GOLD_CANARY",),
+        })
+        bridge = DecisionBridge(
+            case, query_policy="lexical-v2", recall_raw='{"terms":["synthetic"]}',
+        )
+        compiled, detail = asyncio.run(runner.plan_recall_query(
+            poisoned, bridge, journal, "lexical-v2",
+        ))
+        assert compiled == "synthetic" and len(bridge.calls) == 1
+        assert bridge.prompts == [("recall_query", runner.query_planning.lexical_query_prompt(
+            case.question, runner.lexical_profile(case.language),
+        ))]
+        assert "PRIVATE_GOLD_CANARY" not in bridge.prompts[0][1]
+        assert all(event.text not in bridge.prompts[0][1] for event in case.events)
+        assert detail["search_profile"] == runner.lexical_profile(case.language)
+
+
+@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
+def test_selected_cohort_persists_all_failed_slots_before_any_dispatch(
+    tmp_path, monkeypatch, cohort,
+):
+    from argparse import Namespace
+
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setenv("PGAG_AGENT_EVAL_SOURCE_REVISION", "a" * 40)
+    monkeypatch.delenv("PGAG_AGENT_EVAL_OWNED_RUN", raising=False)
+    journal = runner.Journal(tmp_path / "failed-cohort-run")
+    summary = asyncio.run(runner.run(Namespace(
+        api_url="http://127.0.0.1:58000", bridge=tmp_path / "unused-bridge",
+        query_policy="lexical-v2", cohort=cohort,
+    ), journal))
+    assert summary["calls_dispatched"] == 0
+    assert summary["failed_or_unmeasured_arms"] == 60
+    assert summary["cohort_id"] == cohort
+    assert summary["source_code_git_sha"] == "a" * 40
+    cases = runner.select_cohort(cohort)
+    assert {row["case_id"] for row in summary["metrics"]["cases"]} == {
+        case.case_id for case in cases
+    }
+    for arm in runner.ARMS:
+        assert summary["metrics"]["arms"][arm]["failures"] == 20
+        assert summary["metrics"]["arms"][arm]["accuracy_denominator"] == 20
+        assert summary["metrics"]["arms"][arm]["valid_answer_accuracy"] is None
+        assert summary["evidence_coverage"]["arms"][arm]["valid_denominator"] == 0
+        assert (
+            summary["evidence_coverage"]["arms"][arm]["retrieved_required_source_recall"] is None
+        )
+    for case in cases:
+        record = json.loads((journal.output / f"case-{case.case_id}.json").read_text())
+        assert record["metadata"]["cohort_id"] == cohort
+        assert record["metadata"]["dataset_sha256"] == summary["dataset_sha256"]
+        assert all(arm["call_ids"] == [] for arm in record["arms"].values())
+        assert all(
+            arm["evidence_coverage"]["retrieved_required_source_recall"] is None
+            for arm in record["arms"].values()
+        )
+
+
+@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
+def test_runner_cli_explicit_cohort_keeps_query_default(tmp_path, monkeypatch, capsys, cohort):
+    selected = []
+
+    async def capture_arguments(args, journal):
+        selected.append((args.cohort, args.query_policy))
+        return {"status": "completed", "calls_dispatched": 0}
+
+    monkeypatch.setattr(runner, "run", capture_arguments)
+    monkeypatch.setenv("PGAG_AGENT_EVAL_API_URL", "http://127.0.0.1:58000")
+    monkeypatch.setattr(sys, "argv", [
+        "evaluate-agent-memory.py", "--output", str(tmp_path / "cohort-cli-output"),
+        "--bridge", str(tmp_path / "cohort-cli-bridge"), "--cohort", cohort,
+    ])
+    assert runner.main() == 0
+    assert selected == [(cohort, "lexical-v2")]
+    assert json.loads(capsys.readouterr().out)["cohort_id"] == cohort
+
+
+@pytest.mark.parametrize("value", ["unknown", "/arbitrary/dataset.json", "--query-policy"])
+def test_runner_cli_rejects_invalid_cohort_before_output_creation(tmp_path, monkeypatch, value):
+    output = tmp_path / "must-not-create"
+    monkeypatch.setattr(sys, "argv", [
+        "evaluate-agent-memory.py", "--output", str(output), "--bridge", str(tmp_path / "bridge"),
+        "--cohort", value,
+    ])
+    with pytest.raises(SystemExit) as failure:
+        runner.main()
+    assert failure.value.code == 2
+    assert not output.exists()
+
+
+def test_retrieved_evidence_coverage_is_distinct_from_citation_recall():
+    original = runner.recipe.pilot_cases()[0]
+    context = (original.events[1], original.events[2])
+    case = original.model_copy(update={
+        "required_source_ids": tuple(event.event_id for event in context),
+    })
+    answer = runner.recipe.AnswerDecision(
+        answer=case.expected_answer, source_event_ids=[context[0].event_id], abstained=False,
+    )
+    cited = runner.recipe.score_answer(case, answer, context)
+    coverage = runner.evidence_coverage(case, {
+        "context_available": True, "context_events": [event.model_dump() for event in context],
+        "status": "completed", "answer": answer.model_dump(),
+    })
+    assert cited.required_source_recall == 0.5
+    assert coverage["retrieved_required_source_recall"] == 1.0
+    assert coverage["retrieved_required_source_ids"] == sorted(case.required_source_ids)
+    assert coverage["missing_required_source_ids"] == []
+
+
+def test_answer_failure_after_valid_retrieval_preserves_known_evidence_coverage():
+    case = runner.recipe.pilot_cases()[0]
+    coverage = runner.evidence_coverage(case, {
+        "context_available": True, "context_events": [case.events[1].model_dump()],
+        "status": "failed", "error": {"code": "invalid_answer_decision"}, "answer": None,
+    })
+    assert coverage["context_available"] is True
+    assert coverage["retrieved_required_source_recall"] == 1.0
+
+
+@pytest.mark.parametrize("detail", [
+    {}, {"context_events": []}, {"context_available": False, "context_events": []},
+    {"status": "failed", "context_available": False, "error": {"code": "native_api_unavailable"}},
+])
+def test_evidence_coverage_before_retrieval_is_unknown_not_zero(detail):
+    coverage = runner.evidence_coverage(runner.recipe.pilot_cases()[0], detail)
+    assert coverage["retrieved_required_source_recall"] is None
+    assert coverage["retrieved_required_source_ids"] is None
+    assert coverage["missing_required_source_ids"] is None
+    assert coverage["context_available"] is False
+
+
+@pytest.mark.parametrize("invalid_context", ["foreign", "changed", "duplicate", "missing"])
+def test_evidence_coverage_rejects_unvalidated_context(invalid_context):
+    case = runner.recipe.pilot_cases()[0]
+    event = case.events[1].model_dump()
+    contexts = {
+        "foreign": [runner.recipe.pilot_cases()[1].events[1].model_dump()],
+        "changed": [event | {"text": "fabricated content"}],
+        "duplicate": [event, event],
+        "missing": None,
+    }
+    coverage = runner.evidence_coverage(case, {
+        "context_available": True, "context_events": contexts[invalid_context],
+    })
+    assert coverage["retrieved_required_source_recall"] is None
+    assert coverage["error"] == "invalid_evidence_context"
+
+
+def test_known_empty_retrieval_is_zero_but_unanswerable_coverage_is_not_applicable():
+    cases = runner.recipe.pilot_cases()
+    empty = {"context_available": True, "context_events": []}
+    assert runner.evidence_coverage(cases[0], empty)["retrieved_required_source_recall"] == 0
+    revoked = next(case for case in cases if case.expected_answer is None)
+    coverage = runner.evidence_coverage(revoked, empty)
+    assert coverage["applicable"] is False
+    assert coverage["retrieved_required_source_recall"] is None
+
+
+def test_evidence_coverage_aggregate_has_explicit_known_denominator():
+    cases = runner.recipe.pilot_cases()
+    details = {}
+    for index, case in enumerate(cases):
+        arms = {}
+        for arm in runner.ARMS:
+            context = [case.events[1].model_dump()] if index == 0 else []
+            arms[arm] = {"evidence_coverage": runner.evidence_coverage(case, {
+                "context_available": index == 0, "context_events": context,
+            })}
+        details[case.case_id] = {"arms": arms}
+    summary = runner.evidence_coverage_summary(cases, details)
+    for arm in runner.ARMS:
+        assert summary["arms"][arm] == {
+            "retrieved_required_source_recall": 1.0, "valid_denominator": 1,
+            "answerable_cases": 16, "unknown_answerable_cases": 15, "not_applicable_cases": 4,
+        }

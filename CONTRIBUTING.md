@@ -10,6 +10,13 @@ changing authorization, evidence, transactions, or deletion.
 
 ## Container-first validation
 
+For live agent-memory experiments, freeze the selected cohort, prompts, query
+policy and scoring before inference. Keep old results and failed calls; never
+tune the same measured cases and relabel them as unseen. New cohort selection
+must cover real Native HTTP/SQL/RLS/purge and a standalone test image before
+paid model use. Retrieval coverage and citation recall are distinct metrics;
+unknown outcomes must not become measured zeros. See [evaluation boundaries](docs/EVALUATION.md).
+
 Local validation uses **Apple Container**, not Docker Desktop or a silent host
 fallback. Install/start Apple Container and ensure `jq` is available, then run
 from the repository root:
