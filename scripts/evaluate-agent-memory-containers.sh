@@ -80,6 +80,12 @@ trap cleanup EXIT
 trap 'failure_code=interrupted; exit 130' INT
 trap 'failure_code=terminated; exit 143' TERM
 
+container_host() {
+    container inspect "$1" | jq -er \
+        '(.[0].status.networks[0].ipv4Address // .[0].networks[0].ipv4Address)
+         | split("/")[0] | select(length > 0)'
+}
+
 failure_code=runtime_build_failed
 image_owned=true
 container build --target runtime --tag "$image" . > "$directory/build.log" 2>&1
@@ -95,7 +101,7 @@ for ((attempt=0; attempt<90; attempt++)); do
     sleep 1
 done
 container exec "$db" pg_isready -t 1 -U postgres -d pgag_agent_eval >/dev/null
-db_host="$(container inspect "$db" | jq -er '.[0].networks[0].address | split("/")[0]')"
+db_host="$(container_host "$db")"
 admin_url="postgresql://postgres:${password}@${db_host}:5432/pgag_agent_eval"
 printf 'PGAG_ADMIN_DATABASE_URL=%s\n' "$admin_url" >> "$directory/credentials.env"
 failure_code=migration_failed
@@ -128,7 +134,7 @@ container run -d --name "$api" \
     -e "PGAG_DATABASE_URL=postgresql://pgag_agent_eval_runtime:${runtime_password}@${db_host}:5432/pgag_agent_eval" \
     -e "PGAG_JWT_PUBLIC_KEY=$public_key" -e "PGAG_JWT_ISSUER=$run_id" \
     -e "PGAG_JWT_AUDIENCE=$run_id" "$image" >/dev/null
-api_host="$(container inspect "$api" | jq -er '.[0].networks[0].address | split("/")[0]')"
+api_host="$(container_host "$api")"
 failure_code=owned_configuration_failed
 containers+=("${run_id}-configuration")
 container run --name "${run_id}-configuration" --user "$(id -u):$(id -g)" \

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { auditEvents, parseArguments, usageSummary, validateRequest } from "./copilot-eval-bridge.mjs";
 
@@ -53,4 +55,24 @@ test("usage is measured rather than invented or labeled as money", () => {
   assert.equal(result.monetary_cost_verified, false);
   assert.throws(() => usageSummary({}, model));
   assert.throws(() => usageSummary({ ...raw, currentModel: "other" }, model));
+});
+
+test("owned harness reads current and legacy Apple Container IPv4 fields", () => {
+  const source = readFileSync(new URL("./evaluate-agent-memory-containers.sh", import.meta.url), "utf8");
+  const helper = source.match(/container_host\(\) \{[\s\S]*?\n\}/)[0];
+  for (const value of [
+    [{ status: { networks: [{ ipv4Address: "192.168.65.20/24" }] } }],
+    [{ networks: [{ ipv4Address: "192.168.65.20/24" }] }],
+    [{ networks: [{}] }],
+  ]) {
+    const result = spawnSync("bash", ["-c", `${helper}
+container() { printf '%s\\n' '${JSON.stringify(value)}'; }
+container_host owned-node`], { encoding: "utf8" });
+    if (value[0].networks?.[0]?.ipv4Address || value[0].status) {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.trim(), "192.168.65.20");
+    } else {
+      assert.notEqual(result.status, 0);
+    }
+  }
 });
