@@ -1,0 +1,88 @@
+{
+  "format": "pgag-copilot-memory-pilot-result-v2",
+  "source_revision": "0a8be6edf07d355678852096b4620ad188ecaa72",
+  "query_policy": "lexical-v2",
+  "previous_result": "copilot-memory-pilot-result.json",
+  "cases_sha256": "caf75aebb12ae11f8da4b85b7cf08e53cd1eb3b21d9682da1a07a6c0077aa398",
+  "base_recipe_sha256": "f5b7120d3cd44235e7165da6151030a4966d964959d66186ee8d81be0b293b13",
+  "recipe_sha256": "8413825681aa7cf8b6d0ff33d45860a13067aceaf38fb5fe3c19519224f10a5b",
+  "query_planning_sha256": "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746",
+  "runner_sha256": "f3bea48b1add3db3a45057ccbd5c3c54cbaf8dcb5e78427a4358fc2be6553364",
+  "private_artifacts": {
+    "summary_sha256": "7e7834d2cb35f43b15192eb49ae61043e743b1ac76d4c0f2320b77dbfd6e2cf2",
+    "journal_sha256": "a02a79cc8a99dcb4549dfffe20d749e8e02d95eaabe93719499e32bdf3cf86bb",
+    "bridge_summary_sha256": "c8d0fd10eff0065957c60ce629efdc1d12796d34f51e9290eec82c14115b6b04"
+  },
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "copilot_cli_version": "1.0.88",
+  "model_weights_revision_verified": false,
+  "fresh_session_per_call": true,
+  "tools_allowed": false,
+  "custom_instructions": false,
+  "retrieval": "native_lexical_only",
+  "server_contract": "pgag-lexical-query-v1",
+  "sql_matching_changed": false,
+  "automatic_browse_fallback": false,
+  "languages": {"en": 10, "ja": 10},
+  "scenarios": 20,
+  "events": 140,
+  "answerable_scenarios": 16,
+  "expected_abstentions": 4,
+  "arms": {
+    "no_memory": {"correct": 4, "total": 20, "accuracy": 0.2, "abstentions": 20},
+    "recent_window": {"correct": 4, "total": 20, "accuracy": 0.2, "abstentions": 20},
+    "pg_agmemory": {
+      "correct": 20, "total": 20, "accuracy": 1.0, "abstentions": 4,
+      "answerable_correct": 16, "answerable_total": 16,
+      "required_source_recall": 1.0,
+      "nonempty_retrievals": 20
+    }
+  },
+  "retention": {
+    "valid_decisions": 20,
+    "correct_keeps": 40,
+    "correct_forgets": 100,
+    "keep_precision": 1.0,
+    "keep_recall": 1.0,
+    "forget_precision": 1.0,
+    "forget_recall": 1.0,
+    "unsafe_deleted": 0
+  },
+  "completed_model_calls": 100,
+  "invalid_or_failed_model_calls": 0,
+  "unmeasured_arms": 0,
+  "automatic_retries": 0,
+  "additional_diagnostic_model_calls": 0,
+  "usage": {
+    "input_tokens": 344886,
+    "output_tokens": 6401,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 344586,
+    "api_requests": 100,
+    "reported_premium_requests": 100,
+    "reported_nano_aiu": 463037500000,
+    "monetary_cost_verified": false
+  },
+  "latency": {
+    "native_recall_ms": {"samples": 20, "p50": 40.993250, "p95": 52.754375},
+    "copilot_call_seconds": {"samples": 100, "p50": 8.069868709, "p95": 11.385250},
+    "native_answer_call_seconds": {"samples": 20, "p50": 7.922877129, "p95": 9.030905463},
+    "query_recall_answer_sum_seconds": {"samples": 20, "p50": 18.377976217, "p95": 22.975637762},
+    "runner_elapsed_seconds": 910.610,
+    "includes_cli_and_bridge_overhead": true
+  },
+  "held_out": false,
+  "release_qualified": false,
+  "product_usefulness_qualified": false,
+  "production_qualified": false,
+  "external_effects_executed": false,
+  "limitations": [
+    "Single post-diagnostic repeat of the same twenty synthetic scenarios, not held-out evidence.",
+    "Cases, retention/answer prompts and scoring remained byte-identical; query planning is versioned.",
+    "Mechanical scalar-answer and explicit-retention oracles, not free-form semantic grading.",
+    "Latency includes fresh CLI and bridge overhead; no end-to-end speed improvement is claimed.",
+    "Embeddings, vector/hybrid retrieval and background compaction/extraction were not measured.",
+    "The improvement does not establish general usefulness on independent real agent workloads."
+  ]
+}

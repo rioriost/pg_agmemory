@@ -75,6 +75,40 @@ raw計画・結合query・policyを非公開で記録します。
 これは**初回診断後の同一回帰cohort再測定**であり、盲検held-out評価、
 model比較、一般的な製品受入れではありません。初回結果は上書きしません。
 
+#### Lexical-v2実測結果
+
+**`0a8be6e`**でv2初回実行が**100 model call / 60観測**を完走しました。
+**GPT-6 Astra/high / Copilot CLI 1.0.88**で、不正/失敗model応答、
+application retry、browse fallbackはゼロです。
+[確認済みv2集計](../examples/copilot-memory-lexical-v2-result.json)は新recipe/moduleと
+非公開artifact checksumを記録し、case digestとbase recipe digestは初回と一致します。
+
+| 測定 | 初回query policy | Lexical-v2 |
+|---|---:|---:|
+| 記憶なしの正答 | 4/20 | 4/20 |
+| 直近履歴の正答 | 4/20 | 4/20 |
+| Native記憶の正答 | 5/20 | **20/20** |
+| 回答可能な問題での正答 | 1/16 | **16/16** |
+| 回答可能な問題の必要source recall | 6.25% | **100%** |
+| 正しいkeep / forget判断 | 40 / 100 | 40 / 100 |
+| 必要eventの誤削除 | 0 | 0 |
+
+適切な回答辞退4件も維持しています。具体例ではreport localeについて膨らませた自然文queryが
+`{"terms":["report","locale"]}`、結合後`report locale`となり、
+実Native応答に必要な保持eventが含まれました。oracleはtermや正答を供給しません。
+RLS、時間/削除filter、SQLのAND一致はそのままです。
+
+Native recall 20回は**p50 40.99 ms / p95 52.75 ms**、
+Copilot呼出しは**p50 8.07秒 / p95 11.39秒**でした。
+query生成・Native recall・回答呼出しの合計は、CLI/bridge込み・保持/準備を除いて
+**p50 18.38秒 / p95 22.98秒**です。初回の**15.95 / 16.63秒**より遅く、
+今回の改善は正答・検索適合性であり、**end-to-end高速化ではありません**。
+input/outputは**344,886 / 6,401 token**、reported premium requestは100件で、
+請求金額は未検証です。
+
+既知の合成caseに対する回帰比較の成功であり、独立held-outの証明ではありません。
+一般的な製品/release/本番の認定flagはfalseを維持し、初回の悪い結果も変更せず公開しています。
+
 ### 初回Copilot実測: 記憶の実用性は未認定
 
 変更していないscenario/recipeを**`862fb2b`**で完走しました。

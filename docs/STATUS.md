@@ -21,6 +21,21 @@ comparison on already-diagnosed cases, not held-out product qualification.
 See [the query contract](operations/README.md#lexical-query-planning) and
 [comparison method](EVALUATION.md#lexical-v2-query-planning-comparison).
 
+The fixed-model v2 run at **`0a8be6e`** completes all 100 calls without invalid
+responses or retries: Native correctness rises **5/20 → 20/20**, and correctness
+on answerable questions **1/16 → 16/16**. Both controls remain 4/20, and the
+40 keep / 100 forget decisions remain correct. Native recall p95 is **52.75 ms**;
+the model-query/recall/answer sum p95 is **22.98 s**, so this is not an
+end-to-end speed improvement. [V2 evidence](../examples/copilot-memory-lexical-v2-result.json)
+preserves the initial result and explicitly sets `held_out=false`.
+
+Local real PostgreSQL/adapter coverage passes 609 cases. The first native run
+passes 4,688 core cases but fails six wrapper-argument tests on each architecture
+because the test image omitted the shell wrapper. The COPY list is corrected,
+and a standalone image without a source overlay passes all 205 focused offline
+cases / 13 expected database skips; production/query code and measured recipes
+are unchanged by that packaging correction. Final native qualification is pending.
+
 ## Previous product-usefulness pilot: retention works, retrieval remains inadequate
 
 The first complete fixed-model Copilot experiment at **`862fb2b`** ran

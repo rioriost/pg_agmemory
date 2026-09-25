@@ -18,6 +18,19 @@ case/採点/保持/回答のsourceと初回公開結果は変更していませ�
 [query契約](operations/README-jp.md#lexical-query-planning)と
 [比較方法](EVALUATION-jp.md#lexical-v2-query-planning-comparison)を参照してください。
 
+**`0a8be6e`**の固定model v2実測は、不正応答・retryなしで100 callを完走しました。
+Native正答は**5/20 → 20/20**、回答可能な問題では**1/16 → 16/16**となり、
+control二つは4/20のまま、keep 40 / forget 100も正解を維持しました。
+Native recall p95は**52.75 ms**、model query/recall/回答合計p95は**22.98秒**で、
+end-to-end高速化ではありません。[v2証跡](../examples/copilot-memory-lexical-v2-result.json)は
+初回結果を保持し、`held_out=false`を明示します。
+
+ローカルの実PostgreSQL/adapter検査609件に成功しました。初回native runは各architectureで
+core 4,688件に成功しましたが、test imageへのshell wrapper同梱漏れで引数検査6件が失敗しました。
+COPY listを修正し、source overlayなしのstandalone imageで
+offline 205件成功 / DB依存13件skipを確認しました。
+このpackaging補正で製品/query codeや測定recipeは変更していません。最終native認定は実行待ちです。
+
 ## 以前の製品実用性pilot: 保持は成功、検索は不十分
 
 固定modelの初回Copilot実験を**`862fb2b`**で完走しました。

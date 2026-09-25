@@ -96,6 +96,43 @@ are unchanged. This is a **post-diagnostic repeat of the same regression cohort*
 not blinded held-out evaluation, a model comparison or general product acceptance.
 The first result below is never overwritten by a later improvement.
 
+#### Measured lexical-v2 result
+
+The first v2 run at **`0a8be6e`** completed all **100 model calls / 60 observations**
+with **GPT-6 Astra/high / Copilot CLI 1.0.88**. There were no malformed/failed
+model responses, application retries or browse fallbacks.
+[The reviewed v2 aggregate](../examples/copilot-memory-lexical-v2-result.json)
+binds the new recipe/module and private artifact checksums; its case digest and
+base recipe digest equal the initial experiment.
+
+| Measurement | Original query policy | Lexical-v2 |
+|---|---:|---:|
+| No-memory correctness | 4/20 | 4/20 |
+| Recent-window correctness | 4/20 | 4/20 |
+| Native memory correctness | 5/20 | **20/20** |
+| Native correctness on answerable questions | 1/16 | **16/16** |
+| Required-source recall on answerable questions | 6.25% | **100%** |
+| Correct keep / forget decisions | 40 / 100 | 40 / 100 |
+| Required events incorrectly purged | 0 | 0 |
+
+The four appropriate abstentions are retained. In a concrete trace, the first
+policy's expanded question about report locale becomes `{"terms":["report","locale"]}`,
+compiled as `report locale`; the actual Native response then contains the
+required retained event. No oracle supplies the terms or answer. RLS, time,
+deletion filters and SQL AND matching remain unchanged.
+
+Native recall measured **p50 40.99 ms / p95 52.75 ms** over 20 calls. Copilot
+calls measured **p50 8.07 s / p95 11.39 s**; the per-case query-generation,
+Native-recall and answer-call sum was **p50 18.38 s / p95 22.98 s**, including
+CLI/bridge overhead and excluding retention/setup. That sum was slower than
+the original **15.95 / 16.63 s**: this is an accuracy improvement, **not an
+end-to-end speed claim**. Input/output usage was **344,886 / 6,401 tokens**
+and 100 reported premium requests; billing remains unverified.
+
+This is a successful regression comparison on known synthetic cases, not
+independent held-out proof. All general product/release/production qualification
+flags remain false, and the original poor result remains published unchanged.
+
 ### First complete Copilot measurement: product usefulness not qualified
 
 The unchanged scenario/recipe completed at **`862fb2b`**, using Copilot CLI
