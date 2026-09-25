@@ -71,6 +71,57 @@ Raw prompts/responses and journals stay private in the new output directory;
 publish only reviewed aggregate results. The harness destroys its owned
 database/API and removes temporary credentials, never an external dataset.
 
+### First complete Copilot measurement: product usefulness not qualified
+
+The unchanged scenario/recipe completed at **`862fb2b`**, using Copilot CLI
+**1.0.88 / GPT-6 Astra / high**. All **100 model calls** and **60 arm observations**
+completed with zero invalid/failed model responses. Each reported the selected
+model/effort and zero tools. The [reviewed aggregate result](../examples/copilot-memory-pilot-result.json)
+binds source, case/recipe digests and private report/journal checksums.
+
+| Arm | Mechanically correct / 20 | Abstentions | Correct on the 16 answerable questions |
+|---|---:|---:|---:|
+| No memory | 4 / 20 (20%) | 20 | 0 / 16 |
+| Recent two events | 4 / 20 (20%) | 20 | 0 / 16 |
+| Native lexical memory | 5 / 20 (25%) | 19 | **1 / 16 (6.25%)** |
+
+The four correct baseline results are intended abstentions, not recovered
+knowledge. Retention decisions matched the explicit synthetic policy in all
+20 cases: **40 keeps / 100 forgets**, precision/recall 1.0 and no required event
+purged. Nevertheless, Native recall returned anything in only **3/20** queries,
+and required-source recall on answerable questions was **6.25%**. Thus this
+configuration **does not demonstrate adequate useful memory**, despite correct
+retention and structurally valid answers. The five-point difference is not
+statistical evidence from a representative workload.
+
+A concrete integration mismatch is visible in the frozen traces: the model
+expanded a short question about a report locale into a natural-language
+question containing many additional terms. Native lexical search uses
+`plainto_tsquery('simple', ...)`, requiring all resulting lexemes; the retained
+event uses only a small subset of those terms. The query prompt did not teach
+that AND contract. This points to query construction/retrieval integration,
+not evidence that a different retention model is needed. No query prompt,
+dataset or score was changed after inspecting this result; a retrieval fix
+requires a new version and separately reported measurement.
+
+Native recall latency, measured separately over 20 actual calls, was **p50
+49.68 ms / p95 62.22 ms**. The 100 Copilot calls were **p50 7.31 s / p95 9.47 s**,
+including fresh CLI startup and bridge overhead. The per-case sum of model
+query generation, Native recall and model answer was **p50 15.95 s / p95
+16.63 s**; this excludes retention/fixture setup and is not a production SLA.
+Recorded input/output usage was **339,489 / 6,425 tokens**, with 100 reported
+premium requests. Credit accounting is not verified monetary billing.
+
+Four earlier harness attempts remain private evidence: unsupported container
+address lookup; a mismatched queue path (one guest dispatch unknown, zero host
+Copilot invocations observed); strict JWT startup failure; and an incorrectly
+rejected legitimate empty RLS response. The last consumed two baseline model
+calls. Two additional transport probes also consumed calls. These **four
+diagnostic model calls are separate from the completed 100**, not erased or
+pooled into its scores. Fixture-only fixes and real HTTP/SQL regressions did
+not change the case or recipe digests. Owned services were removed and no
+production data, model-generated external effects or backup erasure was used.
+
 ## v0.2.0 release identity
 
 The release profile is `M3-bounded-native-graph-v2`, digest

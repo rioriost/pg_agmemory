@@ -2,7 +2,7 @@
 
 English | [日本語](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-- Document version: 1.17 / M5 operator implementation closure, 2026-09-24
+- Document version: 1.18 / Fixed-model agent-memory pilot, 2026-09-25
 - Creation date and external-specification review date recorded in the original draft: 2026-09-16. External specifications and versions have not been reverified for this revision or translation.
 - Status: M5 development continues as 0.4.0.dev1/APIv1/schema22 with bounded revision validation, COMMIT outcome guards, operational/replication observations, paused SQL-only PITR and an explicitly fenced owned HA rehearsal. Application handling of canceled synchronous waits no longer implies rollback or replication success; production HA and partition qualification remain open. Published M4 v0.3.0 and its a869629 native/recovery/resource evidence remain unchanged; SQL stays default and patched AGE72707aa opt-in. See [STATUS](STATUS.md) and [EVALUATION](EVALUATION.md).
 - Scope: An independent OSS Agent Memory Service with PostgreSQL as its sole application persistence platform

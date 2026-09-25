@@ -53,6 +53,49 @@ semantic vector品質、自由記述推論、multimodal memory、公開benchmark
 raw prompt/responseとjournalは新規出力先で非公開保持し、公開は確認した集計値だけにします。
 harnessは所有DB/APIと一時credentialだけをcleanupし、外部datasetは削除しません。
 
+### 初回Copilot実測: 記憶の実用性は未認定
+
+変更していないscenario/recipeを**`862fb2b`**で完走しました。
+Copilot CLI **1.0.88 / GPT-6 Astra / high**で**100 model call / 60 arm観測**が完了し、
+不正・失敗model応答はゼロです。全呼出しで指定model/effortとtool数ゼロを確認しました。
+[確認済み集計結果](../examples/copilot-memory-pilot-result.json)はsource、case/recipe digest、
+非公開report/journal checksumを記録しています。
+
+| arm | 機械的正答 / 20 | 回答辞退 | 回答可能な16問の正答 |
+|---|---:|---:|---:|
+| 記憶なし | 4 / 20（20%） | 20 | 0 / 16 |
+| 直近2 event | 4 / 20（20%） | 20 | 0 / 16 |
+| Native lexical memory | 5 / 20（25%） | 19 | **1 / 16（6.25%）** |
+
+baselineの正答4件は、必要な回答辞退であり知識の復元ではありません。
+保持判断は全20件で明示合成policyと一致し、**keep 40 / forget 100**、
+precision/recall 1.0、必要eventの誤削除ゼロでした。
+しかしNative検索で何らかの結果が返ったのは**3/20 query**、
+回答可能な問題での必要source recallは**6.25%**です。
+保持と回答形式が正しくても、この構成で**十分に役立つ記憶とは確認できません**。
+5 percentage pointsの差を、代表的な実務負荷での統計的改善とも主張しません。
+
+固定traceには具体的な連携不整合があります。短いreport localeの質問に対し、
+modelは追加語を多数含む自然文検索queryを生成しました。
+Native lexical検索は`plainto_tsquery('simple', ...)`で全lexemeを要求しますが、
+保持eventにはそれらの一部しかありません。query promptはこのAND契約を説明していませんでした。
+保持modelの変更が必要という証拠ではなく、query生成と検索の接続が改善点です。
+結果を見てprompt/dataset/採点は変更していません。修正後は別versionの独立した測定が必要です。
+
+Native recall 20回は**p50 49.68 ms / p95 62.22 ms**、
+Copilot 100回は新CLI起動・bridge込みで**p50 7.31秒 / p95 9.47秒**でした。
+各caseのquery生成・Native recall・回答生成の合計は**p50 15.95秒 / p95 16.63秒**で、
+保持判断/fixture準備を除き、本番SLAではありません。
+記録input/outputは**339,489 / 6,425 token**、reported premium requestは100件です。
+creditを検証済み金額とは扱いません。
+
+それ以前のharness失敗4回も保持しています。container address取得形式、queue path不一致
+（guest dispatch一件は不明、host Copilot実行はゼロ）、strict JWT起動失敗、
+正常な空RLS結果の誤拒否です。最後の試行はbaseline model呼出し2件を消費しました。
+transport probeも別途2件を消費しており、**診断4 callは完走100 callと分けて記録**します。
+fixtureだけの修正と実HTTP/SQL回帰はcase/recipe digestを変更していません。
+所有serviceはcleanupし、本番data、model生成の外部effect、backup消去は使っていません。
+
 ## v0.2.0 release identity
 
 release profileは`M3-bounded-native-graph-v2`、digestは

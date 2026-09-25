@@ -2,7 +2,38 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## M5 development: operator migration, monitoring and recovery checks
+## Product-usefulness pilot: retention works, retrieval remains inadequate
+
+The first complete fixed-model Copilot experiment at **`862fb2b`** ran
+**GPT-6 Astra/high**, 20 bilingual synthetic scenarios and 100 calls.
+Model selection remains configurable; the evaluation bridge does not change
+the production provider/worker contracts. Scenarios and scoring were frozen
+before inference, and four earlier harness failures remain separately recorded.
+
+Retention matched all **40 keep / 100 forget** decisions, with no required
+memory purged. Nevertheless, no-memory and recent-window arms scored **4/20**,
+versus **5/20** for Native lexical memory. Four correct results are required
+abstentions: only **1/16 answerable questions** was answered correctly with
+memory. Required-source recall was **6.25%**. The experiment completed; it
+**did not qualify useful agent memory**.
+
+Logs expose a query/backend mismatch: unconstrained model-generated natural
+language is fed into all-lexeme lexical search. Preserving the right events
+therefore does not ensure retrieval. Correct query construction and separately
+measured vector/hybrid integration are product work, not deployment-only HA
+requirements. The first result is not retuned into a passing score. Background
+compaction, embeddings, free-form semantic grading and public benchmarks were
+not measured. See [the full pilot result and costs](EVALUATION.md#first-complete-copilot-measurement-product-usefulness-not-qualified)
+and [reviewed aggregate](../examples/copilot-memory-pilot-result.json).
+
+Engineering validation of the measured `862fb2b` passes all eight native jobs
+in [run36091419247](https://github.com/rioriost/pg_agmemory/actions/runs/36091419247):
+each core reports **4,590 passed / 134 skipped**, followed by the separate
+18 COMMIT and 13 request cases, packaged lifecycle and offline bridge checks.
+HA, PITR and patched AGE pass on both architectures. These passing contracts
+do not override the negative product-usefulness finding.
+
+## Previous M5 increment: operator migration, monitoring and recovery checks
 
 **0.4.0.dev1 / API v1 / schema 22** adds two core-only administrator commands,
 without changing shipped migrations, dependencies, runtime vector selection or

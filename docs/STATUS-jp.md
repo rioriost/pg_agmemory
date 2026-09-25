@@ -2,7 +2,35 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## M5開発: 移行・監視・復旧検査の運用実装
+## 製品実用性pilot: 保持は成功、検索は不十分
+
+固定modelの初回Copilot実験を**`862fb2b`**で完走しました。
+**GPT-6 Astra/high**、英日合成20 scenario、100 callです。
+modelは設定で変更可能で、評価bridgeは製品provider/worker契約を変更しません。
+推論前にscenario/採点を固定し、先行harness失敗4回も分けて保持しています。
+
+**keep 40 / forget 100**の判断は全て一致し、必要記憶の誤削除はゼロでした。
+しかし記憶なし・直近履歴は**4/20**、Native lexical memoryは**5/20**で、
+正答4件は必要な回答辞退です。記憶ありでも回答可能な問題の正答は**1/16**、
+必要source recallは**6.25%**でした。実験完走であって、
+**役立つagent memoryとして合格したわけではありません**。
+
+ログには、自由な自然文queryを全lexeme一致のlexical検索へ渡す不整合があります。
+正しく残すことと、取り出せることは別です。query生成契約と、
+別途実測するvector/hybrid接続は製品側の残作業であり、本番HA環境だけの問題ではありません。
+初回結果を事後調整で合格へ変えません。background compaction、embedding、
+自由記述の意味的採点、公開benchmarkは未測定です。
+[pilot結果と費用の詳細](EVALUATION-jp.md#初回copilot実測-記憶の実用性は未認定)、
+[確認済み集計](../examples/copilot-memory-pilot-result.json)を参照してください。
+
+測定した`862fb2b`の工程検証は
+[run36091419247](https://github.com/rioriost/pg_agmemory/actions/runs/36091419247)で
+native全8ジョブに成功しました。各coreは**4,590 passed / 134 skipped**、
+別途18 COMMIT/13 request case、packaged lifecycle、offline bridge検査に成功し、
+HA/PITR/patched AGEも両architectureで成功しています。
+この契約検査の成功を、実用性の不十分な結果の上書きに使いません。
+
+## 以前のM5 increment: 移行・監視・復旧検査の運用実装
 
 **0.4.0.dev1 / API v1 / schema 22**でcore-only管理command二つを追加します。
 出荷済みmigration、依存package、runtime vector選択、serving authorityは変更しません。
