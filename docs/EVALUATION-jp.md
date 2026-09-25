@@ -2,6 +2,57 @@
 
 [English](EVALUATION.md)
 
+## 固定modelのCopilot agent-memory pilot（2026-09-25）
+
+2026-09-25に依頼された製品評価はDB契約・本番HA認定とは別で、
+実modelの保持/忘却判断と、Native memoryによる回答改善を測ります。
+旧来の一律な意味的品質閾値やmodel比較を復活させるものではありません。
+推論前にdataset/scorerをcommitし、測定結果で同じdatasetを密かに調整したり失敗を除外したりしません。
+
+**合成20 scenario / 140 event**を英日各10件とし、sessionをまたぐ嗜好、project制約、
+訂正値、明示忘却、失敗から得た手順知識を扱います。scalar正答16件と回答辞退4件です。
+保持・根拠・正答のgoldはscorer専用で、model promptへ渡しません。
+同一modelで`no_memory`、末尾2件の`recent_window`、`pg_agmemory`を比較します。
+各Copilot呼出しはCLI memory、custom instruction、利用可能toolなしの新sessionで、
+bridgeが出力metadata上のtool数ゼロとmodelを確認します。
+
+Native armはmodelがkeep/forgetに分け、所有合成DBだけでpurgeを実行します。
+別のmodel呼出しが検索queryを生成し、実Native HTTP/RLS/SQLの結果を回答へ渡します。
+別tenantのscope/object拒否も検査します。API鍵、管理URL、署名鍵をmodel promptや
+host Copilot processへ渡しません。
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot
+```
+
+cleanなcommit済みcheckout、Apple Container、Node.js、認証済みhost Copilot CLIが必要です。
+modelとreasoning effortは引数で、製品に固定しません。初期設定はGPT-6 Astra/highです。
+互換性のある利用可能modelへ明示変更できます。CLI version、要求/報告model、usageは記録しますが、
+Copilot管理下の正確なweight revisionは**独立検証していません**。
+application呼出し上限は**100件**（保持20、query20、回答60）です。
+application retryや不正回答の修復はせず、Copilot subscriptionの消費、失敗、診断probeを隠しません。
+
+guest全体40分、各Copilot process150秒を上限にします。
+回答prompt全体は8,000 UTF-8 byte、recentは2,000 byteで、
+Copilot自身のsystem promptはこのbyte予算外です。
+実CLI token/cache/API usageは報告された分だけ別記録し、不明値はnullとします。
+credit単位を検証済み金額へ換算せず、CLI起動・transport時間をNative検索時間と偽りません。
+
+全arm/caseと失敗・不正・不明呼出しを残し、keep/forget、機械的回答、
+citation、必要source coverage、latencyを測ります。失敗込み正答率と
+有効回答のみの正答率は分母を明記し、不明な削除結果を安全と採点しません。
+完走は製品合格と同義ではなく、`release_qualified`はfalseです。
+
+初回は**lexical retrieval**であり、Copilot embeddingを捏造しません。
+caller側の保持/query/回答を対象とし、既存background抽出/compaction worker、
+semantic vector品質、自由記述推論、multimodal memory、公開benchmarkを認定しません。
+既存provider profileは変更可能ですが、workerの`local_http`制約と
+768次元の宣言embedding契約は維持します。CLI bridgeは評価専用で、製品推論backendの追加ではありません。
+raw prompt/responseとjournalは新規出力先で非公開保持し、公開は確認した集計値だけにします。
+harnessは所有DB/APIと一時credentialだけをcleanupし、外部datasetは削除しません。
+
 ## v0.2.0 release identity
 
 release profileは`M3-bounded-native-graph-v2`、digestは

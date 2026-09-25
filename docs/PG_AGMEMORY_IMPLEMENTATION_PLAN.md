@@ -117,6 +117,13 @@ reference benchmark remains a deliverable, without a model-quality pass score.
 The old dataset-level Recall@20 ≥ 90% / vector-baseline and nDCG/MRR
 non-regression targets likewise become reference results, not universal model
 quality guarantees. Search implementation conformance remains mandatory.
+**Product evaluation addition, 2026-09-25:** the requested fixed-model,
+real-agent memory pilot now evaluates retention/forgetting, retrieval and
+downstream answers separately from these infrastructure gates. It uses
+user-selectable Copilot generation with independent synthetic oracles and
+retains failures; it neither reinstates the removed numerical thresholds nor
+turns one pilot into general model-quality or production certification.
+See [the versioned pilot contract](EVALUATION.md#fixed-model-copilot-agent-memory-pilot-2026-09-25).
 Sections 17–18 supersede older milestone/quality-gate prose in historical evidence
 and ADRs. Authorization, deterministic correctness, recovery and resource-limit
 requirements are not relaxed.

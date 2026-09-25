@@ -38,6 +38,8 @@ jobs:
           test "$actual" = "$EXPECTED_ARCH"
       - name: Test containers, production M2 integrations, and isolated recovery
         run: bash scripts/test-containers.sh docker
+      - name: Test Copilot bridge without model calls
+        run: node --test scripts/copilot-eval-bridge.test.mjs
   pitr-lab:
     name: PITR lab Linux ${{ matrix.arch }}
     strategy:

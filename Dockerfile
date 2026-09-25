@@ -21,6 +21,7 @@ COPY examples/ ./examples/
 COPY Dockerfile.age Dockerfile.age-patched ./
 COPY patches/age/ ./patches/age/
 COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
+    scripts/evaluate-agent-memory.py \
     scripts/smoke-pitr.py scripts/test-pitr-containers.sh \
     scripts/smoke-ha.py scripts/test-ha-containers.sh \
     scripts/resource-benchmark.py scripts/resource-probes.py \

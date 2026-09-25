@@ -2,6 +2,75 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Fixed-model Copilot agent-memory pilot (2026-09-25)
+
+The product evaluation requested on 2026-09-25 is separate from database
+conformance and production HA acceptance. It asks whether an actual model makes
+useful retention/forgetting decisions and answers better with Native memory.
+It does not revive the old universal semantic percentages or compare competing
+models. The dataset and scorer must be committed before inference; results may
+not be used to silently tune the measured dataset or discard failures.
+
+The pilot contains **20 synthetic scenarios / 140 events**, split equally
+between English and Japanese: cross-session preferences, project constraints,
+corrected values, explicit forgetting, and workflow failure lessons. There are
+16 scalar answers and four intended abstentions. Gold retention/source/answer
+labels are accessible only to the scorer, never serialized into model prompts.
+Three arms share one model: `no_memory`, the last-two-event `recent_window`, and
+`pg_agmemory`. Each call starts a fresh Copilot session without CLI memory,
+custom instructions or available tools; the bridge verifies the emitted
+zero-tool/model metadata before accepting its answer.
+
+For the Native arm, the model partitions events into keep/forget proposals.
+Only the owned synthetic database executes the requested purge. A separate
+model call generates the recall query; real Native HTTP/RLS/SQL retrieval
+supplies the subsequent answer context. The harness also checks denial of a
+separate tenant's scope/object. API keys, administrator URLs and signing keys
+are never passed in model prompts or copied into the host Copilot process.
+
+```bash
+mkdir -p .review-artifacts
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-pilot-01 gpt-6-astra high --allow-copilot
+```
+
+This requires a clean committed checkout, Apple Container, Node.js and an
+authenticated host Copilot CLI. The model and reasoning effort are arguments,
+not product constants; use an available compatible Copilot model explicitly.
+Initial configuration is GPT-6 Astra/high. Model revision is managed by Copilot:
+the CLI name/version, requested/reported model and call usage are recorded,
+but exact model-weight revision is **not independently attested**.
+At most **100 application calls** are admitted: 20 retention, 20 query and
+60 answer calls. There is no application retry or repair of malformed answers.
+Copilot may consume subscription credits; failures and diagnostic probes are
+not represented as free successful calls.
+
+The overall guest run has a 40-minute ceiling; individual Copilot processes
+have a 150-second ceiling. Whole serialized answer prompts are bounded to
+8,000 UTF-8 bytes (2,000 for recent context), excluding Copilot's own system
+prompt. Actual CLI token/cache/API usage is recorded separately when reported;
+unknown usage remains null, and credit units are not presented as verified
+monetary billing. Host CLI startup and transport overhead remain part of
+observed latency, rather than being relabeled as Native retrieval latency.
+
+The report retains every planned arm/case, failed/invalid/unknown calls,
+independent keep/forget scores, mechanically graded answers, citations,
+required-source coverage and latency. Failure-inclusive answer accuracy and
+valid-answer-only accuracy have explicit denominators. Unknown destructive
+outcomes are not scored as safe. A complete run is not automatically a passing
+product: `release_qualified` remains false.
+
+This first pilot uses **lexical retrieval**, not fabricated Copilot embeddings.
+It measures caller-controlled retention/query/answer behavior, not the existing
+background extraction/compaction worker, semantic-vector quality, free-form
+reasoning, multimodal memory or a public benchmark score. Existing provider
+profiles remain user-configurable; background workers still require `local_http`
+and vectors still require their declared 768-dimensional model contract.
+The CLI bridge is evaluation-only, not a new production inference backend.
+Raw prompts/responses and journals stay private in the new output directory;
+publish only reviewed aggregate results. The harness destroys its owned
+database/API and removes temporary credentials, never an external dataset.
+
 ## v0.2.0 release identity
 
 The release profile is `M3-bounded-native-graph-v2`, digest
