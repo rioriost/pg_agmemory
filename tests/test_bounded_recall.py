@@ -12,6 +12,7 @@ from pg_agmemory.bounded_recall import (
     MAX_PROMPT_BYTES,
     BoundedRecall,
     BoundedRecallError,
+    SearchFeedback,
     SearchPlan,
     parse_search_plan,
     search_prompt,
@@ -40,6 +41,16 @@ def evidence_selection(request):
 @pytest.fixture(params=["literal-v1", "discovery-v2"])
 def planner_policy(request):
     return request.param
+
+
+@pytest.fixture(params=[
+    ("first-admitted-v1", "batched-v1"),
+    ("round-robin-v1", "batched-v1"),
+    ("round-robin-v1", "sequential-v1"),
+])
+def workflow_options(request):
+    selection, schedule = request.param
+    return {"evidence_selection": selection, "planning_schedule": schedule}
 
 
 def base(**changes):
@@ -95,8 +106,13 @@ def response(items=(), *, budget=8000, **changes):
     })
 
 
-def started(items=None, *, evidence_selection="first-admitted-v1", **changes):
-    workflow = BoundedRecall(base(**changes), evidence_selection=evidence_selection)
+def started(
+    items=None, *, evidence_selection="first-admitted-v1",
+    planning_schedule="batched-v1", **changes,
+):
+    workflow = BoundedRecall(
+        base(**changes), evidence_selection=evidence_selection, planning_schedule=planning_schedule,
+    )
     request = workflow.requests(plan("Beacon"))[0]
     found = [item()] if items is None else items
     workflow.record(request, response(found, budget=request.token_budget))
@@ -106,8 +122,10 @@ def started(items=None, *, evidence_selection="first-admitted-v1", **changes):
 def assert_poisoned(workflow):
     assert workflow._candidate_lists == []
     assert workflow._items == [] and workflow._seen == {}
+    assert workflow._feedback == [] and not workflow._recording
     for action in (
         lambda: workflow.planning_items,
+        lambda: workflow.planning_feedback,
         lambda: workflow.requests(plan("different")),
         workflow.final_request,
         lambda: workflow.finish(None),
@@ -327,10 +345,11 @@ def test_empty_workflow_cannot_finalize_before_search_or_invent_a_final_result(e
     {"search_profile": "ja-janome-0.5.0-v1"},
     {"required_memory_refs": [MemoryReference(memory_id=uuid4())]},
 ])
-def test_request_tampering_poisoned_without_retaining_evidence(change, evidence_selection):
-    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
-    first, issued = workflow.requests(plan("route", "Beacon"))
+def test_request_tampering_poisoned_without_retaining_evidence(change, workflow_options):
+    workflow = BoundedRecall(base(), **workflow_options)
+    first = workflow.requests(plan("route"))[0]
     workflow.record(first, response([item()]))
+    issued = workflow.requests(plan("Beacon"))[0]
     bad = issued.model_copy(update=change)
     with pytest.raises(BoundedRecallError, match="^recall_request_mismatch$"):
         workflow.record(bad, response([item()]))
@@ -393,10 +412,10 @@ def test_first_seen_merge_and_defensive_copies():
     {"valid_to": datetime(2101, 1, 1, tzinfo=UTC)},
 ])
 def test_same_id_revision_or_content_conflicts_abort_even_after_budget_drop(
-    change, evidence_selection,
+    change, workflow_options,
 ):
     fact = item(type="assertion")
-    workflow = started([fact], evidence_selection=evidence_selection)
+    workflow = started([fact], **workflow_options)
     request = workflow.requests(plan("route"))[0]
     changed = fact.model_copy(update=change)
     with pytest.raises(BoundedRecallError, match="^recall_item_changed$"):
@@ -415,9 +434,9 @@ def test_duplicate_items_within_one_response_are_not_silently_deduplicated(evide
 
 @pytest.mark.parametrize("field", ["access_epoch", "deletion_epoch"])
 @pytest.mark.parametrize("stage", ["search", "final"])
-def test_epoch_change_poisoned_across_every_response(field, stage, evidence_selection):
+def test_epoch_change_poisoned_across_every_response(field, stage, workflow_options):
     fact = item()
-    workflow = started([fact], evidence_selection=evidence_selection)
+    workflow = started([fact], **workflow_options)
     changed = response([fact])
     setattr(changed.consistency, field, 2)
     if stage == "final":
@@ -438,12 +457,13 @@ def test_epoch_change_poisoned_across_every_response(field, stage, evidence_sele
     "invalid_revision", "missing_refresh", "naive_time", "future_record",
     "future_occurrence", "too_many_items", "huge_metadata", "wrong_type",
 ])
-def test_malformed_or_oversized_responses_poison_workflow(damage, evidence_selection):
+def test_malformed_or_oversized_responses_poison_workflow(damage, workflow_options):
     workflow = BoundedRecall(
-        base(filters=RecallFilters(kind="episode")), evidence_selection=evidence_selection,
+        base(filters=RecallFilters(kind="episode")), **workflow_options,
     )
-    first, request = workflow.requests(plan("route", "Beacon"))
+    first = workflow.requests(plan("route"))[0]
     workflow.record(first, response([item("previous valid evidence")]))
+    request = workflow.requests(plan("Beacon"))[0]
     result = response([item()])
     if damage == "wrong_profile":
         result.search_profile = "ja-janome-0.5.0-v1"
@@ -608,9 +628,9 @@ def test_native_truncation_is_never_hidden(evidence_selection):
     "missing", "empty", "reordered", "content", "revision", "unrequested", "pack",
     "oversized", "mutated_request",
 ])
-def test_final_validation_never_uses_cached_partial_or_changed_content(damage, evidence_selection):
+def test_final_validation_never_uses_cached_partial_or_changed_content(damage, workflow_options):
     first, second = item(type="assertion"), item("Vela endpoint", type="assertion")
-    workflow = started([first, second], evidence_selection=evidence_selection)
+    workflow = started([first, second], **workflow_options)
     final = workflow.final_request()
     fresh = response([first, second])
     if damage == "missing":
@@ -636,11 +656,11 @@ def test_final_validation_never_uses_cached_partial_or_changed_content(damage, e
     assert_poisoned(workflow)
 
 
-def test_final_request_retains_filters_scope_and_both_temporal_pins(evidence_selection):
+def test_final_request_retains_filters_scope_and_both_temporal_pins(workflow_options):
     request_base = base(
         filters=RecallFilters(kind="assertion", subject="Beacon", predicate="route"),
     )
-    workflow = BoundedRecall(request_base, evidence_selection=evidence_selection)
+    workflow = BoundedRecall(request_base, **workflow_options)
     first = workflow.requests(plan("Beacon"))[0]
     found = item(type="assertion")
     workflow.record(first, response([found]))
@@ -879,10 +899,10 @@ def test_round_robin_retained_pool_and_completed_results_are_defensive_copies():
 
 
 def test_selection_cancellation_propagates_until_caller_closes_and_clears_pool(
-    monkeypatch, evidence_selection,
+    monkeypatch, workflow_options,
 ):
     first, second = item("first"), item("second")
-    workflow = started([first], evidence_selection=evidence_selection)
+    workflow = started([first], **workflow_options)
     followup = workflow.requests(plan("followup"))[0]
     value = response([second])
     original = bounded_recall.build_context
@@ -917,6 +937,269 @@ def test_round_robin_interrupted_admission_cannot_accumulate_duplicate_request_l
         with pytest.raises(asyncio.CancelledError):
             workflow.record(request, value)
     assert len(workflow._candidate_lists) == 2
+    with pytest.raises(BoundedRecallError, match="^unexpected_recall_response$"):
+        workflow.record(request, value)
+    assert_poisoned(workflow)
+
+
+@pytest.mark.parametrize("schedule", ["", "unknown", None, True, 4, [], {}, b"sequential-v1"])
+def test_invalid_planning_schedule_fails_explicitly(schedule):
+    with pytest.raises(BoundedRecallError, match="^invalid_planning_schedule$"):
+        BoundedRecall(base(), planning_schedule=schedule)
+
+
+def test_explicit_batched_schedule_preserves_default_requests_selection_and_feedback():
+    facts = [item(str(index)) for index in range(4)]
+    request_base = base()
+    completed, issued, feedback = [], [], []
+    for options in ({}, {"planning_schedule": "batched-v1"}):
+        workflow = BoundedRecall(request_base, **options)
+        requests = workflow.requests(plan("first", "second"))
+        found_groups = ([facts[0], facts[1]], [facts[1], facts[2]])
+        for request, found in zip(requests, found_groups, strict=True):
+            workflow.record(request, response(found))
+        requests += workflow.requests(plan("third", "fourth"))
+        workflow.record(requests[2], response([facts[3]]))
+        workflow.record(requests[3], response())
+        feedback.append(workflow.planning_feedback)
+        issued.append((*requests, workflow.final_request()))
+        completed.append(workflow.finish(response(facts)))
+        assert_poisoned(workflow)
+    assert issued[0] == issued[1] and feedback[0] == feedback[1]
+    assert completed[0] == completed[1]
+
+
+def test_sequential_four_rounds_find_late_route_then_endpoint_and_revalidate(evidence_selection):
+    topic, route, endpoint = (
+        item("Cedar directory entry"), item("Cedar route is Willow"),
+        item("Willow endpoint detail"),
+    )
+    workflow = BoundedRecall(
+        base(), evidence_selection=evidence_selection, planning_schedule="sequential-v1",
+    )
+    assert workflow.planning_feedback == ()
+    queries = ("Cedar requirement", "Cedar", "Cedar route", "Willow endpoint")
+    results = ([], [topic], [route], [endpoint])
+    for round_number, (query, facts) in enumerate(zip(queries, results, strict=True), 1):
+        prompt = search_prompt(
+            "Which endpoint does Cedar require?", "simple-v1", round_number=round_number,
+            planner_policy="sequential-v3", items=workflow.planning_items,
+            previous_queries=workflow.queries, search_feedback=workflow.planning_feedback,
+        )
+        data = json.loads(prompt.split("INPUT=", 1)[1])
+        assert data["remaining_search_budget"] == 5 - round_number
+        assert len(data["search_feedback"]) == round_number - 1
+        if round_number <= 3:
+            assert "Willow" not in prompt
+        else:
+            assert "Willow" in prompt
+        request, = workflow.requests(plan(query))
+        with pytest.raises(BoundedRecallError, match="^search_batch_incomplete$"):
+            _ = workflow.planning_feedback
+        with pytest.raises(BoundedRecallError, match="^search_batch_incomplete$"):
+            workflow.requests(plan("other"))
+        workflow.record(request, response(facts))
+        assert workflow.planning_feedback[-1].model_dump() == {
+            "query": query, "returned_items": len(facts), "eligible_items": len(facts),
+            "truncated": False,
+        }
+    assert workflow.queries == queries and len(workflow.planning_feedback) == 4
+    selected = (
+        [endpoint, route, topic]
+        if evidence_selection == "round-robin-v1" else [topic, route, endpoint]
+    )
+    assert workflow.planning_items == tuple(selected)
+    with pytest.raises(BoundedRecallError, match="^search_budget_exhausted$"):
+        workflow.requests(plan("fifth"))
+    final = workflow.final_request()
+    assert final.query == "" and final.max_items == len(final.required_memory_refs) == 3
+    assert [ref.memory_id for ref in final.required_memory_refs] == [
+        fact.memory_id for fact in selected
+    ]
+    fresh = response(selected)
+    completed = workflow.finish(fresh)
+    assert completed.context_pack == fresh.context_pack and completed.revalidated
+    assert completed.search_requests == 4
+    assert_poisoned(workflow)
+
+
+def test_sequential_rejects_multiquery_mutation_and_duplicate_without_spending_round():
+    workflow = BoundedRecall(base(), planning_schedule="sequential-v1")
+    with pytest.raises(BoundedRecallError, match="^invalid_search_plan$"):
+        workflow.requests(plan())
+    for invalid in (plan("first", "second"), plan("first")):
+        if len(invalid.queries) == 1:
+            invalid.queries.append(LexicalQueryPlan(terms=["second"]))
+        with pytest.raises(BoundedRecallError, match="^invalid_search_plan$"):
+            workflow.requests(invalid)
+    assert workflow.queries == () and workflow.planning_feedback == ()
+    first, = workflow.requests(plan("Cedar route"))
+    workflow.record(first, response())
+    with pytest.raises(BoundedRecallError, match="^invalid_search_plan$"):
+        workflow.requests(plan("ROUTE cedar"))
+    with pytest.raises(BoundedRecallError, match="^invalid_search_plan$"):
+        workflow.requests(plan("third", "fourth"))
+    assert workflow.queries == ("Cedar route",)
+    second, = workflow.requests(plan("Cedar"))
+    workflow.record(second, response())
+    assert workflow.final_request() is None
+    assert workflow.finish(None).search_requests == 2
+
+
+def test_sequential_duplicate_record_poisoned_and_transport_failure_clears_feedback():
+    workflow = BoundedRecall(base(), planning_schedule="sequential-v1")
+    first, = workflow.requests(plan("first"))
+    workflow.record(first, response([item()]))
+    assert len(workflow.planning_feedback) == 1
+    with pytest.raises(BoundedRecallError, match="^unexpected_recall_response$"):
+        workflow.record(first, response())
+    assert_poisoned(workflow)
+    workflow = started(planning_schedule="sequential-v1")
+    workflow.requests(plan("second"))
+    with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
+        workflow.finish(None)
+    assert_poisoned(workflow)
+
+
+@pytest.mark.parametrize("stop_round", [2, 3, 4])
+def test_sequential_any_later_empty_plan_stops_without_browse_or_fifth_query(stop_round):
+    workflow = BoundedRecall(base(), planning_schedule="sequential-v1")
+    for index in range(stop_round - 1):
+        request, = workflow.requests(plan(f"query{index}"))
+        workflow.record(request, response())
+    previous = workflow.planning_feedback
+    assert workflow.requests(parse_search_plan('{"queries":[]}', allow_empty=True)) == ()
+    assert workflow.planning_feedback == previous
+    with pytest.raises(BoundedRecallError, match="^search_budget_exhausted$"):
+        workflow.requests(plan("extra"))
+    assert workflow.final_request() is None
+    completed = workflow.finish(None)
+    assert completed.items == () and not completed.revalidated
+    assert completed.search_requests == stop_round - 1
+    assert_poisoned(workflow)
+
+
+def test_sequential_candidate_pool_and_feedback_remain_bounded_with_full_native_batches():
+    workflow = BoundedRecall(
+        base(), planning_schedule="sequential-v1", evidence_selection="round-robin-v1",
+    )
+    groups = [[item(f"group{group} item{rank}") for rank in range(8)] for group in range(4)]
+    for index, facts in enumerate(groups):
+        request, = workflow.requests(plan(f"group{index}"))
+        workflow.record(request, response(facts))
+    assert len(workflow._candidate_lists) == len(workflow.planning_feedback) == 4
+    assert sum(len(group.items) for group in workflow._candidate_lists) == 32
+    assert len(workflow._seen) == 32
+    assert [group.round_number for group in workflow._candidate_lists] == [1, 2, 3, 4]
+    selected = [groups[group][rank] for rank in range(2) for group in (3, 2, 1, 0)]
+    assert workflow.planning_items == tuple(selected)
+    assert all(
+        entry.eligible_items == entry.returned_items == 8 for entry in workflow.planning_feedback
+    )
+    assert not any(entry.truncated for entry in workflow.planning_feedback)
+    workflow.final_request()
+    assert workflow.finish(response(selected)).truncated
+    assert_poisoned(workflow)
+
+
+@pytest.mark.parametrize("changes", [
+    {"query": ""}, {"query": "Cedar  route"}, {"query": "Cedar OR route"},
+    {"query": "one two three four"}, {"query": "x" * 65}, {"query": "\ud800"},
+    {"query": 1}, {"returned_items": -1}, {"returned_items": 9}, {"returned_items": True},
+    {"returned_items": "1"}, {"eligible_items": -1}, {"eligible_items": 9},
+    {"eligible_items": True}, {"eligible_items": "1"}, {"eligible_items": 2},
+    {"truncated": 1}, {"truncated": "false"}, {"content": "PRIVATE"},
+])
+def test_search_feedback_strict_frozen_model_validates_query_counts_and_shape(changes):
+    with pytest.raises(ValueError):
+        SearchFeedback(**{
+            "query": "Cedar route", "returned_items": 1, "eligible_items": 1, "truncated": False,
+            **changes,
+        })
+
+
+def test_search_feedback_uses_validated_counts_exclusions_and_native_truncation_only():
+    withheld, shared, other = item("WITHHELD"), item("eligible"), item("later")
+    workflow = BoundedRecall(
+        base(max_items=2), excluded_memory_ids=[withheld.memory_id],
+        planning_schedule="sequential-v1", evidence_selection="round-robin-v1",
+    )
+    returned = [[withheld], [], [shared], [shared, other]]
+    for index, facts in enumerate(returned):
+        request, = workflow.requests(plan(f"query{index}"))
+        value = response(facts)
+        value.coverage.truncated = index == 2
+        workflow.record(request, value)
+        value.items.clear()
+        value.coverage.truncated = False
+    copies = workflow.planning_feedback
+    assert [(entry.returned_items, entry.eligible_items, entry.truncated) for entry in copies] == [
+        (1, 0, False), (0, 0, False), (1, 1, True), (2, 2, False),
+    ]
+    with pytest.raises(ValueError):
+        copies[0].eligible_items = 1
+    object.__setattr__(copies[0], "eligible_items", 1)
+    assert workflow.planning_feedback[0].eligible_items == 0
+    assert "WITHHELD" not in json.dumps([entry.model_dump() for entry in copies])
+    assert str(withheld.memory_id) not in json.dumps([entry.model_dump() for entry in copies])
+    assert all(set(entry.model_dump()) == {
+        "query", "returned_items", "eligible_items", "truncated",
+    } for entry in copies)
+    workflow.final_request()
+    assert workflow.finish(response([shared, other])).items == (shared, other)
+    assert_poisoned(workflow)
+
+
+def test_feedback_eligible_count_is_not_reduced_by_context_budget_omission():
+    first, second = item("a" * 300), item("b" * 300)
+    budget = build_context([first], 8000, required_count=1)[0]["byte_count"]
+    workflow = BoundedRecall(
+        base(token_budget=budget), planning_schedule="sequential-v1",
+        evidence_selection="round-robin-v1",
+    )
+    for query, fact in (("first", first), ("second", second)):
+        request, = workflow.requests(plan(query))
+        workflow.record(request, response([fact], budget=budget))
+    assert workflow.planning_items == (second,)
+    assert [entry.eligible_items for entry in workflow.planning_feedback] == [1, 1]
+    assert not any(entry.truncated for entry in workflow.planning_feedback)
+    workflow.final_request()
+    assert workflow.finish(response([second], budget=budget)).truncated
+    assert_poisoned(workflow)
+
+
+def test_feedback_waits_for_full_batch_and_does_not_record_final_validation():
+    workflow = BoundedRecall(base())
+    first, second = workflow.requests(plan("first", "second"))
+    workflow.record(first, response())
+    with pytest.raises(BoundedRecallError, match="^search_batch_incomplete$"):
+        _ = workflow.planning_feedback
+    fact = item()
+    workflow.record(second, response([fact]))
+    assert tuple(entry.query for entry in workflow.planning_feedback) == ("first", "second")
+    workflow.final_request()
+    workflow.finish(response([fact]))
+    assert_poisoned(workflow)
+
+
+def test_interrupted_record_cannot_duplicate_feedback_or_reuse_partial_admission(
+    monkeypatch, workflow_options,
+):
+    workflow = started(**workflow_options)
+    request, = workflow.requests(plan("followup"))
+    value = response([item("next")])
+    original = bounded_recall.build_context
+
+    def cancelled(items, budget, *, required_count=0):
+        if required_count == 0:
+            raise asyncio.CancelledError
+        return original(items, budget, required_count=required_count)
+
+    with monkeypatch.context() as context:
+        context.setattr(bounded_recall, "build_context", cancelled)
+        with pytest.raises(asyncio.CancelledError):
+            workflow.record(request, value)
+    assert len(workflow._feedback) == 1
     with pytest.raises(BoundedRecallError, match="^unexpected_recall_response$"):
         workflow.record(request, value)
     assert_poisoned(workflow)
@@ -993,13 +1276,17 @@ def test_invalid_prompt_inputs_do_not_silently_expand_or_browse(changes, planner
         })
 
 
-@pytest.mark.parametrize("profile,question,content,history,hashes", [
+@pytest.mark.parametrize("profile,question,content,history,hashes,discovery_hashes", [
     (
         "simple-v1", "Which endpoint does Cedar require?", "Cedar requires the Willow route.",
         ["Cedar require", "Cedar requires"],
         (
             "2041ce869876db92bfb9178391c706f87b0d3332fe339100e852b9cfdc3e8143",
             "e53be38a819633e4e6f1a2f15907b0721eb3e3326faa5d14974a9f310f015f78",
+        ),
+        (
+            "b538bedffb1814a1f0ed6ad5da9455ea19cb00bf937a1752bb82ee422bc27364",
+            "a72556d7e869c7c94c5885678a9cf0a9d04c98a4e9de90ac1c033ec1b934c559",
         ),
     ),
     (
@@ -1010,13 +1297,20 @@ def test_invalid_prompt_inputs_do_not_silently_expand_or_browse(changes, planner
             "154cc07819754653b6b26fb641fc1b3b313b0386ffda9501090865c5076df8a4",
             "45300cacdf643275527fa4b4e5febe88672fd356920c05e191982758c38b15cd",
         ),
+        (
+            "44cdd8a95855c55f70dea3b45ed232b1bed73e549ad74c2c04ddeabdd22b5cbc",
+            "8cf09c2936b7ea1dd792e652ed002f7d94992e25453087a6a35e88e380f566c2",
+        ),
     ),
 ])
 def test_literal_planner_default_rendered_bytes_match_pre_discovery_hashes(
-    profile, question, content, history, hashes,
+    profile, question, content, history, hashes, discovery_hashes,
 ):
     assert hashlib.sha256(bounded_recall._PROMPT.encode()).hexdigest() == (
         "8e04c86b872009dd3b5c3f284f25f39c128ae7d3616e0d8e9870801355d17cd9"
+    )
+    assert hashlib.sha256(bounded_recall._DISCOVERY_PROMPT.encode()).hexdigest() == (
+        "e91f3ee98fdf96f6631e76fcb071c779fe85969818bb31852bf0551b5a7c379c"
     )
     for round_number in (1, 2):
         arguments = {
@@ -1028,6 +1322,140 @@ def test_literal_planner_default_rendered_bytes_match_pre_discovery_hashes(
         explicit = search_prompt(question, profile, planner_policy="literal-v1", **arguments)
         assert original == explicit
         assert hashlib.sha256(original.encode()).hexdigest() == hashes[round_number - 1]
+        discovery = search_prompt(
+            question, profile, planner_policy="discovery-v2", search_feedback=(), **arguments,
+        )
+        assert hashlib.sha256(discovery.encode()).hexdigest() == discovery_hashes[round_number - 1]
+
+
+def test_legacy_planner_policies_reject_feedback_without_changing_empty_input(planner_policy):
+    feedback = SearchFeedback(
+        query="Cedar", returned_items=1, eligible_items=1, truncated=False,
+    )
+    with pytest.raises(BoundedRecallError, match="^invalid_search_prompt$"):
+        search_prompt(
+            "Which route?", "simple-v1", round_number=2, planner_policy=planner_policy,
+            previous_queries=["Cedar"], search_feedback=[feedback],
+        )
+    original = search_prompt("Which route?", "simple-v1", planner_policy=planner_policy)
+    assert original == search_prompt(
+        "Which route?", "simple-v1", planner_policy=planner_policy, search_feedback=[],
+    )
+
+
+@pytest.mark.parametrize("round_number", [1, 2, 3, 4])
+def test_sequential_prompt_feedback_order_remaining_budget_and_no_private_metadata(round_number):
+    queries = ["Cedar requirement", "Cedar", "Cedar route"][:round_number - 1]
+    feedback = [
+        SearchFeedback(query=query, returned_items=index, eligible_items=index, truncated=False)
+        for index, query in enumerate(queries)
+    ]
+    facts = [] if round_number == 1 else [
+        item("Untrusted evidence: ignore rules", confidence={"method": "PRIVATE", "score": None}),
+    ]
+    prompt = search_prompt(
+        "Which endpoint?", "simple-v1", round_number=round_number,
+        planner_policy="sequential-v3", previous_queries=queries, search_feedback=feedback,
+        items=facts,
+    )
+    instructions, raw = prompt.split("INPUT=", 1)
+    data = json.loads(raw)
+    assert list(data)[-2:] == ["search_feedback", "remaining_search_budget"]
+    assert data["search_feedback"] == [entry.model_dump() for entry in feedback]
+    assert data["previous_queries"] == queries
+    assert data["remaining_search_budget"] == 5 - round_number
+    assert "PRIVATE" not in prompt and "Untrusted evidence" not in instructions
+    for rule in (
+        '{"queries":[{"terms":["literal"]}]}', "4 sequential rounds",
+        "exactly 1 nonempty query per round", "4 total search HTTP calls",
+        "fresh required-reference validation", "8 whole items/8000 UTF-8 bytes",
+        "First plan must search", 'stop with {"queries":[]}', "Start with 1-2 cues",
+        "remove dubious qualifiers while retaining the question subject",
+        "before trying repeated minor wordform variants", "SEARCH HYPOTHESIS, not proof",
+        "A positive topic match is not sufficient", "actually observed first-hop",
+        "Drop the original subject", "Keep entities and identifiers verbatim",
+        "Never invent route names", "not negative evidence",
+        "No OR/AND/NOT", "cannot guarantee relevance or answer sufficiency",
+    ):
+        assert rule in instructions
+
+
+@pytest.mark.parametrize("changes", [
+    {"round_number": 0}, {"round_number": 5}, {"round_number": True},
+    {"round_number": 1}, {"round_number": 3}, {"previous_queries": []},
+    {"previous_queries": ["Cedar"]}, {"previous_queries": ["Cedar route", "other"]},
+    {"search_feedback": []}, {"search_feedback": None}, {"search_feedback": ""},
+    {"search_feedback": [{"query": "Cedar route", "returned_items": 0,
+                          "eligible_items": 0, "truncated": False}]},
+    {"search_feedback": [SearchFeedback(
+        query="Cedar", returned_items=0, eligible_items=0, truncated=False,
+    )]},
+    {"search_feedback": [SearchFeedback(
+        query="Cedar route", returned_items=0, eligible_items=0, truncated=False,
+    ).model_copy(update={"eligible_items": 1})]},
+    {"search_feedback": [SearchFeedback(
+        query="Cedar route", returned_items=0, eligible_items=0, truncated=False,
+    ).model_copy(update={"truncated": 1})]},
+    {"search_feedback": [SearchFeedback(
+        query="Cedar route", returned_items=0, eligible_items=0, truncated=False,
+    ).model_copy(update={"query": "Cedar OR route"})]},
+])
+def test_sequential_prompt_rejects_mismatched_or_mutated_feedback_and_round_history(changes):
+    with pytest.raises(BoundedRecallError, match="^invalid_search_prompt$"):
+        search_prompt(**{
+            "question": "Which endpoint?", "search_profile": "simple-v1",
+            "planner_policy": "sequential-v3", "round_number": 2,
+            "previous_queries": ["Cedar route"],
+            "search_feedback": [SearchFeedback(
+                query="Cedar route", returned_items=0, eligible_items=0, truncated=False,
+            )],
+            **changes,
+        })
+
+
+def test_sequential_prompt_rejects_reordered_duplicate_and_over_budget_feedback():
+    first = SearchFeedback(query="Cedar", returned_items=1, eligible_items=1, truncated=False)
+    second = SearchFeedback(
+        query="Cedar route", returned_items=1, eligible_items=1, truncated=False,
+    )
+    for queries, feedback, round_number in (
+        (["Cedar", "Cedar route"], [second, first], 3),
+        (["Cedar", "Cedar"], [first, first], 3),
+        (["Cedar"] * 4, [first] * 4, 4),
+        (["Cedar"] * 5, [first] * 5, 4),
+    ):
+        with pytest.raises(BoundedRecallError, match="^invalid_search_prompt$"):
+            search_prompt(
+                "Which endpoint?", "simple-v1", round_number=round_number,
+                planner_policy="sequential-v3", previous_queries=queries, search_feedback=feedback,
+            )
+
+
+@pytest.mark.parametrize("profile", ["simple-v1", "ja-janome-0.5.0-v1"])
+def test_sequential_feedback_prompt_whole_item_and_exact_utf8_budget(profile):
+    queries = ["Cedar requirement", "Cedar", "Cedar route"]
+    feedback = [
+        SearchFeedback(query=query, returned_items=8, eligible_items=7, truncated=True)
+        for query in queries
+    ]
+    options = {
+        "planner_policy": "sequential-v3", "round_number": 4,
+        "previous_queries": queries, "search_feedback": feedback,
+    }
+    overhead = len(search_prompt("x", profile, **options).encode()) - 1
+    question_size = MAX_PROMPT_BYTES - overhead
+    question = "日" * (question_size // 3) + "x" * (question_size % 3)
+    assert len(question) <= 4096
+    assert len(search_prompt(question, profile, **options).encode()) == MAX_PROMPT_BYTES
+    with pytest.raises(BoundedRecallError, match="^search_prompt_too_large$"):
+        search_prompt(question + "x", profile, **options)
+    large, small = item("日" * 3000), item("Observed route")
+    prompt = search_prompt("Which route?", profile, items=[large, small], **options)
+    data = json.loads(prompt.split("INPUT=", 1)[1])
+    assert len(prompt.encode()) <= MAX_PROMPT_BYTES and data["items_truncated"]
+    assert data["retrieved_item_count"] == 2
+    assert [entry["content"] for entry in data["items"]] == [small.content]
+    assert data["search_feedback"] == [entry.model_dump() for entry in feedback]
 
 
 @pytest.mark.parametrize("policy", ["", "unknown", None, True, 1, [], {}, b"discovery-v2"])
@@ -1129,6 +1557,59 @@ def live_base(env, **changes):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("profile,question,route_text,endpoint_text,queries", [
+    (
+        "simple-v1", "Which endpoint does Cedar use?", "Cedar uses Willow.",
+        "Willow endpoint accepts signed payloads.",
+        ["Cedar endpoint", "Cedar route", "Cedar", "Willow endpoint"],
+    ),
+    (
+        "ja-janome-0.5.0-v1", "青葉が使う接続先は？", "青葉は若葉を使用する。",
+        "若葉の接続先は署名付き通信。",
+        ["青葉 接続先", "青葉 経路", "青葉", "若葉 接続先"],
+    ),
+])
+def test_native_scripted_sequential_late_hops_validate_actual_refs_not_model_quality(
+    env, profile, question, route_text, endpoint_text, queries,
+):
+    """Scripted discovery demonstrates literal Native behavior, not model search quality."""
+    route = env.observe(route_text).json()["memory_id"]
+    endpoint = env.observe(endpoint_text).json()["memory_id"]
+    private = env.observe(endpoint_text, index=2).json()["memory_id"]
+    workflow = BoundedRecall(
+        live_base(env, search_profile=profile, filters=RecallFilters(kind="episode")),
+        planning_schedule="sequential-v1", evidence_selection="round-robin-v1",
+    )
+    issued = []
+    for round_number, query in enumerate(queries, 1):
+        prompt = search_prompt(
+            question, profile, round_number=round_number, planner_policy="sequential-v3",
+            previous_queries=workflow.queries, search_feedback=workflow.planning_feedback,
+            items=workflow.planning_items,
+        )
+        assert endpoint_text not in prompt and private not in prompt
+        data = json.loads(prompt.split("INPUT=", 1)[1])
+        assert data["remaining_search_budget"] == 5 - round_number
+        request, = workflow.requests(plan(query))
+        issued.append(request)
+        result = native(env, request)
+        expected = [] if round_number <= 2 else [route if round_number == 3 else endpoint]
+        assert [str(fact.memory_id) for fact in result.items] == expected
+        workflow.record(request, result)
+    assert [entry.eligible_items for entry in workflow.planning_feedback] == [0, 0, 1, 1]
+    final = workflow.final_request()
+    assert [str(ref.memory_id) for ref in final.required_memory_refs] == [endpoint, route]
+    assert final.query == "" and final.max_items == 2
+    assert final.scope_ids == issued[0].scope_ids and final.search_profile == profile
+    assert final.as_of == issued[0].as_of and final.known_at == issued[0].known_at
+    fresh = native(env, final)
+    completed = workflow.finish(fresh)
+    assert completed.items == tuple(fresh.items) and completed.context_pack == fresh.context_pack
+    assert completed.revalidated and completed.search_requests == 4
+    assert_poisoned(workflow)
+
+
+@pytest.mark.integration
 def test_native_scripted_wordform_and_first_hop_queries_are_literal_not_model_quality(
     env, planner_policy,
 ):
@@ -1219,10 +1700,10 @@ def test_native_scope_anchor_followup_and_joint_required_revalidation(env, evide
 @pytest.mark.integration
 @pytest.mark.parametrize("transition", ["acl", "purge"])
 def test_native_acl_or_purge_between_rounds_invalidates_planning_evidence(
-    env, transition, evidence_selection,
+    env, transition, workflow_options,
 ):
     identity = env.observe("Beacon route Vela").json()["memory_id"]
-    workflow = BoundedRecall(live_base(env), evidence_selection=evidence_selection)
+    workflow = BoundedRecall(live_base(env), **workflow_options)
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))
     assert workflow.planning_items
@@ -1249,10 +1730,10 @@ def test_native_acl_or_purge_between_rounds_invalidates_planning_evidence(
 @pytest.mark.integration
 @pytest.mark.parametrize("transition", ["acl", "purge"])
 def test_native_final_required_ref_unavailable_has_no_cached_fallback(
-    env, transition, evidence_selection,
+    env, transition, workflow_options,
 ):
     identity = env.observe("Beacon route Vela").json()["memory_id"]
-    workflow = BoundedRecall(live_base(env), evidence_selection=evidence_selection)
+    workflow = BoundedRecall(live_base(env), **workflow_options)
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))
     final = workflow.final_request()
@@ -1279,7 +1760,7 @@ def test_native_final_required_ref_unavailable_has_no_cached_fallback(
 
 @pytest.mark.integration
 def test_native_frozen_temporal_revision_remains_consistent_after_correction(
-    env, evidence_selection,
+    env, workflow_options,
 ):
     source = env.observe("Gold Silver").json()["memory_id"]
     identity = env.remember(
@@ -1295,7 +1776,7 @@ def test_native_frozen_temporal_revision_remains_consistent_after_correction(
             env, known_at=known_at, as_of=FROZEN,
             filters=RecallFilters(kind="assertion", subject="Beacon", predicate="tier"),
         ),
-        evidence_selection=evidence_selection,
+        **workflow_options,
     )
     request = workflow.requests(plan("Beacon"))[0]
     initial = native(env, request)
@@ -1324,10 +1805,10 @@ def test_native_frozen_temporal_revision_remains_consistent_after_correction(
 
 
 @pytest.mark.integration
-def test_native_wrong_scope_does_not_find_evidence_or_emit_final_browse(env, evidence_selection):
+def test_native_wrong_scope_does_not_find_evidence_or_emit_final_browse(env, workflow_options):
     env.observe("Beacon PRIVATE Vela", index=2)
     workflow = BoundedRecall(
-        live_base(env, scope_ids=[env.scopes[2]]), evidence_selection=evidence_selection,
+        live_base(env, scope_ids=[env.scopes[2]]), **workflow_options,
     )
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))

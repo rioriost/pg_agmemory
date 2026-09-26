@@ -2953,7 +2953,8 @@ term選択はcallerの責任であり、stemming/vector検索がない場合、
 ### 上限付き追加検索と保持review
 
 `pg_agmemory.bounded_recall`は**opt-inのcaller側workflow**で、serverの新検索modeではありません。
-`SearchPlan`はliteral queryを最大2個含みます。計画は最大2 round、
+`SearchPlan`はliteral queryを最大2個含みます。
+既定の`planning_schedule="batched-v1"`では計画は最大2 round、
 検索4 requestと最後のrequired-reference検査1回まで、
 mergeは最大8 item・Native context 8,000 byteまでです。
 2 round目へ渡すのは、取得・採用済みの根拠と実行query履歴だけです。
@@ -2990,9 +2991,24 @@ topicだけが繰り返される結果と、質問が求める関係/動作/意�
 取得した最初の参照をたどる際、接続先にない元のanchorを繰り返す必要はありません。
 JSON parserが検証するのは形式とliteral queryの上限であり、指示への意味的な適合ではありません。
 helper/serverはstemming、展開、関連性の正解判定、retry、追加検索を行わず、
-発見品質を保証しません。whole-itemの計画prompt 8,000-byte上限は両policyで共通です。
+発見品質を保証しません。whole-itemの計画prompt 8,000-byte上限は全policyで共通です。
+
+`planning_schedule="sequential-v1"`は**最大4 round・各1 query**を強制し、
+第2 round以降の空planで終了します。次のmodel計画には最新の採用済み根拠と
+`planning_feedback`を渡します。検証済みquery、取得/除外後の件数、切捨ての有無であり、
+除外itemの本文やIDは含めません。feedbackは上限付きの防御的copyで、
+応答待ちの間は取得できず、失敗/終了時に破棄します。件数は関連性や回答の十分性を示しません。
+
+実query履歴とfeedbackを`planner_policy="sequential-v3"`へ渡します。
+空結果の後は限定語を減らし、観測した参照をたどるよう指示しますが、
+自動query変換や意味検証ではありません。Native検索4回、最終検査1回、
+候補32件、採用8件 / 8,000 byteの上限は維持します。
+計画call上限は明示的に2回から4回へ増えます。
+早期終了で実call数は減らせますが、低遅延・低費用を保証しません。
+以前のscheduleとliteral-v1/discovery-v2のprompt byte列は維持します。
 
 SDKをtransportとし、選択modelは計画だけを生成します。
+以下は逐次scheduleを明示選択する例です。
 
 ```python
 from pg_agmemory.bounded_recall import (
@@ -3004,16 +3020,21 @@ search = BoundedRecall(
     base_request,
     excluded_memory_ids=review.excluded_memory_ids,
     evidence_selection="round-robin-v1",
+    planning_schedule="sequential-v1",
 )
-for round_number in (1, 2):
+for round_number in (1, 2, 3, 4):
     prompt = search_prompt(
         question, base_request.search_profile,
         items=search.planning_items, previous_queries=search.queries,
         round_number=round_number,
+        planner_policy="sequential-v3", search_feedback=search.planning_feedback,
     )
     raw = await selected_model(prompt)
-    plan = parse_search_plan(raw, allow_empty=round_number == 2)
-    for request in search.requests(plan):
+    plan = parse_search_plan(raw, allow_empty=round_number > 1)
+    requests = search.requests(plan)
+    if not requests:
+        break
+    for request in requests:
         search.record(request, await client.recall(request))
 final_request = search.final_request()
 result = search.finish(await client.recall(final_request) if final_request else None)
@@ -3037,7 +3058,11 @@ callerがpending reviewを永続化・照合し、後の明示削除承認をmod
 `bounded-lexical-v3`は従来の先着順採用を維持します。
 `bounded-lexical-v5`はround-robin採用とreviewを維持し、
 discovery-v2 plannerを明示選択します。v3/v4はliteral-v1のままです。
-いずれも計画2 round・検索4回・最新検査1回・120 model call上限は同じです。
+これらは計画2 round・検索4回・最新検査1回・120 model call上限を維持します。
+`bounded-lexical-v6`はsequential-v1/sequential-v3、round-robin、reviewを使い、
+同じ20 case評価の上限は**160 model call**です。
+各caseで最大4計画＋保持/回答/control二つを数え、早期終了で実call数は変わります。
+host/guest双方で選択した上限を強制し、以前のpolicyや既定の予算は引き上げません。
 
 ## Exact structured recall filters
 

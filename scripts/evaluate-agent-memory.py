@@ -15,7 +15,7 @@ owned.json has exactly format="pgag-agent-eval-owned-v1", run_id, api_url,
 admin_url_hash (SHA-256 of the exact admin URL), jwt_issuer,
 jwt_audience, and synthetic_fixture_purge_consent=true.
 The bridge's transport.json has format="pgag-copilot-transport-v1", run_id,
-model, reasoning_effort, cli_version, max_calls (1..120), fresh_session_per_call=true,
+model, reasoning_effort, cli_version, max_calls (1..160), fresh_session_per_call=true,
 custom_instructions=false, tools_allowed=false, model_weights_revision_verified=false,
 and optional model_revision (null when unknown).
 Directories must be private (0700), files private (0600), and queue/output empty.
@@ -32,7 +32,10 @@ reads per case (four searches plus required-reference revalidation). review-v1
 withholds forget proposals only in this workflow, without authorizing physical purge.
 v4/v5 select round-robin evidence across Native ranked results, with follow-up rounds first;
 v3 retains first-admitted evidence. v3/v4 use the literal-v1 planner; v5 explicitly selects
-discovery-v2 planning. All bounded policies retain the same resource ceilings.
+discovery-v2 planning. v6 explicitly selects sequential-v3 planning, with up to four
+one-query rounds and a higher 160-model-call ceiling (versus 120 for v3-v5). An empty
+plan after the first round stops planning. All bounded policies retain four search
+reads, one fresh final validation, and at most eight items/8000 context bytes.
 """
 
 from __future__ import annotations
@@ -76,7 +79,7 @@ from pg_agmemory.native_client import NativeSettings
 from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 
 MAX_CALLS = 100
-MAX_TRANSPORT_CALLS = 120
+MAX_TRANSPORT_CALLS = 160
 MAX_BYTES = 65536
 RESPONSE_TIMEOUT = 180.0
 JWT_BACKDATE_SECONDS = 30
@@ -84,8 +87,10 @@ RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
 QueryPolicy = Literal[
     "legacy-v1", "lexical-v2", "bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5",
+    "bounded-lexical-v6",
 ]
-BOUNDED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5")
+BATCHED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5")
+BOUNDED_QUERY_POLICIES = (*BATCHED_QUERY_POLICIES, "bounded-lexical-v6")
 QUERY_POLICIES = ("legacy-v1", "lexical-v2", *BOUNDED_QUERY_POLICIES)
 RetentionPolicy = Literal["model-purge-v1", "review-v1"]
 RETENTION_POLICIES = ("model-purge-v1", "review-v1")
@@ -627,7 +632,16 @@ def lexical_profile(language: str) -> SearchProfile:
 
 def logical_call_limit(query_policy: QueryPolicy) -> int:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    if query_policy == "bounded-lexical-v6":
+        return 160
     return 120 if query_policy in BOUNDED_QUERY_POLICIES else MAX_CALLS
+
+
+def planning_round_limit(query_policy: QueryPolicy) -> int:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    if query_policy == "bounded-lexical-v6":
+        return 4
+    return 2 if query_policy in BOUNDED_QUERY_POLICIES else 1
 
 
 def resolve_retention_policy(
@@ -814,13 +828,20 @@ async def bounded_retrieval(
     evidence_selection = (
         "first-admitted-v1" if query_policy == "bounded-lexical-v3" else "round-robin-v1"
     )
-    planner_policy = "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
-    workflow = (
-        bounded_recall.BoundedRecall(
+    if query_policy == "bounded-lexical-v6":
+        planner_policy = "sequential-v3"
+        workflow = bounded_recall.BoundedRecall(
             base, excluded_memory_ids=excluded_ids, evidence_selection="round-robin-v1",
-        ) if query_policy != "bounded-lexical-v3"
-        else bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
-    )
+            planning_schedule="sequential-v1",
+        )
+    else:
+        planner_policy = "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
+        workflow = (
+            bounded_recall.BoundedRecall(
+                base, excluded_memory_ids=excluded_ids, evidence_selection="round-robin-v1",
+            ) if query_policy != "bounded-lexical-v3"
+            else bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
+        )
     progress: dict[str, Any] = {
         "query_policy": query_policy, "evidence_selection": evidence_selection,
         "planner_policy": planner_policy,
@@ -830,9 +851,21 @@ async def bounded_retrieval(
         "excluded_memory_ids": [str(value) for value in excluded_ids],
         "read_latency_ms": [], "revalidated": False, "cached_fallback_used": False,
     }
+    if query_policy == "bounded-lexical-v6":
+        progress.update(
+            planning_schedule="sequential-v1", planning_rounds_maximum=4,
+            planning_complete=False, early_stop=False,
+        )
     detail["bounded_retrieval"] = progress
-    for round_number in (1, 2):
-        if query_policy == "bounded-lexical-v5":
+    for round_number in range(1, planning_round_limit(query_policy) + 1):
+        search_feedback = workflow.planning_feedback if query_policy == "bounded-lexical-v6" else ()
+        if query_policy == "bounded-lexical-v6":
+            prompt = bounded_recall.search_prompt(
+                case.question, base.search_profile, items=workflow.planning_items,
+                previous_queries=workflow.queries, round_number=round_number,
+                planner_policy="sequential-v3", search_feedback=search_feedback,
+            )
+        elif query_policy == "bounded-lexical-v5":
             prompt = bounded_recall.search_prompt(
                 case.question, base.search_profile, items=workflow.planning_items,
                 previous_queries=workflow.queries, round_number=round_number,
@@ -855,19 +888,28 @@ async def bounded_retrieval(
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "prompt_bytes": len(prompt.encode("utf-8")),
         }
+        if query_policy == "bounded-lexical-v6":
+            round_detail["search_feedback"] = [
+                entry.model_dump(mode="json") for entry in search_feedback
+            ]
         progress["rounds"].append(round_detail)
         journal.emit(
             "bounded_plan_received", case_id=case.case_id, **round_detail,
             query_policy=query_policy,
         )
-        plan = bounded_recall.parse_search_plan(raw, allow_empty=round_number == 2)
+        plan = bounded_recall.parse_search_plan(raw, allow_empty=round_number >= 2)
         requests = workflow.requests(plan)
+        if query_policy == "bounded-lexical-v6":
+            require(len(requests) <= 1, "sequential_search_call_limit")
         round_detail["plan"] = plan.model_dump(mode="json")
         round_detail["compiled_queries"] = [request.query for request in requests]
         journal.emit(
             "bounded_plan_compiled", case_id=case.case_id, **round_detail,
             query_policy=query_policy,
         )
+        if query_policy == "bounded-lexical-v6" and not requests:
+            progress.update(early_stop=True, stop_reason="empty_plan")
+            break
         for request in requests:
             progress["search_calls"] += 1
             require(progress["search_calls"] <= 4, "bounded_search_call_limit")
@@ -894,6 +936,14 @@ async def bounded_retrieval(
                 progress["read_latency_ms"].append(float((time.monotonic() - started) * 1000))
             returned_context(case, result, memory_ids)
             workflow.record(request, result)
+    if query_policy == "bounded-lexical-v6":
+        progress.update(
+            planning_complete=True,
+            stop_reason="empty_plan" if progress["early_stop"] else "planning_round_limit",
+            search_feedback=[
+                entry.model_dump(mode="json") for entry in workflow.planning_feedback
+            ],
+        )
     final_request = workflow.final_request()
     final_response = None
     if final_request is not None:
@@ -1231,6 +1281,13 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
                 "format": "pgag-agent-memory-bounded-query-recipe-v5",
                 "planner_policy": "discovery-v2",
             })
+        if query_policy == "bounded-lexical-v6":
+            components.update({
+                "format": "pgag-agent-memory-bounded-query-recipe-v6",
+                "planner_policy": "sequential-v3", "planning_schedule": "sequential-v1",
+                "evidence_selection": "round-robin-v1", "planning_rounds": 4,
+                "searches_per_round": 1, "logical_model_call_limit": 160,
+            })
     return {
         "query_policy": query_policy, "base_recipe_sha256": base_digest,
         "query_planning_sha256": module_digest, "query_planning_contract": contract,
@@ -1502,7 +1559,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "budget": {
             "llm_calls_maximum": logical_call_limit(args.query_policy), "call_retries": 0,
-            "planning_rounds_per_case": 2 if args.query_policy in BOUNDED_QUERY_POLICIES else 1,
+            "planning_rounds_per_case": planning_round_limit(args.query_policy),
             "retrieval_search_calls_per_case": (
                 4 if args.query_policy in BOUNDED_QUERY_POLICIES else 1
             ),
@@ -1702,7 +1759,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--retention-policy", choices=RETENTION_POLICIES, default=None, action=UniqueChoice,
-        help="Defaults to review-v1 for bounded-lexical-v3/v4/v5, otherwise model-purge-v1",
+        help="Defaults to review-v1 for bounded-lexical-v3/v4/v5/v6, otherwise model-purge-v1",
     )
     parser.add_argument(
         "--cohort", choices=COHORTS, default="pilot-v1", action=UniqueChoice,

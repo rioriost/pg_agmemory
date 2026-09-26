@@ -731,14 +731,19 @@ No model call, query rewrite, OR search or browse fallback is added to the serve
 See [the query contract](docs/operations/README.md#lexical-query-planning)
 and [the separately versioned comparison](docs/EVALUATION.md#lexical-v2-query-planning-comparison).
 
-For explicit follow-up, `pg_agmemory.bounded_recall` permits two planning rounds
+For explicit follow-up, `pg_agmemory.bounded_recall` defaults to two planning rounds
 and four scoped searches, followed by fresh required-reference validation.
+Opt-in `planning_schedule="sequential-v1"` instead permits four rounds of one
+query each, feeding every result back before the next plan. Native reads stay
+bounded to four plus validation, but the model-call ceiling increases.
 Selecting `evidence_selection="round-robin-v1"` reconsiders the bounded evidence
 set across query results, rather than permanently keeping the first eight items.
 The default remains `first-admitted-v1`; neither policy changes Native ranking.
 An independent `search_prompt(..., planner_policy="discovery-v2")` option
 emphasizes relation/intent cues and explicit word-form search hypotheses;
 the default planner remains `literal-v1`, with no server stemming change.
+Sequential callers use `planner_policy="sequential-v3"` with validated
+`planning_feedback`; early stop avoids further planning calls.
 `pg_agmemory.retention_review` keeps model forget suggestions pending rather
 than authorizing deletion. These are caller-owned opt-in workflows; they do not
 change server-wide authorization or make pending rows globally unreadable.

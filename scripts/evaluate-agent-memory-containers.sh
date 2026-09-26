@@ -4,16 +4,18 @@ set -Eeuo pipefail
 umask 077
 
 usage() {
-    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5] [--retention-policy model-purge-v1|review-v1] [--cohort pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1]"
-    echo "Apple Container only; at most 100 calls, or 120 with bounded-lexical-v3/v4/v5."
+    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5|bounded-lexical-v6] [--retention-policy model-purge-v1|review-v1] [--cohort pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1]"
+    echo "Apple Container only; at most 100 calls, 120 with bounded-lexical-v3/v4/v5, or 160 with v6."
     echo "Synthetic fixtures only; model-selected purge applies only to this owned disposable DB."
     echo "Uses existing host Copilot authentication without copying credentials into guests."
     echo "No embeddings, background worker, production data, or external effect execution."
     echo "Defaults: lexical-v2, model-purge-v1, pilot-v1."
     echo "Synthetic comparison, not externally held out; first-use/reuse requires recorded run history."
-    echo "Selecting bounded-lexical-v3/v4/v5 defaults retention to review-v1 unless explicitly overridden."
-    echo "v3 keeps first-admitted evidence; v4/v5 use round-robin evidence with follow-up rounds first."
+    echo "Selecting bounded-lexical-v3/v4/v5/v6 defaults retention to review-v1 unless explicitly overridden."
+    echo "v3 keeps first-admitted evidence; v4/v5/v6 use round-robin evidence with later rounds first."
     echo "v3/v4 use literal-v1 planning; v5 opts into discovery-v2 planning with unchanged budgets."
+    echo "v6 uses sequential-v3 planning: up to four one-query rounds and a higher model-call budget."
+    echo "All bounded policies keep four Native searches plus one fresh final validation."
     echo "review-v1 defers model forget proposals; it does not authorize Native purge."
 }
 if [[ "${1:-}" == --help ]]; then usage; exit 0; fi
@@ -41,9 +43,9 @@ while [[ $# -gt 0 ]]; do
     esac
     shift 2
 done
-case "$query_policy" in lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5) ;; *) usage >&2; exit 2 ;; esac
+case "$query_policy" in lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5|bounded-lexical-v6) ;; *) usage >&2; exit 2 ;; esac
 bounded_query=false
-case "$query_policy" in bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5) bounded_query=true ;; esac
+case "$query_policy" in bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5|bounded-lexical-v6) bounded_query=true ;; esac
 if [[ "$retention_seen" == false && "$bounded_query" == true ]]; then
     retention_policy=review-v1
 fi
@@ -51,6 +53,7 @@ case "$retention_policy" in model-purge-v1|review-v1) ;; *) usage >&2; exit 2 ;;
 case "$cohort" in pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1) ;; *) usage >&2; exit 2 ;; esac
 max_calls=100
 if [[ "$bounded_query" == true ]]; then max_calls=120; fi
+if [[ "$query_policy" == bounded-lexical-v6 ]]; then max_calls=160; fi
 [[ "$model" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || exit 2
 case "$effort" in low|medium|high|xhigh) ;; *) exit 2 ;; esac
 cd -P "$(dirname "${BASH_SOURCE[0]}")/.."

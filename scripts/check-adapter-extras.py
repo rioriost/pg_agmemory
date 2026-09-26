@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory.api import create_app
-from pg_agmemory.bounded_recall import BoundedRecall, SearchPlan, search_prompt
+from pg_agmemory.bounded_recall import BoundedRecall, SearchFeedback, SearchPlan, search_prompt
 from pg_agmemory.models import MemoryReference, Recall
 from pg_agmemory.operations_status import OperationsStatusRequest, operations_status
 from pg_agmemory.query_planning import (
@@ -55,6 +55,17 @@ assert BoundedRecall(
 assert search_prompt(
     "Which team owns the ticket?", "simple-v1", planner_policy="discovery-v2",
 ).endswith('"items_truncated":false}')
+sequential = BoundedRecall(
+    selection_base, planning_schedule="sequential-v1", evidence_selection="round-robin-v1",
+)
+assert sequential.planning_feedback == ()
+assert json.loads(search_prompt(
+    "Which team owns the ticket?", "simple-v1", planner_policy="sequential-v3",
+    search_feedback=sequential.planning_feedback,
+).split("INPUT=", 1)[1])["round_number"] == 1
+assert SearchFeedback(
+    query="ticket owner", returned_items=0, eligible_items=0, truncated=False,
+).eligible_items == 0
 review_reference = MemoryReference(memory_id=UUID(int=1))
 assert review_retention([review_reference], [review_reference.memory_id]).purge_authorized is False
 assert LexicalQueryPlan(terms=["ticket", "owner"]).query == "ticket owner"

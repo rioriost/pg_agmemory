@@ -678,14 +678,18 @@ serverへのLLM呼出し、query書換え、OR検索、browse fallbackは追加�
 [query契約](docs/operations/README-jp.md#lexical-query-planning)と
 [別versionの比較](docs/EVALUATION-jp.md#lexical-v2-query-planning-comparison)を参照してください。
 
-明示的な追加探索には`pg_agmemory.bounded_recall`が計画2 round・scoped検索4回までと、
+明示的な追加探索には`pg_agmemory.bounded_recall`が既定で計画2 round・scoped検索4回までと、
 その後の最新required-reference検査を提供します。
+`planning_schedule="sequential-v1"`を明示選択すると最大4 round・各1 queryとなり、
+各結果を次の計画へ反映します。Native読取は4回＋検査のままですが、model call上限は増えます。
 `evidence_selection="round-robin-v1"`を選ぶと、先に採用した8件を固定せず、
 queryごとの検索結果から上限内の根拠を再選択します。
 既定は`first-admitted-v1`のままで、いずれもNative rankingは変更しません。
 独立した`search_prompt(..., planner_policy="discovery-v2")`は、
 関係/意図の手掛かりと明示的な語形の検索仮説を重視します。
 既定plannerは`literal-v1`を維持し、serverのstemmingは変更しません。
+逐次callerは`planner_policy="sequential-v3"`と検証済み`planning_feedback`を使い、
+早期終了時はそれ以上の計画呼出しを行いません。
 `pg_agmemory.retention_review`はmodelのforget提案を削除承認にせず保留します。
 caller所有のopt-in workflowであり、server全体の認可を変えたり、
 pending rowを全clientから読めなくしたりするものではありません。

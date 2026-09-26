@@ -2,6 +2,30 @@
 
 [English](EVALUATION.md)
 
+## 逐次計画の比較
+
+`bounded-lexical-v6`はNative検索やreaderではなく、**計画scheduleと指示**を変更します。
+2 queryずつ2 roundから、最大4 round・各1 queryの逐次実行へ変えます。
+各計画が検証済みのquery別件数と最新の採用根拠を参照するため、
+後の検索で発見した参照も、残りの最大4検索の中でたどれます。
+第2 round以降の空planで計画を終了し、空のNative browseには変換しません。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-sequential-v6-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v6 \
+  --retention-policy review-v1
+```
+
+20 caseのmodel call上限は明示的に**120 → 160**へ増え、実件数は早期終了によって変わります。
+Native検索は最大4回＋最新参照検査1回、採用8 item / 8,000 byte、
+round-robin採用は同じです。同計算予算やpromptだけの比較ではありません。
+推論前にsourceを固定し、GPT-6 Astra/highで既知cohortを1回測定します。
+data、gold、reader/保持/control prompt、採点は維持し、
+不利な回答のretry/再採点、隠れた追加検索、参照有効性と回答十分性の混同は行いません。
+後退、不完全なchain、厳密文字列の不一致も、正答率の変化と実計画call数/latency/usageとともに報告します。
+v3-v5と既定動作は変えず、実装だけでv6実scoreや未見data/プロダクトの認定を主張しません。
+
 ## 発見plannerだけを変える比較
 
 `bounded-lexical-v5`はopt-inの`discovery-v2` plannerを選び、

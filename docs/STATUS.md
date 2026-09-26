@@ -2,6 +2,17 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Explicit sequential search schedule
+
+`bounded-lexical-v6` lets each search result inform the next plan: up to four
+one-query rounds with validated bounded count feedback and early stop.
+It preserves four Native searches plus one final validation, round-robin
+selection and the eight-item / 8,000-byte context cap. The planning-call
+ceiling grows from two to four, so the twenty-case model budget is explicitly
+**160 rather than 120**; this is not a same-compute comparison.
+Existing policies, reader/scorer, retention and Native semantics are unchanged.
+See [the known-cohort comparison contract](EVALUATION.md#sequential-planning-comparison).
+
 ## Opt-in discovery planner
 
 `bounded-lexical-v5` isolates a planner change: `discovery-v2` emphasizes

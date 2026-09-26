@@ -25,7 +25,9 @@ test("arguments require an explicit model, bounded calls and owned run identity"
   assert.equal(parseArguments(args).max_calls, 100);
   assert.throws(() => parseArguments(args.concat("--model", "other")));
   assert.equal(parseArguments(args.map((value) => value === "100" ? "120" : value)).max_calls, 120);
-  assert.throws(() => parseArguments(args.map((value) => value === "100" ? "121" : value)));
+  assert.equal(parseArguments(args.map((value) => value === "100" ? "160" : value)).max_calls, 160);
+  assert.throws(() => parseArguments(args.map((value) => value === "100" ? "161" : value)));
+  assert.throws(() => parseArguments(args.filter((value) => !["--max-calls", "100"].includes(value))));
   assert.throws(() => parseArguments(args.map((value) => value === "high" ? "auto" : value)));
 });
 
@@ -83,8 +85,30 @@ container_host owned-node`], { encoding: "utf8" });
   }
 });
 
-test("bridge interoperates with the guest queue directory without model calls",
-  { timeout: 10000 }, async () => {
+test("wrapper ceilings remain explicit per policy", () => {
+  const source = readFileSync(new URL("./evaluate-agent-memory-containers.sh", import.meta.url), "utf8");
+  const parsing = source.split('[[ "$model" =~')[0];
+  for (const [options, policy, retention, ceiling] of [
+    [[], "lexical-v2", "model-purge-v1", 100],
+    [["--query-policy", "legacy-v1"], "legacy-v1", "model-purge-v1", 100],
+    ...["bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5"].map((policy) =>
+      [["--query-policy", policy], policy, "review-v1", 120]),
+    [["--query-policy", "bounded-lexical-v6"], "bounded-lexical-v6", "review-v1", 160],
+    [["--query-policy", "bounded-lexical-v6", "--retention-policy", "model-purge-v1"],
+      "bounded-lexical-v6", "model-purge-v1", 160],
+  ]) {
+    const result = spawnSync("bash", ["-c", `${parsing}
+printf '%s %s %s\\n' "$query_policy" "$retention_policy" "$max_calls"`,
+    "harness", "private-test", model, "high", "--allow-copilot", ...options],
+    { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), `${policy} ${retention} ${ceiling}`);
+  }
+});
+
+for (const ceiling of [1, 160]) {
+  test(`bridge honors ${ceiling} guest queue calls without model calls`,
+  { timeout: 60000 }, async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "pgag-bridge-test-"));
     const canonical = await fs.realpath(directory);
     const bridge = path.join(canonical, "bridge");
@@ -108,7 +132,7 @@ if (process.argv.includes("--version")) {
     const child = spawn(process.execPath, [
       new URL("./copilot-eval-bridge.mjs", import.meta.url).pathname,
       "--directory", bridge, "--model", model, "--reasoning-effort", "high",
-      "--max-calls", "1", "--run-id", "agent-eval-0123456789abcdef",
+      "--max-calls", String(ceiling), "--run-id", "agent-eval-0123456789abcdef",
     ], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: "pipe" });
     let diagnostics = "";
     child.stderr.on("data", (chunk) => { diagnostics += chunk; });
@@ -120,17 +144,25 @@ if (process.argv.includes("--version")) {
         if (child.exitCode !== null) throw new Error(diagnostics || "test bridge exited");
         await sleep(20);
       }
-      assert.equal(JSON.parse(await fs.readFile(path.join(bridge, "transport.json"))).tools_allowed, false);
+      const metadata = JSON.parse(await fs.readFile(path.join(bridge, "transport.json")));
+      assert.equal(metadata.tools_allowed, false);
+      assert.equal(metadata.max_calls, ceiling);
       await fs.mkdir(path.join(bridge, "queue"), { mode: 0o700 });
-      await fs.writeFile(path.join(bridge, "queue", "000001.request.json"), JSON.stringify({
-        format: "pgag-copilot-request-v1", call_id: "000001", prompt: "Synthetic transport test.",
-      }), { mode: 0o600 });
+      for (let number = 1; number <= ceiling + 1; number += 1) {
+        const callId = String(number).padStart(6, "0");
+        await fs.writeFile(path.join(bridge, "queue", `${callId}.request.json`), JSON.stringify({
+          format: "pgag-copilot-request-v1", call_id: callId, prompt: "Synthetic transport test.",
+        }), { mode: 0o600 });
+      }
       assert.equal(await exited, 0, diagnostics);
-      const response = JSON.parse(await fs.readFile(path.join(bridge, "queue", "000001.response.json")));
+      const last = `${String(ceiling).padStart(6, "0")}.response.json`;
+      const response = JSON.parse(await fs.readFile(path.join(bridge, "queue", last)));
       assert.equal(response.status, "ok");
       assert.equal(response.content, '{"answer":"synthetic"}');
       assert.equal(response.usage.input_tokens, 10);
-      assert.equal(JSON.parse(await fs.readFile(path.join(bridge, "bridge-summary.json"))).calls, 1);
+      assert.equal(JSON.parse(await fs.readFile(path.join(bridge, "bridge-summary.json"))).calls, ceiling);
+      const extra = `${String(ceiling + 1).padStart(6, "0")}.response.json`;
+      await assert.rejects(fs.stat(path.join(bridge, "queue", extra)), { code: "ENOENT" });
     } finally {
       if (child.exitCode === null) {
         child.kill("SIGTERM");
@@ -139,3 +171,4 @@ if (process.argv.includes("--version")) {
       await fs.rm(canonical, { recursive: true });
     }
   });
+}

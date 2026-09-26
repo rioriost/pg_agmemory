@@ -2,6 +2,35 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Sequential planning comparison
+
+`bounded-lexical-v6` changes the **planning schedule and instructions**, not
+Native search or the reader: up to four sequential one-query rounds replace
+two two-query rounds. Each new plan sees validated per-query counts and the
+latest admitted evidence, allowing a reference found by a later search to be
+followed within the remaining four-search budget. An empty plan after round
+one stops planning; it is not an empty Native browse.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-sequential-v6-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v6 \
+  --retention-policy review-v1
+```
+
+The model-call ceiling explicitly rises **120 → 160** across twenty cases;
+actual counts depend on early stop. Native searches remain at most four,
+plus one fresh validation per case, with eight selected items / 8,000 bytes
+and unchanged round-robin admission. This is not a same-compute or prompt-only
+comparison. Freeze source before one known-cohort run with GPT-6 Astra/high;
+keep data, gold, reader/retention/control prompts and scoring unchanged.
+Do not retry or rescore unfavorable answers, silently spend extra search
+calls, or equate valid references with sufficient answer evidence.
+Report regressions, incomplete chains and exact-string misses alongside any
+accuracy gain and the actual planning-call/latency/usage tradeoff.
+V3-v5/default behavior remains unchanged; implementation alone supplies no
+live v6 result or unseen/product qualification.
+
 ## Discovery-only planner comparison
 
 `bounded-lexical-v5` selects the opt-in `discovery-v2` planner and the same

@@ -29,7 +29,7 @@ export function parseArguments(argv) {
       || !/^[a-z0-9][a-z0-9._-]{0,99}$/.test(result.model ?? "")
       || !EFFORTS.has(result.reasoning_effort)
       || !Number.isSafeInteger(result.max_calls) || result.max_calls < 1
-      || result.max_calls > 120
+      || result.max_calls > 160
       || !/^agent-eval-[a-z0-9]{8,32}$/.test(result.run_id ?? "")) {
     throw new Error("invalid_bridge_arguments");
   }

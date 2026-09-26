@@ -3312,8 +3312,9 @@ retrieval, a different word form or synonym can still miss the intended event.
 ### Bounded follow-up and retention review
 
 `pg_agmemory.bounded_recall` is an **opt-in caller workflow**, not a new server
-search mode. `SearchPlan` contains up to two literal queries. The caller may
-run at most two planning rounds, four search requests and one final
+search mode. `SearchPlan` contains up to two literal queries. With the default
+`planning_schedule="batched-v1"`, the caller may run at most two planning
+rounds, four search requests and one final
 required-reference validation, with at most eight merged items and an
 8,000-byte Native context budget. Round two sees only previously retrieved,
 admitted evidence and the issued query history; it may follow an observed
@@ -3356,9 +3357,27 @@ reference may be followed without repeating an anchor absent from the endpoint.
 The JSON parser validates shape and literal-query limits, not semantic fidelity
 to this guidance. No stemming, expansion, relevance oracle, retry or extra
 search is performed by the helper/server, and discovery quality is not guaranteed.
-The same whole-item 8,000-byte planning-prompt bound applies to both policies.
+The same whole-item 8,000-byte planning-prompt bound applies to every policy.
 
-The SDK remains the transport; a chosen model only produces plans:
+`planning_schedule="sequential-v1"` instead enforces up to **four rounds of
+one query each**, stopping on an empty plan after the first round. The next
+model plan sees the latest admitted evidence and `planning_feedback`:
+validated query, returned/eligible item counts and truncation, without the
+content or IDs of excluded items. Feedback is bounded, defensively copied,
+unavailable while a response is pending and cleared on failure/completion.
+It reports retrieval counts, not relevance or answer sufficiency.
+
+Use `planner_policy="sequential-v3"` with that feedback and the actual query
+history. Its instructions ask for qualifier removal after empty results and
+observed-hop completion before answering; this is guidance, not automatic
+rewriting or semantic validation. Four Native searches, one final read,
+32 candidate entries and eight selected items / 8,000 bytes remain the limits.
+The planning-call ceiling explicitly increases from two to four. Early
+stopping can reduce actual calls, but does not promise lower latency/cost.
+Old schedules and rendered literal-v1/discovery-v2 prompts remain unchanged.
+
+The SDK remains the transport; a chosen model only produces plans.
+This example explicitly selects the sequential schedule:
 
 ```python
 from pg_agmemory.bounded_recall import (
@@ -3370,16 +3389,21 @@ search = BoundedRecall(
     base_request,
     excluded_memory_ids=review.excluded_memory_ids,
     evidence_selection="round-robin-v1",
+    planning_schedule="sequential-v1",
 )
-for round_number in (1, 2):
+for round_number in (1, 2, 3, 4):
     prompt = search_prompt(
         question, base_request.search_profile,
         items=search.planning_items, previous_queries=search.queries,
         round_number=round_number,
+        planner_policy="sequential-v3", search_feedback=search.planning_feedback,
     )
     raw = await selected_model(prompt)
-    plan = parse_search_plan(raw, allow_empty=round_number == 2)
-    for request in search.requests(plan):
+    plan = parse_search_plan(raw, allow_empty=round_number > 1)
+    requests = search.requests(plan)
+    if not requests:
+        break
+    for request in requests:
         search.record(request, await client.recall(request))
 final_request = search.final_request()
 result = search.finish(await client.recall(final_request) if final_request else None)
@@ -3406,8 +3430,13 @@ destroyed during ordinary operator cleanup.
 The evaluator's `bounded-lexical-v4` selects round-robin admission and defaults
 to `review-v1`; `bounded-lexical-v3` retains first-admitted admission.
 `bounded-lexical-v5` keeps round-robin admission and review but explicitly selects
-the discovery-v2 planner; v3/v4 keep literal-v1. All retain the
+the discovery-v2 planner; v3/v4 keep literal-v1. These retain the
 two-round/four-search/one-validation and 120-model-call bounds.
+`bounded-lexical-v6` selects sequential-v1/sequential-v3 with round-robin and
+review; its ceiling is **160 model calls** for the same twenty-case evaluation
+(up to four plans plus retention, answer and two controls per case).
+Early stop makes actual counts variable. The host and guest both enforce
+the selected ceiling; old defaults and policy budgets are not raised.
 
 ## Exact structured recall filters
 

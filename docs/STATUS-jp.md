@@ -2,6 +2,16 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## 明示的な逐次検索schedule
+
+`bounded-lexical-v6`は最大4 round・各1 queryで、検証済み・上限付き件数feedbackを使い、
+各検索結果を次の計画へ反映して早期終了できます。
+Native検索4回＋最終検査1回、round-robin採用、8 item / 8,000-byte context上限は維持します。
+計画call上限は2回から4回へ増えるため、20 caseのmodel予算は
+**120ではなく160**と明示します。同計算予算での比較ではありません。
+既存policy、reader/採点、保持判断、Nativeの意味は変更しません。
+[既知cohortの比較契約](EVALUATION-jp.md#逐次計画の比較)を参照してください。
+
 ## 明示選択する発見planner
 
 `bounded-lexical-v5`はplannerだけを変え、`discovery-v2`で
