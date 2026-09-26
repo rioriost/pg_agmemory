@@ -29,6 +29,65 @@ model retry、診断用の追加model call、隠れたbrowse、gold依存のquer
 実際の検索/配信/引用coverage、全失敗、保持提案と実行、latency、usageを、
 意味的な事後採点なしで報告します。実装だけでv5の実scoreを主張しません。
 
+### V5結果: chainが1問改善する一方、検索と回答には後退もある
+
+固定した**`9dfd867`**でGPT-6 Astra/highを1回実測し、
+**120 model call / 60 arm結果**を完走しました。不正応答、retry、未測定armはありません。
+[確認済み集計](../examples/copilot-memory-discovery-v5-result.json)は、
+同じ既知cohortのv4と比較しています。reader/保持/control promptのhash、
+case、gold、採点、採用方式、資源上限は変えず、planner指示だけを意図的に変えました。
+
+| 指標 | V4 | V5 |
+|---|---:|---:|
+| Native厳密一致の正答 | 16/20 | **17/20** |
+| 回答可能な問題の厳密正答 | 12/16 | **13/16** |
+| 検索応答 / 配信 / 引用の必要source coverage | 81.25% | **84.375%** |
+| 必要根拠が全て揃う回答可能case | 13/16 | 13/16 |
+| 2 eventの根拠chainの正答 | 1/4 | **2/4** |
+| 計画・検索・回答の合算p95 | 39.01秒 | 38.63秒 |
+
+controlは**4/20**と**8/20**のままです。**06**は、
+`Morrowquay crate approval`で最初の根拠を見つけ、続く`Heron desk`で接続先を取得し、
+厳密正答へ改善しました。Native検索を変更せず、質問の語形変化と観測参照の追跡が役立った例です。
+以前の厳密正答が不正答になったcaseはありませんが、集計scoreだけでは次の後退が見えません。
+
+- **03:** 第1 roundは空で、第2 roundで最初の参照だけを発見しました。
+  接続先をたどる計画roundが残らず、readerは求められた**`手書き連絡箱`**ではなく
+  **`若紫受付`**と断定しました。v4では辞退していた問題での新しい誤答です。
+  以前のscalar形式違反とは異なり、引用と最新参照検査が正しくても、
+  質問に必要なchainが完結するとは限りません。
+- **05:** 絞込みを強めた4 queryは全て空になり、必要source coverageは
+  **100% → 0%**へ後退し、回答を辞退しました。
+  以前の`640 tiles per file`対`640 tiles`の形式違反を**修復したわけではありません**。
+
+**17**も根拠を取得できず辞退しました。語形指示だけでは適切な形を保証せず、
+queryは`failure`、`prevent`、`prevents`、`procedure`を使い、
+最初の根拠にある表現に届きませんでした。
+scoreの改善や事後診断のための追加検索/model callは行っていません。
+実際に検索で返った必要根拠の採用漏れはありませんが、全根拠が揃うcaseは13/16のままです。
+1問で全根拠を回復し、別の1問で失い、もう1問では最初の参照だけを回復しました。
+**v5はopt-inを維持し、v4の無条件な置換やプロダクト受入完了とはしません。**
+過度に限定したquery、最後のroundで初めて見つかる参照、回答根拠の十分性を、
+検索/model予算を暗黙に増やさず別々に改善する必要があります。
+
+保持提案は**keep 504 / forget 136件**のgoldと全て一致し、
+136件全て保留・読取可能を確認しました。Native Forget呼出しと物理purgeは0件です。
+実検索は**58回、最新参照検査18回**で、空contextの2件には最終参照読取がありません。
+計画2 roundは全caseで実行しています。usageは**入力462,965 / 出力20,907 token**、
+cache-write 462,605、cache-read 0、報告されたAPI/premium requestは120件でした。
+683,151,250,000 nano-AIUは確定金額ではありません。
+読取経路p50/p95は**29.95/38.63秒**、runner全体は**1,210.156秒**です。
+queue待ちを含む合算と保持/setup除外はv4と同じで、
+cloud各1回の実行から因果的な高速化や本番SLAは主張しません。
+実測後にsource、prompt、gold、採点は変更していません。
+
+実測と同一sourceの[run 36220685730](https://github.com/rioriost/pg_agmemory/actions/runs/36220685730)は
+8 job全て成功しました。両native coreは**5,446 passed / 134 skipped**、
+別実行のCOMMIT 18件、request 13件、offline bridge 6件も成功しています。
+packaged install、HA/PITR、patched AGEも両architectureで成功し、AGEは各218件でした。
+localでもsourceを組み込んだimageで新plannerと実HTTP経路を確認しています。
+これらの検証が成功しても、実測した振る舞いの不足が解消したとは扱いません。
+
 ## Version付きの根拠採用方式の修正
 
 `bounded-lexical-v4`は**caller側の根拠採用**を変えます。

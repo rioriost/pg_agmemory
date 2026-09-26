@@ -9,8 +9,26 @@
 v4のround-robin採用、最新参照検査、資源上限は維持します。
 Native SQL/ranking、dataset、gold/採点、reader/保持prompt、model選択は変えず、
 v3/v4は従来literal-v1 promptを使います。
-次の実測は既知cohortの比較であり、未見dataでの認定ではありません。
+実測は既知cohortの比較であり、未見dataでの認定ではありません。
 [固定する比較契約](EVALUATION-jp.md#発見plannerだけを変える比較)を参照してください。
+
+**`9dfd867`**のGPT-6 Astra/high・120 call実測では、
+厳密正答が**16/20 → 17/20**、chainが**1/4 → 2/4**、
+配信された必要source coverageが**81.25% → 84.375%**になりました。
+ただし一様な改善ではありません。06で両方の根拠を回復する一方、
+05では以前取得できたsourceを失って辞退し、03では最後のroundで最初の参照だけを見つけ、
+以前の辞退から誤った接続先の断定へ後退しました。全根拠が揃うcaseは13/16のままで、
+17は引き続き何も取得できません。以前のscalar形式違反も未修復です。
+forget提案136件は全て保留・読取可能で、Native Forget呼出し・物理purgeは0件です。
+検索58回、最新参照検査18回、空context 2件、読取経路p95は**38.63秒**でした。
+v5はopt-inのままとし、既定動作は変えません。
+[改善と後退の内訳](EVALUATION-jp.md#v5結果-chainが1問改善する一方検索と回答には後退もある)と
+[集計](../examples/copilot-memory-discovery-v5-result.json)を参照してください。
+
+同一sourceの[run 36220685730](https://github.com/rioriost/pg_agmemory/actions/runs/36220685730)は
+8 job全て成功し、両native coreは**5,446 passed / 134 skipped**でした。
+installed profile、分離COMMIT/request、bridge、HA/PITR、AGEも成功しています。
+実装の検証であり、新たな誤答や検索の後退を無視する理由にはしません。
 
 ## Version付きの上限内根拠再選択
 

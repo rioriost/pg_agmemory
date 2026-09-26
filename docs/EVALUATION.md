@@ -32,6 +32,71 @@ not conflated. Report actual raw/delivered/cited coverage, all failures,
 retention proposals/actions, latency and usage without semantic rescoring.
 No live v5 score is claimed by the implementation alone.
 
+### V5 result: one recovered chain, mixed retrieval and answer behavior
+
+At frozen **`9dfd867`**, one GPT-6 Astra/high run completes **120 model calls /
+60 arm outcomes**, without malformed responses, retries or unmeasured arms.
+The [reviewed aggregate](../examples/copilot-memory-discovery-v5-result.json)
+compares the same known cohort with v4. Reader/retention/control prompt hashes,
+cases, gold, scorer, selection and resource ceilings remain unchanged;
+planner instructions intentionally differ.
+
+| Measure | V4 | V5 |
+|---|---:|---:|
+| Native exact correctness | 16/20 | **17/20** |
+| Answerable exact correctness | 12/16 | **13/16** |
+| Raw / delivered / cited required-source coverage | 81.25% | **84.375%** |
+| Fully covered answerable cases | 13/16 | 13/16 |
+| Two-event chains correct | 1/4 | **2/4** |
+| Planning, reads and answer sum p95 | 39.01 s | 38.63 s |
+
+Controls remain **4/20** and **8/20**. Case **06** gains exact correctness:
+`Morrowquay crate approval` finds the first hop, then `Heron desk` finds the
+endpoint. This illustrates a useful question-wordform alternative and observed
+reference traversal without changing Native matching. No previously exact-correct
+case regresses, but the aggregate score conceals two important adverse changes:
+
+- **Case 03:** round one finds nothing; round two discovers only the first-hop
+  source. With no planning round left to follow its reference, the reader
+  returns **`若紫受付`** instead of the requested **`手書き連絡箱`**. V4 abstained.
+  This is a new asserted wrong endpoint answer, not the previous scalar-format
+  mismatch. The valid citation and fresh-reference check do not prove that
+  the requested chain is complete.
+- **Case 05:** all four stricter queries return empty results; required-source
+  coverage falls **100% → 0%** and the answer abstains. Its earlier
+  `640 tiles per file` versus `640 tiles` format miss is **not repaired**.
+
+Case **17** also returns no evidence and abstains. Wordform guidance alone
+does not guarantee a useful form: queries use `failure`, `prevent`, `prevents`
+and `procedure`, while the first-hop source uses different wording. No extra
+search/model calls are made to improve or retrospectively diagnose the score.
+All required evidence actually returned is admitted, but overall full-evidence
+coverage remains 13/16: one case gains full coverage, one loses it, and another
+gains only its first hop. **V5 remains opt-in; this is not an unqualified
+replacement for v4 or proof of product acceptance.** Further work needs to
+address overconstrained queries, late-discovered hops and answer sufficiency
+separately, without quietly increasing the search/model budget.
+
+All **504 keep / 136 forget proposals** match gold; all 136 remain pending
+and verified readable. Native Forget calls and physical purges stay zero.
+The run uses **58 searches and 18 fresh validations**; two empty contexts
+require no final reference read. Both planning rounds still run in all cases.
+Usage is **462,965 input / 20,907 output tokens**, 462,605 cache-write and zero
+cache-read tokens, with 120 reported API/premium requests. Reported
+683,151,250,000 nano-AIU is not a verified monetary bill.
+Reader-path p50/p95 are **29.95/38.63 s**, with the same queue-aware sum and
+retention/setup exclusions as v4; runner duration is **1,210.156 s**.
+These single cloud runs do not establish a causal speedup or production SLA.
+No source, prompt, gold or scoring change follows this measurement.
+
+The exact measured source passes all eight jobs in
+[run 36220685730](https://github.com/rioriost/pg_agmemory/actions/runs/36220685730).
+Both native core suites report **5,446 passed / 134 skipped**, with separate
+18 COMMIT and 13 request cases and six offline bridge checks. Packaged
+installation, HA/PITR and patched AGE pass on both architectures; each AGE
+run passes 218 cases. Local baked-source checks also cover the new planner
+and real HTTP paths. These checks do not remove the measured behavioral gaps.
+
 ## Versioned evidence-admission correction
 
 `bounded-lexical-v4` changes **caller-side evidence admission**, not Native

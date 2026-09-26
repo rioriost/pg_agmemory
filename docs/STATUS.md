@@ -9,8 +9,28 @@ relation/action/intent selectivity and limited morphological search hypotheses.
 It keeps v4's round-robin selection, fresh-reference guards and resource
 ceilings. Native SQL/ranking, datasets, gold/scoring, reader/retention prompts
 and model selection remain unchanged; v3/v4 keep the original literal-v1 prompt.
-The next measurement is a known-cohort comparison, not unseen qualification.
+The measurement is a known-cohort comparison, not unseen qualification.
 See [the frozen comparison contract](EVALUATION.md#discovery-only-planner-comparison).
+
+At **`9dfd867`**, one 120-call GPT-6 Astra/high run improves exact correctness
+**16/20 → 17/20**, with chains **1/4 → 2/4** and delivered required-source
+coverage **81.25% → 84.375%**. This is mixed evidence, not a clean improvement:
+case 06 recovers both hops, but case 05 loses its previously delivered source
+and abstains; case 03 finds only its first hop in the last round and now
+asserts the wrong endpoint instead of abstaining. Full-evidence coverage
+remains 13/16 cases, and case 17 still retrieves nothing.
+The old scalar-format miss is not fixed. All 136 forget proposals remain
+pending/readable, with zero Native Forget calls/purges. There are 58 searches,
+18 fresh validations and two empty contexts; reader-path p95 is **38.63 s**.
+V5 remains opt-in and defaults do not change.
+See [the adverse findings as well as the gain](EVALUATION.md#v5-result-one-recovered-chain-mixed-retrieval-and-answer-behavior)
+and [aggregate](../examples/copilot-memory-discovery-v5-result.json).
+
+Exact-source [run 36220685730](https://github.com/rioriost/pg_agmemory/actions/runs/36220685730)
+passes all eight jobs, with **5,446 passed / 134 skipped** in each native core,
+plus installed-profile, isolated COMMIT/request, bridge, HA/PITR and AGE checks.
+This is implementation validation, not a reason to disregard the new wrong
+answer or retrieval regression.
 
 ## Versioned bounded evidence reselection
 
