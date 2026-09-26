@@ -2,6 +2,47 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Fixed-policy evaluation with longer distractor histories
+
+`--cohort distractor-synthetic-v1` selects a separate, explicitly versioned
+synthetic cohort: **20 cases / 640 events**, ten English and ten Japanese.
+Each history contains 32 events, including 24 durable near-topic
+distractors that the existing retention policy requires keeping. These are
+not merely transient rows that disappear from the reader after retention.
+The five existing categories remain balanced, with 16 scalar-answer questions
+and four required abstentions. Evidence positions vary; four answerable cases
+have all required evidence in the recent two events. Four two-event chains and
+four twice-corrected histories exercise evidence selection, not just row presence.
+Gold retention labels comprise **504 keeps / 136 forgets**.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-distractor-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v3 \
+  --retention-policy review-v1
+```
+
+The new cohort uses an explicit extended case type. It does not loosen the
+original 6–8-event case contract, modify either earlier dataset or change
+retention/answer prompts and scoring formulas. Freeze and review the new
+histories and gold labels in a clean commit before inference. Keep the
+bounded planner, review helper, model identifier/effort and resource ceilings
+unchanged: at most **120 model calls**, four searches and one fresh validation
+per case, and eight items / 8,000 Native context bytes. No result-driven
+query tuning, automatic retry or hidden browse is part of this experiment.
+
+This is first-use **project-aware synthetic stress data**, not independently
+human-authored or blinded tasks, a representative workload, a large-corpus
+benchmark or proof of training-data exclusion. Authored distractor patterns
+are not a substitute for real agent histories. The measured 20/20 on the
+previous known cohort is a reference, not an expected score or a pass
+threshold for these different cases. Report all three arms, failures,
+direct retrieved coverage, cited-source recall, retention proposal errors,
+actual deferred/deleted counts, usage and latency regardless of outcome.
+Subsequent runs of this cohort must be labeled reuse.
+The runner leaves first-use/reuse status unknown for this cohort; the reviewed
+result must establish it from recorded history, not a new output directory.
+
 ## Bounded evidence and review-only retention comparison
 
 The opt-in pair `bounded-lexical-v3` / `review-v1` addresses the observed

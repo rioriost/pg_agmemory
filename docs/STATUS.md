@@ -2,6 +2,18 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Fixed-policy longer-history evaluation
+
+The explicit `distractor-synthetic-v1` cohort adds 20 separately authored
+bilingual histories of 32 events each, including durable near-topic
+distractors that should survive retention. An extended case type is confined
+to the new dataset; the original case contract, datasets, prompts, scoring,
+bounded/review policies and 120-call ceiling remain unchanged. Histories and
+gold labels are reviewed and committed before model use.
+This prepares a first-use synthetic stress measurement, not another
+known-cohort success claim or real-world qualification.
+See [the evaluation contract](EVALUATION.md#fixed-policy-evaluation-with-longer-distractor-histories).
+
 ## Bounded evidence workflow and non-destructive retention review
 
 `bounded-lexical-v3` is an explicit caller-side policy: two model planning

@@ -24,8 +24,9 @@ Fixture JWT issued-at times are backdated by at most 30 seconds for independent
 guest clocks. Expiration and the Native API's strict authentication are unchanged.
 Query policy defaults to lexical-v2, which verifies the shared Native lexical
 planning contract before model dispatch. Explicit legacy-v1 preserves the original
-query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 selects the
-separately authored synthetic dataset, not blinded or externally held-out real-world data.
+query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 and
+distractor-synthetic-v1 explicitly select separately authored synthetic datasets,
+not blinded or externally held-out real-world data.
 bounded-lexical-v3 explicitly budgets two planning calls and at most five retrieval
 reads per case (four searches plus required-reference revalidation). review-v1
 withholds forget proposals only in this workflow, without authorizing physical purge.
@@ -82,8 +83,8 @@ QueryPolicy = Literal["legacy-v1", "lexical-v2", "bounded-lexical-v3"]
 QUERY_POLICIES = ("legacy-v1", "lexical-v2", "bounded-lexical-v3")
 RetentionPolicy = Literal["model-purge-v1", "review-v1"]
 RETENTION_POLICIES = ("model-purge-v1", "review-v1")
-Cohort = Literal["pilot-v1", "unseen-synthetic-v1"]
-COHORTS = ("pilot-v1", "unseen-synthetic-v1")
+Cohort = Literal["pilot-v1", "unseen-synthetic-v1", "distractor-synthetic-v1"]
+COHORTS = ("pilot-v1", "unseen-synthetic-v1", "distractor-synthetic-v1")
 
 
 class EvaluationFailure(Exception):
@@ -1223,11 +1224,16 @@ def select_cohort(cohort: str) -> tuple[recipe.AgentMemoryCase, ...]:
     require(cohort in COHORTS, "invalid_cohort")
     if cohort == "pilot-v1":
         cases = recipe.pilot_cases()
-    else:
+    elif cohort == "unseen-synthetic-v1":
         from pg_agmemory.agent_evaluation_unseen import COHORT_ID, unseen_cases
 
         require(COHORT_ID == cohort, "cohort_identity_mismatch")
         cases = unseen_cases()
+    else:
+        from pg_agmemory.agent_evaluation_distractor import COHORT_ID, distractor_cases
+
+        require(COHORT_ID == cohort, "cohort_identity_mismatch")
+        cases = distractor_cases()
     require(
         isinstance(cases, tuple) and len(cases) == 20
         and all(isinstance(case, recipe.AgentMemoryCase) for case in cases)
@@ -1253,10 +1259,14 @@ def cohort_metadata(
     require(cases == select_cohort(cohort), "cohort_dataset_mismatch")
     if cohort == "pilot-v1":
         dataset_source = Path(recipe.__file__)
-    else:
+    elif cohort == "unseen-synthetic-v1":
         from pg_agmemory import agent_evaluation_unseen
 
         dataset_source = Path(agent_evaluation_unseen.__file__)
+    else:
+        from pg_agmemory import agent_evaluation_distractor
+
+        dataset_source = Path(agent_evaluation_distractor.__file__)
     scorer_source = Path(recipe.__file__).read_bytes()
     query_metadata = query_policy_metadata(query_policy)
     dataset_sha = hashlib.sha256(json_bytes([case.model_dump() for case in cases])).hexdigest()
@@ -1277,6 +1287,19 @@ def cohort_metadata(
         "scorer_source_sha256": hashlib.sha256(scorer_source).hexdigest(),
         "protected_prompt_case_scoring_source_sha256": protected_sha,
     }
+    evaluation_cohort = {
+        "id": cohort,
+        "kind": "known_synthetic_regression_cohort", "known_cohort_reuse": True,
+        "held_out": False, "held_out_external": False, "blinded_real_world": False,
+        "first_use_in_owned_run": False, "first_use_scope": "not_claimed",
+        "prior_model_exposure_verified": False,
+        "baseline_revision": "9c84c7f" if cohort == "pilot-v1" else None,
+    }
+    if cohort == "distractor-synthetic-v1":
+        evaluation_cohort.update({
+            "kind": "synthetic_stress_cohort", "known_cohort_reuse": None,
+            "first_use_in_owned_run": None, "first_use_scope": "requires_external_run_history",
+        })
     return {
         **query_metadata, "cohort_id": cohort, "dataset_sha256": dataset_sha,
         "retention_policy": retention_policy, "retention_review_sha256": review_source_sha,
@@ -1289,14 +1312,7 @@ def cohort_metadata(
         "recipe_digest_format": components["format"], "recipe_components": components,
         "recipe_sha256": hashlib.sha256(json_bytes(components)).hexdigest(),
         "fixed_prompt_sha256": fixed_prompt_hashes(cases),
-        "evaluation_cohort": {
-            "id": cohort,
-            "kind": "known_synthetic_regression_cohort", "known_cohort_reuse": True,
-            "held_out": False, "held_out_external": False, "blinded_real_world": False,
-            "first_use_in_owned_run": False, "first_use_scope": "not_claimed",
-            "prior_model_exposure_verified": False,
-            "baseline_revision": "9c84c7f" if cohort == "pilot-v1" else None,
-        },
+        "evaluation_cohort": evaluation_cohort,
     }
 
 
@@ -1615,8 +1631,20 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
     return summary
 
 
+class UniqueChoice(argparse.Action):
+    def __call__(
+        self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+        values: Any, option_string: str | None = None,
+    ) -> None:
+        seen = vars(namespace).setdefault("_seen_choices", set())
+        if self.dest in seen:
+            parser.error(f"{option_string} may be supplied only once")
+        seen.add(self.dest)
+        setattr(namespace, self.dest, values)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
         "--api-url", default=os.environ.get("PGAG_AGENT_EVAL_API_URL"),
         help="Exact owned IPv4 URL bound in private config; defaults to PGAG_AGENT_EVAL_API_URL",
@@ -1626,15 +1654,15 @@ def main() -> int:
         "--bridge", required=True, type=Path, help="Private host file-queue directory",
     )
     parser.add_argument(
-        "--query-policy", choices=QUERY_POLICIES, default="lexical-v2",
+        "--query-policy", choices=QUERY_POLICIES, default="lexical-v2", action=UniqueChoice,
         help="Versioned query planning; legacy-v1 explicitly replays the original query recipe",
     )
     parser.add_argument(
-        "--retention-policy", choices=RETENTION_POLICIES, default=None,
+        "--retention-policy", choices=RETENTION_POLICIES, default=None, action=UniqueChoice,
         help="Defaults to review-v1 for bounded-lexical-v3, otherwise model-purge-v1",
     )
     parser.add_argument(
-        "--cohort", choices=COHORTS, default="pilot-v1",
+        "--cohort", choices=COHORTS, default="pilot-v1", action=UniqueChoice,
         help="Fixed synthetic dataset selection; no arbitrary dataset paths",
     )
     args = parser.parse_args()

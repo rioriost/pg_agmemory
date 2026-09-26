@@ -317,7 +317,7 @@ class DecisionBridge:
     def __init__(
         self, case, *, invalid_retention=False, query="report locale", answer="en-GB",
         query_policy="legacy-v1", recall_raw=None, keep_event_ids=None,
-        bounded_plans=None,
+        bounded_plans=None, answer_event_ids=None,
     ):
         self.calls = []
         self.prompts = []
@@ -331,6 +331,9 @@ class DecisionBridge:
             [case.events[1].event_id] if keep_event_ids is None else list(keep_event_ids)
         )
         self.bounded_plans = bounded_plans
+        self.answer_event_ids = (
+            self.keep_event_ids if answer_event_ids is None else list(answer_event_ids)
+        )
 
     async def call(self, prompt, *, case_id, phase):
         self.prompts.append((phase, prompt))
@@ -361,7 +364,7 @@ class DecisionBridge:
                 return json.dumps({"terms": self.query.split(" ")}, ensure_ascii=False)
             return json.dumps({"query": self.query})
         return json.dumps({
-            "answer": self.answer, "source_event_ids": self.keep_event_ids,
+            "answer": self.answer, "source_event_ids": self.answer_event_ids,
             "abstained": False,
         })
 
@@ -472,8 +475,15 @@ def native_fixture(tmp_path, monkeypatch):
                 "content": source["content"], "recorded_at": source["occurred_at"],
                 "occurred_at": source["occurred_at"],
             }) for memory_id, source in stored.items() if not required or memory_id in required]
+            if not required and "search_event_ids" in failure:
+                items = [
+                    item for item in items
+                    if stored[str(item.memory_id)]["source_event_id"] in failure["search_event_ids"]
+                ]
             if failure.get("empty_search") and not required:
                 items = []
+            item_limit_truncated = len(items) > data["max_items"]
+            items = items[:data["max_items"]]
             pack, selected, truncated = build_context(
                 items, data["token_budget"], required_count=len(required),
             )
@@ -487,7 +497,7 @@ def native_fixture(tmp_path, monkeypatch):
                 "context_pack": pack,
                 "coverage": {
                     "retrieval_complete": True, "synthesis_pending": False,
-                    "graph_used": False, "truncated": truncated,
+                    "graph_used": False, "truncated": truncated or item_limit_truncated,
                 },
                 "consistency": {"access_epoch": 1, "deletion_epoch": epoch},
                 "search_profile": data["search_profile"],
@@ -860,10 +870,11 @@ def test_real_native_rls_purge_roundtrip_without_model(
 def real_native_roundtrip(
     env, api_process, tmp_path, case, query, answer, query_policy, *, retained_event_id=None,
     retention_policy="model-purge-v1",
-    final_mutation=None,
+    final_mutation=None, keep_event_ids=None,
 ):
     retained_event_id = retained_event_id or case.events[1].event_id
     retained_event = next(event for event in case.events if event.event_id == retained_event_id)
+    keep_event_ids = [retained_event_id] if keep_event_ids is None else list(keep_event_ids)
     identity = runner.Provisioned(
         tenant_id=env.tenants[0], principal_id=env.principals[0], scope_id=env.scopes[0],
     )
@@ -929,7 +940,7 @@ def real_native_roundtrip(
 
         bridge = NativeDecisionBridge(
             case, query=query, answer=answer, query_policy=query_policy,
-            keep_event_ids=[retained_event_id],
+            keep_event_ids=keep_event_ids, answer_event_ids=[retained_event_id],
         )
         measured, detail = await runner.memory_arm(
             case, identity, env.subjects[0], foreign, sentinel_id, config,
@@ -950,11 +961,18 @@ def real_native_roundtrip(
         assert measured.error is None, detail
         assert detail["status"] == "completed"
         assert detail["isolation_denials_verified"] == 2
+        assert set(detail["observed_event_ids"]) == {event.event_id for event in case.events}
+        assert len(set(detail["observed_event_ids"].values())) == len(case.events)
+        assert set(detail["retention"]["keep_ids"]) == set(keep_event_ids)
+        assert set(detail["retention"]["forget_ids"]) == (
+            {event.event_id for event in case.events} - set(keep_event_ids)
+        )
         if retention_policy == "review-v1":
             assert "forget_preview" not in detail and "forget_purge" not in detail
             assert detail["retention_review"]["physical_purges"] == 0
             assert (
-                detail["retention_review"]["pending_rows_verified_readable"] == len(case.events) - 1
+                detail["retention_review"]["pending_rows_verified_readable"]
+                == len(case.events) - len(keep_event_ids)
             )
         else:
             assert detail["purged_objects_verified_absent"] == len(case.events) - 1
@@ -982,14 +1000,22 @@ def real_native_roundtrip(
                 {UUID(value) for value in detail["observed_event_ids"].values()}
                 if retention_policy == "review-v1" else {retained_id}
             )
-            assert {item.memory_id for item in recalled.items} == expected_ids
-            assert next(
-                item for item in recalled.items if item.memory_id == retained_id
-            ).content == retained_event.text
+            assert {item.memory_id for item in recalled.items} <= expected_ids
+            assert len(recalled.items) <= 8
+            if len(case.events) <= 8:
+                assert {item.memory_id for item in recalled.items} == expected_ids
+            for event in case.events:
+                memory_id = UUID(detail["observed_event_ids"][event.event_id])
+                if memory_id in expected_ids:
+                    source = await client.explain(runner.Explain(memory_id=memory_id))
+                    assert source.source.content == event.text
             episodes = await client.query_episodes(QueryEpisodes(
                 scope_ids=[identity.scope_id], max_items=8,
             ))
-            assert {episode.memory_id for episode in episodes.episodes} == expected_ids
+            assert {episode.memory_id for episode in episodes.episodes} <= expected_ids
+            assert len(episodes.episodes) <= 8
+            if len(case.events) <= 8:
+                assert {episode.memory_id for episode in episodes.episodes} == expected_ids
             await runner.verify_isolation(
                 client, case.case_id, foreign, sentinel_id, journal,
             )
@@ -1004,6 +1030,11 @@ def real_native_roundtrip(
                 await runner.verify_isolation(
                     foreign_client, case.case_id, foreign, sentinel_id, journal,
                 )
+        if retention_policy == "review-v1":
+            records = [json.loads(line) for line in journal.path.read_text().splitlines()]
+            assert not any(
+                row.get("operation", "").startswith("forget") for row in records
+            )
 
     with api_process(f"agent-memory-native-{case.language}.log") as (http, _):
         asyncio.run(scenario(str(http.base_url)))
@@ -1031,6 +1062,7 @@ def test_real_native_unseen_lifecycle_without_model(
 
 def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
     original = hashlib.sha256(Path(runner.recipe.__file__).read_bytes()).hexdigest()
+    assert original == "956b448443d0d47cfe5c84ae19922b4473bc6a1a3105904b219b56f16748cc47"
     assert hashlib.sha256(
         Path(runner.recipe.__file__).read_bytes().split(b"def pilot_report(")[0],
     ).hexdigest() == "5240b3e0ee9385a8f451809570c4dfe45f5db4872fb0a78028def1d96ba4752b"
@@ -1038,6 +1070,14 @@ def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
     assert hashlib.sha256(
         Path(runner.query_planning.__file__).read_bytes(),
     ).hexdigest() == "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746"
+    from pg_agmemory import retention_review
+
+    assert hashlib.sha256(
+        Path(runner.bounded_recall.__file__).read_bytes(),
+    ).hexdigest() == "762d1c48499e7047882003b5a416bf8090b9127c76ca40ccb2b9e6c6a6877748"
+    assert hashlib.sha256(
+        Path(retention_review.__file__).read_bytes(),
+    ).hexdigest() == "406a6892e449c115f82f68f40b88b30d46dfc9ec3cb5d846cb39fd485c13fe4c"
     assert runner.recipe_digest("legacy-v1") == original
     assert runner.recipe_digest() == original
     assert hashlib.sha256(runner.json_bytes([
@@ -1271,6 +1311,10 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
     (["--query-policy", "legacy-v1"], True), (["--query-policy", "unknown"], False),
     (["--wrong-flag", "lexical-v2"], False), (["--query-policy"], False),
     (["--cohort", "pilot-v1"], True), (["--cohort", "unseen-synthetic-v1"], True),
+    (["--cohort", "distractor-synthetic-v1"], True),
+    (["--cohort", "distractor-synthetic-v1", "--query-policy", "bounded-lexical-v3",
+      "--retention-policy", "review-v1"], True),
+    (["--cohort", "distractor-synthetic-v1", "--cohort", "pilot-v1"], False),
     (["--cohort", "unseen-synthetic-v1", "--query-policy", "lexical-v2"], True),
     (["--query-policy", "legacy-v1", "--cohort", "pilot-v1"], True),
     (["--cohort", "unknown"], False), (["--cohort", "/arbitrary/data.json"], False),
@@ -1304,9 +1348,11 @@ def test_owned_shell_accepts_only_versioned_query_policy_without_starting_guests
         assert "Usage:" in result.stderr
 
 
-@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
-@pytest.mark.parametrize("query_policy", ["legacy-v1", "lexical-v2"])
+@pytest.mark.parametrize("cohort", runner.COHORTS)
+@pytest.mark.parametrize("query_policy", runner.QUERY_POLICIES)
 def test_cohort_metadata_binds_dataset_scorer_and_query_policy(cohort, query_policy):
+    from pg_agmemory import agent_evaluation_distractor, agent_evaluation_unseen
+
     cases = runner.select_cohort(cohort)
     metadata = runner.cohort_metadata(cohort, cases, query_policy)
     assert metadata["cohort_id"] == metadata["evaluation_cohort"]["id"] == cohort
@@ -1316,6 +1362,17 @@ def test_cohort_metadata_binds_dataset_scorer_and_query_policy(cohort, query_pol
     assert metadata["scorer_source_sha256"] == hashlib.sha256(
         Path(runner.recipe.__file__).read_bytes(),
     ).hexdigest()
+    sources = {
+        "pilot-v1": runner.recipe,
+        "unseen-synthetic-v1": agent_evaluation_unseen,
+        "distractor-synthetic-v1": agent_evaluation_distractor,
+    }
+    assert metadata["dataset_source_sha256"] == hashlib.sha256(
+        Path(sources[cohort].__file__).read_bytes(),
+    ).hexdigest()
+    assert metadata["protected_prompt_case_scoring_source_sha256"] == hashlib.sha256(
+        Path(runner.recipe.__file__).read_bytes().split(b"def pilot_report(")[0],
+    ).hexdigest()
     assert metadata["recipe_sha256"] == hashlib.sha256(
         runner.json_bytes(metadata["recipe_components"]),
     ).hexdigest()
@@ -1323,9 +1380,30 @@ def test_cohort_metadata_binds_dataset_scorer_and_query_policy(cohort, query_pol
     assert metadata["query_recipe_sha256"] == runner.query_policy_metadata(
         query_policy,
     )["recipe_sha256"]
-    assert metadata["evaluation_cohort"]["held_out_external"] is False
-    assert metadata["evaluation_cohort"]["first_use_scope"] == "not_claimed"
-    assert metadata["evaluation_cohort"]["known_cohort_reuse"] is True
+    expected_provenance = {
+        "id": cohort,
+        "kind": "known_synthetic_regression_cohort", "known_cohort_reuse": True,
+        "held_out": False, "held_out_external": False, "blinded_real_world": False,
+        "first_use_in_owned_run": False, "first_use_scope": "not_claimed",
+        "prior_model_exposure_verified": False,
+        "baseline_revision": "9c84c7f" if cohort == "pilot-v1" else None,
+    }
+    if cohort == "distractor-synthetic-v1":
+        expected_provenance.update({
+            "kind": "synthetic_stress_cohort", "known_cohort_reuse": None,
+            "first_use_in_owned_run": None, "first_use_scope": "requires_external_run_history",
+        })
+        for field in ("known_cohort_reuse", "first_use_in_owned_run"):
+            assert metadata["evaluation_cohort"][field] is None
+            for claim in (True, False):
+                with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+                    runner.verify_cohort_metadata(
+                        metadata | {
+                            "evaluation_cohort": metadata["evaluation_cohort"] | {field: claim},
+                        },
+                        cohort, cases, query_policy,
+                    )
+    assert metadata["evaluation_cohort"] == expected_provenance
     runner.verify_cohort_metadata(metadata, cohort, cases, query_policy)
     for field in (
         "dataset_sha256", "cases_sha256", "scorer_source_sha256", "recipe_sha256",
@@ -1376,7 +1454,7 @@ def test_unseen_planning_uses_only_question_with_no_corpus_or_gold(tmp_path):
         assert detail["search_profile"] == runner.lexical_profile(case.language)
 
 
-@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
+@pytest.mark.parametrize("cohort", runner.COHORTS)
 def test_selected_cohort_persists_all_failed_slots_before_any_dispatch(
     tmp_path, monkeypatch, cohort,
 ):
@@ -1417,12 +1495,12 @@ def test_selected_cohort_persists_all_failed_slots_before_any_dispatch(
         )
 
 
-@pytest.mark.parametrize("cohort", ["pilot-v1", "unseen-synthetic-v1"])
+@pytest.mark.parametrize("cohort", runner.COHORTS)
 def test_runner_cli_explicit_cohort_keeps_query_default(tmp_path, monkeypatch, capsys, cohort):
     selected = []
 
     async def capture_arguments(args, journal):
-        selected.append((args.cohort, args.query_policy))
+        selected.append((args.cohort, args.query_policy, args.retention_policy))
         return {"status": "completed", "calls_dispatched": 0}
 
     monkeypatch.setattr(runner, "run", capture_arguments)
@@ -1432,7 +1510,7 @@ def test_runner_cli_explicit_cohort_keeps_query_default(tmp_path, monkeypatch, c
         "--bridge", str(tmp_path / "cohort-cli-bridge"), "--cohort", cohort,
     ])
     assert runner.main() == 0
-    assert selected == [(cohort, "lexical-v2")]
+    assert selected == [(cohort, "lexical-v2", "model-purge-v1")]
     assert json.loads(capsys.readouterr().out)["cohort_id"] == cohort
 
 
@@ -1442,6 +1520,28 @@ def test_runner_cli_rejects_invalid_cohort_before_output_creation(tmp_path, monk
     monkeypatch.setattr(sys, "argv", [
         "evaluate-agent-memory.py", "--output", str(output), "--bridge", str(tmp_path / "bridge"),
         "--cohort", value,
+    ])
+    with pytest.raises(SystemExit) as failure:
+        runner.main()
+    assert failure.value.code == 2
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("option", [
+    ["--cohort", "distractor-synthetic-v1", "--cohort", "distractor-synthetic-v1"],
+    ["--cohort=distractor-synthetic-v1", "--cohort=pilot-v1"],
+    ["--query-policy", "bounded-lexical-v3", "--query-policy", "lexical-v2"],
+    ["--retention-policy", "review-v1", "--retention-policy", "model-purge-v1"],
+    ["--cohort", "distractor-synthetic-v1", "--wrong-flag", "value"],
+    ["--coho", "distractor-synthetic-v1"],
+])
+def test_runner_cli_rejects_duplicate_or_unknown_flags_before_output_creation(
+    tmp_path, monkeypatch, option,
+):
+    output = tmp_path / "must-not-create"
+    monkeypatch.setattr(sys, "argv", [
+        "evaluate-agent-memory.py", "--output", str(output),
+        "--bridge", str(tmp_path / "bridge"), *option,
     ])
     with pytest.raises(SystemExit) as failure:
         runner.main()
@@ -1839,4 +1939,260 @@ def test_real_native_final_refs_observe_current_purge_and_acl_without_cached_fal
     real_native_roundtrip(
         env, api_process, tmp_path, runner.recipe.pilot_cases()[0], "report locale", "en-GB",
         "bounded-lexical-v3", retention_policy="review-v1", final_mutation=mutation,
+    )
+
+
+def extended_history_case(language):
+    from pg_agmemory.agent_evaluation_distractor import DistractorMemoryCase
+
+    case_id = f"runner-long-{language}"
+    events = tuple(
+        runner.recipe.Event(
+            event_id=f"{case_id}-e{number:02d}",
+            occurred_at=f"2026-07-01T08:{number:02d}:00Z",
+            text=(
+                f"Keep the independent work-note label work{number:02d} for future sessions."
+                if language == "en"
+                else f"今後も独立した作業ノートのラベルwork{number:02d}を保持する。"
+            ) if 3 <= number <= 26 else (
+                f"One-shot scratch status {number:02d} has expired."
+                if language == "en" else f"一時的な作業状況{number:02d}は期限切れ。"
+            ),
+        ) for number in range(1, 33)
+    )
+    target = runner.recipe.Event(
+        event_id=events[16].event_id, occurred_at=events[16].occurred_at,
+        text=(
+            "For future sessions, the runnerlongneedle archive label is FIXTURE32."
+            if language == "en" else "今後の検証専用識別子の保管ラベルはFIXTURE32。"
+        ),
+    )
+    return DistractorMemoryCase(
+        case_id=case_id, category="project_constraint", language=language,
+        events=(*events[:16], target, *events[17:]),
+        question=(
+            "What is the runnerlongneedle archive label?"
+            if language == "en" else "検証専用識別子の保管ラベルは？"
+        ),
+        expected_answer="FIXTURE32",
+        expected_keep_ids=tuple(event.event_id for event in events[2:26]),
+        required_source_ids=(target.event_id,),
+    )
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_distractor_extended_history_roundtrip_preserves_inherited_validation(language):
+    from pg_agmemory.agent_evaluation_distractor import DistractorMemoryCase
+
+    case = extended_history_case(language)
+    loaded = DistractorMemoryCase.model_validate_json(case.model_dump_json())
+    assert type(loaded) is DistractorMemoryCase
+    assert loaded == case and len(loaded.events) == 32 and len(loaded.expected_keep_ids) == 24
+    assert DistractorMemoryCase.model_validate(loaded.model_dump()) == case
+    with pytest.raises(ValueError):
+        runner.recipe.AgentMemoryCase.model_validate_json(case.model_dump_json())
+    with pytest.raises(ValueError):
+        DistractorMemoryCase.model_validate(case.model_dump() | {"events": case.events[:8]})
+    with pytest.raises(ValueError, match="unique IDs"):
+        DistractorMemoryCase.model_validate(
+            case.model_dump() | {"events": (*case.events[:-1], case.events[0])},
+        )
+    with pytest.raises(ValueError, match="Required evidence must be retained"):
+        DistractorMemoryCase.model_validate(
+            case.model_dump() | {"expected_keep_ids": (case.events[2].event_id,)},
+        )
+    with pytest.raises(ValueError):
+        DistractorMemoryCase.model_validate(case.model_dump() | {"untrusted_extra": True})
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_distractor_full_history_observed_partitioned_and_pending_readable(
+    native_fixture, language,
+):
+    case = extended_history_case(language)
+    native_fixture["case"] = case
+    target = case.events[16]
+    native_fixture["failure"]["search_event_ids"] = [case.events[0].event_id, target.event_id]
+    bridge = DecisionBridge(
+        case, query_policy="bounded-lexical-v3", query="fixture", answer="FIXTURE32",
+        keep_event_ids=case.expected_keep_ids, answer_event_ids=[target.event_id],
+        bounded_plans=[
+            '{"queries":[{"terms":["fixture","first"]},{"terms":["fixture","second"]}]}',
+            '{"queries":[{"terms":["fixture","third"]},{"terms":["fixture","fourth"]}]}',
+        ],
+    )
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy="bounded-lexical-v3", retention_policy="review-v1",
+    )
+    assert measured.error is None, detail
+    assert measured.context_events == (target,)
+    assert len(native_fixture["stored"]) == len(detail["observed_event_ids"]) == 32
+    assert len(detail["retention"]["keep_ids"]) == 24
+    assert len(detail["retention"]["forget_ids"]) == 8
+    assert detail["retention_review"]["pending_rows_verified_readable"] == 8
+    requests = native_fixture["requests"]
+    assert [body["content"] for _, path, body, _ in requests if path == "/v1/observe"] == [
+        event.text for event in case.events
+    ]
+    assert not any(path == "/v1/forget" for _, path, _, _ in requests)
+    explained = {body["memory_id"] for _, path, body, _ in requests if path == "/v1/explain"}
+    assert set(detail["workflow_excluded_memory_ids"]) <= explained
+    assert detail["bounded_retrieval"]["planning_calls"] == 2
+    assert detail["bounded_retrieval"]["search_calls"] == 4
+    assert detail["bounded_retrieval"]["final_validation_calls"] == 1
+    assert len(bridge.calls) == 4
+    prompts = dict(bridge.prompts)
+    for event in case.events:
+        assert event.text in prompts["retention"]
+        assert event.text not in prompts["recall_query_round_1"]
+        if event != target:
+            assert event.text not in prompts["recall_query_round_2"]
+            assert event.text not in prompts["pg_agmemory"]
+    poisoned = case.model_copy(update={
+        "expected_answer": "PRIVATE_GOLD_CANARY", "expected_keep_ids": ("PRIVATE_GOLD_CANARY",),
+        "required_source_ids": ("PRIVATE_GOLD_CANARY",),
+        "forbidden_answers": ("PRIVATE_GOLD_CANARY",),
+    })
+    assert runner.recipe.retention_prompt(poisoned) == prompts["retention"]
+    assert runner.recipe.answer_prompt(poisoned, (target,)) == prompts["pg_agmemory"]
+    assert runner.bounded_recall.search_prompt(
+        poisoned.question, runner.lexical_profile(case.language), round_number=1,
+    ) == prompts["recall_query_round_1"]
+    assert all("PRIVATE_GOLD_CANARY" not in prompt for prompt in prompts.values())
+
+
+def test_distractor_eight_event_partition_fails_closed_after_all_observations(native_fixture):
+    case = extended_history_case("en")
+    native_fixture["case"] = case
+
+    class TruncatedActor(DecisionBridge):
+        async def call(self, prompt, **kwargs):
+            await super().call(prompt, **kwargs)
+            assert kwargs["phase"] == "retention"
+            return json.dumps({
+                "keep_ids": [event.event_id for event in case.events[:8]], "forget_ids": [],
+            })
+
+    bridge = TruncatedActor(case)
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy="bounded-lexical-v3", retention_policy="review-v1",
+    )
+    assert measured.error == "invalid_retention_decision"
+    assert detail["stopped_at_phase"] == "retention" and len(bridge.calls) == 1
+    assert len(native_fixture["stored"]) == len(detail["observed_event_ids"]) == 32
+    assert "retention_review" not in detail and "bounded_retrieval" not in detail
+    assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
+
+
+def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits(
+    native_fixture, transport,
+):
+    from pg_agmemory.agent_evaluation_distractor import DistractorMemoryCase
+
+    cases = runner.select_cohort("distractor-synthetic-v1")
+    assert len(cases) == 20 and sum(len(case.events) for case in cases) == 640
+    private_json(transport.metadata_path, transport.metadata.model_dump() | {"max_calls": 120})
+
+    class ScriptedBridge(runner.FileBridge):
+        async def call(self, prompt, *, case_id, phase):
+            call_id = f"{len(self.calls) + 1:06d}"
+            case = next(case for case in cases if case.case_id == case_id)
+            assert all(label not in prompt for label in (
+                "expected_answer", "expected_keep_ids", "required_source_ids", "forbidden_answers",
+            ))
+            if phase == "retention":
+                history = json.loads(prompt[prompt.index('{"events":'):])["events"]
+                assert history == [event.model_dump() for event in case.events]
+                content = json.dumps({
+                    "keep_ids": [event.event_id for event in case.events[:24]],
+                    "forget_ids": [event.event_id for event in case.events[24:]],
+                })
+            elif phase.startswith("recall_query_round_"):
+                suffixes = ("first", "second") if phase.endswith("_1") else ("third", "fourth")
+                content = json.dumps({
+                    "queries": [{"terms": ["fixture", suffix]} for suffix in suffixes],
+                })
+                if phase.endswith("_1"):
+                    assert all(event.text not in prompt for event in case.events)
+            else:
+                content = '{"answer":"","source_event_ids":[],"abstained":true}'
+            payload = response(call_id, content=content)
+            assert len(runner.json_bytes(payload)) <= runner.MAX_BYTES == 65536
+
+            async def host():
+                request = self.queue / f"{call_id}.request.json"
+                while not request.exists():
+                    await asyncio.sleep(0)
+                assert request.stat().st_size <= runner.MAX_BYTES
+                assert json.loads(request.read_bytes())["prompt"] == prompt
+                private_json(self.queue / f"{call_id}.response.json", payload)
+
+            task = asyncio.create_task(host())
+            try:
+                return await super().call(prompt, case_id=case_id, phase=phase)
+            finally:
+                if task.done():
+                    await task
+                else:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+
+    bridge = ScriptedBridge(
+        transport.directory, transport.journal, run_id="agent-eval-12345678",
+        max_calls=runner.logical_call_limit("bounded-lexical-v3"),
+        timeout=5, poll_interval=0.001,
+    )
+
+    async def scenario():
+        for case in cases:
+            assert DistractorMemoryCase.model_validate_json(case.model_dump_json()) == case
+            native_fixture["stored"].clear()
+            native_fixture["failure"]["search_event_ids"] = [case.events[16].event_id]
+            for arm, context in (
+                ("no_memory", ()), ("recent_window", runner.recipe.recent_context(case)),
+            ):
+                measured, detail = await runner.answer_arm(
+                    case, arm, context, bridge, native_fixture["journal"],
+                )
+                assert measured.error is None, detail
+            measured, detail = await runner.memory_arm(
+                case, native_fixture["identity"], "owned-subject", native_fixture["foreign"],
+                native_fixture["sentinel_id"], native_fixture["config"], b"test-key",
+                bridge, native_fixture["journal"],
+                query_policy="bounded-lexical-v3", retention_policy="review-v1",
+            )
+            assert measured.error is None, detail
+            assert len(detail["observed_event_ids"]) == len(native_fixture["stored"]) == 32
+            assert len(detail["retention"]["keep_ids"]) == 24
+            assert detail["retention_review"]["pending_rows_verified_readable"] == 8
+            assert detail["bounded_retrieval"]["search_calls"] == 4
+            assert detail["bounded_retrieval"]["final_validation_calls"] == 1
+            assert len(measured.context_events) <= 8
+            assert detail["context_prompt_bytes"] <= 8000
+            assert len(bridge.calls) <= 120
+        with pytest.raises(runner.EvaluationFailure, match="llm_call_limit"):
+            await runner.FileBridge.call(
+                bridge, "must not dispatch", case_id=cases[-1].case_id, phase="pg_agmemory",
+            )
+
+    asyncio.run(scenario())
+    assert len(bridge.calls) == 120 and all(call["status"] == "ok" for call in bridge.calls)
+    assert not (bridge.queue / "000121.request.json").exists()
+    assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
+    assert sum(path == "/v1/observe" for _, path, _, _ in native_fixture["requests"]) == 640
+    assert {call["case_id"] for call in bridge.calls} == {case.case_id for case in cases}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("language,query", [
+    ("en", "runnerlongneedle"), ("ja", "検証専用識別子"),
+])
+def test_real_native_distractor_long_history_review_without_model(
+    env, api_process, tmp_path, language, query,
+):
+    case = extended_history_case(language)
+    real_native_roundtrip(
+        env, api_process, tmp_path, case, query, "FIXTURE32", "bounded-lexical-v3",
+        retained_event_id=case.events[16].event_id,
+        keep_event_ids=case.expected_keep_ids, retention_policy="review-v1",
     )

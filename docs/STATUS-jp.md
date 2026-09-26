@@ -2,6 +2,17 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## Policyを固定した長い履歴の評価
+
+明示選択の`distractor-synthetic-v1`は、別途作成した英日20履歴、各32 eventで、
+保持すべき継続的な類似topicのdistractorを含みます。
+拡張case型は新datasetだけに限定し、元のcase契約、dataset、prompt、採点、
+bounded/review policy、120 call上限は変更しません。
+model利用前に履歴とgold labelをreview・commitします。
+初回利用の合成stress評価の準備であり、
+既知cohortの成功を再掲したり実務認定を主張したりするものではありません。
+[評価契約](EVALUATION-jp.md#policyを固定した長いdistractor履歴の評価)を参照してください。
+
 ## 上限付き根拠探索と非破壊の保持review
 
 `bounded-lexical-v3`は明示的なcaller側policyです。

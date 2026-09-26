@@ -2,6 +2,42 @@
 
 [English](EVALUATION.md)
 
+## Policyを固定した長いdistractor履歴の評価
+
+`--cohort distractor-synthetic-v1`は、別versionの合成cohortを選びます。
+**20 case / 640 event**、英日各10件、各履歴32 eventです。
+各caseには、既存の保持policyで残すべき継続的な類似topicのdistractorを24件含めます。
+保持判断後にreaderから消える一時的なrowを増やしただけの評価ではありません。
+従来の5 categoryを均等にし、scalar回答16問と回答辞退4問を含めます。
+根拠位置を変え、回答可能な4問では直近2 eventにも必要根拠を全て置きます。
+2 eventの根拠chainと二度訂正される履歴を各4件含め、
+rowの存在だけでなく根拠選択を評価します。goldは**keep 504 / forget 136件**です。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-distractor-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v3 \
+  --retention-policy review-v1
+```
+
+新cohortだけに明示的な拡張case型を使います。元の6～8 event契約、
+以前のdataset二つ、保持/回答prompt、採点式は変更しません。
+推論前に履歴とgold labelをreviewし、cleanなcommitへ固定します。
+bounded planner、review helper、model ID/effort、資源上限も維持し、
+**最大120 model call**、各caseで検索4回と最新参照検査1回、
+最大8 item / Native context 8,000 byteとします。
+結果を見たquery調整、自動retry、隠れたbrowseは行いません。
+
+初回利用の**projectを知るAIによる合成stress data**であり、
+独立した人間の作業、盲検、代表的な実務、大規模corpus benchmark、
+学習data除外の証明ではありません。作成したdistractor patternは実agent履歴の代替にはなりません。
+以前の既知cohortの20/20は参考値で、この異なるcase集合の期待値や合格基準ではありません。
+結果にかかわらず3 arm、失敗、直接取得coverage、引用source recall、
+保持提案の誤り、実際の保留/削除件数、usageとlatencyを報告します。
+同じcohortを再実行した場合は再利用と明記します。
+runnerはこのcohortの初回利用/再利用を不明と記録します。
+確認済みreportが実行履歴から区別し、新しい出力directoryだけで初回とは判定しません。
+
 ## 上限付き根拠探索とreview-only保持の比較
 
 opt-inの`bounded-lexical-v3` / `review-v1`は、観測したquery/根拠chainと
