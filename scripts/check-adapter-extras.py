@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from importlib.resources import files
 from uuid import UUID
 
@@ -14,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory.api import create_app
 from pg_agmemory.bounded_recall import BoundedRecall, SearchPlan
-from pg_agmemory.models import MemoryReference
+from pg_agmemory.models import MemoryReference, Recall
 from pg_agmemory.operations_status import OperationsStatusRequest, operations_status
 from pg_agmemory.query_planning import (
     LexicalQueryPlan,
@@ -42,6 +43,15 @@ assert MAX_SOURCE_PURGE_ROOTS == 100 and callable(SourcePurgeRequest)
 assert OperationsStatusRequest(tenant_id=UUID(int=1)) and callable(operations_status)
 assert callable(replication_status)
 assert callable(BoundedRecall) and callable(SearchPlan)
+selection_base = Recall(
+    scope_ids=[UUID(int=1)], purpose="package_smoke", query="",
+    as_of=datetime(2026, 9, 1, tzinfo=UTC), known_at=datetime(2026, 9, 1, tzinfo=UTC),
+    max_items=8, token_budget=8000,
+)
+assert BoundedRecall(selection_base).planning_items == ()
+assert BoundedRecall(
+    selection_base, evidence_selection="round-robin-v1",
+).planning_items == ()
 review_reference = MemoryReference(memory_id=UUID(int=1))
 assert review_retention([review_reference], [review_reference.memory_id]).purge_authorized is False
 assert LexicalQueryPlan(terms=["ticket", "owner"]).query == "ticket owner"

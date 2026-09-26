@@ -2,6 +2,38 @@
 
 [English](EVALUATION.md)
 
+## Version付きの根拠採用方式の修正
+
+`bounded-lexical-v4`は**caller側の根拠採用**を変えます。
+Native検索、model選択、計画promptは変えません。
+`evidence_selection="round-robin-v1"`でqueryごとの結果から重複しないitemを交互に選び、
+追加roundのlistを先に、各list内ではNativeの順位を維持します。
+候補は最大4 list・各8 item、採用contextは引き続き最大8 item / Native 8,000 byteで、
+最後の最新required-reference検査を1回行います。
+既存の`bounded-lexical-v3`は先着順の動作を維持します。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-admission-v4-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v4 \
+  --retention-policy review-v1
+```
+
+後述の初回13/20を受けた**既知cohortでの回帰比較**です。
+case/gold、query-v2、計画/回答/保持prompt文、採点、review動作、model ID/effortは固定します。
+**120 model call、計画2 round、各caseの検索4回＋最終検査1回**の上限も維持します。
+採用根拠が変わると追加計画の入力やmodel出力も変わるため、
+確率的な応答が同一になるとは約束しません。
+model reranker、隠れた検索、retry、Native SQL変更は追加しません。
+
+共通helperのsource hashは新しい選択分岐により正しく更新します。
+過去の厳密な再現には記録したcommitを使い、
+v3動作の維持を、現在のmoduleが過去と同じhashだという意味にはしません。
+v4 recipeは選択方式と実helper sourceを明示的に結びます。
+記録済み応答のoffline再入力で参照集合は比較できますが、
+最新の認可検査や新しい回答品質測定ではありません。
+実推論前にcleanなcommitへ固定し、以前の不十分な結果を事後採点し直しません。
+
 ## Policyを固定した長いdistractor履歴の評価
 
 `--cohort distractor-synthetic-v1`は、別versionの合成cohortを選びます。

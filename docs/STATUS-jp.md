@@ -2,6 +2,18 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## Version付きの上限内根拠再選択
+
+opt-inの`bounded-lexical-v4`は、先着順ではなくqueryごとの結果を
+上限付きround-robinで採用します。追加roundのlistを先に扱い、
+query順とNative順位を決定的に維持します。model rankerや検索回数は追加しません。
+出力は最大8 item / Native 8,000 byteのままで、
+epoch/content検査と最終参照の最新検査も維持します。
+v3とhelper既定の動作は先着順のまま、過去sourceのhashは記録済みcommitに結び付けます。
+既知のdistractor cohortを再利用し、prompt、gold/採点、model、review policyと
+120 call上限を固定して比較します。
+[version付き比較](EVALUATION-jp.md#version付きの根拠採用方式の修正)を参照してください。
+
 ## Policyを固定した長い履歴の評価
 
 明示選択の`distractor-synthetic-v1`は、別途作成した英日20履歴、各32 eventで、
@@ -26,7 +38,8 @@ Native検索応答の和集合では**81.25%**ですが、回答者へ届くと*
 reviewは136件を全て保留し、rowが読めることを確認して、Native Forget送信・purgeはゼロです。
 以前のcohortの誤提案改善や忘却完了を意味しません。
 検索63回＋最新参照検査20回、計画/検索/回答p95は**35.92秒**で、本番SLAではありません。
-実測後にmodel/query/helper/採点を変更せず、追加model callも行っていません。
+初回結果は推論後の調整を加えず保存しています。
+後続のversion別比較は上記に分離して報告します。
 [詳細](EVALUATION-jp.md#長い履歴の初回結果-有用な追加検索結果が採用されない)と
 [確認済み集計](../examples/copilot-memory-distractor-result.json)を参照してください。
 

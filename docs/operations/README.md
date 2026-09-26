@@ -3331,6 +3331,19 @@ references fail rather than falling back to cached evidence. Current
 authorization/deletion still apply to the pinned historical snapshot.
 This does not retract evidence legitimately delivered before a later revocation.
 
+Evidence selection is explicit. The default `first-admitted-v1` preserves the
+earlier v3 behavior, including its inability to replace a full context.
+`evidence_selection="round-robin-v1"` retains at most four validated result
+lists of eight items each. It visits follow-up-round lists before initial-round
+lists, preserving issued query order within each round and Native result order
+within each list. Each list contributes its next distinct, non-excluded item
+in turn; whole items that cannot fit are skipped with truncation reported.
+The selected set is rebuilt after each response and stays within the original
+item/byte limits. Duplicates do not consume extra context slots; failure and
+completion clear the candidate pool. This is deterministic selection diversity,
+not semantic reranking, a guarantee of relevance or an extra model/search call.
+Every final selected reference still requires fresh Native validation.
+
 The SDK remains the transport; a chosen model only produces plans:
 
 ```python
@@ -3339,7 +3352,11 @@ from pg_agmemory.bounded_recall import (
 )
 
 # base_request is lexical, with trusted scopes/filters, <=8 items and pinned times.
-search = BoundedRecall(base_request, excluded_memory_ids=review.excluded_memory_ids)
+search = BoundedRecall(
+    base_request,
+    excluded_memory_ids=review.excluded_memory_ids,
+    evidence_selection="round-robin-v1",
+)
 for round_number in (1, 2):
     prompt = search_prompt(
         question, base_request.search_profile,
@@ -3372,6 +3389,9 @@ physical deletion. It performs no Native purge; deferred proposals, including
 wrong proposals, remain visible in the report. A zero purge count must not be
 presented as perfect deletion quality. Only the owned disposable lab is
 destroyed during ordinary operator cleanup.
+The evaluator's `bounded-lexical-v4` selects round-robin admission and defaults
+to `review-v1`; `bounded-lexical-v3` retains first-admitted admission.
+Both retain the two-round/four-search/one-validation and 120-model-call bounds.
 
 ## Exact structured recall filters
 

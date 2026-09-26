@@ -12,7 +12,7 @@ import unicodedata
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Annotated, NoReturn, Self
+from typing import Annotated, Literal, NoReturn, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -225,17 +225,31 @@ class BoundedRecallResult:
     truncated: bool
 
 
+@dataclass(frozen=True)
+class _SearchCandidates:
+    round_number: int
+    query_order: int
+    items: tuple[MemoryItem, ...]
+
+
 class BoundedRecall:
     """Reserve bounded request batches; fail closed on any bad or stale response.
 
     Returned requests and planning items are defensive copies. The helper neither
     sends HTTP nor retries. Exclusions are client-side withholding, not erasure.
     Do not use planning items as answer context or continue after a transport error.
+    The default preserves first admission. Opt-in round-robin selection interleaves
+    Native-ranked query lists, visiting follow-up lists first, without relevance scoring.
     """
 
     def __init__(
         self, base_request: Recall, *, excluded_memory_ids: Sequence[UUID] = (),
+        evidence_selection: Literal["first-admitted-v1", "round-robin-v1"] = "first-admitted-v1",
     ) -> None:
+        if not isinstance(evidence_selection, str) or evidence_selection not in (
+            "first-admitted-v1", "round-robin-v1",
+        ):
+            raise BoundedRecallError("invalid_evidence_selection")
         try:
             if not isinstance(base_request, Recall):
                 raise ValueError
@@ -254,6 +268,8 @@ class BoundedRecall:
         except (ValueError, TypeError, AttributeError, MemoryError):
             raise BoundedRecallError("invalid_bounded_recall") from None
         self._base = base
+        self._evidence_selection = evidence_selection
+        self._candidate_lists: list[_SearchCandidates] = []
         self._rounds = 0
         self._queries: list[str] = []
         self._query_keys: set[tuple[str, ...]] = set()
@@ -276,6 +292,7 @@ class BoundedRecall:
         self._closed = True
         self._items.clear()
         self._seen.clear()
+        self._candidate_lists.clear()
         self._pending.clear()
         self._final_issued = self._final_snapshot = None
         raise BoundedRecallError(code)
@@ -394,6 +411,35 @@ class BoundedRecall:
         except (ValueError, TypeError, AttributeError, RecursionError, MemoryError):
             self._fail("invalid_recall_response")
 
+    def _select_round_robin(self) -> None:
+        lists = sorted(
+            self._candidate_lists, key=lambda group: (-group.round_number, group.query_order),
+        )
+        positions = [0] * len(lists)
+        visited: set[UUID] = set()
+        selected: list[MemoryItem] = []
+        while any(
+            position < len(group.items)
+            for position, group in zip(positions, lists, strict=True)
+        ):
+            for index, group in enumerate(lists):
+                while positions[index] < len(group.items):
+                    candidate = group.items[positions[index]]
+                    positions[index] += 1
+                    if candidate.memory_id in visited:
+                        continue
+                    # A whole item that cannot fit now cannot fit later in this pass.
+                    visited.add(candidate.memory_id)
+                    if len(selected) >= self._base.max_items:
+                        self._truncated = True
+                    else:
+                        _, selected, omitted = build_context(
+                            [*selected, candidate], self._base.token_budget,
+                        )
+                        self._truncated |= omitted
+                    break
+        self._items = selected
+
     def record(self, request: Recall, result: RecallResult) -> None:
         self._active()
         if self._finalized or not self._pending:
@@ -419,15 +465,29 @@ class BoundedRecall:
                     self._seen[item.memory_id] = signature
                     if item.memory_id not in self._excluded:
                         additions.append(item)
-            for item in additions:
-                if len(self._items) >= self._base.max_items:
-                    self._truncated = True
-                    continue
-                _, selected, omitted = build_context(
-                    [*self._items, item], self._base.token_budget,
-                )
-                self._items = selected
-                self._truncated |= omitted
+            if self._evidence_selection == "round-robin-v1":
+                query_order = len(self._queries) - len(self._pending)
+                # Interrupted admission cannot reserve another list for the same request.
+                if len(self._candidate_lists) != query_order:
+                    self._fail("unexpected_recall_response")
+                self._candidate_lists.append(_SearchCandidates(
+                    round_number=self._rounds,
+                    query_order=query_order,
+                    items=tuple(
+                        item for item in value.items if item.memory_id not in self._excluded
+                    ),
+                ))
+                self._select_round_robin()
+            else:
+                for item in additions:
+                    if len(self._items) >= self._base.max_items:
+                        self._truncated = True
+                        continue
+                    _, selected, omitted = build_context(
+                        [*self._items, item], self._base.token_budget,
+                    )
+                    self._items = selected
+                    self._truncated |= omitted
             self._consistency = value.consistency.model_copy(deep=True)
             self._truncated |= value.coverage.truncated
             self._pending.popleft()
@@ -490,5 +550,6 @@ class BoundedRecall:
         self._closed = True
         self._items.clear()
         self._seen.clear()
+        self._candidate_lists.clear()
         self._final_issued = self._final_snapshot = None
         return completed

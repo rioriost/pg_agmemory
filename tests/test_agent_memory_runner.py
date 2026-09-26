@@ -475,7 +475,18 @@ def native_fixture(tmp_path, monkeypatch):
                 "content": source["content"], "recorded_at": source["occurred_at"],
                 "occurred_at": source["occurred_at"],
             }) for memory_id, source in stored.items() if not required or memory_id in required]
-            if not required and "search_event_ids" in failure:
+            if required:
+                order = [ref["memory_id"] for ref in data["required_memory_refs"]]
+                items.sort(key=lambda item: order.index(str(item.memory_id)))
+            elif "search_event_ids_by_query" in failure:
+                by_event = {
+                    stored[str(item.memory_id)]["source_event_id"]: item for item in items
+                }
+                items = [
+                    by_event[event_id]
+                    for event_id in failure["search_event_ids_by_query"][data["query"]]
+                ]
+            elif "search_event_ids" in failure:
                 items = [
                     item for item in items
                     if stored[str(item.memory_id)]["source_event_id"] in failure["search_event_ids"]
@@ -981,11 +992,11 @@ def real_native_roundtrip(
             assert detail["forget_purge"]["object_count"] == len(case.events) - 1
         assert measured.context_events == (retained_event,)
         assert measured.answer.answer == answer
-        assert len(bridge.calls) == (4 if query_policy == "bounded-lexical-v3" else 3)
+        assert len(bridge.calls) == (4 if query_policy in runner.BOUNDED_QUERY_POLICIES else 3)
         assert [phase for phase, _ in bridge.prompts] == [
             "retention",
             *(["recall_query_round_1", "recall_query_round_2"]
-              if query_policy == "bounded-lexical-v3" else ["recall_query"]),
+              if query_policy in runner.BOUNDED_QUERY_POLICIES else ["recall_query"]),
             "pg_agmemory",
         ]
         retained_id = UUID(detail["observed_event_ids"][retained_event_id])
@@ -1072,9 +1083,13 @@ def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
     ).hexdigest() == "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746"
     from pg_agmemory import retention_review
 
-    assert hashlib.sha256(
-        Path(runner.bounded_recall.__file__).read_bytes(),
-    ).hexdigest() == "762d1c48499e7047882003b5a416bf8090b9127c76ca40ccb2b9e6c6a6877748"
+    bounded_source = Path(runner.bounded_recall.__file__).read_bytes()
+    planner_source = b"_PROMPT = (" + bounded_source.split(b"_PROMPT = (", 1)[1].split(
+        b"@dataclass(frozen=True)", 1,
+    )[0]
+    assert hashlib.sha256(planner_source).hexdigest() == (
+        "959d841a94182f3f2ac115a9722a8f26c2fa4e0125cad4d4b850bd00a41d0f4f"
+    )
     assert hashlib.sha256(
         Path(retention_review.__file__).read_bytes(),
     ).hexdigest() == "406a6892e449c115f82f68f40b88b30d46dfc9ec3cb5d846cb39fd485c13fe4c"
@@ -1283,6 +1298,7 @@ def test_explicit_legacy_replay_does_not_require_new_capability(native_fixture):
     (["--query-policy", "lexical-v2"], "lexical-v2"),
     (["--query-policy", "legacy-v1"], "legacy-v1"),
     (["--query-policy", "bounded-lexical-v3"], "bounded-lexical-v3"),
+    (["--query-policy", "bounded-lexical-v4"], "bounded-lexical-v4"),
 ])
 def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option, expected):
     selected = []
@@ -1291,7 +1307,7 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
         selected.append(args.query_policy)
         assert args.cohort == "pilot-v1"
         assert args.retention_policy == (
-            "review-v1" if args.query_policy == "bounded-lexical-v3" else "model-purge-v1"
+            "review-v1" if args.query_policy in runner.BOUNDED_QUERY_POLICIES else "model-purge-v1"
         )
         return {"status": "completed", "calls_dispatched": 0}
 
@@ -1314,6 +1330,12 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
     (["--cohort", "distractor-synthetic-v1"], True),
     (["--cohort", "distractor-synthetic-v1", "--query-policy", "bounded-lexical-v3",
       "--retention-policy", "review-v1"], True),
+    (["--query-policy", "bounded-lexical-v4"], True),
+    (["--cohort", "distractor-synthetic-v1", "--query-policy", "bounded-lexical-v4",
+      "--retention-policy", "review-v1"], True),
+    (["--query-policy", "bounded-lexical-v4", "--retention-policy", "model-purge-v1"], True),
+    (["--query-policy", "bounded-lexical-v4", "--query-policy", "bounded-lexical-v3"], False),
+    (["--query-policy", "bounded-lexical-v5"], False),
     (["--cohort", "distractor-synthetic-v1", "--cohort", "pilot-v1"], False),
     (["--cohort", "unseen-synthetic-v1", "--query-policy", "lexical-v2"], True),
     (["--query-policy", "legacy-v1", "--cohort", "pilot-v1"], True),
@@ -1531,6 +1553,9 @@ def test_runner_cli_rejects_invalid_cohort_before_output_creation(tmp_path, monk
     ["--cohort", "distractor-synthetic-v1", "--cohort", "distractor-synthetic-v1"],
     ["--cohort=distractor-synthetic-v1", "--cohort=pilot-v1"],
     ["--query-policy", "bounded-lexical-v3", "--query-policy", "lexical-v2"],
+    ["--query-policy", "bounded-lexical-v4", "--query-policy", "bounded-lexical-v4"],
+    ["--query-policy=bounded-lexical-v4", "--query-policy=bounded-lexical-v3"],
+    ["--query-policy", "bounded-lexical-v5"],
     ["--retention-policy", "review-v1", "--retention-policy", "model-purge-v1"],
     ["--cohort", "distractor-synthetic-v1", "--wrong-flag", "value"],
     ["--coho", "distractor-synthetic-v1"],
@@ -1641,6 +1666,7 @@ def test_policy_call_budgets_do_not_expand_default_transport(transport):
     assert runner.logical_call_limit("legacy-v1") == 100
     assert runner.logical_call_limit("lexical-v2") == 100
     assert runner.logical_call_limit("bounded-lexical-v3") == 120
+    assert runner.logical_call_limit("bounded-lexical-v4") == 120
     private_json(transport.metadata_path, transport.metadata.model_dump() | {"max_calls": 120})
     default = runner.FileBridge(
         transport.directory, transport.journal, run_id="agent-eval-12345678",
@@ -1681,15 +1707,16 @@ def test_review_with_single_query_preserves_rows_and_withholds_pending_context(
     )
 
 
-def test_bounded_review_profile_records_module_hashes_and_honest_budget():
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+def test_bounded_review_profile_records_module_hashes_and_honest_budget(query_policy):
     from pg_agmemory import retention_review
 
     metadata = runner.cohort_metadata(
         "unseen-synthetic-v1", runner.select_cohort("unseen-synthetic-v1"),
-        "bounded-lexical-v3", "review-v1",
+        query_policy, "review-v1",
     )
     assert metadata["retention_policy"] == "review-v1"
-    assert metadata["query_policy"] == "bounded-lexical-v3"
+    assert metadata["query_policy"] == query_policy
     assert metadata["retention_review_sha256"] == hashlib.sha256(
         Path(retention_review.__file__).read_bytes(),
     ).hexdigest()
@@ -1703,15 +1730,57 @@ def test_bounded_review_profile_records_module_hashes_and_honest_budget():
     assert metadata["recipe_digest_format"] == "pgag-agent-memory-cohort-recipe-v4"
     runner.verify_cohort_metadata(
         metadata, "unseen-synthetic-v1", runner.select_cohort("unseen-synthetic-v1"),
-        "bounded-lexical-v3", "review-v1",
+        query_policy, "review-v1",
     )
     implicit = runner.cohort_metadata(
         "unseen-synthetic-v1", runner.select_cohort("unseen-synthetic-v1"),
-        "bounded-lexical-v3",
+        query_policy,
     )
     assert implicit == metadata
 
 
+def test_v4_recipe_binds_selection_without_rewriting_prior_recipe_shapes():
+    lexical = runner.query_policy_metadata("lexical-v2")
+    helper_sha = hashlib.sha256(Path(runner.bounded_recall.__file__).read_bytes()).hexdigest()
+    expected_v3 = lexical["recipe_components"] | {
+        "format": "pgag-agent-memory-bounded-query-recipe-v3",
+        "query_policy": "bounded-lexical-v3", "bounded_recall_sha256": helper_sha,
+        "planning_rounds": 2, "search_calls_maximum": 4,
+        "final_required_reference_calls_maximum": 1,
+        "max_items": 8, "context_budget_bytes": 8000,
+        "fixed_temporal_anchors": "after_observation_before_planning",
+    }
+    v3 = runner.query_policy_metadata("bounded-lexical-v3")
+    assert v3["recipe_components"] == expected_v3
+    v4 = runner.query_policy_metadata("bounded-lexical-v4")
+    assert v4["recipe_components"] == expected_v3 | {
+        "format": "pgag-agent-memory-bounded-query-recipe-v4",
+        "query_policy": "bounded-lexical-v4", "evidence_selection": "round-robin-v1",
+    }
+    assert v4["recipe_digest_format"] == "pgag-agent-memory-bounded-query-recipe-v4"
+    assert v4["recipe_sha256"] != v3["recipe_sha256"]
+    assert v4["recipe_sha256"] == hashlib.sha256(
+        runner.json_bytes(v4["recipe_components"]),
+    ).hexdigest()
+    assert lexical["bounded_recall_sha256"] is None
+    assert "evidence_selection" not in lexical["recipe_components"]
+    assert runner.query_policy_metadata("legacy-v1")["recipe_components"] is None
+    cases = runner.select_cohort("distractor-synthetic-v1")
+    metadata = runner.cohort_metadata("distractor-synthetic-v1", cases, "bounded-lexical-v4")
+    assert metadata["query_recipe_components"] == v4["recipe_components"]
+    for changed in (
+        {"evidence_selection": "first-admitted-v1"},
+        {"query_policy": "bounded-lexical-v3"},
+        {"bounded_recall_sha256": "0" * 64},
+    ):
+        with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+            runner.verify_cohort_metadata(
+                metadata | {"query_recipe_components": v4["recipe_components"] | changed},
+                "distractor-synthetic-v1", cases, "bounded-lexical-v4",
+            )
+
+
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("required", [
     None,
     {"retrieval_modes": ["lexical"], "max_refs": 7,
@@ -1725,11 +1794,13 @@ def test_bounded_review_profile_records_module_hashes_and_honest_budget():
     {"retrieval_modes": ["vector"], "max_refs": 16,
      "order": "request_order", "budget_policy": "all_required_or_error"},
 ])
-def test_bounded_capability_gate_precedes_any_model_or_mutation(native_fixture, required):
+def test_bounded_capability_gate_precedes_any_model_or_mutation(
+    native_fixture, required, query_policy,
+):
     native_fixture["failure"]["required_context"] = required
     bridge = DecisionBridge(native_fixture["case"])
     measured, detail = memory_case(
-        native_fixture, bridge, query_policy="bounded-lexical-v3", retention_policy="review-v1",
+        native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
     )
     assert measured.error == "required_context_contract_mismatch"
     assert detail["stopped_at_phase"] == "native_connect"
@@ -1737,7 +1808,10 @@ def test_bounded_capability_gate_precedes_any_model_or_mutation(native_fixture, 
     assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
 
 
-def test_bounded_review_cli_requires_explicit_new_flags(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+def test_bounded_review_cli_requires_explicit_new_flags(
+    tmp_path, monkeypatch, capsys, query_policy,
+):
     selected = []
 
     async def capture_arguments(args, journal):
@@ -1748,11 +1822,11 @@ def test_bounded_review_cli_requires_explicit_new_flags(tmp_path, monkeypatch, c
     monkeypatch.setenv("PGAG_AGENT_EVAL_API_URL", "http://127.0.0.1:58000")
     monkeypatch.setattr(sys, "argv", [
         "evaluate-agent-memory.py", "--output", str(tmp_path / "explicit-output"),
-        "--bridge", str(tmp_path / "bridge"), "--query-policy", "bounded-lexical-v3",
+        "--bridge", str(tmp_path / "bridge"), "--query-policy", query_policy,
         "--retention-policy", "review-v1", "--cohort", "unseen-synthetic-v1",
     ])
     assert runner.main() == 0
-    assert selected == [("bounded-lexical-v3", "review-v1", "unseen-synthetic-v1")]
+    assert selected == [(query_policy, "review-v1", "unseen-synthetic-v1")]
     assert json.loads(capsys.readouterr().out)["calls_dispatched"] == 0
 
 
@@ -1761,29 +1835,36 @@ def test_bounded_review_cli_requires_explicit_new_flags(tmp_path, monkeypatch, c
     ("lexical-v2", None, "model-purge-v1"),
     ("bounded-lexical-v3", None, "review-v1"),
     ("bounded-lexical-v3", "model-purge-v1", "model-purge-v1"),
+    ("bounded-lexical-v4", None, "review-v1"),
+    ("bounded-lexical-v4", "model-purge-v1", "model-purge-v1"),
     ("lexical-v2", "review-v1", "review-v1"),
 ])
 def test_retention_defaults_do_not_enable_bounded_autopurge(query_policy, provided, expected):
     assert runner.resolve_retention_policy(query_policy, provided) == expected
 
 
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("retention_policy", ["model-purge-v1", "review-v1"])
 def test_bounded_two_rounds_use_at_most_five_reads_and_one_fixed_snapshot(
-    native_fixture, retention_policy,
+    native_fixture, retention_policy, query_policy,
 ):
     case = native_fixture["case"]
     plans = [
         '{"queries":[{"terms":["report","locale"]},{"terms":["locale"]}]}',
         '{"queries":[{"terms":["report"]},{"terms":["preferred"]}]}',
     ]
-    bridge = DecisionBridge(case, query_policy="bounded-lexical-v3", bounded_plans=plans)
+    bridge = DecisionBridge(case, query_policy=query_policy, bounded_plans=plans)
     measured, detail = memory_case(
-        native_fixture, bridge, query_policy="bounded-lexical-v3",
+        native_fixture, bridge, query_policy=query_policy,
         retention_policy=retention_policy,
     )
     assert measured.error is None, detail
     assert len(bridge.calls) == 4
     progress = detail["bounded_retrieval"]
+    assert progress["query_policy"] == query_policy
+    assert progress["evidence_selection"] == (
+        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+    )
     assert progress["planning_calls"] == 2 and progress["search_calls"] == 4
     assert progress["final_validation_calls"] == 1 and progress["revalidated"] is True
     assert len(progress["read_latency_ms"]) == 5
@@ -1817,21 +1898,24 @@ def test_bounded_two_rounds_use_at_most_five_reads_and_one_fixed_snapshot(
         assert detail["actor_proposal"] is True
 
 
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("failure,expected", [
     ("final_error", "not_found"), ("search_epoch_change", "recall_epoch_changed"),
     ("search_error", "not_found"),
 ])
-def test_bounded_read_failure_never_uses_cached_answer_context(native_fixture, failure, expected):
+def test_bounded_read_failure_never_uses_cached_answer_context(
+    native_fixture, failure, expected, query_policy,
+):
     native_fixture["failure"][failure] = True
     bridge = DecisionBridge(
-        native_fixture["case"], query_policy="bounded-lexical-v3",
+        native_fixture["case"], query_policy=query_policy,
         bounded_plans=[
             '{"queries":[{"terms":["report"]}]}',
             '{"queries":[{"terms":["locale"]}]}',
         ],
     )
     measured, detail = memory_case(
-        native_fixture, bridge, query_policy="bounded-lexical-v3", retention_policy="review-v1",
+        native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
     )
     assert measured.error == expected
     assert measured.answer is None and detail["context_available"] is False
@@ -1843,18 +1927,21 @@ def test_bounded_read_failure_never_uses_cached_answer_context(native_fixture, f
         assert detail["bounded_retrieval"]["planning_cache_discarded"] is True
 
 
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("raw", [
     '{"queries":[]}', '{"queries":[{"terms":[]}]}',
     '{"queries":[{"terms":["report"]}],"extra":true}',
     '{"queries":[{"terms":["report"]}],"queries":[]}',
 ])
-def test_invalid_bounded_plan_is_not_retried_or_replaced_with_browse(native_fixture, raw):
+def test_invalid_bounded_plan_is_not_retried_or_replaced_with_browse(
+    native_fixture, raw, query_policy,
+):
     bridge = DecisionBridge(
-        native_fixture["case"], query_policy="bounded-lexical-v3",
+        native_fixture["case"], query_policy=query_policy,
         bounded_plans=[raw, '{"queries":[]}'],
     )
     measured, detail = memory_case(
-        native_fixture, bridge, query_policy="bounded-lexical-v3", retention_policy="review-v1",
+        native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
     )
     assert measured.error == "invalid_search_plan"
     assert len(bridge.calls) == 2
@@ -1865,7 +1952,10 @@ def test_invalid_bounded_plan_is_not_retried_or_replaced_with_browse(native_fixt
     )
 
 
-def test_bounded_known_empty_result_skips_final_http_and_preserves_known_context(native_fixture):
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+def test_bounded_known_empty_result_skips_final_http_and_preserves_known_context(
+    native_fixture, query_policy,
+):
     native_fixture["failure"]["empty_search"] = True
 
     class AbstainAfterSearch(DecisionBridge):
@@ -1877,7 +1967,7 @@ def test_bounded_known_empty_result_skips_final_http_and_preserves_known_context
 
     measured, detail = memory_case(
         native_fixture, AbstainAfterSearch(native_fixture["case"]),
-        query_policy="bounded-lexical-v3", retention_policy="review-v1",
+        query_policy=query_policy, retention_policy="review-v1",
     )
     assert measured.error is None
     assert detail["context_available"] is True and detail["context_events"] == []
@@ -1919,26 +2009,28 @@ def test_review_reports_proposal_quality_not_physical_deletion():
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("case_index,query,answer", [
     (0, "report locale", "en-GB"), (2, "日付表記", "ISO8601"),
 ])
 def test_real_native_bounded_review_retains_pending_rows_without_model(
-    env, api_process, tmp_path, case_index, query, answer,
+    env, api_process, tmp_path, case_index, query, answer, query_policy,
 ):
     real_native_roundtrip(
         env, api_process, tmp_path, runner.recipe.pilot_cases()[case_index],
-        query, answer, "bounded-lexical-v3", retention_policy="review-v1",
+        query, answer, query_policy, retention_policy="review-v1",
     )
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("mutation", ["purge", "revoke"])
 def test_real_native_final_refs_observe_current_purge_and_acl_without_cached_fallback(
-    env, api_process, tmp_path, mutation,
+    env, api_process, tmp_path, mutation, query_policy,
 ):
     real_native_roundtrip(
         env, api_process, tmp_path, runner.recipe.pilot_cases()[0], "report locale", "en-GB",
-        "bounded-lexical-v3", retention_policy="review-v1", final_mutation=mutation,
+        query_policy, retention_policy="review-v1", final_mutation=mutation,
     )
 
 
@@ -1978,6 +2070,89 @@ def extended_history_case(language):
         expected_keep_ids=tuple(event.event_id for event in events[2:26]),
         required_source_ids=(target.event_id,),
     )
+
+
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+def test_bounded_v4_saturation_selects_followup_evidence_and_revalidates(
+    native_fixture, query_policy,
+):
+    case = extended_history_case("en")
+    native_fixture["case"] = case
+    initial = case.events[2:10]
+    target = case.events[16]
+    native_fixture["failure"]["search_event_ids_by_query"] = {
+        "fixture initial": [event.event_id for event in initial],
+        "fixture alternate": [],
+        "fixture followup": [target.event_id],
+        "fixture last": [],
+    }
+
+    class ContextReader(DecisionBridge):
+        async def call(self, prompt, **kwargs):
+            raw = await super().call(prompt, **kwargs)
+            if kwargs["phase"] == "pg_agmemory" and target.text not in prompt:
+                return '{"answer":"","source_event_ids":[],"abstained":true}'
+            return raw
+
+    bridge = ContextReader(
+        case, query_policy=query_policy, answer="FIXTURE32",
+        keep_event_ids=case.expected_keep_ids, answer_event_ids=[target.event_id],
+        bounded_plans=[
+            '{"queries":[{"terms":["fixture","initial"]},{"terms":["fixture","alternate"]}]}',
+            '{"queries":[{"terms":["fixture","followup"]},{"terms":["fixture","last"]}]}',
+        ],
+    )
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
+    )
+    assert measured.error is None, detail
+    expected = (target, *initial[:7]) if query_policy == "bounded-lexical-v4" else initial
+    assert measured.context_events == expected
+    assert measured.answer.abstained is (query_policy == "bounded-lexical-v3")
+    assert len(bridge.calls) == 4
+    progress = detail["bounded_retrieval"]
+    assert progress["query_policy"] == query_policy
+    assert progress["evidence_selection"] == (
+        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+    )
+    assert progress["planning_calls"] == 2 and progress["search_calls"] == 4
+    assert progress["final_validation_calls"] == 1 and progress["revalidated"] is True
+    assert progress["cached_fallback_used"] is False
+    expected_ids = [detail["observed_event_ids"][event.event_id] for event in expected]
+    assert progress["returned_memory_ids"] == expected_ids
+    assert [
+        ref["memory_id"] for ref in progress["final_request"]["required_memory_refs"]
+    ] == expected_ids
+    assert progress["final_request"]["query"] == ""
+    assert progress["final_request"]["max_items"] == 8
+    assert progress["final_request"]["token_budget"] == 8000
+    prompts = dict(bridge.prompts)
+    assert all(event.text not in prompts["recall_query_round_1"] for event in case.events)
+    assert all(event.text in prompts["recall_query_round_2"] for event in initial)
+    assert target.text not in prompts["recall_query_round_2"]
+    assert prompts["pg_agmemory"] == runner.recipe.answer_prompt(case, expected)
+    assert detail["retention_review"]["pending_rows_verified_readable"] == 8
+    assert len(native_fixture["stored"]) == 32
+    assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
+    records = [
+        json.loads(line) for line in native_fixture["journal"].path.read_text().splitlines()
+    ]
+    plans = [row for row in records if row["phase"] == "bounded_plan_received"]
+    assert len(plans) == 2 and all(row["query_policy"] == query_policy for row in plans)
+    searches = [
+        row for row in records
+        if row["phase"] == "native_completed" and row["operation"] == "bounded_search"
+    ]
+    assert len(searches) == 4
+    assert [item["memory_id"] for item in searches[2]["response"]["items"]] == [
+        detail["observed_event_ids"][target.event_id],
+    ]
+    final = [
+        row for row in records
+        if row["phase"] == "native_completed" and row["operation"] == "bounded_final_validation"
+    ]
+    assert len(final) == 1
+    assert [item["memory_id"] for item in final[0]["response"]["items"]] == expected_ids
 
 
 @pytest.mark.parametrize("language", ["en", "ja"])
@@ -2084,8 +2259,9 @@ def test_distractor_eight_event_partition_fails_closed_after_all_observations(na
     assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
 
 
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits(
-    native_fixture, transport,
+    native_fixture, transport, query_policy,
 ):
     from pg_agmemory.agent_evaluation_distractor import DistractorMemoryCase
 
@@ -2139,7 +2315,7 @@ def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits
 
     bridge = ScriptedBridge(
         transport.directory, transport.journal, run_id="agent-eval-12345678",
-        max_calls=runner.logical_call_limit("bounded-lexical-v3"),
+        max_calls=runner.logical_call_limit(query_policy),
         timeout=5, poll_interval=0.001,
     )
 
@@ -2159,13 +2335,14 @@ def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits
                 case, native_fixture["identity"], "owned-subject", native_fixture["foreign"],
                 native_fixture["sentinel_id"], native_fixture["config"], b"test-key",
                 bridge, native_fixture["journal"],
-                query_policy="bounded-lexical-v3", retention_policy="review-v1",
+                query_policy=query_policy, retention_policy="review-v1",
             )
             assert measured.error is None, detail
             assert len(detail["observed_event_ids"]) == len(native_fixture["stored"]) == 32
             assert len(detail["retention"]["keep_ids"]) == 24
             assert detail["retention_review"]["pending_rows_verified_readable"] == 8
             assert detail["bounded_retrieval"]["search_calls"] == 4
+            assert detail["bounded_retrieval"]["query_policy"] == query_policy
             assert detail["bounded_retrieval"]["final_validation_calls"] == 1
             assert len(measured.context_events) <= 8
             assert detail["context_prompt_bytes"] <= 8000
@@ -2184,15 +2361,16 @@ def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
 @pytest.mark.parametrize("language,query", [
     ("en", "runnerlongneedle"), ("ja", "検証専用識別子"),
 ])
 def test_real_native_distractor_long_history_review_without_model(
-    env, api_process, tmp_path, language, query,
+    env, api_process, tmp_path, language, query, query_policy,
 ):
     case = extended_history_case(language)
     real_native_roundtrip(
-        env, api_process, tmp_path, case, query, "FIXTURE32", "bounded-lexical-v3",
+        env, api_process, tmp_path, case, query, "FIXTURE32", query_policy,
         retained_event_id=case.events[16].event_id,
         keep_event_ids=case.expected_keep_ids, retention_policy="review-v1",
     )

@@ -1,9 +1,11 @@
+import asyncio
 import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 
+from pg_agmemory import bounded_recall
 from pg_agmemory.bounded_recall import (
     MAX_PLAN_BYTES,
     MAX_PROMPT_BYTES,
@@ -27,6 +29,11 @@ from pg_agmemory.service import build_context
 
 FROZEN = datetime(2100, 1, 1, tzinfo=UTC)
 RECORDED = datetime(2026, 9, 1, tzinfo=UTC)
+
+
+@pytest.fixture(params=["first-admitted-v1", "round-robin-v1"])
+def evidence_selection(request):
+    return request.param
 
 
 def base(**changes):
@@ -82,8 +89,8 @@ def response(items=(), *, budget=8000, **changes):
     })
 
 
-def started(items=None, **changes):
-    workflow = BoundedRecall(base(**changes))
+def started(items=None, *, evidence_selection="first-admitted-v1", **changes):
+    workflow = BoundedRecall(base(**changes), evidence_selection=evidence_selection)
     request = workflow.requests(plan("Beacon"))[0]
     found = [item()] if items is None else items
     workflow.record(request, response(found, budget=request.token_budget))
@@ -91,6 +98,8 @@ def started(items=None, **changes):
 
 
 def assert_poisoned(workflow):
+    assert workflow._candidate_lists == []
+    assert workflow._items == [] and workflow._seen == {}
     for action in (
         lambda: workflow.planning_items,
         lambda: workflow.requests(plan("different")),
@@ -161,14 +170,14 @@ def test_plans_reject_normalized_duplicates_and_operator_syntax(queries):
         plan(*queries)
 
 
-def test_mutable_plan_cannot_create_browse_or_exceed_budgets():
+def test_mutable_plan_cannot_create_browse_or_exceed_budgets(evidence_selection):
     for mutate in (
         lambda value: value.queries[0].terms.clear(),
         lambda value: value.queries[0].terms.append("bad term"),
         lambda value: value.queries.extend(plan("other", "third").queries),
         lambda value: value.queries.append(LexicalQueryPlan(terms=["BEACON"])),
     ):
-        workflow = BoundedRecall(base())
+        workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
         value = plan("Beacon")
         mutate(value)
         with pytest.raises(BoundedRecallError, match="^invalid_search_plan$"):
@@ -191,20 +200,22 @@ def test_mutable_plan_cannot_create_browse_or_exceed_budgets():
     {"retrieval_mode": "hybrid"},
     {"vector_query": object()},
 ])
-def test_base_contract_is_revalidated_and_requires_pins_and_bounded_lexical(change):
+def test_base_contract_is_revalidated_and_requires_pins_and_bounded_lexical(
+    change, evidence_selection,
+):
     request = base().model_copy(update=change)
     with pytest.raises(BoundedRecallError, match="^invalid_bounded_recall$"):
-        BoundedRecall(request)
+        BoundedRecall(request, evidence_selection=evidence_selection)
 
 
-def test_base_and_issued_requests_are_independent_and_retain_all_controls():
+def test_base_and_issued_requests_are_independent_and_retain_all_controls(evidence_selection):
     original = base(
         filters=RecallFilters(kind="assertion", subject="Beacon", predicate="route"),
         mode="implicit", token_budget=2000, max_items=3,
         search_profile="ja-janome-0.5.0-v1",
     )
     snapshot = original.model_copy(deep=True)
-    workflow = BoundedRecall(original)
+    workflow = BoundedRecall(original, evidence_selection=evidence_selection)
     original.scope_ids.append(uuid4())
     original.filters.subject = "changed"
     first, second = workflow.requests(plan("Beacon route", "Beacon"))
@@ -218,8 +229,8 @@ def test_base_and_issued_requests_are_independent_and_retain_all_controls():
     assert_poisoned(workflow)
 
 
-def test_two_round_four_search_budget_and_separate_one_final_request():
-    workflow = BoundedRecall(base())
+def test_two_round_four_search_budget_and_separate_one_final_request(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     first, second = workflow.requests(plan("Beacon route", "Beacon"))
     assert workflow.queries == ("Beacon route", "Beacon")
     with pytest.raises(BoundedRecallError, match="^search_batch_incomplete$"):
@@ -241,15 +252,18 @@ def test_two_round_four_search_budget_and_separate_one_final_request():
         workflow.requests(plan("harbor"))
     final = workflow.final_request()
     assert final.query == "" and final.max_items == 2
+    selected = (
+        [route, endpoint] if evidence_selection == "first-admitted-v1" else [endpoint, route]
+    )
     assert [ref.memory_id for ref in final.required_memory_refs] == [
-        route.memory_id, endpoint.memory_id,
+        fact.memory_id for fact in selected
     ]
     with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
         workflow.final_request()
-    fresh = response([route, endpoint])
+    fresh = response(selected)
     result = workflow.finish(fresh)
-    assert result.items == (route, endpoint)
-    assert result.items[0] is not fresh.items[0] and result.items[0] is not route
+    assert result.items == tuple(selected)
+    assert result.items[0] is not fresh.items[0] and result.items[0] is not selected[0]
     assert result.context_pack == fresh.context_pack
     assert result.consistency == fresh.consistency
     assert result.revalidated and result.search_requests == 4
@@ -257,8 +271,8 @@ def test_two_round_four_search_budget_and_separate_one_final_request():
     assert_poisoned(workflow)
 
 
-def test_followup_stop_and_no_duplicate_query_even_reordered_casefolded():
-    workflow = BoundedRecall(base())
+def test_followup_stop_and_no_duplicate_query_even_reordered_casefolded(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     with pytest.raises(BoundedRecallError):
         workflow.requests(SearchPlan(queries=[]))
     request = workflow.requests(plan("Beacon route"))[0]
@@ -277,14 +291,14 @@ def test_followup_stop_and_no_duplicate_query_even_reordered_casefolded():
     assert_poisoned(workflow)
 
 
-def test_empty_workflow_cannot_finalize_before_search_or_invent_a_final_result():
-    workflow = BoundedRecall(base())
+def test_empty_workflow_cannot_finalize_before_search_or_invent_a_final_result(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
         workflow.final_request()
     with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
         workflow.finish(None)
     assert_poisoned(workflow)
-    workflow = BoundedRecall(base())
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     request = workflow.requests(plan("Beacon"))[0]
     workflow.record(request, response())
     assert workflow.final_request() is None
@@ -307,22 +321,23 @@ def test_empty_workflow_cannot_finalize_before_search_or_invent_a_final_result()
     {"search_profile": "ja-janome-0.5.0-v1"},
     {"required_memory_refs": [MemoryReference(memory_id=uuid4())]},
 ])
-def test_request_tampering_poisoned_without_retaining_evidence(change):
-    workflow = BoundedRecall(base())
-    issued = workflow.requests(plan("Beacon"))[0]
+def test_request_tampering_poisoned_without_retaining_evidence(change, evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
+    first, issued = workflow.requests(plan("route", "Beacon"))
+    workflow.record(first, response([item()]))
     bad = issued.model_copy(update=change)
     with pytest.raises(BoundedRecallError, match="^recall_request_mismatch$"):
         workflow.record(bad, response([item()]))
     assert_poisoned(workflow)
 
 
-def test_fifo_duplicate_record_and_nonissued_requests_fail_closed():
-    workflow = BoundedRecall(base())
+def test_fifo_duplicate_record_and_nonissued_requests_fail_closed(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     first, second = workflow.requests(plan("Beacon", "route"))
     with pytest.raises(BoundedRecallError, match="^recall_request_mismatch$"):
         workflow.record(second, response())
     assert_poisoned(workflow)
-    workflow = BoundedRecall(base())
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, response())
     with pytest.raises(BoundedRecallError, match="^unexpected_recall_response$"):
@@ -330,8 +345,8 @@ def test_fifo_duplicate_record_and_nonissued_requests_fail_closed():
     assert_poisoned(workflow)
 
 
-def test_missing_search_response_aborts_without_retry_or_cached_fallback():
-    workflow = BoundedRecall(base())
+def test_missing_search_response_aborts_without_retry_or_cached_fallback(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     first, _ = workflow.requests(plan("Beacon", "route"))
     workflow.record(first, response([item()]))
     with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
@@ -371,9 +386,11 @@ def test_first_seen_merge_and_defensive_copies():
     {"confidence": {"score": "0.9", "method": "changed"}},
     {"valid_to": datetime(2101, 1, 1, tzinfo=UTC)},
 ])
-def test_same_id_revision_or_content_conflicts_abort_even_after_budget_drop(change):
+def test_same_id_revision_or_content_conflicts_abort_even_after_budget_drop(
+    change, evidence_selection,
+):
     fact = item(type="assertion")
-    workflow = started([fact])
+    workflow = started([fact], evidence_selection=evidence_selection)
     request = workflow.requests(plan("route"))[0]
     changed = fact.model_copy(update=change)
     with pytest.raises(BoundedRecallError, match="^recall_item_changed$"):
@@ -381,8 +398,8 @@ def test_same_id_revision_or_content_conflicts_abort_even_after_budget_drop(chan
     assert_poisoned(workflow)
 
 
-def test_duplicate_items_within_one_response_are_not_silently_deduplicated():
-    workflow = BoundedRecall(base())
+def test_duplicate_items_within_one_response_are_not_silently_deduplicated(evidence_selection):
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     request = workflow.requests(plan("Beacon"))[0]
     fact = item()
     with pytest.raises(BoundedRecallError, match="^duplicate_recall_item$"):
@@ -392,9 +409,9 @@ def test_duplicate_items_within_one_response_are_not_silently_deduplicated():
 
 @pytest.mark.parametrize("field", ["access_epoch", "deletion_epoch"])
 @pytest.mark.parametrize("stage", ["search", "final"])
-def test_epoch_change_poisoned_across_every_response(field, stage):
+def test_epoch_change_poisoned_across_every_response(field, stage, evidence_selection):
     fact = item()
-    workflow = started([fact])
+    workflow = started([fact], evidence_selection=evidence_selection)
     changed = response([fact])
     setattr(changed.consistency, field, 2)
     if stage == "final":
@@ -415,9 +432,12 @@ def test_epoch_change_poisoned_across_every_response(field, stage):
     "invalid_revision", "missing_refresh", "naive_time", "future_record",
     "future_occurrence", "too_many_items", "huge_metadata", "wrong_type",
 ])
-def test_malformed_or_oversized_responses_poison_workflow(damage):
-    workflow = BoundedRecall(base(filters=RecallFilters(kind="episode")))
-    request = workflow.requests(plan("Beacon"))[0]
+def test_malformed_or_oversized_responses_poison_workflow(damage, evidence_selection):
+    workflow = BoundedRecall(
+        base(filters=RecallFilters(kind="episode")), evidence_selection=evidence_selection,
+    )
+    first, request = workflow.requests(plan("route", "Beacon"))
+    workflow.record(first, response([item("previous valid evidence")]))
     result = response([item()])
     if damage == "wrong_profile":
         result.search_profile = "ja-janome-0.5.0-v1"
@@ -468,10 +488,13 @@ def test_malformed_or_oversized_responses_poison_workflow(damage):
     assert_poisoned(workflow)
 
 
-def test_exclusions_are_applied_before_planning_merge_not_a_server_purge():
+def test_exclusions_are_applied_before_planning_merge_not_a_server_purge(evidence_selection):
     excluded, retained = item("CLIENT_WITHHELD"), item("visible")
     request_base = base(max_items=1)
-    workflow = BoundedRecall(request_base, excluded_memory_ids=[excluded.memory_id])
+    workflow = BoundedRecall(
+        request_base, excluded_memory_ids=[excluded.memory_id],
+        evidence_selection=evidence_selection,
+    )
     first, second = workflow.requests(plan("CLIENT_WITHHELD", "visible"))
     assert first.scope_ids == request_base.scope_ids and first.filters is None
     workflow.record(first, response([excluded]))
@@ -493,20 +516,25 @@ def test_exclusions_are_applied_before_planning_merge_not_a_server_purge():
         BoundedRecall(request_base, excluded_memory_ids=[str(excluded.memory_id)])
 
 
-def test_all_excluded_is_explicit_empty_without_any_final_http():
+def test_all_excluded_is_explicit_empty_without_any_final_http(evidence_selection):
     withheld = item()
-    workflow = BoundedRecall(base(), excluded_memory_ids=[withheld.memory_id])
+    workflow = BoundedRecall(
+        base(), excluded_memory_ids=[withheld.memory_id], evidence_selection=evidence_selection,
+    )
     request = workflow.requests(plan("Beacon"))[0]
     workflow.record(request, response([withheld]))
     assert workflow.planning_items == ()
     assert workflow.final_request() is None
     done = workflow.finish(None)
     assert done.items == () and not done.revalidated and done.search_requests == 1
+    assert_poisoned(workflow)
 
 
-def test_excluded_responses_still_require_unchanged_epochs():
+def test_excluded_responses_still_require_unchanged_epochs(evidence_selection):
     excluded = item()
-    workflow = BoundedRecall(base(), excluded_memory_ids=[excluded.memory_id])
+    workflow = BoundedRecall(
+        base(), excluded_memory_ids=[excluded.memory_id], evidence_selection=evidence_selection,
+    )
     first, second = workflow.requests(plan("Beacon", "route"))
     workflow.record(first, response([excluded]))
     with pytest.raises(BoundedRecallError, match="^recall_epoch_changed$"):
@@ -547,9 +575,9 @@ def test_merge_byte_budget_keeps_whole_items_and_can_skip_a_large_middle_item():
     assert large.content not in completed.context_pack.text
 
 
-def test_a_dropped_item_still_cannot_change_in_later_responses():
+def test_a_dropped_item_still_cannot_change_in_later_responses(evidence_selection):
     first, dropped = item("first"), item("dropped")
-    workflow = BoundedRecall(base(max_items=1))
+    workflow = BoundedRecall(base(max_items=1), evidence_selection=evidence_selection)
     one, two = workflow.requests(plan("first", "dropped"))
     workflow.record(one, response([first]))
     workflow.record(two, response([dropped]))
@@ -559,9 +587,9 @@ def test_a_dropped_item_still_cannot_change_in_later_responses():
     assert_poisoned(workflow)
 
 
-def test_native_truncation_is_never_hidden():
+def test_native_truncation_is_never_hidden(evidence_selection):
     found = item()
-    workflow = BoundedRecall(base())
+    workflow = BoundedRecall(base(), evidence_selection=evidence_selection)
     request = workflow.requests(plan("Beacon"))[0]
     value = response([found])
     value.coverage.truncated = True
@@ -574,9 +602,9 @@ def test_native_truncation_is_never_hidden():
     "missing", "empty", "reordered", "content", "revision", "unrequested", "pack",
     "oversized", "mutated_request",
 ])
-def test_final_validation_never_uses_cached_partial_or_changed_content(damage):
+def test_final_validation_never_uses_cached_partial_or_changed_content(damage, evidence_selection):
     first, second = item(type="assertion"), item("Vela endpoint", type="assertion")
-    workflow = started([first, second])
+    workflow = started([first, second], evidence_selection=evidence_selection)
     final = workflow.final_request()
     fresh = response([first, second])
     if damage == "missing":
@@ -602,11 +630,11 @@ def test_final_validation_never_uses_cached_partial_or_changed_content(damage):
     assert_poisoned(workflow)
 
 
-def test_final_request_retains_filters_scope_and_both_temporal_pins():
+def test_final_request_retains_filters_scope_and_both_temporal_pins(evidence_selection):
     request_base = base(
         filters=RecallFilters(kind="assertion", subject="Beacon", predicate="route"),
     )
-    workflow = BoundedRecall(request_base)
+    workflow = BoundedRecall(request_base, evidence_selection=evidence_selection)
     first = workflow.requests(plan("Beacon"))[0]
     found = item(type="assertion")
     workflow.record(first, response([found]))
@@ -619,6 +647,273 @@ def test_final_request_retains_filters_scope_and_both_temporal_pins():
     with pytest.raises(BoundedRecallError, match="^search_budget_exhausted$"):
         workflow.requests(plan("route"))
     assert workflow.finish(response([found])).items == (found,)
+
+
+@pytest.mark.parametrize("policy", ["", "unknown", None, True, 1, [], {}, object()])
+def test_evidence_selection_rejects_unknown_and_nonstring_policies(policy):
+    with pytest.raises(BoundedRecallError, match="^invalid_evidence_selection$"):
+        BoundedRecall(base(), evidence_selection=policy)
+
+
+def test_default_and_explicit_first_admitted_remain_exactly_identical():
+    original = [item(f"initial {index}") for index in range(8)]
+    other = [item(f"other {index}") for index in range(8)]
+    later = [item(f"later {index}") for index in range(8)]
+    request_base = base()
+    completed = []
+    for options in ({}, {"evidence_selection": "first-admitted-v1"}):
+        workflow = BoundedRecall(
+            request_base, excluded_memory_ids=[original[0].memory_id], **options,
+        )
+        first, second = workflow.requests(plan("initial", "other"))
+        workflow.record(first, response(original))
+        workflow.record(second, response(other))
+        third, fourth = workflow.requests(plan("later", "repeated"))
+        workflow.record(third, response(later))
+        workflow.record(fourth, response([*original[4:], *later[:4]]))
+        selected = [*original[1:], other[0]]
+        assert workflow.planning_items == tuple(selected)
+        assert workflow._candidate_lists == []
+        final = workflow.final_request()
+        assert [ref.memory_id for ref in final.required_memory_refs] == [
+            fact.memory_id for fact in selected
+        ]
+        completed.append(workflow.finish(response(selected)))
+        assert_poisoned(workflow)
+    assert completed[0] == completed[1] and completed[0].truncated
+
+
+@pytest.mark.parametrize("max_items", [1, 2, 4, 8])
+def test_round_robin_replaces_saturated_initial_selection_and_preserves_route(max_items):
+    route = item("Observed route points to a separate endpoint")
+    initial = [route, *(item(f"initial {index}") for index in range(max_items - 1))]
+    endpoint = item("Observed endpoint detail")
+    workflow = started(initial, evidence_selection="round-robin-v1", max_items=max_items)
+    assert workflow.planning_items == tuple(initial)
+    followup = workflow.requests(plan("endpoint"))[0]
+    workflow.record(followup, response([endpoint]))
+    selected = [endpoint, *initial[:max_items - 1]]
+    assert workflow.planning_items == tuple(selected)
+    assert len(workflow._candidate_lists) == 2
+    final = workflow.final_request()
+    assert final.query == "" and final.max_items == len(selected) == max_items
+    assert [ref.memory_id for ref in final.required_memory_refs] == [
+        fact.memory_id for fact in selected
+    ]
+    complete = workflow.finish(response(selected))
+    assert complete.items == tuple(selected) and complete.truncated and complete.revalidated
+    assert complete.search_requests == 2
+    assert_poisoned(workflow)
+
+
+@pytest.mark.parametrize("reverse_ids", [False, True])
+def test_round_robin_four_lists_interleave_query_rank_not_uuid_and_bound_pool(reverse_ids):
+    groups = [
+        [
+            item(
+                f"list {group} rank {rank}",
+                memory_id=UUID(
+                    int=(32 - (group * 8 + rank) if reverse_ids else group * 8 + rank + 1),
+                ),
+            )
+            for rank in range(8)
+        ]
+        for group in range(4)
+    ]
+    workflow = BoundedRecall(base(), evidence_selection="round-robin-v1")
+    one, two = workflow.requests(plan("first", "second"))
+    workflow.record(one, response(groups[0]))
+    workflow.record(two, response(groups[1]))
+    assert workflow.planning_items == tuple(
+        groups[group][rank] for rank in range(4) for group in (0, 1)
+    )
+    three, four = workflow.requests(plan("third", "fourth"))
+    workflow.record(three, response(groups[2]))
+    assert workflow._items == [
+        groups[2][0], groups[0][0], groups[1][0], groups[2][1],
+        groups[0][1], groups[1][1], groups[2][2], groups[0][2],
+    ]
+    workflow.record(four, response(groups[3]))
+    selected = [groups[group][rank] for rank in range(2) for group in (2, 3, 0, 1)]
+    assert workflow.planning_items == tuple(selected)
+    assert [(group.round_number, group.query_order) for group in workflow._candidate_lists] == [
+        (1, 0), (1, 1), (2, 2), (2, 3),
+    ]
+    assert len(workflow._candidate_lists) == 4
+    assert sum(len(group.items) for group in workflow._candidate_lists) == 32
+    assert len(workflow._seen) == 32
+    with pytest.raises(BoundedRecallError, match="^search_budget_exhausted$"):
+        workflow.requests(plan("fifth"))
+    workflow.final_request()
+    assert workflow.finish(response(selected)).items == tuple(selected)
+    assert_poisoned(workflow)
+
+
+def test_round_robin_duplicate_hits_and_exclusions_do_not_consume_list_turns():
+    withheld, shared, first, second, third, fourth = [item(str(index)) for index in range(6)]
+    workflow = BoundedRecall(
+        base(max_items=5), excluded_memory_ids=[withheld.memory_id],
+        evidence_selection="round-robin-v1",
+    )
+    one, two = workflow.requests(plan("initial", "anchor"))
+    workflow.record(one, response([withheld, shared, first]))
+    workflow.record(two, response([withheld, shared, second]))
+    assert workflow.planning_items == (shared, second, first)
+    three, four = workflow.requests(plan("followup", "alternative"))
+    workflow.record(three, response([withheld, shared, third]))
+    workflow.record(four, response([withheld, shared, fourth]))
+    selected = [shared, fourth, first, second, third]
+    assert workflow.planning_items == tuple(selected)
+    assert all(
+        fact.memory_id != withheld.memory_id
+        for group in workflow._candidate_lists for fact in group.items
+    )
+    assert sum(len(group.items) for group in workflow._candidate_lists) == 8
+    workflow.final_request()
+    complete = workflow.finish(response(selected))
+    assert complete.items == tuple(selected) and not complete.truncated
+    assert_poisoned(workflow)
+
+
+@pytest.mark.parametrize("return_omitted", [False, True])
+def test_round_robin_retains_omitted_candidates_and_repeated_hits_in_their_new_list(return_omitted):
+    first, omitted, second, other = [item(str(index)) for index in range(4)]
+    workflow = BoundedRecall(base(max_items=2), evidence_selection="round-robin-v1")
+    one, two = workflow.requests(plan("initial", "anchor"))
+    workflow.record(one, response([first, omitted]))
+    workflow.record(two, response([second, other]))
+    assert workflow.planning_items == (first, second)
+    three = workflow.requests(plan("followup"))[0]
+    repeated = omitted if return_omitted else first
+    workflow.record(three, response([repeated]))
+    selected = [omitted, first] if return_omitted else [first, omitted]
+    assert workflow.planning_items == tuple(selected)
+    assert workflow._candidate_lists[-1].items == (repeated,)
+    workflow.final_request()
+    assert workflow.finish(response(selected)).items == tuple(selected)
+
+
+@pytest.mark.parametrize("followup_count", [0, 1, 2])
+def test_round_robin_empty_or_zero_hit_followup_preserves_initial_selection(followup_count):
+    groups = [[item(f"{group} {rank}") for rank in range(3)] for group in range(2)]
+    workflow = BoundedRecall(base(max_items=4), evidence_selection="round-robin-v1")
+    one, two = workflow.requests(plan("first", "second"))
+    workflow.record(one, response(groups[0]))
+    workflow.record(two, response(groups[1]))
+    initial = workflow.planning_items
+    followup = plan(*["followup", "alternative"][:followup_count])
+    for request in workflow.requests(followup):
+        workflow.record(request, response())
+    assert workflow.planning_items == initial
+    workflow.final_request()
+    complete = workflow.finish(response(initial))
+    assert complete.items == initial and complete.search_requests == 2 + followup_count
+    assert_poisoned(workflow)
+
+
+def test_round_robin_tight_byte_budget_skips_whole_large_item_for_later_small_item():
+    large, tail, endpoint = item("日" * 80), item("小項目"), item("Observed endpoint " * 8)
+    budget = build_context([large, tail], 8000, required_count=2)[0]["byte_count"]
+    workflow = started(
+        [large, tail], evidence_selection="round-robin-v1", token_budget=budget,
+    )
+    request = workflow.requests(plan("endpoint"))[0]
+    workflow.record(request, response([endpoint], budget=budget))
+    assert workflow.planning_items == (endpoint, tail)
+    final = workflow.final_request()
+    assert final.token_budget == budget and final.max_items == 2
+    complete = workflow.finish(response([endpoint, tail], budget=budget))
+    assert complete.context_pack.byte_count <= budget and complete.truncated
+    assert endpoint.content in complete.context_pack.text
+    assert tail.content in complete.context_pack.text
+    assert large.content not in complete.context_pack.text
+    assert_poisoned(workflow)
+
+
+def test_round_robin_previously_byte_omitted_hit_can_replace_initial_admission():
+    first, omitted = item("a" * 300), item("b" * 300)
+    budget = build_context([first], 8000, required_count=1)[0]["byte_count"]
+    workflow = BoundedRecall(base(token_budget=budget), evidence_selection="round-robin-v1")
+    one, two = workflow.requests(plan("initial", "alternative"))
+    workflow.record(one, response([first], budget=budget))
+    workflow.record(two, response([omitted], budget=budget))
+    assert workflow.planning_items == (first,)
+    three = workflow.requests(plan("followup"))[0]
+    workflow.record(three, response([omitted], budget=budget))
+    assert workflow.planning_items == (omitted,)
+    workflow.final_request()
+    complete = workflow.finish(response([omitted], budget=budget))
+    assert complete.items == (omitted,) and complete.context_pack.byte_count == budget
+    assert complete.truncated
+
+
+def test_round_robin_retained_pool_and_completed_results_are_defensive_copies():
+    first, second, endpoint = item("first"), item("second"), item("endpoint")
+    workflow = BoundedRecall(base(), evidence_selection="round-robin-v1")
+    request = workflow.requests(plan("initial"))[0]
+    found = response([first, second])
+    workflow.record(request, found)
+    found.items[0].content = "mutated original response"
+    found.items[1].source.append(uuid4())
+    planning = workflow.planning_items
+    planning[0].content = "mutated planning copy"
+    planning[1].source.append(uuid4())
+    followup = workflow.requests(plan("endpoint"))[0]
+    workflow.record(followup, response([endpoint]))
+    selected = [endpoint, first, second]
+    assert workflow.planning_items == tuple(selected)
+    workflow.final_request()
+    fresh = response(selected)
+    complete = workflow.finish(fresh)
+    fresh.items[0].content = "mutated final response"
+    fresh.context_pack.text = "mutated final context"
+    assert complete.items == tuple(selected)
+    assert "mutated" not in complete.context_pack.text
+    assert_poisoned(workflow)
+
+
+def test_selection_cancellation_propagates_until_caller_closes_and_clears_pool(
+    monkeypatch, evidence_selection,
+):
+    first, second = item("first"), item("second")
+    workflow = started([first], evidence_selection=evidence_selection)
+    followup = workflow.requests(plan("followup"))[0]
+    value = response([second])
+    original = bounded_recall.build_context
+
+    def cancelled(items, budget, *, required_count=0):
+        if required_count == 0:
+            raise asyncio.CancelledError
+        return original(items, budget, required_count=required_count)
+
+    monkeypatch.setattr(bounded_recall, "build_context", cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        workflow.record(followup, value)
+    assert not workflow._closed
+    with pytest.raises(BoundedRecallError, match="^invalid_final_recall_state$"):
+        workflow.finish(None)
+    assert_poisoned(workflow)
+
+
+def test_round_robin_interrupted_admission_cannot_accumulate_duplicate_request_lists(monkeypatch):
+    workflow = started(evidence_selection="round-robin-v1")
+    request = workflow.requests(plan("followup"))[0]
+    value = response([item("second")])
+    original = bounded_recall.build_context
+
+    def cancelled(items, budget, *, required_count=0):
+        if required_count == 0:
+            raise asyncio.CancelledError
+        return original(items, budget, required_count=required_count)
+
+    with monkeypatch.context() as context:
+        context.setattr(bounded_recall, "build_context", cancelled)
+        with pytest.raises(asyncio.CancelledError):
+            workflow.record(request, value)
+    assert len(workflow._candidate_lists) == 2
+    with pytest.raises(BoundedRecallError, match="^unexpected_recall_response$"):
+        workflow.record(request, value)
+    assert_poisoned(workflow)
 
 
 def test_prompt_uses_only_question_actual_evidence_and_query_history():
@@ -696,12 +991,15 @@ def live_base(env, **changes):
 
 
 @pytest.mark.integration
-def test_native_scope_anchor_followup_and_joint_required_revalidation(env):
+def test_native_scope_anchor_followup_and_joint_required_revalidation(env, evidence_selection):
     route = env.observe("Beacon uses the Vela route").json()["memory_id"]
     endpoint = env.observe("Vela endpoint is harbor-seven").json()["memory_id"]
     private = env.observe("Beacon Vela PRIVATE route", index=2).json()["memory_id"]
     foreign = env.observe("Beacon Vela OTHER_TENANT route", index=1).json()["memory_id"]
-    workflow = BoundedRecall(live_base(env, filters=RecallFilters(kind="episode")))
+    workflow = BoundedRecall(
+        live_base(env, filters=RecallFilters(kind="episode")),
+        evidence_selection=evidence_selection,
+    )
     first, anchor = workflow.requests(plan("Beacon endpoint", "Beacon"))
     empty = native(env, first)
     assert empty.items == []
@@ -718,7 +1016,8 @@ def test_native_scope_anchor_followup_and_joint_required_revalidation(env):
     workflow.record(followup, native(env, followup))
     final = workflow.final_request()
     assert final.query == "" and len(final.required_memory_refs) == final.max_items == 2
-    assert [str(ref.memory_id) for ref in final.required_memory_refs] == [route, endpoint]
+    expected = [route, endpoint] if evidence_selection == "first-admitted-v1" else [endpoint, route]
+    assert [str(ref.memory_id) for ref in final.required_memory_refs] == expected
     final_native = native(env, final)
     complete = workflow.finish(final_native)
     assert complete.context_pack == final_native.context_pack
@@ -729,9 +1028,11 @@ def test_native_scope_anchor_followup_and_joint_required_revalidation(env):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("transition", ["acl", "purge"])
-def test_native_acl_or_purge_between_rounds_invalidates_planning_evidence(env, transition):
+def test_native_acl_or_purge_between_rounds_invalidates_planning_evidence(
+    env, transition, evidence_selection,
+):
     identity = env.observe("Beacon route Vela").json()["memory_id"]
-    workflow = BoundedRecall(live_base(env))
+    workflow = BoundedRecall(live_base(env), evidence_selection=evidence_selection)
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))
     assert workflow.planning_items
@@ -757,9 +1058,11 @@ def test_native_acl_or_purge_between_rounds_invalidates_planning_evidence(env, t
 
 @pytest.mark.integration
 @pytest.mark.parametrize("transition", ["acl", "purge"])
-def test_native_final_required_ref_unavailable_has_no_cached_fallback(env, transition):
+def test_native_final_required_ref_unavailable_has_no_cached_fallback(
+    env, transition, evidence_selection,
+):
     identity = env.observe("Beacon route Vela").json()["memory_id"]
-    workflow = BoundedRecall(live_base(env))
+    workflow = BoundedRecall(live_base(env), evidence_selection=evidence_selection)
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))
     final = workflow.final_request()
@@ -785,7 +1088,9 @@ def test_native_final_required_ref_unavailable_has_no_cached_fallback(env, trans
 
 
 @pytest.mark.integration
-def test_native_frozen_temporal_revision_remains_consistent_after_correction(env):
+def test_native_frozen_temporal_revision_remains_consistent_after_correction(
+    env, evidence_selection,
+):
     source = env.observe("Gold Silver").json()["memory_id"]
     identity = env.remember(
         source, subject="Beacon", predicate="tier", value="Gold",
@@ -795,10 +1100,13 @@ def test_native_frozen_temporal_revision_remains_consistent_after_correction(env
         "/v1/explain", json={"memory_id": identity}, headers=env.headers(),
     ).json()
     known_at = datetime.fromisoformat(explanation["assertion"]["recorded_at"])
-    workflow = BoundedRecall(live_base(
-        env, known_at=known_at, as_of=FROZEN,
-        filters=RecallFilters(kind="assertion", subject="Beacon", predicate="tier"),
-    ))
+    workflow = BoundedRecall(
+        live_base(
+            env, known_at=known_at, as_of=FROZEN,
+            filters=RecallFilters(kind="assertion", subject="Beacon", predicate="tier"),
+        ),
+        evidence_selection=evidence_selection,
+    )
     request = workflow.requests(plan("Beacon"))[0]
     initial = native(env, request)
     assert len(initial.items) == 1 and initial.items[0].revision == 1
@@ -826,9 +1134,11 @@ def test_native_frozen_temporal_revision_remains_consistent_after_correction(env
 
 
 @pytest.mark.integration
-def test_native_wrong_scope_does_not_find_evidence_or_emit_final_browse(env):
+def test_native_wrong_scope_does_not_find_evidence_or_emit_final_browse(env, evidence_selection):
     env.observe("Beacon PRIVATE Vela", index=2)
-    workflow = BoundedRecall(live_base(env, scope_ids=[env.scopes[2]]))
+    workflow = BoundedRecall(
+        live_base(env, scope_ids=[env.scopes[2]]), evidence_selection=evidence_selection,
+    )
     first = workflow.requests(plan("Beacon"))[0]
     workflow.record(first, native(env, first))
     assert workflow.planning_items == ()
@@ -837,3 +1147,40 @@ def test_native_wrong_scope_does_not_find_evidence_or_emit_final_browse(env):
     assert workflow.final_request() is None
     result = workflow.finish(None)
     assert result.items == () and result.context_pack.text == "" and not result.revalidated
+    assert_poisoned(workflow)
+
+
+@pytest.mark.integration
+def test_native_round_robin_revalidates_reselected_saturated_evidence_without_private_rows(env):
+    for index in range(7):
+        env.observe(f"Beacon background event {index}")
+    route = env.observe("Beacon uses the Vela route").json()["memory_id"]
+    endpoint = env.observe("Vela endpoint is harbor-seven").json()["memory_id"]
+    private = env.observe("Beacon Vela PRIVATE endpoint", index=2).json()["memory_id"]
+    workflow = BoundedRecall(
+        live_base(env, filters=RecallFilters(kind="episode")), evidence_selection="round-robin-v1",
+    )
+    first = workflow.requests(plan("Beacon"))[0]
+    initial = native(env, first)
+    assert len(initial.items) == 8 and str(initial.items[0].memory_id) == route
+    workflow.record(first, initial)
+    followup = workflow.requests(plan("Vela endpoint"))[0]
+    found = native(env, followup)
+    assert [str(fact.memory_id) for fact in found.items] == [endpoint]
+    workflow.record(followup, found)
+    selected = [found.items[0], *initial.items[:7]]
+    assert workflow.planning_items == tuple(selected)
+    final = workflow.final_request()
+    assert final.max_items == 8 and final.query == ""
+    assert [ref.memory_id for ref in final.required_memory_refs] == [
+        fact.memory_id for fact in selected
+    ]
+    assert final.scope_ids == first.scope_ids and final.filters == first.filters
+    assert final.as_of == first.as_of and final.known_at == first.known_at
+    fresh = native(env, final)
+    complete = workflow.finish(fresh)
+    assert complete.items == tuple(fresh.items) == tuple(selected)
+    assert complete.context_pack == fresh.context_pack and complete.revalidated
+    assert complete.truncated and complete.search_requests == 2
+    assert private not in complete.context_pack.text and "PRIVATE" not in complete.context_pack.text
+    assert_poisoned(workflow)

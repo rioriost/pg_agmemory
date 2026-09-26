@@ -733,6 +733,9 @@ and [the separately versioned comparison](docs/EVALUATION.md#lexical-v2-query-pl
 
 For explicit follow-up, `pg_agmemory.bounded_recall` permits two planning rounds
 and four scoped searches, followed by fresh required-reference validation.
+Selecting `evidence_selection="round-robin-v1"` reconsiders the bounded evidence
+set across query results, rather than permanently keeping the first eight items.
+The default remains `first-admitted-v1`; neither policy changes Native ranking.
 `pg_agmemory.retention_review` keeps model forget suggestions pending rather
 than authorizing deletion. These are caller-owned opt-in workflows; they do not
 change server-wide authorization or make pending rows globally unreadable.

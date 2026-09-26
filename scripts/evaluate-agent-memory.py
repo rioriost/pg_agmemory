@@ -27,9 +27,11 @@ planning contract before model dispatch. Explicit legacy-v1 preserves the origin
 query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 and
 distractor-synthetic-v1 explicitly select separately authored synthetic datasets,
 not blinded or externally held-out real-world data.
-bounded-lexical-v3 explicitly budgets two planning calls and at most five retrieval
+bounded-lexical-v3/v4 explicitly budget two planning calls and at most five retrieval
 reads per case (four searches plus required-reference revalidation). review-v1
 withholds forget proposals only in this workflow, without authorizing physical purge.
+v4 selects round-robin evidence across Native ranked results, with follow-up rounds first;
+v3 retains first-admitted evidence. Both use the same planner prompt and resource ceilings.
 """
 
 from __future__ import annotations
@@ -79,8 +81,9 @@ RESPONSE_TIMEOUT = 180.0
 JWT_BACKDATE_SECONDS = 30
 RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
-QueryPolicy = Literal["legacy-v1", "lexical-v2", "bounded-lexical-v3"]
-QUERY_POLICIES = ("legacy-v1", "lexical-v2", "bounded-lexical-v3")
+QueryPolicy = Literal["legacy-v1", "lexical-v2", "bounded-lexical-v3", "bounded-lexical-v4"]
+BOUNDED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4")
+QUERY_POLICIES = ("legacy-v1", "lexical-v2", *BOUNDED_QUERY_POLICIES)
 RetentionPolicy = Literal["model-purge-v1", "review-v1"]
 RETENTION_POLICIES = ("model-purge-v1", "review-v1")
 Cohort = Literal["pilot-v1", "unseen-synthetic-v1", "distractor-synthetic-v1"]
@@ -566,7 +569,7 @@ async def verify_query_contract(
             and json_bytes(received) == json_bytes(expected),
             "lexical_query_contract_mismatch",
         )
-        if query_policy == "bounded-lexical-v3":
+        if query_policy in BOUNDED_QUERY_POLICIES:
             required = capabilities.get("required_context")
             journal.emit(
                 "required_context_contract_received", case_id=case_id,
@@ -621,7 +624,7 @@ def lexical_profile(language: str) -> SearchProfile:
 
 def logical_call_limit(query_policy: QueryPolicy) -> int:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
-    return 120 if query_policy == "bounded-lexical-v3" else MAX_CALLS
+    return 120 if query_policy in BOUNDED_QUERY_POLICIES else MAX_CALLS
 
 
 def resolve_retention_policy(
@@ -629,7 +632,7 @@ def resolve_retention_policy(
 ) -> RetentionPolicy:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
     if retention_policy is None:
-        return "review-v1" if query_policy == "bounded-lexical-v3" else "model-purge-v1"
+        return "review-v1" if query_policy in BOUNDED_QUERY_POLICIES else "model-purge-v1"
     require(retention_policy in RETENTION_POLICIES, "invalid_retention_policy")
     return retention_policy
 
@@ -799,12 +802,23 @@ async def bounded_retrieval(
     case: recipe.AgentMemoryCase, identity: Provisioned, client: AsyncMemoryClient,
     bridge: FileBridge, journal: Journal, snapshot: datetime, excluded_ids: list[UUID],
     native: Callable[..., Awaitable[Any]], detail: dict[str, Any], memory_ids: Mapping[str, UUID],
+    *, query_policy: QueryPolicy,
 ) -> bounded_recall.BoundedRecallResult:
+    require(query_policy in BOUNDED_QUERY_POLICIES, "invalid_query_policy")
     base = recall_request(identity.scope_id, "", language=case.language).model_copy(update={
         "as_of": snapshot, "known_at": snapshot,
     })
-    workflow = bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
+    evidence_selection = (
+        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+    )
+    workflow = (
+        bounded_recall.BoundedRecall(
+            base, excluded_memory_ids=excluded_ids, evidence_selection="round-robin-v1",
+        ) if query_policy == "bounded-lexical-v4"
+        else bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
+    )
     progress: dict[str, Any] = {
+        "query_policy": query_policy, "evidence_selection": evidence_selection,
         "as_of": snapshot.isoformat(), "known_at": snapshot.isoformat(),
         "search_profile": base.search_profile, "search_calls": 0,
         "final_validation_calls": 0, "planning_calls": 0, "rounds": [],
@@ -828,13 +842,16 @@ async def bounded_retrieval(
         progress["rounds"].append(round_detail)
         journal.emit(
             "bounded_plan_received", case_id=case.case_id, **round_detail,
-            query_policy="bounded-lexical-v3",
+            query_policy=query_policy,
         )
         plan = bounded_recall.parse_search_plan(raw, allow_empty=round_number == 2)
         requests = workflow.requests(plan)
         round_detail["plan"] = plan.model_dump(mode="json")
         round_detail["compiled_queries"] = [request.query for request in requests]
-        journal.emit("bounded_plan_compiled", case_id=case.case_id, **round_detail)
+        journal.emit(
+            "bounded_plan_compiled", case_id=case.case_id, **round_detail,
+            query_policy=query_policy,
+        )
         for request in requests:
             progress["search_calls"] += 1
             require(progress["search_calls"] <= 4, "bounded_search_call_limit")
@@ -1061,12 +1078,12 @@ async def memory_arm(
                     else:
                         raise EvaluationFailure("purged_episode_still_visible")
                 detail["purged_objects_verified_absent"] = len(targets)
-            if query_policy == "bounded-lexical-v3":
+            if query_policy in BOUNDED_QUERY_POLICIES:
                 phase = "bounded_retrieval"
                 snapshot = datetime.now(UTC)
                 result = await bounded_retrieval(
                     case, identity, client, bridge, journal, snapshot, excluded_ids,
-                    native, detail, memory_ids,
+                    native, detail, memory_ids, query_policy=query_policy,
                 )
             else:
                 phase = "recall_decision"
@@ -1178,7 +1195,7 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
         "query_planning_contract": contract,
     }
     bounded_source_sha = None
-    if query_policy == "bounded-lexical-v3":
+    if query_policy in BOUNDED_QUERY_POLICIES:
         bounded_source_sha = hashlib.sha256(Path(bounded_recall.__file__).read_bytes()).hexdigest()
         components.update({
             "format": "pgag-agent-memory-bounded-query-recipe-v3",
@@ -1188,6 +1205,11 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
             "max_items": 8, "context_budget_bytes": 8000,
             "fixed_temporal_anchors": "after_observation_before_planning",
         })
+        if query_policy == "bounded-lexical-v4":
+            components.update({
+                "format": "pgag-agent-memory-bounded-query-recipe-v4",
+                "evidence_selection": "round-robin-v1",
+            })
     return {
         "query_policy": query_policy, "base_recipe_sha256": base_digest,
         "query_planning_sha256": module_digest, "query_planning_contract": contract,
@@ -1459,12 +1481,12 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "budget": {
             "llm_calls_maximum": logical_call_limit(args.query_policy), "call_retries": 0,
-            "planning_rounds_per_case": 2 if args.query_policy == "bounded-lexical-v3" else 1,
+            "planning_rounds_per_case": 2 if args.query_policy in BOUNDED_QUERY_POLICIES else 1,
             "retrieval_search_calls_per_case": (
-                4 if args.query_policy == "bounded-lexical-v3" else 1
+                4 if args.query_policy in BOUNDED_QUERY_POLICIES else 1
             ),
             "retrieval_final_validation_calls_per_case": (
-                1 if args.query_policy == "bounded-lexical-v3" else 0
+                1 if args.query_policy in BOUNDED_QUERY_POLICIES else 0
             ),
             "response_timeout_seconds": RESPONSE_TIMEOUT,
             "prompt_bytes_maximum": MAX_BYTES, "response_bytes_maximum": MAX_BYTES,
@@ -1659,7 +1681,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--retention-policy", choices=RETENTION_POLICIES, default=None, action=UniqueChoice,
-        help="Defaults to review-v1 for bounded-lexical-v3, otherwise model-purge-v1",
+        help="Defaults to review-v1 for bounded-lexical-v3/v4, otherwise model-purge-v1",
     )
     parser.add_argument(
         "--cohort", choices=COHORTS, default="pilot-v1", action=UniqueChoice,

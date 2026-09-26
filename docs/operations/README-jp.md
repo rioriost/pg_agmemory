@@ -2970,6 +2970,17 @@ whole-item mergeを制限し、切捨ては明示します。
 固定した過去時点にも現在の認可/削除規則を適用します。
 後から失効した場合、以前正当に渡した根拠を取り戻せるという意味ではありません。
 
+根拠の採用方式は明示選択です。既定の`first-admitted-v1`は、
+満杯になったcontextを置き換えない従来v3の動作を維持します。
+`evidence_selection="round-robin-v1"`は、検証済み結果を最大4 list・各8 itemまで保持します。
+追加roundのlistを先に、同じround内ではquery発行順、list内ではNativeの結果順に扱います。
+各listから未採用・非除外の次のitemを一つずつ交互に選び、
+byte予算に収まらないitemは丸ごと飛ばして切捨てを記録します。
+応答ごとに元の件数/byte上限内で再選択し、重複は余分な枠を消費しません。
+失敗・終了時には候補poolも破棄します。決定的な選択の分散であり、
+意味的なreranking、関連性の保証、model/検索呼出しの追加ではありません。
+最終的に採用する全参照に、引き続き最新のNative検査が必要です。
+
 SDKをtransportとし、選択modelは計画だけを生成します。
 
 ```python
@@ -2978,7 +2989,11 @@ from pg_agmemory.bounded_recall import (
 )
 
 # base_requestはlexical、信頼したscope/filter、最大8 item、固定時点を指定する。
-search = BoundedRecall(base_request, excluded_memory_ids=review.excluded_memory_ids)
+search = BoundedRecall(
+    base_request,
+    excluded_memory_ids=review.excluded_memory_ids,
+    evidence_selection="round-robin-v1",
+)
 for round_number in (1, 2):
     prompt = search_prompt(
         question, base_request.search_profile,
@@ -3007,6 +3022,9 @@ callerがpending reviewを永続化・照合し、後の明示削除承認をmod
 評価の`review-v1`は提案品質と物理削除を分け、Native purgeを呼びません。
 誤提案を含む保留件数をreportに残し、purgeゼロを完全な削除判断と扱いません。
 通常のoperator cleanupで破棄するのは、所有する使い捨てlabだけです。
+評価の`bounded-lexical-v4`はround-robin採用と既定の`review-v1`を選び、
+`bounded-lexical-v3`は従来の先着順採用を維持します。
+いずれも計画2 round・検索4回・最新検査1回・120 model call上限は同じです。
 
 ## Exact structured recall filters
 

@@ -2,6 +2,41 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Versioned evidence-admission correction
+
+`bounded-lexical-v4` changes **caller-side evidence admission**, not Native
+search, model selection or the planning prompt. It selects
+`evidence_selection="round-robin-v1"`: query result lists contribute distinct
+whole items in turn, with follow-up-round lists visited first and original
+Native rank retained within each list. At most four lists of eight candidate
+items are retained; selected context still has at most eight items / 8,000
+Native context bytes and receives one fresh required-reference validation.
+The earlier `bounded-lexical-v3` keeps its first-admitted behavior.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-admission-v4-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v4 \
+  --retention-policy review-v1
+```
+
+This is a **known-cohort regression**, following the published 13/20 first
+measurement below. Keep cases/gold, query-v2, planning/answer/retention prompt
+text, scoring, review behavior and model identifier/effort fixed. The ceilings
+remain **120 model calls, two planning rounds, four searches plus one final
+validation per case**. The selected evidence may change subsequent planning
+inputs and therefore model output; no identical stochastic response is promised.
+No additional model ranker, hidden retrieval, retry or native SQL change is used.
+
+The shared helper source hash changes honestly for the new selection branch.
+Historical exact-source reproduction uses the recorded commit; preserving v3
+behavior does not mean pretending its current module bytes have the old hash.
+The v4 recipe explicitly binds the selection identity and actual helper source.
+An offline replay may compare selected references from recorded responses,
+but is not a fresh authorization check or a new answer-quality measurement.
+Any live repeat is frozen in a clean commit before inference, and the original
+adverse result remains published without retrospective rescoring.
+
 ## Fixed-policy evaluation with longer distractor histories
 
 `--cohort distractor-synthetic-v1` selects a separate, explicitly versioned

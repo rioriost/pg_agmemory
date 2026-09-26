@@ -2,6 +2,19 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Versioned bounded evidence reselection
+
+The opt-in `bounded-lexical-v4` replaces first-admitted selection with a
+bounded round-robin merge of per-query results. Follow-up lists are visited
+before initial lists; query order and Native rank remain deterministic.
+No model ranker or extra search is added. The output remains eight items /
+8,000 Native context bytes, with unchanged epoch/content checks and fresh
+final references. V3/default helper behavior remains first-admitted; exact
+historical source hashes remain tied to the recorded commits.
+The comparison reuses the known distractor cohort with unchanged prompts,
+gold/scoring, model and review policy, and the same 120-call ceiling.
+See [the versioned comparison](EVALUATION.md#versioned-evidence-admission-correction).
+
 ## Fixed-policy longer-history evaluation
 
 The explicit `distractor-synthetic-v1` cohort adds 20 separately authored
@@ -29,7 +42,8 @@ All **504 keep / 136 forget proposals** match gold. Review still defers all
 Forget calls/purges. This does not repair the earlier cohort's mistaken proposal
 or complete forgetting. The run uses 63 searches plus 20 fresh validations;
 planning/read/answer p95 is **35.92 s**, not a production SLA.
-No model/query/helper/scorer change or additional model call follows the result.
+The first-use measurement is preserved without post-inference tuning;
+later versioned comparisons are reported separately above.
 See [findings](EVALUATION.md#first-longer-history-result-useful-follow-up-evidence-is-discarded)
 and [reviewed aggregate](../examples/copilot-memory-distractor-result.json).
 
