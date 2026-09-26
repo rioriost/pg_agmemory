@@ -2,6 +2,33 @@
 
 [English](EVALUATION.md)
 
+## 発見plannerだけを変える比較
+
+`bounded-lexical-v5`はopt-inの`discovery-v2` plannerを選び、
+根拠採用はv4と同じ`round-robin-v1`を使います。topic一致で結果が埋まる場合に、
+関係/動作/意図の手掛かりを区別し、限定した語形変化を検索仮説として扱い、
+最初の根拠の発見を改善する狙いです。
+Nativeのliteral検索/ranking、data、gold、採点、回答/保持prompt、
+保持の実行、model/effortは変更しません。既存literal-v1と引数省略時の既定動作も維持します。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-discovery-v5-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v5 \
+  --retention-policy review-v1
+```
+
+推論前に実装を固定し、後述のv4の16/20に対して**既知cohortで1回の回帰比較**を行います。
+120 call上限、計画2 round、各caseで検索4回＋最新参照検査1回、
+最大8 item / Native context 8,000 byteは同じです。
+新しい指示で計画promptのbyte列とrecipe hashは変わります。
+promptが不変という主張はreader/保持/controlだけで、plannerには適用しません。
+model retry、診断用の追加model call、隠れたbrowse、gold依存のquery規則は追加しません。
+以前のscalar文字列不一致も同じreader promptと厳密oracleで採点し、
+検索発見と回答形式の変更を混同しません。
+実際の検索/配信/引用coverage、全失敗、保持提案と実行、latency、usageを、
+意味的な事後採点なしで報告します。実装だけでv5の実scoreを主張しません。
+
 ## Version付きの根拠採用方式の修正
 
 `bounded-lexical-v4`は**caller側の根拠採用**を変えます。

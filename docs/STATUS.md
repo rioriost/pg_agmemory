@@ -2,6 +2,16 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Opt-in discovery planner
+
+`bounded-lexical-v5` isolates a planner change: `discovery-v2` emphasizes
+relation/action/intent selectivity and limited morphological search hypotheses.
+It keeps v4's round-robin selection, fresh-reference guards and resource
+ceilings. Native SQL/ranking, datasets, gold/scoring, reader/retention prompts
+and model selection remain unchanged; v3/v4 keep the original literal-v1 prompt.
+The next measurement is a known-cohort comparison, not unseen qualification.
+See [the frozen comparison contract](EVALUATION.md#discovery-only-planner-comparison).
+
 ## Versioned bounded evidence reselection
 
 The opt-in `bounded-lexical-v4` replaces first-admitted selection with a

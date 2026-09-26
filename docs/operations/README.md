@@ -3344,6 +3344,20 @@ completion clear the candidate pool. This is deterministic selection diversity,
 not semantic reranking, a guarantee of relevance or an extra model/search call.
 Every final selected reference still requires fresh Native validation.
 
+Planning instructions are selected independently. `search_prompt` defaults to
+`planner_policy="literal-v1"`, preserving the existing v3/v4 prompt.
+Opt-in `planner_policy="discovery-v2"` asks the chosen model to distinguish the
+requested relation/action/intent from repeated topic-only matches and use
+complementary qualified queries. It permits limited morphological alternatives
+of question/observed cues as explicit search hypotheses, not evidence of facts.
+Names and identifiers stay literal; invented entities, routes, answer values
+and arbitrary synonyms remain forbidden by the prompt. A retrieved first-hop
+reference may be followed without repeating an anchor absent from the endpoint.
+The JSON parser validates shape and literal-query limits, not semantic fidelity
+to this guidance. No stemming, expansion, relevance oracle, retry or extra
+search is performed by the helper/server, and discovery quality is not guaranteed.
+The same whole-item 8,000-byte planning-prompt bound applies to both policies.
+
 The SDK remains the transport; a chosen model only produces plans:
 
 ```python
@@ -3391,7 +3405,9 @@ presented as perfect deletion quality. Only the owned disposable lab is
 destroyed during ordinary operator cleanup.
 The evaluator's `bounded-lexical-v4` selects round-robin admission and defaults
 to `review-v1`; `bounded-lexical-v3` retains first-admitted admission.
-Both retain the two-round/four-search/one-validation and 120-model-call bounds.
+`bounded-lexical-v5` keeps round-robin admission and review but explicitly selects
+the discovery-v2 planner; v3/v4 keep literal-v1. All retain the
+two-round/four-search/one-validation and 120-model-call bounds.
 
 ## Exact structured recall filters
 

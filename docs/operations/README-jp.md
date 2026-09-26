@@ -2981,6 +2981,17 @@ byte予算に収まらないitemは丸ごと飛ばして切捨てを記録しま
 意味的なreranking、関連性の保証、model/検索呼出しの追加ではありません。
 最終的に採用する全参照に、引き続き最新のNative検査が必要です。
 
+計画の指示は独立して選びます。`search_prompt`の既定は`planner_policy="literal-v1"`で、
+従来v3/v4のpromptを維持します。opt-inの`planner_policy="discovery-v2"`は、
+topicだけが繰り返される結果と、質問が求める関係/動作/意図を区別し、
+相補的な限定queryを選ぶようmodelに指示します。
+質問や観測済みの手掛かりの限定的な語形変化を、事実の根拠ではなく検索仮説として許可します。
+名前と識別子はliteralを維持し、entity、経路名、回答値、任意の同義語の捏造はpromptで禁止します。
+取得した最初の参照をたどる際、接続先にない元のanchorを繰り返す必要はありません。
+JSON parserが検証するのは形式とliteral queryの上限であり、指示への意味的な適合ではありません。
+helper/serverはstemming、展開、関連性の正解判定、retry、追加検索を行わず、
+発見品質を保証しません。whole-itemの計画prompt 8,000-byte上限は両policyで共通です。
+
 SDKをtransportとし、選択modelは計画だけを生成します。
 
 ```python
@@ -3024,6 +3035,8 @@ callerがpending reviewを永続化・照合し、後の明示削除承認をmod
 通常のoperator cleanupで破棄するのは、所有する使い捨てlabだけです。
 評価の`bounded-lexical-v4`はround-robin採用と既定の`review-v1`を選び、
 `bounded-lexical-v3`は従来の先着順採用を維持します。
+`bounded-lexical-v5`はround-robin採用とreviewを維持し、
+discovery-v2 plannerを明示選択します。v3/v4はliteral-v1のままです。
 いずれも計画2 round・検索4回・最新検査1回・120 model call上限は同じです。
 
 ## Exact structured recall filters

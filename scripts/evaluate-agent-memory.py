@@ -27,11 +27,12 @@ planning contract before model dispatch. Explicit legacy-v1 preserves the origin
 query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 and
 distractor-synthetic-v1 explicitly select separately authored synthetic datasets,
 not blinded or externally held-out real-world data.
-bounded-lexical-v3/v4 explicitly budget two planning calls and at most five retrieval
+bounded-lexical-v3/v4/v5 explicitly budget two planning calls and at most five retrieval
 reads per case (four searches plus required-reference revalidation). review-v1
 withholds forget proposals only in this workflow, without authorizing physical purge.
-v4 selects round-robin evidence across Native ranked results, with follow-up rounds first;
-v3 retains first-admitted evidence. Both use the same planner prompt and resource ceilings.
+v4/v5 select round-robin evidence across Native ranked results, with follow-up rounds first;
+v3 retains first-admitted evidence. v3/v4 use the literal-v1 planner; v5 explicitly selects
+discovery-v2 planning. All bounded policies retain the same resource ceilings.
 """
 
 from __future__ import annotations
@@ -81,8 +82,10 @@ RESPONSE_TIMEOUT = 180.0
 JWT_BACKDATE_SECONDS = 30
 RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
-QueryPolicy = Literal["legacy-v1", "lexical-v2", "bounded-lexical-v3", "bounded-lexical-v4"]
-BOUNDED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4")
+QueryPolicy = Literal[
+    "legacy-v1", "lexical-v2", "bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5",
+]
+BOUNDED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5")
 QUERY_POLICIES = ("legacy-v1", "lexical-v2", *BOUNDED_QUERY_POLICIES)
 RetentionPolicy = Literal["model-purge-v1", "review-v1"]
 RETENTION_POLICIES = ("model-purge-v1", "review-v1")
@@ -809,16 +812,18 @@ async def bounded_retrieval(
         "as_of": snapshot, "known_at": snapshot,
     })
     evidence_selection = (
-        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+        "first-admitted-v1" if query_policy == "bounded-lexical-v3" else "round-robin-v1"
     )
+    planner_policy = "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
     workflow = (
         bounded_recall.BoundedRecall(
             base, excluded_memory_ids=excluded_ids, evidence_selection="round-robin-v1",
-        ) if query_policy == "bounded-lexical-v4"
+        ) if query_policy != "bounded-lexical-v3"
         else bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
     )
     progress: dict[str, Any] = {
         "query_policy": query_policy, "evidence_selection": evidence_selection,
+        "planner_policy": planner_policy,
         "as_of": snapshot.isoformat(), "known_at": snapshot.isoformat(),
         "search_profile": base.search_profile, "search_calls": 0,
         "final_validation_calls": 0, "planning_calls": 0, "rounds": [],
@@ -827,10 +832,17 @@ async def bounded_retrieval(
     }
     detail["bounded_retrieval"] = progress
     for round_number in (1, 2):
-        prompt = bounded_recall.search_prompt(
-            case.question, base.search_profile, items=workflow.planning_items,
-            previous_queries=workflow.queries, round_number=round_number,
-        )
+        if query_policy == "bounded-lexical-v5":
+            prompt = bounded_recall.search_prompt(
+                case.question, base.search_profile, items=workflow.planning_items,
+                previous_queries=workflow.queries, round_number=round_number,
+                planner_policy="discovery-v2",
+            )
+        else:
+            prompt = bounded_recall.search_prompt(
+                case.question, base.search_profile, items=workflow.planning_items,
+                previous_queries=workflow.queries, round_number=round_number,
+            )
         calls_before = len(bridge.calls)
         try:
             raw = await bridge.call(
@@ -838,7 +850,11 @@ async def bounded_retrieval(
             )
         finally:
             progress["planning_calls"] += len(bridge.calls) - calls_before
-        round_detail: dict[str, Any] = {"round": round_number, "raw_plan": raw}
+        round_detail: dict[str, Any] = {
+            "round": round_number, "raw_plan": raw, "planner_policy": planner_policy,
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "prompt_bytes": len(prompt.encode("utf-8")),
+        }
         progress["rounds"].append(round_detail)
         journal.emit(
             "bounded_plan_received", case_id=case.case_id, **round_detail,
@@ -1205,10 +1221,15 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
             "max_items": 8, "context_budget_bytes": 8000,
             "fixed_temporal_anchors": "after_observation_before_planning",
         })
-        if query_policy == "bounded-lexical-v4":
+        if query_policy in ("bounded-lexical-v4", "bounded-lexical-v5"):
             components.update({
                 "format": "pgag-agent-memory-bounded-query-recipe-v4",
                 "evidence_selection": "round-robin-v1",
+            })
+        if query_policy == "bounded-lexical-v5":
+            components.update({
+                "format": "pgag-agent-memory-bounded-query-recipe-v5",
+                "planner_policy": "discovery-v2",
             })
     return {
         "query_policy": query_policy, "base_recipe_sha256": base_digest,
@@ -1681,7 +1702,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--retention-policy", choices=RETENTION_POLICIES, default=None, action=UniqueChoice,
-        help="Defaults to review-v1 for bounded-lexical-v3/v4, otherwise model-purge-v1",
+        help="Defaults to review-v1 for bounded-lexical-v3/v4/v5, otherwise model-purge-v1",
     )
     parser.add_argument(
         "--cohort", choices=COHORTS, default="pilot-v1", action=UniqueChoice,

@@ -683,6 +683,9 @@ serverへのLLM呼出し、query書換え、OR検索、browse fallbackは追加�
 `evidence_selection="round-robin-v1"`を選ぶと、先に採用した8件を固定せず、
 queryごとの検索結果から上限内の根拠を再選択します。
 既定は`first-admitted-v1`のままで、いずれもNative rankingは変更しません。
+独立した`search_prompt(..., planner_policy="discovery-v2")`は、
+関係/意図の手掛かりと明示的な語形の検索仮説を重視します。
+既定plannerは`literal-v1`を維持し、serverのstemmingは変更しません。
 `pg_agmemory.retention_review`はmodelのforget提案を削除承認にせず保留します。
 caller所有のopt-in workflowであり、server全体の認可を変えたり、
 pending rowを全clientから読めなくしたりするものではありません。

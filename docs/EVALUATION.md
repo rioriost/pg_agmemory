@@ -2,6 +2,36 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Discovery-only planner comparison
+
+`bounded-lexical-v5` selects the opt-in `discovery-v2` planner and the same
+`round-robin-v1` evidence admission as v4. It targets first-hop discovery:
+distinguishing relationship/action/intent cues from saturated topic matches,
+including limited morphological alternatives as search hypotheses.
+It does not change Native lexical matching/ranking, data, gold labels, scoring,
+answer/retention prompts, retention execution or the selected model/effort.
+The older literal-v1 planner and all no-flag defaults remain unchanged.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-discovery-v5-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v5 \
+  --retention-policy review-v1
+```
+
+Freeze the implementation before one **known-cohort regression** against
+v4's 16/20 result below. The same 120-call ceiling, two planning rounds,
+four searches plus one fresh validation per case, eight items and 8,000
+Native context bytes apply. New instruction bytes necessarily change
+rendered planning inputs and the recipe hash; claims of unchanged prompts
+apply only to reader/retention/control prompts, not the planner.
+Do not add model retries, diagnostic model calls, hidden browse or gold-aware
+query rules. The previous scalar-string miss remains subject to the same
+reader prompt and exact oracle, so discovery and answer-format changes are
+not conflated. Report actual raw/delivered/cited coverage, all failures,
+retention proposals/actions, latency and usage without semantic rescoring.
+No live v5 score is claimed by the implementation alone.
+
 ## Versioned evidence-admission correction
 
 `bounded-lexical-v4` changes **caller-side evidence admission**, not Native

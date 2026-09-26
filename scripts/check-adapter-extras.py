@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pg_agmemory.api import create_app
-from pg_agmemory.bounded_recall import BoundedRecall, SearchPlan
+from pg_agmemory.bounded_recall import BoundedRecall, SearchPlan, search_prompt
 from pg_agmemory.models import MemoryReference, Recall
 from pg_agmemory.operations_status import OperationsStatusRequest, operations_status
 from pg_agmemory.query_planning import (
@@ -52,6 +52,9 @@ assert BoundedRecall(selection_base).planning_items == ()
 assert BoundedRecall(
     selection_base, evidence_selection="round-robin-v1",
 ).planning_items == ()
+assert search_prompt(
+    "Which team owns the ticket?", "simple-v1", planner_policy="discovery-v2",
+).endswith('"items_truncated":false}')
 review_reference = MemoryReference(memory_id=UUID(int=1))
 assert review_retention([review_reference], [review_reference.memory_id]).purge_authorized is False
 assert LexicalQueryPlan(terms=["ticket", "owner"]).query == "ticket owner"

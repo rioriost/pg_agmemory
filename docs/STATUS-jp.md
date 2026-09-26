@@ -2,6 +2,16 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## 明示選択する発見planner
+
+`bounded-lexical-v5`はplannerだけを変え、`discovery-v2`で
+関係/動作/意図による絞込みと限定的な語形の検索仮説を重視します。
+v4のround-robin採用、最新参照検査、資源上限は維持します。
+Native SQL/ranking、dataset、gold/採点、reader/保持prompt、model選択は変えず、
+v3/v4は従来literal-v1 promptを使います。
+次の実測は既知cohortの比較であり、未見dataでの認定ではありません。
+[固定する比較契約](EVALUATION-jp.md#発見plannerだけを変える比較)を参照してください。
+
 ## Version付きの上限内根拠再選択
 
 opt-inの`bounded-lexical-v4`は、先着順ではなくqueryごとの結果を

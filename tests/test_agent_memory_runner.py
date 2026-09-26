@@ -1083,12 +1083,8 @@ def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
     ).hexdigest() == "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746"
     from pg_agmemory import retention_review
 
-    bounded_source = Path(runner.bounded_recall.__file__).read_bytes()
-    planner_source = b"_PROMPT = (" + bounded_source.split(b"_PROMPT = (", 1)[1].split(
-        b"@dataclass(frozen=True)", 1,
-    )[0]
-    assert hashlib.sha256(planner_source).hexdigest() == (
-        "959d841a94182f3f2ac115a9722a8f26c2fa4e0125cad4d4b850bd00a41d0f4f"
+    assert hashlib.sha256(runner.bounded_recall._PROMPT.encode()).hexdigest() == (
+        "8e04c86b872009dd3b5c3f284f25f39c128ae7d3616e0d8e9870801355d17cd9"
     )
     assert hashlib.sha256(
         Path(retention_review.__file__).read_bytes(),
@@ -1112,6 +1108,34 @@ def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
         Path(runner.query_planning.__file__).read_bytes(),
     ).hexdigest()
     assert lexical["query_planning_contract"] == runner.query_planning.lexical_query_contract()
+
+
+@pytest.mark.parametrize("round_number,expected_sha", [
+    (1, "140d38c2fbc153e0db2e95d7aa3c9dfee9c98ce8c3009a2f70438862533f5179"),
+    (2, "685707e2be81774ff63fd9bf9487c6cb16fdbb600937d6a517ec1be8fd081603"),
+])
+def test_literal_planner_rendering_remains_frozen_with_discovery_opt_in(round_number, expected_sha):
+    item = MemoryItem.model_validate({
+        "memory_id": "00000000-0000-4000-8000-000000000001", "revision": 1, "type": "episode",
+        "content": "Archive note: follow route cedar.",
+        "recorded_at": "2026-07-01T08:00:00Z", "occurred_at": "2026-07-01T08:00:00Z",
+    })
+    options = {
+        "round_number": round_number,
+        "previous_queries": () if round_number == 1 else ("archive",),
+        "items": () if round_number == 1 else (item,),
+    }
+    literal = runner.bounded_recall.search_prompt("Which archive label?", "simple-v1", **options)
+    assert hashlib.sha256(literal.encode()).hexdigest() == expected_sha
+    assert runner.bounded_recall.search_prompt(
+        "Which archive label?", "simple-v1", **options, planner_policy="literal-v1",
+    ) == literal
+    discovery = runner.bounded_recall.search_prompt(
+        "Which archive label?", "simple-v1", **options, planner_policy="discovery-v2",
+    )
+    assert discovery != literal
+    assert json.loads(discovery.split("INPUT=", 1)[1]) == json.loads(literal.split("INPUT=", 1)[1])
+    assert len(discovery.encode()) <= 8000
 
 
 @pytest.mark.parametrize("query_policy", ["legacy-v1", "lexical-v2"])
@@ -1299,6 +1323,7 @@ def test_explicit_legacy_replay_does_not_require_new_capability(native_fixture):
     (["--query-policy", "legacy-v1"], "legacy-v1"),
     (["--query-policy", "bounded-lexical-v3"], "bounded-lexical-v3"),
     (["--query-policy", "bounded-lexical-v4"], "bounded-lexical-v4"),
+    (["--query-policy", "bounded-lexical-v5"], "bounded-lexical-v5"),
 ])
 def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option, expected):
     selected = []
@@ -1335,7 +1360,12 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
       "--retention-policy", "review-v1"], True),
     (["--query-policy", "bounded-lexical-v4", "--retention-policy", "model-purge-v1"], True),
     (["--query-policy", "bounded-lexical-v4", "--query-policy", "bounded-lexical-v3"], False),
-    (["--query-policy", "bounded-lexical-v5"], False),
+    (["--query-policy", "bounded-lexical-v5"], True),
+    (["--cohort", "distractor-synthetic-v1", "--query-policy", "bounded-lexical-v5",
+      "--retention-policy", "review-v1"], True),
+    (["--query-policy", "bounded-lexical-v5", "--retention-policy", "model-purge-v1"], True),
+    (["--query-policy", "bounded-lexical-v5", "--query-policy", "bounded-lexical-v4"], False),
+    (["--query-policy", "bounded-lexical-v6"], False),
     (["--cohort", "distractor-synthetic-v1", "--cohort", "pilot-v1"], False),
     (["--cohort", "unseen-synthetic-v1", "--query-policy", "lexical-v2"], True),
     (["--query-policy", "legacy-v1", "--cohort", "pilot-v1"], True),
@@ -1555,7 +1585,9 @@ def test_runner_cli_rejects_invalid_cohort_before_output_creation(tmp_path, monk
     ["--query-policy", "bounded-lexical-v3", "--query-policy", "lexical-v2"],
     ["--query-policy", "bounded-lexical-v4", "--query-policy", "bounded-lexical-v4"],
     ["--query-policy=bounded-lexical-v4", "--query-policy=bounded-lexical-v3"],
-    ["--query-policy", "bounded-lexical-v5"],
+    ["--query-policy", "bounded-lexical-v5", "--query-policy", "bounded-lexical-v5"],
+    ["--query-policy=bounded-lexical-v5", "--query-policy=bounded-lexical-v4"],
+    ["--query-policy", "bounded-lexical-v6"],
     ["--retention-policy", "review-v1", "--retention-policy", "model-purge-v1"],
     ["--cohort", "distractor-synthetic-v1", "--wrong-flag", "value"],
     ["--coho", "distractor-synthetic-v1"],
@@ -1667,6 +1699,7 @@ def test_policy_call_budgets_do_not_expand_default_transport(transport):
     assert runner.logical_call_limit("lexical-v2") == 100
     assert runner.logical_call_limit("bounded-lexical-v3") == 120
     assert runner.logical_call_limit("bounded-lexical-v4") == 120
+    assert runner.logical_call_limit("bounded-lexical-v5") == 120
     private_json(transport.metadata_path, transport.metadata.model_dump() | {"max_calls": 120})
     default = runner.FileBridge(
         transport.directory, transport.journal, run_id="agent-eval-12345678",
@@ -1739,7 +1772,7 @@ def test_bounded_review_profile_records_module_hashes_and_honest_budget(query_po
     assert implicit == metadata
 
 
-def test_v4_recipe_binds_selection_without_rewriting_prior_recipe_shapes():
+def test_bounded_recipes_bind_selection_and_planner_without_rewriting_prior_shapes():
     lexical = runner.query_policy_metadata("lexical-v2")
     helper_sha = hashlib.sha256(Path(runner.bounded_recall.__file__).read_bytes()).hexdigest()
     expected_v3 = lexical["recipe_components"] | {
@@ -1762,22 +1795,35 @@ def test_v4_recipe_binds_selection_without_rewriting_prior_recipe_shapes():
     assert v4["recipe_sha256"] == hashlib.sha256(
         runner.json_bytes(v4["recipe_components"]),
     ).hexdigest()
+    v5 = runner.query_policy_metadata("bounded-lexical-v5")
+    assert v5["recipe_components"] == v4["recipe_components"] | {
+        "format": "pgag-agent-memory-bounded-query-recipe-v5",
+        "query_policy": "bounded-lexical-v5", "planner_policy": "discovery-v2",
+    }
+    assert v5["recipe_digest_format"] == "pgag-agent-memory-bounded-query-recipe-v5"
+    assert v5["recipe_sha256"] not in (v3["recipe_sha256"], v4["recipe_sha256"])
+    assert v5["recipe_sha256"] == hashlib.sha256(
+        runner.json_bytes(v5["recipe_components"]),
+    ).hexdigest()
     assert lexical["bounded_recall_sha256"] is None
     assert "evidence_selection" not in lexical["recipe_components"]
     assert runner.query_policy_metadata("legacy-v1")["recipe_components"] is None
     cases = runner.select_cohort("distractor-synthetic-v1")
-    metadata = runner.cohort_metadata("distractor-synthetic-v1", cases, "bounded-lexical-v4")
-    assert metadata["query_recipe_components"] == v4["recipe_components"]
-    for changed in (
-        {"evidence_selection": "first-admitted-v1"},
-        {"query_policy": "bounded-lexical-v3"},
-        {"bounded_recall_sha256": "0" * 64},
-    ):
-        with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
-            runner.verify_cohort_metadata(
-                metadata | {"query_recipe_components": v4["recipe_components"] | changed},
-                "distractor-synthetic-v1", cases, "bounded-lexical-v4",
-            )
+    for query_policy, query_metadata in (("bounded-lexical-v4", v4), ("bounded-lexical-v5", v5)):
+        metadata = runner.cohort_metadata("distractor-synthetic-v1", cases, query_policy)
+        components = query_metadata["recipe_components"]
+        assert metadata["query_recipe_components"] == components
+        for changed in (
+            {"evidence_selection": "first-admitted-v1"},
+            {"planner_policy": "literal-v1"},
+            {"query_policy": "bounded-lexical-v3"},
+            {"bounded_recall_sha256": "0" * 64},
+        ):
+            with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+                runner.verify_cohort_metadata(
+                    metadata | {"query_recipe_components": components | changed},
+                    "distractor-synthetic-v1", cases, query_policy,
+                )
 
 
 @pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
@@ -1837,6 +1883,8 @@ def test_bounded_review_cli_requires_explicit_new_flags(
     ("bounded-lexical-v3", "model-purge-v1", "model-purge-v1"),
     ("bounded-lexical-v4", None, "review-v1"),
     ("bounded-lexical-v4", "model-purge-v1", "model-purge-v1"),
+    ("bounded-lexical-v5", None, "review-v1"),
+    ("bounded-lexical-v5", "model-purge-v1", "model-purge-v1"),
     ("lexical-v2", "review-v1", "review-v1"),
 ])
 def test_retention_defaults_do_not_enable_bounded_autopurge(query_policy, provided, expected):
@@ -1863,7 +1911,10 @@ def test_bounded_two_rounds_use_at_most_five_reads_and_one_fixed_snapshot(
     progress = detail["bounded_retrieval"]
     assert progress["query_policy"] == query_policy
     assert progress["evidence_selection"] == (
-        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+        "first-admitted-v1" if query_policy == "bounded-lexical-v3" else "round-robin-v1"
+    )
+    assert progress["planner_policy"] == (
+        "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
     )
     assert progress["planning_calls"] == 2 and progress["search_calls"] == 4
     assert progress["final_validation_calls"] == 1 and progress["revalidated"] is True
@@ -1896,6 +1947,62 @@ def test_bounded_two_rounds_use_at_most_five_reads_and_one_fixed_snapshot(
         assert detail["retention_review"]["physical_purges"] == 0
         assert detail["retention_review"]["deletion_completed"] is False
         assert detail["actor_proposal"] is True
+
+
+@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+def test_bounded_planner_policy_dispatch_and_rendered_journal_hashes(
+    native_fixture, monkeypatch, query_policy,
+):
+    original_prompt = runner.bounded_recall.search_prompt
+    rendered = []
+
+    def capture_prompt(*args, **kwargs):
+        prompt = original_prompt(*args, **kwargs)
+        rendered.append((args, kwargs, prompt))
+        return prompt
+
+    monkeypatch.setattr(runner.bounded_recall, "search_prompt", capture_prompt)
+    case = native_fixture["case"]
+    bridge = DecisionBridge(case, query_policy=query_policy)
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
+    )
+    assert measured.error is None, detail
+    policy = "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
+    assert detail["bounded_retrieval"]["planner_policy"] == policy
+    assert len(rendered) == 2
+    prompts = dict(bridge.prompts)
+    rows = [
+        json.loads(line) for line in native_fixture["journal"].path.read_text().splitlines()
+    ]
+    received = [row for row in rows if row["phase"] == "bounded_plan_received"]
+    compiled = [row for row in rows if row["phase"] == "bounded_plan_compiled"]
+    assert len(received) == len(compiled) == 2
+    for number, ((args, kwargs, prompt), recorded, parsed) in enumerate(
+        zip(rendered, received, compiled, strict=True), 1,
+    ):
+        if query_policy == "bounded-lexical-v5":
+            assert kwargs["planner_policy"] == "discovery-v2"
+            literal_options = {
+                key: value for key, value in kwargs.items() if key != "planner_policy"
+            }
+            assert prompt != original_prompt(*args, **literal_options)
+        else:
+            assert "planner_policy" not in kwargs
+            assert prompt == original_prompt(*args, **kwargs)
+        assert prompts[f"recall_query_round_{number}"] == prompt
+        progress = detail["bounded_retrieval"]["rounds"][number - 1]
+        for row in (progress, recorded, parsed):
+            assert row["planner_policy"] == policy
+            assert row["prompt_sha256"] == hashlib.sha256(prompt.encode()).hexdigest()
+            assert row["prompt_bytes"] == len(prompt.encode()) <= 8000
+        assert recorded["query_policy"] == parsed["query_policy"] == query_policy
+    assert prompts["retention"] == runner.recipe.retention_prompt(case)
+    assert prompts["pg_agmemory"] == runner.recipe.answer_prompt(case, measured.context_events)
+    assert all(event.text not in prompts["recall_query_round_1"] for event in case.events)
+    assert all(label not in prompt for prompt in prompts.values() for label in (
+        "expected_answer", "expected_keep_ids", "required_source_ids", "forbidden_answers",
+    ))
 
 
 @pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
@@ -2106,14 +2213,14 @@ def test_bounded_v4_saturation_selects_followup_evidence_and_revalidates(
         native_fixture, bridge, query_policy=query_policy, retention_policy="review-v1",
     )
     assert measured.error is None, detail
-    expected = (target, *initial[:7]) if query_policy == "bounded-lexical-v4" else initial
+    expected = initial if query_policy == "bounded-lexical-v3" else (target, *initial[:7])
     assert measured.context_events == expected
     assert measured.answer.abstained is (query_policy == "bounded-lexical-v3")
     assert len(bridge.calls) == 4
     progress = detail["bounded_retrieval"]
     assert progress["query_policy"] == query_policy
     assert progress["evidence_selection"] == (
-        "round-robin-v1" if query_policy == "bounded-lexical-v4" else "first-admitted-v1"
+        "first-admitted-v1" if query_policy == "bounded-lexical-v3" else "round-robin-v1"
     )
     assert progress["planning_calls"] == 2 and progress["search_calls"] == 4
     assert progress["final_validation_calls"] == 1 and progress["revalidated"] is True
@@ -2344,6 +2451,14 @@ def test_distractor_all_twenty_cases_fit_real_bridge_120_call_and_payload_limits
             assert detail["bounded_retrieval"]["search_calls"] == 4
             assert detail["bounded_retrieval"]["query_policy"] == query_policy
             assert detail["bounded_retrieval"]["final_validation_calls"] == 1
+            for recorded, call in zip(
+                detail["bounded_retrieval"]["rounds"], bridge.calls[-3:-1], strict=True,
+            ):
+                assert recorded["prompt_sha256"] == call["prompt_sha256"]
+                assert recorded["prompt_bytes"] == call["prompt_bytes"] <= 8000
+                assert recorded["planner_policy"] == (
+                    "discovery-v2" if query_policy == "bounded-lexical-v5" else "literal-v1"
+                )
             assert len(measured.context_events) <= 8
             assert detail["context_prompt_bytes"] <= 8000
             assert len(bridge.calls) <= 120
