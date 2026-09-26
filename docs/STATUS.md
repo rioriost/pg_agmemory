@@ -13,7 +13,7 @@ query never becomes browse. Default simple and opt-in Japanese behavior remain
 unchanged, with current authorization, temporal selection, purge and fresh
 reference checks applied to English as well.
 
-Capabilities, Native/OpenAPI, MCP, hook and bounded planning describe the
+Capabilities, Native/OpenAPI, SDK, MCP, hook and bounded planning describe the
 selected profile. The v6 evaluation can explicitly choose
 `--english-search-profile en-snowball-v1`; Japanese cases and the 160-call,
 four-search/one-validation ceilings remain unchanged. No new model score is
@@ -25,6 +25,15 @@ adding storage/write work; production overhead is unmeasured.
 Use the [schema-23 upgrade and recovery boundaries](operations/README.md#schema-23-english-projections)
 and [profile/reindex instructions](operations/README.md#lexical-profile-and-reindex-operations).
 Older graph/recovery evidence is not automatically current after the upgrade.
+
+At frozen **`aec536b`**, exact-source
+[run 36244315823](https://github.com/rioriost/pg_agmemory/actions/runs/36244315823)
+passes all eight jobs. Both native cores report **5,722 passed / 137 skipped**,
+with 18 isolated COMMIT, 13 request and nine bridge checks per architecture.
+Installed profiles, recovery/PITR/HA and 222 dedicated AGE integration cases
+per architecture pass. HA observation accounting now requires exactly two
+lexical projection rows, rejecting missing or extra rows without relaxing
+uncertain-COMMIT evidence or permitting effect reexecution.
 
 ## Explicit sequential search schedule
 

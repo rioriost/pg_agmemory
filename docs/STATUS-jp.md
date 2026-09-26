@@ -11,7 +11,7 @@
 stop wordだけの非空queryをbrowseには変えません。
 既定simpleと明示選択の日本語動作を維持し、英語にも現在認可、時間条件、purge、最新参照検査を適用します。
 
-capabilities、Native/OpenAPI、MCP、hook、上限付き計画でprofileごとの説明を公開します。
+capabilities、Native/OpenAPI、SDK、MCP、hook、上限付き計画でprofileごとの説明を公開します。
 v6評価では`--english-search-profile en-snowball-v1`を明示指定できます。
 日本語caseと160 call・検索4回＋検査1回の上限は変えません。
 この実装だけで新しいmodel scoreを主張せず、後述v6のtimeout/後退も残します。
@@ -22,6 +22,14 @@ migrationは英語行をbackfillし、新規書込みは両projectionを維持�
 [schema23移行とrecoveryの境界](operations/README-jp.md#schema-23-english-projections)と
 [profile/reindex手順](operations/README-jp.md#lexical-profileとreindexの運用)に従ってください。
 upgrade後に旧graph/recovery証跡を自動的に現在の証跡にはしません。
+
+固定した**`aec536b`**の同一sourceによる
+[run 36244315823](https://github.com/rioriost/pg_agmemory/actions/runs/36244315823)は
+8 job全て成功しました。両native coreは**5,722 passed / 137 skipped**で、
+各architectureの分離COMMIT 18件、request 13件、bridge 9件も成功しました。
+installed profile、recovery/PITR/HA、各architectureの専用AGE統合222件も成功しています。
+HAの観測差分はlexical projectionを厳密に2行要求し、欠落・余分な行を拒否します。
+COMMIT不確定時の証跡要件や副作用の再実行禁止は緩めていません。
 
 ## 明示的な逐次検索schedule
 
