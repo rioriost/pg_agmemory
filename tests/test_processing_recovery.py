@@ -87,7 +87,7 @@ def test_other_tenant_or_recreated_lineage_is_not_comparable(field, value):
 def test_capture_is_read_only_deterministic_private_and_admin_only(env):
     env.observe(content="PRIVATE_SOURCE_MUST_NOT_APPEAR")
     before = capture_processing_state(env.admin_url, env.tenants[0])
-    assert before.schema_version == 22 and len(before.tables) == 26
+    assert before.schema_version == 23 and len(before.tables) == 26
     assert {row.table: row.rows for row in before.tables[-3:]} == {
         "memory_ops.graph_generation": 0, "memory_ops.graph_generation_state": 0,
         "memory_ops.age_projection": 0,

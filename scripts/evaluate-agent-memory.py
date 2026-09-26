@@ -36,6 +36,8 @@ discovery-v2 planning. v6 explicitly selects sequential-v3 planning, with up to 
 one-query rounds and a higher 160-model-call ceiling (versus 120 for v3-v5). An empty
 plan after the first round stops planning. All bounded policies retain four search
 reads, one fresh final validation, and at most eight items/8000 context bytes.
+English retrieval defaults to simple-v1. Explicit en-snowball-v1 requires bounded-lexical-v6,
+uses the advertised English stemming contract, and leaves Japanese retrieval unchanged.
 """
 
 from __future__ import annotations
@@ -92,6 +94,8 @@ QueryPolicy = Literal[
 BATCHED_QUERY_POLICIES = ("bounded-lexical-v3", "bounded-lexical-v4", "bounded-lexical-v5")
 BOUNDED_QUERY_POLICIES = (*BATCHED_QUERY_POLICIES, "bounded-lexical-v6")
 QUERY_POLICIES = ("legacy-v1", "lexical-v2", *BOUNDED_QUERY_POLICIES)
+EnglishSearchProfile = Literal["simple-v1", "en-snowball-v1"]
+ENGLISH_SEARCH_PROFILES = ("simple-v1", "en-snowball-v1")
 RetentionPolicy = Literal["model-purge-v1", "review-v1"]
 RETENTION_POLICIES = ("model-purge-v1", "review-v1")
 Cohort = Literal["pilot-v1", "unseen-synthetic-v1", "distractor-synthetic-v1"]
@@ -531,6 +535,7 @@ def bearer(subject: str, key: bytes, config: OwnedConfig) -> str:
 async def authenticated_client(
     config: OwnedConfig, subject: str, key: bytes, journal: Journal, case_id: str,
     *, query_policy: QueryPolicy = "lexical-v2",
+    search_profile: SearchProfile = "simple-v1",
 ) -> AsyncIterator[AsyncMemoryClient]:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
     connected = False
@@ -544,7 +549,10 @@ async def authenticated_client(
                 elapsed_seconds=time.monotonic() - started,
             )
             if query_policy != "legacy-v1":
-                await verify_query_contract(client, journal, case_id, query_policy=query_policy)
+                await verify_query_contract(
+                    client, journal, case_id, query_policy=query_policy,
+                    search_profile=search_profile,
+                )
             yield client
     except BaseException as exc:
         if not connected:
@@ -558,6 +566,7 @@ async def authenticated_client(
 async def verify_query_contract(
     client: AsyncMemoryClient, journal: Journal, case_id: str,
     *, query_policy: QueryPolicy = "lexical-v2",
+    search_profile: SearchProfile = "simple-v1",
 ) -> None:
     journal.emit(
         "native_intent", case_id=case_id, operation="lexical_query_contract", mutation=False,
@@ -565,11 +574,14 @@ async def verify_query_contract(
     started = time.monotonic()
     try:
         status, capabilities = await client._connection().exchange("/v1/capabilities")
-        expected = query_planning.lexical_query_contract()
+        expected = query_planning.lexical_query_contract(search_profile)
         received = capabilities.get("lexical_query") if isinstance(capabilities, dict) else None
+        if search_profile == query_planning.ENGLISH_PROFILE and isinstance(capabilities, dict):
+            profiles = capabilities.get("lexical_query_profiles")
+            received = profiles.get(search_profile) if isinstance(profiles, dict) else None
         journal.emit(
             "query_contract_received", case_id=case_id, query_policy=query_policy,
-            lexical_query=received,
+            lexical_query=received, search_profile=search_profile,
             expected_contract_sha256=hashlib.sha256(json_bytes(expected)).hexdigest(),
         )
         require(
@@ -577,6 +589,12 @@ async def verify_query_contract(
             and json_bytes(received) == json_bytes(expected),
             "lexical_query_contract_mismatch",
         )
+        if search_profile == query_planning.ENGLISH_PROFILE:
+            require(
+                json_bytes(capabilities.get("lexical_query"))
+                == json_bytes(query_planning.lexical_query_contract()),
+                "lexical_query_contract_mismatch",
+            )
         if query_policy in BOUNDED_QUERY_POLICIES:
             required = capabilities.get("required_context")
             journal.emit(
@@ -626,8 +644,19 @@ async def native_call(
     return result
 
 
-def lexical_profile(language: str) -> SearchProfile:
-    return "ja-janome-0.5.0-v1" if language == "ja" else "simple-v1"
+def validate_english_search_profile(query_policy: QueryPolicy, search_profile: str) -> None:
+    require(search_profile in ENGLISH_SEARCH_PROFILES, "invalid_english_search_profile")
+    require(
+        search_profile == "simple-v1" or query_policy == "bounded-lexical-v6",
+        "english_search_profile_requires_sequential_policy",
+    )
+
+
+def lexical_profile(
+    language: str, english_search_profile: EnglishSearchProfile = "simple-v1",
+) -> SearchProfile:
+    require(english_search_profile in ENGLISH_SEARCH_PROFILES, "invalid_english_search_profile")
+    return "ja-janome-0.5.0-v1" if language == "ja" else english_search_profile
 
 
 def logical_call_limit(query_policy: QueryPolicy) -> int:
@@ -654,12 +683,15 @@ def resolve_retention_policy(
     return retention_policy
 
 
-def recall_request(scope_id: UUID, query: str, *, language: str = "en") -> Recall:
+def recall_request(
+    scope_id: UUID, query: str, *, language: str = "en",
+    english_search_profile: EnglishSearchProfile = "simple-v1",
+) -> Recall:
     return Recall(
         query=query, scope_ids=[scope_id], purpose="owned-synthetic-agent-memory-evaluation",
         mode="explicit", max_items=8, token_budget=8000,
         filters=RecallFilters(kind="episode"), retrieval_mode="lexical",
-        search_profile=lexical_profile(language),
+        search_profile=lexical_profile(language, english_search_profile),
     )
 
 
@@ -820,9 +852,14 @@ async def bounded_retrieval(
     bridge: FileBridge, journal: Journal, snapshot: datetime, excluded_ids: list[UUID],
     native: Callable[..., Awaitable[Any]], detail: dict[str, Any], memory_ids: Mapping[str, UUID],
     *, query_policy: QueryPolicy,
+    english_search_profile: EnglishSearchProfile = "simple-v1",
 ) -> bounded_recall.BoundedRecallResult:
     require(query_policy in BOUNDED_QUERY_POLICIES, "invalid_query_policy")
-    base = recall_request(identity.scope_id, "", language=case.language).model_copy(update={
+    validate_english_search_profile(query_policy, english_search_profile)
+    base = recall_request(
+        identity.scope_id, "", language=case.language,
+        english_search_profile=english_search_profile,
+    ).model_copy(update={
         "as_of": snapshot, "known_at": snapshot,
     })
     evidence_selection = (
@@ -885,6 +922,7 @@ async def bounded_retrieval(
             progress["planning_calls"] += len(bridge.calls) - calls_before
         round_detail: dict[str, Any] = {
             "round": round_number, "raw_plan": raw, "planner_policy": planner_policy,
+            "search_profile": base.search_profile,
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "prompt_bytes": len(prompt.encode("utf-8")),
         }
@@ -989,7 +1027,9 @@ async def memory_arm(
     bridge: FileBridge, journal: Journal,
     *, query_policy: QueryPolicy = "lexical-v2",
     retention_policy: RetentionPolicy | None = None,
+    english_search_profile: EnglishSearchProfile = "simple-v1",
 ) -> tuple[recipe.ArmObservation, dict[str, Any]]:
+    validate_english_search_profile(query_policy, english_search_profile)
     retention_policy = resolve_retention_policy(query_policy, retention_policy)
     start = len(bridge.calls)
     context: tuple[recipe.Event, ...] = ()
@@ -1021,6 +1061,7 @@ async def memory_arm(
     try:
         async with authenticated_client(
             config, subject, key, journal, case.case_id, query_policy=query_policy,
+            search_profile=lexical_profile(case.language, english_search_profile),
         ) as client:
             phase = "rls_probe"
             await verify_isolation(client, case.case_id, foreign, sentinel_id, journal)
@@ -1105,6 +1146,7 @@ async def memory_arm(
                     phase = "query_contract_before_purge"
                     await verify_query_contract(
                         client, journal, case.case_id, query_policy=query_policy,
+                        search_profile=lexical_profile(case.language, english_search_profile),
                     )
                 targets = [memory_ids[event_id] for event_id in retention.forget_ids]
                 for mode in ("preview", "purge"):
@@ -1150,6 +1192,7 @@ async def memory_arm(
                 result = await bounded_retrieval(
                     case, identity, client, bridge, journal, snapshot, excluded_ids,
                     native, detail, memory_ids, query_policy=query_policy,
+                    english_search_profile=english_search_profile,
                 )
             else:
                 phase = "recall_decision"
@@ -1219,9 +1262,12 @@ async def memory_arm(
 async def seed_sentinel(
     config: OwnedConfig, foreign: Provisioned, subject: str, key: bytes, journal: Journal,
     *, query_policy: QueryPolicy = "lexical-v2",
+    english_search_profile: EnglishSearchProfile = "simple-v1",
 ) -> UUID:
+    validate_english_search_profile(query_policy, english_search_profile)
     async with authenticated_client(
         config, subject, key, journal, "sentinel", query_policy=query_policy,
+        search_profile=english_search_profile,
     ) as client:
         idempotency_key = f"{config.run_id}:sentinel:observe"
         request = Observe(
@@ -1239,18 +1285,28 @@ async def seed_sentinel(
         return result.memory_id
 
 
-def recipe_digest(query_policy: QueryPolicy = "legacy-v1") -> str:
+def recipe_digest(
+    query_policy: QueryPolicy = "legacy-v1",
+    english_search_profile: EnglishSearchProfile = "simple-v1",
+) -> str:
+    validate_english_search_profile(query_policy, english_search_profile)
     source = Path(recipe.__file__).read_bytes()
     original = hashlib.sha256(source).hexdigest()
     if query_policy == "legacy-v1":
         return original
-    return query_policy_metadata(query_policy)["recipe_sha256"]
+    return query_policy_metadata(query_policy, english_search_profile)["recipe_sha256"]
 
 
-def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
+def query_policy_metadata(
+    query_policy: QueryPolicy, english_search_profile: EnglishSearchProfile = "simple-v1",
+) -> dict[str, Any]:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    validate_english_search_profile(query_policy, english_search_profile)
     base_digest = recipe_digest("legacy-v1")
-    contract = query_planning.lexical_query_contract() if query_policy != "legacy-v1" else None
+    contract = (
+        query_planning.lexical_query_contract(english_search_profile)
+        if query_policy != "legacy-v1" else None
+    )
     module_digest = (
         hashlib.sha256(Path(query_planning.__file__).read_bytes()).hexdigest()
         if query_policy != "legacy-v1" else None
@@ -1288,8 +1344,20 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
                 "evidence_selection": "round-robin-v1", "planning_rounds": 4,
                 "searches_per_round": 1, "logical_model_call_limit": 160,
             })
+    if english_search_profile != "simple-v1":
+        components.update({
+            "format": "pgag-agent-memory-profile-query-recipe-v1",
+            "english_search_profile": english_search_profile,
+            "japanese_search_profile": "ja-janome-0.5.0-v1",
+            "japanese_query_contract": query_planning.lexical_query_contract("ja-janome-0.5.0-v1"),
+            "english_planner_instructions_sha256": hashlib.sha256(
+                bounded_recall._ENGLISH_SEQUENTIAL_PROMPT.encode("utf-8"),
+            ).hexdigest(),
+        })
     return {
         "query_policy": query_policy, "base_recipe_sha256": base_digest,
+        **({"english_search_profile": english_search_profile}
+           if english_search_profile != "simple-v1" else {}),
         "query_planning_sha256": module_digest, "query_planning_contract": contract,
         "bounded_recall_sha256": bounded_source_sha,
         "recipe_digest_format": (
@@ -1354,6 +1422,7 @@ def select_cohort(cohort: str) -> tuple[recipe.AgentMemoryCase, ...]:
 def cohort_metadata(
     cohort: str, cases: tuple[recipe.AgentMemoryCase, ...], query_policy: QueryPolicy,
     retention_policy: RetentionPolicy | None = None,
+    english_search_profile: EnglishSearchProfile = "simple-v1",
 ) -> dict[str, Any]:
     retention_policy = resolve_retention_policy(query_policy, retention_policy)
     require(cases == select_cohort(cohort), "cohort_dataset_mismatch")
@@ -1368,7 +1437,7 @@ def cohort_metadata(
 
         dataset_source = Path(agent_evaluation_distractor.__file__)
     scorer_source = Path(recipe.__file__).read_bytes()
-    query_metadata = query_policy_metadata(query_policy)
+    query_metadata = query_policy_metadata(query_policy, english_search_profile)
     dataset_sha = hashlib.sha256(json_bytes([case.model_dump() for case in cases])).hexdigest()
     protected_sha = hashlib.sha256(scorer_source.split(b"def pilot_report(")[0]).hexdigest()
     review_source_sha = None
@@ -1419,8 +1488,11 @@ def cohort_metadata(
 def verify_cohort_metadata(
     metadata: Mapping[str, Any], cohort: str, cases: tuple[recipe.AgentMemoryCase, ...],
     query_policy: QueryPolicy, retention_policy: RetentionPolicy | None = None,
+    english_search_profile: EnglishSearchProfile = "simple-v1",
 ) -> None:
-    expected = cohort_metadata(cohort, cases, query_policy, retention_policy)
+    expected = cohort_metadata(
+        cohort, cases, query_policy, retention_policy, english_search_profile,
+    )
     require(
         all(key in metadata and json_bytes(metadata[key]) == json_bytes(value)
             for key, value in expected.items()),
@@ -1535,6 +1607,8 @@ def review_execution_summary(details: Mapping[str, dict[str, Any]]) -> dict[str,
 
 
 async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
+    english_search_profile = getattr(args, "english_search_profile", "simple-v1")
+    validate_english_search_profile(args.query_policy, english_search_profile)
     args.retention_policy = resolve_retention_policy(args.query_policy, args.retention_policy)
     cases = select_cohort(args.cohort)
     require(len(cases) == 20, "fixed_case_count_required")
@@ -1544,7 +1618,9 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
     config = None
     fatal = None
     manifest: dict[str, Any] = {
-        **cohort_metadata(args.cohort, cases, args.query_policy, args.retention_policy),
+        **cohort_metadata(
+            args.cohort, cases, args.query_policy, args.retention_policy, english_search_profile,
+        ),
         "format": "pgag-agent-memory-evaluation-v1",
         "benchmark_qualified": False, "automatic_effects": False,
         "synthetic_fixture_only": True, "fixture_purge_consent_required": True,
@@ -1570,7 +1646,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             "prompt_bytes_maximum": MAX_BYTES, "response_bytes_maximum": MAX_BYTES,
             "recall_items_maximum": 8, "recall_context_bytes": 8000,
             "recent_window_events": 2, "recent_window_bytes": 2000,
-            "lexical_profiles": {"en": "simple-v1", "ja": "ja-janome-0.5.0-v1"},
+            "lexical_profiles": {"en": english_search_profile, "ja": "ja-janome-0.5.0-v1"},
         },
         "scope": {
             "planned_owned_tenants": 21, "cases": 20, "arms": list(ARMS),
@@ -1610,6 +1686,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         journal.emit("run_started", manifest=manifest)
         verify_cohort_metadata(
             manifest, args.cohort, cases, args.query_policy, args.retention_policy,
+            english_search_profile,
         )
         # Provisioning is restricted to the matched owned admin target; runtime traffic
         # below never uses admin credentials or bypasses the HTTP authorization boundary.
@@ -1617,6 +1694,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         foreign = await provision(foreign_subject, os.environ["PGAG_ADMIN_DATABASE_URL"], journal)
         sentinel_id = await seed_sentinel(
             config, foreign, foreign_subject, key, journal, query_policy=args.query_policy,
+            english_search_profile=english_search_profile,
         )
         identities = [foreign]
         for case in cases:
@@ -1647,6 +1725,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
                 case, identity, subject, foreign, sentinel_id, config, key, bridge, journal,
                 query_policy=args.query_policy,
                 retention_policy=args.retention_policy,
+                english_search_profile=english_search_profile,
             )
             observations[(case.case_id, "pg_agmemory")] = measured
             detail["arms"]["pg_agmemory"] = arm_detail
@@ -1765,7 +1844,14 @@ def main() -> int:
         "--cohort", choices=COHORTS, default="pilot-v1", action=UniqueChoice,
         help="Fixed synthetic dataset selection; no arbitrary dataset paths",
     )
+    parser.add_argument(
+        "--english-search-profile", choices=ENGLISH_SEARCH_PROFILES, default="simple-v1",
+        action=UniqueChoice,
+        help="English retrieval profile; en-snowball-v1 requires bounded-lexical-v6",
+    )
     args = parser.parse_args()
+    if args.english_search_profile != "simple-v1" and args.query_policy != "bounded-lexical-v6":
+        parser.error("en-snowball-v1 requires --query-policy bounded-lexical-v6")
     args.retention_policy = resolve_retention_policy(args.query_policy, args.retention_policy)
     if not args.api_url:
         parser.error("PGAG_AGENT_EVAL_API_URL or --api-url is required")

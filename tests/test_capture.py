@@ -102,7 +102,8 @@ def test_batch_capture_exact_limits_order_and_legacy_interoperation(env, size):
     result = response.json()
     assert set(result) == {"memory_id", "revision", "synthesis_job_ids"}
     assert result["revision"] == 1 and len(set(result["synthesis_job_ids"])) == size
-    assert counts(env)["memory.episode"] == counts(env)["memory.episode_lexical"] == 1
+    assert counts(env)["memory.episode"] == 1
+    assert counts(env)["memory.episode_lexical"] == 2
     assert counts(env)["memory_ops.job"] == size and counts(env)["memory.assertion"] == 0
     for memory, job_id in zip(body["memories"], result["synthesis_job_ids"], strict=True):
         single = capture(env, {"episode": body["episode"], "memory": memory})
@@ -378,7 +379,7 @@ def test_atomic_capture_publishes_only_after_worker_and_preserves_native_contrac
     assert [item["memory_id"] for item in initial["items"]] == [result["memory_id"]]
     assert initial["coverage"]["jobs_pending"] is True
     assert initial["coverage"]["synthesis_pending"] is False
-    assert counts(env)["memory.episode_lexical"] == 1
+    assert counts(env)["memory.episode_lexical"] == 2
     assert capture(env, body, headers).json() == result
     assert capture(env, body).json() == result
     processed = process(env)

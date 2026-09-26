@@ -102,10 +102,10 @@ def report():
     )
 
 
-def test_report_preserves_schema22_and_never_grants_restore_authority():
+def test_report_preserves_schema23_and_never_grants_restore_authority():
     value = report().model_dump(mode="json")
     assert value["service_version"] == __version__
-    assert value["schema_version"] == 22
+    assert value["schema_version"] == 23
     assert value["postgres_version_num"] == 180006
     assert value["pgvector_version"] == "0.8.6"
     assert value["api_version"] == "v1"

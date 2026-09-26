@@ -2,6 +2,30 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Explicit English-profile comparison
+
+The schema-23 `en-snowball-v1` profile is a **Native matching change**, not
+another prompt-only or scheduling tweak. The v6 runner accepts explicit
+`--english-search-profile en-snowball-v1`; the default is still `simple-v1`,
+and Japanese cases retain `ja-janome-0.5.0-v1`. The selected English contract
+and profile-aware planner instructions are recorded in the recipe.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-english-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v6 \
+  --retention-policy review-v1 --english-search-profile en-snowball-v1
+```
+
+Keep reader, retention, data/gold and exact scoring fixed. The ceiling remains
+160 model calls and four searches plus one fresh validation per case; actual
+calls still depend on stop plans and failures. Record new source/schema/profile
+identities, all regressions, partial/unknown denominators, usage and latency.
+Do not reuse the failed v6 run as if it completed, retry its missing arm, or
+assume Snowball repairs discovery, scalar formatting or provider timeouts.
+Implementation and deterministic wordform tests are not a new model-quality
+measurement. No new real-model result is claimed here.
+
 ## Sequential planning comparison
 
 `bounded-lexical-v6` changes the **planning schedule and instructions**, not

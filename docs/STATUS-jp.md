@@ -2,6 +2,27 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
+## 明示選択する英語stemming
+
+**0.4.0.dev1 / API v1 / schema 23**で`en-snowball-v1`を追加します。
+保存projectionとqueryの両方にPostgreSQL English Snowball/stop wordを適用し、
+残ったlexemeをAND照合します。LLMに毎回語形を列挙させず、literal語形の不一致に対応します。
+同義語/vector検索ではなく、名前・識別子も正規化され得ます。
+stop wordだけの非空queryをbrowseには変えません。
+既定simpleと明示選択の日本語動作を維持し、英語にも現在認可、時間条件、purge、最新参照検査を適用します。
+
+capabilities、Native/OpenAPI、MCP、hook、上限付き計画でprofileごとの説明を公開します。
+v6評価では`--english-search-profile en-snowball-v1`を明示指定できます。
+日本語caseと160 call・検索4回＋検査1回の上限は変えません。
+この実装だけで新しいmodel scoreを主張せず、後述v6のtimeout/後退も残します。
+providerの信頼性修復やプロダクト有用性の認定ではありません。
+
+migrationは英語行をbackfillし、新規書込みは両projectionを維持するため、
+容量/書込み処理量が増えます。本番の追加負荷は未測定です。
+[schema23移行とrecoveryの境界](operations/README-jp.md#schema-23-english-projections)と
+[profile/reindex手順](operations/README-jp.md#lexical-profileとreindexの運用)に従ってください。
+upgrade後に旧graph/recovery証跡を自動的に現在の証跡にはしません。
+
 ## 明示的な逐次検索schedule
 
 `bounded-lexical-v6`は最大4 round・各1 queryで、検証済み・上限付き件数feedbackを使い、

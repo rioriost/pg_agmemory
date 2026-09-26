@@ -6,7 +6,7 @@ from typing import Any, Literal
 import psycopg
 from psycopg.rows import dict_row
 
-from pg_agmemory.lexical import rebuild
+from pg_agmemory.lexical import JAPANESE_PROFILE, PROJECTED_PROFILES, rebuild
 from pg_agmemory.transactions import transaction
 
 Connection = psycopg.AsyncConnection[dict[str, Any]]
@@ -33,6 +33,7 @@ MIGRATIONS = (
     "020_age_projection.sql",
     "021_source_access.sql",
     "022_bounded_revision_checks.sql",
+    "023_english_fts.sql",
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 VECTOR_VERSION = "0.8.6"
@@ -160,7 +161,9 @@ def migrate(url: str) -> None:
                 raise RuntimeError("pgvector 0.8.6 in public is required")
 
 
-def reindex_lexical(url: str) -> dict[str, str | int]:
+def reindex_lexical(url: str, *, profile: str = JAPANESE_PROFILE) -> dict[str, str | int]:
+    if profile not in PROJECTED_PROFILES:
+        raise ValueError("Unsupported projected lexical profile")
     with psycopg.connect(url, autocommit=True) as conn, transaction(conn):
         conn.execute("SET LOCAL lock_timeout = '5s'")
         conn.execute("SELECT pg_advisory_xact_lock(742091830)")
@@ -169,4 +172,4 @@ def reindex_lexical(url: str) -> dict[str, str | int]:
         ).fetchall()
         if versions != [(version,) for version in range(1, SCHEMA_VERSION + 1)]:
             raise RuntimeError("Database schema version mismatch; run matching migrations")
-        return rebuild(conn)
+        return rebuild(conn, profile=profile)

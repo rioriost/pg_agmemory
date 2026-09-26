@@ -180,7 +180,7 @@ cleanup() {
         --argjson disconnect_fenced "$disconnect_primary_remains_fenced" \
         --argjson probe "$probe" --argjson artifact "$artifact" --argjson timings "$timings" '{
             format: "pgag-ha-drill-v5", service_version: $version, api_version: "v1",
-            schema_version: 22, postgres_version_num: 180006, pgvector_version: "0.8.6",
+            schema_version: 23, postgres_version_num: 180006, pgvector_version: "0.8.6",
             status: (if $success then "passed" else "failed" end),
             failure_code: (if $success then null else $failure end),
             source_destroyed: $destroyed, fencing_verified: $fenced,

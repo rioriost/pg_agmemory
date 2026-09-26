@@ -417,7 +417,7 @@ def test_runtime_cannot_edit_checkpoint_payload_or_rewind_branch(env):
 def test_checkpoint_routes_publish_typed_contracts_and_capabilities(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
     assert capabilities["checkpoints"] is True and capabilities["tool_effect_ledger"] is True
-    assert capabilities["schema_version"] == 22
+    assert capabilities["schema_version"] == 23
     assert capabilities["checkpoint_head"] == {
         "endpoint": "/v1/checkpoints/head",
         "read_only": True,

@@ -100,7 +100,7 @@ from pg_agmemory.models import (
     WorkingSnapshot,
 )
 from pg_agmemory.processing import Processing
-from pg_agmemory.query_planning import lexical_query_contract
+from pg_agmemory.query_planning import ENGLISH_PROFILE, lexical_query_contract
 from pg_agmemory.request_deadline import (
     ERROR_RESPONSE_RESERVE_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
@@ -636,6 +636,9 @@ def create_app(
             "retrieval_modes": ["lexical", "vector", "hybrid"],
             "default_retrieval_mode": "lexical",
             "lexical_query": lexical_query_contract(),
+            "lexical_query_profiles": {
+                profile: lexical_query_contract(profile) for profile in SEARCH_PROFILES
+            },
             "required_context": {
                 "retrieval_modes": ["lexical"],
                 "max_refs": 16,
@@ -753,6 +756,14 @@ def create_app(
             },
             "search_profiles": SEARCH_PROFILES,
             "default_search_profile": "simple-v1",
+            "english_fts": {
+                "profile": ENGLISH_PROFILE,
+                "configuration": "pg_catalog.english",
+                "stemming": "english_snowball",
+                "stop_words": "postgresql_english",
+                "nonempty_zero_lexeme_query": "no_matches",
+                "literal_identifiers_guaranteed": False,
+            },
             "japanese_fts": {
                 "profile": JAPANESE_PROFILE,
                 "tokenizer": "Janome",

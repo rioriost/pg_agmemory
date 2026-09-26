@@ -66,7 +66,7 @@ class ArtifactEdge(HistoryContract):
 
 class GraphArtifact(HistoryContract):
     format: Literal["pgag-graph-artifact-v1"] = "pgag-graph-artifact-v1"
-    schema_version: Literal[22] = 22
+    schema_version: Literal[23] = 23
     tenant_id: UUID
     generation_id: UUID
     parent_id: UUID | None

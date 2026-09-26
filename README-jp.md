@@ -7,7 +7,7 @@
 ローカルcheckoutディレクトリ・Pythonパッケージ・サービス名は`pg_agmemory`です。
 以下のコマンドはこのローカルcheckoutから実行してください。
 
-**M5開発: 0.4.0.dev1 / API v1 / schema 22。**
+**M5開発: 0.4.0.dev1 / API v1 / schema 23。**
 新しい[運用foundation](docs/operations/README-jp.md#m5-operational-foundations)に、
 明示的なread-only embedding移行確認とone-shot監視exportを追加します。
 [実装と配置先受入れは別](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md#m5実装と配置先受入れの区別)であり、
@@ -32,6 +32,11 @@ Native `/v1/` requestには、エラー応答用1秒を含む累積
 COMMIT中の期限超過は引き続き結果不明として扱います。
 migration022は遅延revision制約でのhistory/evidence再走査を減らし、期限とRLSは緩めません。
 [schema22移行手順](docs/operations/README-jp.md#schema-22-revision-validation)に従ってください。
+migration023では、英語stemmingとstop word除去を行う**`en-snowball-v1`**を明示選択できます。
+既定`simple-v1`と日本語の照合は変えず、既存・新規memoryに英語projectionと
+profile別query説明を追加します。
+[schema23移行手順](docs/operations/README-jp.md#schema-23-english-projections)が必要です。
+検索の選択肢であり、失敗したv6 model評価を修復済みとは主張しません。
 公開済みM4 releaseと証跡は変更しません。
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21。**

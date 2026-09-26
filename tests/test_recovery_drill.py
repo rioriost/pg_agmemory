@@ -93,7 +93,7 @@ def evidence():
     revoked_member = {**member, "principal_id": "reader", "permissions": ["read"]}
     before = {
         "format": "pgag-isolated-purge-drill-v3",
-        "schema_version": 22,
+        "schema_version": 23,
         "tenant": [{"id": "tenant", "access_epoch": 3, "deletion_epoch": 1}],
         "principals": [operator, reader],
         "objects": [{"tenant_id": "tenant", "id": "object", "scope_id": "scope",
@@ -306,7 +306,7 @@ def test_application_rejects_new_suppress_and_old_recipe(old_format):
 
 
 @pytest.mark.parametrize("application", [False, True])
-@pytest.mark.parametrize("schema", [18, 19, 20, 21])
+@pytest.mark.parametrize("schema", [18, 19, 20, 21, 22])
 def test_previous_schema_artifacts_require_matching_recovery_version(application, schema):
     before, latest = evidence()
     if application:
@@ -314,7 +314,7 @@ def test_previous_schema_artifacts_require_matching_recovery_version(application
             value["format"] = "pgag-isolated-purge-drill-v7"
     before["schema_version"] = schema
     validate = drill.validate_application_evidence if application else drill.validate_evidence
-    with pytest.raises(drill.DrillError, match="schema22 required"):
+    with pytest.raises(drill.DrillError, match="schema23 required"):
         validate(before, latest)
 
 

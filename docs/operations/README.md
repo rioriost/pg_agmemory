@@ -10,11 +10,36 @@ databases or real user histories.
 
 ## M5 operational foundations
 
-Development identity: **0.4.0.dev1 / API v1 / schema 22**, stage
+Development identity: **0.4.0.dev1 / API v1 / schema 23**, stage
 `m5-production-candidate`. This is not M5 completion or production qualification.
 The foundations supply read-only operator/replication evidence, a SQL-only
 physical PITR lab and an explicitly fenced owned HA rehearsal.
 Published v0.3.0/M4 evidence retains its original identity.
+
+### Schema-23 English projections
+
+Migration `023_english_fts.sql` adds the opt-in `en-snowball-v1` profile and
+backfills English lexical projections for canonical episodes and assertion
+revisions, excluding tombstoned objects. New writes maintain both English and
+Japanese projections transactionally. This increases projection storage and
+write/migration work even when callers retain `simple-v1`; its production cost
+and migration duration are not qualified. No model calls or external effects
+are part of migration.
+
+Stop/drain API, workers and administrator writers, reconcile uncertain COMMITs,
+and back up before `pg-agmemory migrate` with matching schema-23 components.
+Failure rolls back the profile constraints, projections, AGE guard and ledger
+together. Existing simple/Japanese matching, RLS and temporal/source/deletion
+checks are not relaxed. Do not serve with old code against the new schema.
+There is no in-place downgrade; use an isolated schema-22 backup and matching
+components for rollback, subject to latest deletion/source authority.
+
+Schema-20/21/22 graph generations and receipts remain history, not current
+serving authority. Disable any old AGE projection and explicitly rebuild,
+record and publish schema-23 artifacts before re-enabling it. Generate matching
+schema-23 recovery snapshots/bundles and manifests; old evidence is not relabeled.
+The current graph resource recipe is v7/schema23 with unchanged workload and
+thresholds; the v6/schema22 recipe is retained separately without new qualification.
 
 ### Schema-22 revision validation
 
@@ -561,10 +586,11 @@ after the client deadline has returned; its later cleanup is a separate observat
 M5 still needs a declared production topology/load profile, independent media,
 production partition/failover and commit-outcome handling, monitoring/alert retention,
 embedding-space migration, upgrade rehearsal and verified backup expiration.
-The current v6 graph recipe uses schema 22 without changing workload or
-thresholds. `examples/graph-resource-profile-m5-v5.json` preserves the schema-21
+The current v7 graph recipe uses schema 23 without changing workload or
+thresholds. `examples/graph-resource-profile-m5-v6.json` preserves schema 22,
+`examples/graph-resource-profile-m5-v5.json` preserves the schema-21
 development recipe, and `examples/graph-resource-profile-m4-v4.json` preserves
-the published M4 recipe. Neither historical measurement qualifies v6.
+the published M4 recipe. Historical measurements do not qualify v7.
 
 ## M4 durable source-access coordinator
 
@@ -3274,7 +3300,14 @@ Janome and then uses the same simple dictionary. Quoting, `OR`, `NOT` and
 wildcards do not enable operators. A nonempty punctuation-only query matches
 nothing; an empty/whitespace query retains explicit authorized browsing.
 
-The identical guidance appears in Native/OpenAPI and hook query descriptions
+`lexical_query` retains that legacy contract. `lexical_query_profiles` additionally
+maps each selectable profile to its contract; `en-snowball-v1` uses
+`pgag-lexical-query-v2`, `pg_catalog.english` stemming and stop-word removal
+before AND matching. Pass the profile to `lexical_query_contract(profile)` or
+`lexical_query_prompt(question, profile)`; do not apply the legacy literal
+guidance to English stemming.
+
+Profile-aware guidance appears in Native/OpenAPI and hook query descriptions
 and the MCP recall tool. Existing string queries remain accepted with the same
 4,096-character limit, ranking, RLS, temporal eligibility, deletion checks and
 byte budgets. There is no server-side LLM, automatic rewrite, query broadening,
@@ -4909,7 +4942,7 @@ registered host plugin. No Copilot/Claude/Codex integration is claimed.
    | `PGAG_HOOK_PURPOSE` | Default `implicit_context`; 1–256 characters |
    | `PGAG_HOOK_TOKEN_BUDGET` | Default `2000`; integer 64–2,000 **UTF-8 bytes, not model tokens** |
    | `PGAG_HOOK_MAX_ITEMS` | Default `20`; integer 1–20 |
-   | `PGAG_HOOK_SEARCH_PROFILE` | Default `simple-v1`; opt in explicitly to `ja-janome-0.5.0-v1` |
+   | `PGAG_HOOK_SEARCH_PROFILE` | Default `simple-v1`; explicitly opt in to `ja-janome-0.5.0-v1` or `en-snowball-v1` |
    | `PGAG_HOOK_TIMEOUT_SECONDS` | Default `2.0`; finite 0.1–20 seconds |
 
    URL, token, and scope IDs are **all required**. Shared `NativeSettings` also
@@ -5215,6 +5248,34 @@ The new runtime's refusal of schema mismatches does not protect old processes.
 
 ## Lexical profile and reindex operations
 
+For English inflection matching, explicitly set `search_profile: "en-snowball-v1"`.
+Both the stored projection and query use PostgreSQL `pg_catalog.english`
+(English Snowball with its English stop words). For example, `approve` can
+match `approval`, and `run` can match `running`; this is not synonym or semantic
+search and does not promise arbitrary morphological equivalence.
+Matching still ANDs all remaining query lexemes. Stop-word-only or
+punctuation-only nonempty queries return no lexical matches, never automatic
+browse; explicitly supplied required refs retain their separate contract.
+Identifiers and names can also be stemmed or dropped as stop words: retain
+`simple-v1` when literal lexemes matter. Evidence content itself is unchanged.
+The PostgreSQL configuration/dictionary is part of the deployment dependency;
+changing its definitions requires explicit profile/version management and
+reindexing, not a silent reuse of this profile identity.
+
+Missing authorized, time-eligible English projections report
+`lexical_incomplete`, with the same canonical browse/required-reference behavior
+as Japanese. No simple fallback or repair worker is added. For offline repair:
+
+```bash
+pg-agmemory reindex-lexical --profile en-snowball-v1
+```
+
+It requires the administrator DSN and rebuilds only the selected profile across
+all tenants, retaining Japanese rows. The no-flag reindex command still rebuilds
+only Japanese projections. Stop/drain writers and follow the maintenance
+precautions below. Scope, current ACL/source leases, history, purge, byte limits
+and final required-reference validation remain authoritative for either profile.
+
 Recall defaults to `search_profile: "simple-v1"`; explicitly request
 `"ja-janome-0.5.0-v1"` for Japanese-script surface/wakati segmentation. The
 response echoes the selected profile. Janome 0.5.0 uses bundled
@@ -5239,7 +5300,7 @@ as a deployment memory limit: request processing, concurrency, migration/rebuild
 and resource sizing are not qualified. See the bounded diagnostic observations
 in [ADR 0007](../adr/0007-japanese-fts.md#runtime-initialization-boundary).
 
-For the Japanese profile, missing currently authorized, requested-scope,
+For either projected profile, missing currently authorized, requested-scope,
 time-eligible projections set `coverage.lexical_incomplete: true` and
 `coverage.retrieval_complete: false`, regardless of query relevance or job state.
 Available matches may still return; in lexical mode an empty query browses canonical items even

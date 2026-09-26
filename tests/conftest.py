@@ -556,7 +556,10 @@ def database():
                             FROM pg_policy p WHERE p.polrelid=c.oid),
                            (SELECT jsonb_agg(to_jsonb(k) ORDER BY k.conname)
                             FROM pg_constraint k WHERE k.conrelid=c.oid
-                              AND k.conname <> 'age_projection_captured_schema_version_check'),
+                              AND k.conname NOT IN (
+                                  'age_projection_captured_schema_version_check',
+                                  'episode_lexical_profile_check',
+                                  'assertion_lexical_profile_check')),
                            (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.tgname)
                             FROM pg_trigger t WHERE t.tgrelid=c.oid)
                        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -596,8 +599,11 @@ def database():
         assert admin.execute(function_query).fetchall() == previous_functions
         assert admin.execute(security_query).fetchall() == previous_security
         assert admin.execute(captured_schema_query).fetchone() == previous_captured_schema
-    migrate(url)
-    asyncio.run(validate_runtime(runtime_url))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(database_module, "MIGRATIONS", database_module.MIGRATIONS[:22])
+        migrate(url)
+    with pytest.raises(RuntimeError, match="schema version mismatch"):
+        asyncio.run(validate_runtime(runtime_url))
     with psycopg.connect(url) as admin:
         current_functions = admin.execute(function_query).fetchall()
         assert [row[:-1] for row in current_functions] == [
@@ -626,6 +632,100 @@ def database():
             "SELECT state,attempt,payload FROM memory_ops.job WHERE id=%s",
             (legacy[0]["job"]["result"]["job_id"],),
         ).fetchone() == ("pending", 0, legacy[0]["job"]["body"]["memory"])
+    lexical_rows = """SELECT 'episode',tenant_id,episode_id,1::bigint,
+                             scope_id,profile,search_text::text
+                      FROM memory.episode_lexical
+                      UNION ALL
+                      SELECT 'assertion',tenant_id,assertion_id,revision,scope_id,profile,
+                             search_text::text FROM memory.assertion_lexical
+                      ORDER BY 1,2,3,4,6"""
+    lexical_checks = """SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint
+                        WHERE conrelid IN ('memory.episode_lexical'::regclass,
+                                           'memory.assertion_lexical'::regclass)
+                        ORDER BY conname"""
+    lexical_security = """SELECT c.oid,c.relrowsecurity,c.relforcerowsecurity,c.relacl,
+                             (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.polname)
+                              FROM pg_policy p WHERE p.polrelid=c.oid)
+                          FROM pg_class c
+                          WHERE c.oid IN ('memory.episode_lexical'::regclass,
+                                          'memory.assertion_lexical'::regclass)
+                          ORDER BY c.oid"""
+    with psycopg.connect(url) as admin:
+        before_rows = admin.execute(lexical_rows).fetchall()
+        before_checks = admin.execute(lexical_checks).fetchall()
+        before_security = admin.execute(lexical_security).fetchall()
+        before_all_security = admin.execute(security_query).fetchall()
+        before_captured_schema = admin.execute(captured_schema_query).fetchone()
+        before_functions = admin.execute(function_query).fetchall()
+        before_guard = admin.execute(
+            "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
+        ).fetchone()[0]
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 22
+        assert before_rows and all(row[5] == lexical.JAPANESE_PROFILE for row in before_rows)
+    with pytest.MonkeyPatch.context() as patch:
+        def fail_english_ledger(self, query, params=None, **kwargs):
+            if query == "INSERT INTO public.pgag_schema_migration(version) VALUES (%s)" \
+                    and params == (23,):
+                raise RuntimeError("simulated English projection migration failure")
+            return execute(self, query, params, **kwargs)
+        patch.setattr(psycopg.Connection, "execute", fail_english_ledger)
+        with pytest.raises(RuntimeError, match="simulated English projection migration failure"):
+            migrate(url)
+    with psycopg.connect(url) as admin:
+        assert admin.execute(
+            "SELECT max(version) FROM public.pgag_schema_migration"
+        ).fetchone()[0] == 22
+        assert admin.execute(lexical_rows).fetchall() == before_rows
+        assert admin.execute(lexical_checks).fetchall() == before_checks
+        assert admin.execute(lexical_security).fetchall() == before_security
+        assert admin.execute(security_query).fetchall() == before_all_security
+        assert admin.execute(captured_schema_query).fetchone() == before_captured_schema
+        assert admin.execute(function_query).fetchall() == before_functions
+        assert admin.execute(
+            "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
+        ).fetchone()[0] == before_guard
+    migrate(url)
+    asyncio.run(validate_runtime(runtime_url))
+    with psycopg.connect(url) as admin:
+        after_rows = admin.execute(lexical_rows).fetchall()
+        assert [row for row in after_rows if row[5] == lexical.JAPANESE_PROFILE] == before_rows
+        assert admin.execute(lexical_security).fetchall() == before_security
+        assert admin.execute(security_query).fetchall() == before_all_security
+        after_functions = admin.execute(function_query).fetchall()
+        assert [row[:-1] for row in after_functions] == [row[:-1] for row in before_functions]
+        assert [row for row in after_functions if row[1] != "guard_age_projection"] == [
+            row for row in before_functions if row[1] != "guard_age_projection"
+        ]
+        profile_checks = {
+            name: definition for name, definition in admin.execute(lexical_checks).fetchall()
+            if name.endswith("_profile_check")
+        }
+        assert set(profile_checks) == {
+            "episode_lexical_profile_check", "assertion_lexical_profile_check",
+        }
+        assert all(lexical.ENGLISH_PROFILE in definition and lexical.JAPANESE_PROFILE in definition
+                   for definition in profile_checks.values())
+        for table, identity in (("episode", "id"), ("assertion_revision", "assertion_id")):
+            expected = admin.execute(
+                sql.SQL("""SELECT count(*) FROM memory.{} r
+                           WHERE NOT EXISTS (SELECT 1 FROM memory_ops.object_tombstone t
+                               WHERE t.tenant_id=r.tenant_id AND t.object_id=r.{})""").format(
+                    sql.Identifier(table), sql.Identifier(identity),
+                )
+            ).fetchone()[0]
+            kind = "episode" if table == "episode" else "assertion"
+            assert sum(row[0] == kind and row[5] == lexical.ENGLISH_PROFILE
+                       for row in after_rows) == expected
+        assert admin.execute(
+            "SELECT pg_get_functiondef('memory_ops.guard_age_projection()'::regprocedure)"
+        ).fetchone()[0] == before_guard.replace("'22'::jsonb", "'23'::jsonb").replace(
+            ":= 22;", ":= 23;",
+        )
+        assert admin.execute(captured_schema_query).fetchone()[1] == (
+            "CHECK ((captured_schema_version = ANY (ARRAY[20, 21, 22, 23])))"
+        )
     yield url, runtime_url, legacy
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))

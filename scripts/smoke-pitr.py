@@ -127,7 +127,7 @@ class Reference(Contract):
     format: Literal["pgag-pitr-reference-v1"] = "pgag-pitr-reference-v1"
     stage: Literal["seed", "target", "latest"]
     service_version: str = __version__
-    schema_version: Literal[22] = 22
+    schema_version: Literal[23] = 23
     tenant_id: UUID
     scope_id: UUID
     writer_id: UUID
@@ -236,7 +236,7 @@ class Report(Contract):
     format: Literal["pgag-pitr-drill-v1"] = "pgag-pitr-drill-v1"
     service_version: str = __version__
     api_version: Literal["v1"] = "v1"
-    schema_version: Literal[22] = 22
+    schema_version: Literal[23] = 23
     postgres_version_num: Literal[180006] = 180006
     pgvector_version: Literal["0.8.6"] = "0.8.6"
     status: Literal["passed", "failed"]
@@ -305,7 +305,7 @@ def read(directory, name, model):
 
 def owned_environment(needs_database=True):
     require(platform.system() == "Linux", "linux_runtime_required")
-    require(SCHEMA_VERSION == 22, "schema_version_mismatch")
+    require(SCHEMA_VERSION == 23, "schema_version_mismatch")
     require(not any(os.environ.get(key) for key in (
         "PGAG_DATABASE_URL", "PGAG_ADMIN_DATABASE_URL", "PGHOST", "PGSERVICE",
     )), "external_database_target_forbidden")
@@ -376,7 +376,7 @@ def capture(url, stage, ids, point=None, recovery=False):
         versions = conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version"
         ).fetchall()
-        require([r["version"] for r in versions] == list(range(1, 23)),
+        require([r["version"] for r in versions] == list(range(1, 24)),
                 "schema_version_mismatch")
         cursor = conn.execute(
             "SELECT sequence,decision,reason FROM memory_ops.source_access_state "

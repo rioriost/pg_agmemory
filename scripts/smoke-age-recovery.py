@@ -240,7 +240,7 @@ def snapshot(fixture):
         conn.execute("SET LOCAL timezone='UTC'")
         require(conn.execute(
             "SELECT version FROM public.pgag_schema_migration ORDER BY version",
-        ).fetchall() == [{"version": version} for version in range(1, 23)], "schema22_required")
+        ).fetchall() == [{"version": version} for version in range(1, 24)], "schema23_required")
         extensions = conn.execute(
             "SELECT extname,extversion FROM pg_extension "
             "WHERE extname IN ('age','vector') ORDER BY extname",
@@ -630,7 +630,7 @@ async def recover(directory):
             require(final_processing[row["table"]] == row, "rebuild_modified_operational_state")
     report = {
         "status": "passed", "scope": "bounded-isolated-enabled-age", "m3_qualified": False,
-        "schema_version": 22, "service_version": pg_agmemory.__version__,
+        "schema_version": 23, "service_version": pg_agmemory.__version__,
         "source_authority_recovery": "exact_content_only",
         "source_authority_revalidation": "explicit",
         "automatic_source_grant_refresh": False,

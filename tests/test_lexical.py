@@ -15,8 +15,8 @@ import pytest
 from psycopg import sql
 
 from pg_agmemory import lexical
-from pg_agmemory.database import migrate, reindex_lexical
-from pg_agmemory.lexical import JAPANESE_PROFILE, TokenizerUnavailable, segment
+from pg_agmemory.database import SCHEMA_VERSION, migrate, reindex_lexical
+from pg_agmemory.lexical import JAPANESE_PROFILE, SEARCH_PROFILES, TokenizerUnavailable, segment
 from pg_agmemory.worker import run_once
 
 pytestmark = pytest.mark.integration
@@ -234,8 +234,8 @@ def test_revision_specific_search_time_and_purge(env):
     with psycopg.connect(env.admin_url) as conn:
         assert conn.execute(
             """SELECT revision FROM memory.assertion_lexical
-               WHERE assertion_id = %s ORDER BY revision""",
-            (memory,),
+               WHERE assertion_id = %s AND profile = %s ORDER BY revision""",
+            (memory, JAPANESE_PROFILE),
         ).fetchall() == [(1,), (2,)]
     purge(env, old_source)
     assert memory not in ids(recall(env, "終了"))
@@ -262,7 +262,10 @@ def test_missing_projection_is_visible_without_fallback_and_browse_still_works(e
     first = env.observe("Gold").json()["memory_id"]
     source = env.observe("東京都の契約は Gold です。").json()["memory_id"]
     with psycopg.connect(env.admin_url) as conn:
-        conn.execute("DELETE FROM memory.episode_lexical WHERE episode_id = %s", (source,))
+        conn.execute(
+            "DELETE FROM memory.episode_lexical WHERE episode_id = %s AND profile = %s",
+            (source, JAPANESE_PROFILE),
+        )
     result = recall(env, "Gold")
     assert ids(result) == {first}
     assert result["coverage"]["lexical_incomplete"] is True
@@ -289,8 +292,8 @@ def test_projection_coverage_respects_current_acl_and_time_filters(env):
     ).json()["memory_id"]
     with psycopg.connect(env.admin_url) as conn:
         conn.execute(
-            "DELETE FROM memory.episode_lexical WHERE episode_id = ANY(%s)",
-            ([secret, foreign, future],),
+            "DELETE FROM memory.episode_lexical WHERE episode_id = ANY(%s) AND profile = %s",
+            ([secret, foreign, future], JAPANESE_PROFILE),
         )
     narrowed = recall(env, "契約", scope_ids=[str(scope) for scope in env.scopes])
     assert ids(narrowed) == {visible}
@@ -335,8 +338,9 @@ def test_historical_missing_index_does_not_claim_current_gap(env):
     revise(env, memory, source, "契約を終了した")
     with psycopg.connect(env.admin_url) as conn:
         conn.execute(
-            "DELETE FROM memory.assertion_lexical WHERE assertion_id = %s AND revision = 1",
-            (memory,),
+            """DELETE FROM memory.assertion_lexical
+               WHERE assertion_id = %s AND revision = 1 AND profile = %s""",
+            (memory, JAPANESE_PROFILE),
         )
     assert recall(env, "契約")["coverage"]["lexical_incomplete"] is False
     assert recall(env, "契約", known_at=before)["coverage"]["lexical_incomplete"] is True
@@ -367,8 +371,8 @@ def test_exact_maximum_japanese_content_is_fully_indexed(env):
         assert (
             conn.execute(
                 """SELECT search_text @@ plainto_tsquery('simple','終了')
-               FROM memory.episode_lexical WHERE episode_id = %s""",
-                (observed.json()["memory_id"],),
+                   FROM memory.episode_lexical WHERE episode_id = %s AND profile = %s""",
+                (observed.json()["memory_id"], JAPANESE_PROFILE),
             ).fetchone()[0]
             is True
         )
@@ -639,8 +643,9 @@ def test_rebuild_is_atomic_and_excludes_tombstones(env, monkeypatch):
     with psycopg.connect(env.admin_url) as conn:
         assert (
             conn.execute(
-                "SELECT count(*) FROM memory.episode_lexical WHERE episode_id = %s",
-                (secret,),
+                """SELECT count(*) FROM memory.episode_lexical
+                   WHERE episode_id = %s AND profile = %s""",
+                (secret, JAPANESE_PROFILE),
             ).fetchone()[0]
             == 0
         )
@@ -712,16 +717,16 @@ def test_v6_job_replay_and_historical_backfill_survive_migration(env, database):
     with psycopg.connect(env.admin_url) as conn:
         assert conn.execute(
             """SELECT revision FROM memory.assertion_lexical
-               WHERE assertion_id = %s ORDER BY revision""",
-            (record["assertion"],),
+               WHERE assertion_id = %s AND profile = %s ORDER BY revision""",
+            (record["assertion"], JAPANESE_PROFILE),
         ).fetchall() == [(1,), (2,)]
     migrate(env.admin_url)
 
 
 def test_japanese_profile_contract_and_limits(env):
     capabilities = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert capabilities["schema_version"] == 22
-    assert capabilities["search_profiles"] == ["simple-v1", JAPANESE_PROFILE]
+    assert capabilities["schema_version"] == SCHEMA_VERSION
+    assert capabilities["search_profiles"] == SEARCH_PROFILES
     assert capabilities["default_search_profile"] == "simple-v1"
     assert capabilities["japanese_fts"]["normalization"] == "none"
     assert capabilities["vector_search"] is True
@@ -732,4 +737,4 @@ def test_japanese_profile_contract_and_limits(env):
     )
     schema = env.client.get("/openapi.json").json()
     profile = schema["components"]["schemas"]["Recall"]["properties"]["search_profile"]
-    assert profile["enum"] == ["simple-v1", JAPANESE_PROFILE] and profile["default"] == "simple-v1"
+    assert profile["enum"] == SEARCH_PROFILES and profile["default"] == "simple-v1"

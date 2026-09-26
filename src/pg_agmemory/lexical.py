@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import psycopg
 
+from pg_agmemory.query_planning import ENGLISH_PROFILE as ENGLISH_PROFILE
 from pg_agmemory.query_planning import JAPANESE_PROFILE as JAPANESE_PROFILE
 from pg_agmemory.query_planning import SEARCH_PROFILES as SEARCH_PROFILES
 
@@ -19,6 +20,7 @@ JAPANESE_RUN = re.compile(
     r"\uf900-\ufaff\U00020000-\U0002fa1f]+"
 )
 _lock = threading.Lock()
+PROJECTED_PROFILES = (JAPANESE_PROFILE, ENGLISH_PROFILE)
 
 
 class TokenizerUnavailable(RuntimeError):
@@ -61,11 +63,24 @@ def segment(text: str) -> str:
             raise TokenizerUnavailable("Japanese tokenizer unavailable") from None
 
 
-def rebuild(conn: psycopg.Connection[tuple[Any, ...]]) -> dict[str, str | int]:
-    """Replace projections in the caller's offline maintenance transaction."""
+def text_search_config(profile: str) -> str:
+    if profile == ENGLISH_PROFILE:
+        return "pg_catalog.english"
+    if profile in ("simple-v1", JAPANESE_PROFILE):
+        return "pg_catalog.simple"
+    raise ValueError("Unsupported lexical profile")
+
+
+def rebuild(
+    conn: psycopg.Connection[tuple[Any, ...]], *, profile: str = JAPANESE_PROFILE,
+) -> dict[str, str | int]:
+    """Replace only the selected projection in an offline maintenance transaction."""
+    if profile not in PROJECTED_PROFILES:
+        raise ValueError("Unsupported projected lexical profile")
+    configuration = text_search_config(profile)
     conn.execute("SET LOCAL row_security = off")
-    conn.execute("DELETE FROM memory.episode_lexical")
-    conn.execute("DELETE FROM memory.assertion_lexical")
+    conn.execute("DELETE FROM memory.episode_lexical WHERE profile = %s", (profile,))
+    conn.execute("DELETE FROM memory.assertion_lexical WHERE profile = %s", (profile,))
     episodes = revisions = 0
     with conn.cursor(name="lexical_episodes") as cursor:
         cursor.execute(
@@ -78,8 +93,11 @@ def rebuild(conn: psycopg.Connection[tuple[Any, ...]]) -> dict[str, str | int]:
             conn.execute(
                 """INSERT INTO memory.episode_lexical
                    (tenant_id,episode_id,scope_id,profile,search_text)
-                   VALUES (%s,%s,%s,%s,to_tsvector('simple',%s))""",
-                (tenant, object_id, scope, JAPANESE_PROFILE, segment(content)),
+                   VALUES (%s,%s,%s,%s,to_tsvector(%s::regconfig,%s))""",
+                (
+                    tenant, object_id, scope, profile, configuration,
+                    segment(content) if profile == JAPANESE_PROFILE else content,
+                ),
             )
             episodes += 1
     with conn.cursor(name="lexical_assertions") as cursor:
@@ -96,12 +114,15 @@ def rebuild(conn: psycopg.Connection[tuple[Any, ...]]) -> dict[str, str | int]:
             conn.execute(
                 """INSERT INTO memory.assertion_lexical
                    (tenant_id,assertion_id,revision,scope_id,profile,search_text)
-                   VALUES (%s,%s,%s,%s,%s,to_tsvector('simple',%s))""",
-                (tenant, object_id, revision, scope, JAPANESE_PROFILE, segment(content)),
+                   VALUES (%s,%s,%s,%s,%s,to_tsvector(%s::regconfig,%s))""",
+                (
+                    tenant, object_id, revision, scope, profile, configuration,
+                    segment(content) if profile == JAPANESE_PROFILE else content,
+                ),
             )
             revisions += 1
     return {
-        "profile": JAPANESE_PROFILE,
+        "profile": profile,
         "episodes": episodes,
         "assertion_revisions": revisions,
     }

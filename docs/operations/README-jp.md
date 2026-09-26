@@ -9,11 +9,32 @@ purge訓練、schema reset、restore実験を含む破壊的操作は、
 
 ## M5 operational foundations
 
-開発identityは**0.4.0.dev1 / API v1 / schema 22**、
+開発identityは**0.4.0.dev1 / API v1 / schema 23**、
 stageは`m5-production-candidate`です。M5完了や本番認定ではありません。
 foundationとしてread-only運用/複製証跡、SQL-only物理PITR lab、
 所有primaryのfencingを明示確認するHA rehearsalを追加します。
 公開済みv0.3.0/M4の証跡は元のidentityを維持します。
+
+### Schema-23 English projections
+
+`023_english_fts.sql`で明示選択の`en-snowball-v1`を追加し、
+tombstone対象を除いたcanonical episodeとassertion revisionの英語projectionをbackfillします。
+新規書込みは日本語・英語projectionを同じtransactionで維持します。
+callerが`simple-v1`を維持しても、projection容量と書込み/migrationの処理量は増えます。
+本番での負荷やmigration時間は未認定で、migrationにmodel callや外部副作用はありません。
+
+API、worker、管理writerを停止/drainし、不明COMMITを照合してbackupした後、
+schema23の対応componentで`pg-agmemory migrate`を実行します。
+失敗時はprofile制約・projection・AGE guard・ledgerをまとめてrollbackします。
+simple/日本語の照合、RLS、時間・source・削除の確認は緩めません。
+新schemaへ旧codeを接続せず、in-place downgradeも行いません。
+rollbackには隔離したschema22 backupと対応component、最新削除/source authorityの確認が必要です。
+
+schema20/21/22のgraph generationとreceiptは履歴であり、現在のserving許可にはしません。
+旧AGE projectionをdisableし、schema23 artifactを明示build/record/publishしてから有効化します。
+recovery snapshot/bundleとmanifestもschema23で作り直し、旧証跡を読み替えません。
+現行graph resource recipeはworkloadと閾値を維持したv7/schema23です。
+v6/schema22 recipeは別途保存し、新しい性能認定にはしません。
 
 ### Schema-22 revision validation
 
@@ -456,10 +477,11 @@ operator照合を継続し、workerの自動再開、replica昇格、effect再�
 
 M5では引き続き、本番topology/load profile、独立media、本番partition/failoverとcommit結果の扱い、
 監視/alert保持、embedding-space移行、upgrade rehearsal、backup期限の実証が必要です。
-現行v6 graph recipeはworkload/閾値を変えずschema22に合わせます。
+現行v7 graph recipeはworkload/閾値を変えずschema23に合わせます。
+`examples/graph-resource-profile-m5-v6.json`にschema22、
 `examples/graph-resource-profile-m5-v5.json`にschema21開発recipe、
 `examples/graph-resource-profile-m4-v4.json`に公開済みM4 recipeを保持し、
-どちらの過去測定もv6の認定へ読み替えません。
+過去測定をv7の認定へ読み替えません。
 
 ## M4 durable source-access coordinator
 
@@ -2919,7 +2941,11 @@ lexical検索とhybridのlexical側は`plainto_tsquery('simple', ...)`で生成�
 quote、`OR`、`NOT`、wildcardはoperatorを有効にしません。
 記号だけの非空queryは一致せず、空白/空queryは明示的な認可済みbrowseのままです。
 
-Native/OpenAPIとhookのquery説明、MCP recall toolでも同じ説明を使います。
+`lexical_query`は従来契約を維持し、`lexical_query_profiles`で選択profileごとの契約を返します。
+`en-snowball-v1`は`pgag-lexical-query-v2`で、`pg_catalog.english`のstemmingと
+stop word除去後にAND照合します。`lexical_query_contract(profile)`や
+`lexical_query_prompt(question, profile)`へprofileを渡し、英語stemmingに従来literal説明を適用しません。
+Native/OpenAPIとhookのquery説明、MCP recall toolにもprofile別の説明を含めます。
 既存string query、4,096文字上限、ranking、RLS、時間条件、削除確認、byte予算は維持します。
 server側のLLM、書換え、query拡大、retry、空query fallbackは追加しません。
 
@@ -4464,7 +4490,7 @@ vendor-neutralな一回実行のharness側commandであり、MCP、model caller�
    | `PGAG_HOOK_PURPOSE` | 既定`implicit_context`。1〜256文字 |
    | `PGAG_HOOK_TOKEN_BUDGET` | 既定`2000`。整数64〜2,000 **UTF-8 byte、model tokenではない** |
    | `PGAG_HOOK_MAX_ITEMS` | 既定`20`。整数1〜20 |
-   | `PGAG_HOOK_SEARCH_PROFILE` | 既定`simple-v1`。`ja-janome-0.5.0-v1`には明示opt-in |
+   | `PGAG_HOOK_SEARCH_PROFILE` | 既定`simple-v1`。`ja-janome-0.5.0-v1`または`en-snowball-v1`には明示opt-in |
    | `PGAG_HOOK_TIMEOUT_SECONDS` | 既定`2.0`。有限の0.1〜20秒 |
 
    URL、token、scope IDは**すべて必須**です。共有`NativeSettings`は`httpx.URL`でも
@@ -4759,6 +4785,30 @@ migrationテストの合格は、本番upgradeや災害復旧の適格性を示�
 
 ## Lexical profileとreindexの運用
 
+英語の語形をまとめて検索する場合は`search_profile: "en-snowball-v1"`を明示指定します。
+保存projectionとqueryの両方でPostgreSQL `pg_catalog.english`
+（English Snowballと英語stop word）を使います。例えば`approve`は`approval`、
+`run`は`running`に一致しますが、同義語/意味検索や任意の語形の一致を保証するものではありません。
+残った全query lexemeをAND結合します。stop wordや記号だけの非空queryはlexical一致なしで、
+自動browseには変えません。明示required参照は別の契約を維持します。
+名前・識別子にもstemmingやstop word除去が適用され得るため、
+literal lexemeが重要な用途は`simple-v1`を使ってください。根拠の本文は変更しません。
+PostgreSQLの設定/辞書は配置依存であり、その定義を変える場合はprofile/version管理と
+reindexが必要です。同じprofile identityのまま黙って変更してはいけません。
+
+認可済み・時間条件内の英語projection欠落は`lexical_incomplete`で示し、
+canonical browse/required参照は日本語と同じ動作です。simple fallbackや修復workerは追加しません。
+offline修復は次の管理commandで行います。
+
+```bash
+pg-agmemory reindex-lexical --profile en-snowball-v1
+```
+
+管理DSNが必要で、全tenantの選択profileだけを再構築し、日本語行は維持します。
+引数なしのreindexは引き続き日本語だけを再構築します。
+writer停止/drainなど後述の保守手順に従ってください。
+scope、現在ACL/source lease、履歴、purge、byte上限、最終required参照検査は両profileで維持します。
+
 recallの既定は`search_profile: "simple-v1"`です。
 日本語scriptのsurface/wakati分割は`"ja-janome-0.5.0-v1"`を明示指定し、
 応答は選択profileを返します。Janome 0.5.0はJanome追加語付きの同梱
@@ -4780,7 +4830,7 @@ Janomeは日本語script連続部分がある場合だけlazy importし、英語
 migration/rebuild、resource sizingの適格性は未確認です。
 限定的な診断観測値は[ADR 0007](../adr/0007-japanese-fts-jp.md#runtime初期化の境界)を参照してください。
 
-日本語profileでは、現在認可済み・要求scope内・時間条件内のprojectionが欠けると、
+どちらの投影profileでも、現在認可済み・要求scope内・時間条件内のprojectionが欠けると、
 query関連性やjob状態とは無関係に`coverage.lexical_incomplete: true`と
 `coverage.retrieval_complete: false`を返します。利用可能な一致結果は返せ、
 lexical modeの空queryはflagがあってもcanonical itemをbrowseします。

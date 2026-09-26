@@ -18,6 +18,8 @@ from pg_agmemory.bounded_recall import BoundedRecall, SearchFeedback, SearchPlan
 from pg_agmemory.models import MemoryReference, Recall
 from pg_agmemory.operations_status import OperationsStatusRequest, operations_status
 from pg_agmemory.query_planning import (
+    ENGLISH_PROFILE,
+    ENGLISH_QUERY_GUIDANCE,
     LexicalQueryPlan,
     lexical_query_contract,
     lexical_query_prompt,
@@ -71,6 +73,21 @@ assert review_retention([review_reference], [review_reference.memory_id]).purge_
 assert LexicalQueryPlan(terms=["ticket", "owner"]).query == "ticket owner"
 assert lexical_query_contract()["matching"] == "all_lexemes"
 assert '"search_profile":"simple-v1"' in lexical_query_prompt("Who owns the ticket?", "simple-v1")
+english_contract = lexical_query_contract(ENGLISH_PROFILE)
+assert english_contract["english_stemming"] is True
+assert english_contract["dictionary"] == "pg_catalog.english"
+english_base = Recall.model_validate(
+    selection_base.model_dump() | {"search_profile": ENGLISH_PROFILE},
+)
+english_workflow = BoundedRecall(
+    english_base, planning_schedule="sequential-v1", evidence_selection="round-robin-v1",
+)
+english_prompt = search_prompt(
+    "Which teams own tickets?", ENGLISH_PROFILE, planner_policy="sequential-v3",
+    search_feedback=english_workflow.planning_feedback,
+)
+assert ENGLISH_QUERY_GUIDANCE in english_prompt
+assert json.loads(english_prompt.split("INPUT=", 1)[1])["search_profile"] == ENGLISH_PROFILE
 assert profile in ("core", "hook", "sdk", "providers", "langgraph")
 assert callable(create_app)
 assert importlib.util.find_spec("mcp") is None

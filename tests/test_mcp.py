@@ -143,6 +143,25 @@ def test_tool_schema_is_generated_from_native_contracts():
         )
 
 
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+def test_english_profile_matches_inflections_through_stdio(env, api_process, tmp_path, mode):
+    source = env.observe("Lark approval requires checking logs.").json()["memory_id"]
+    with api_process(f"mcp-english-{mode}.log") as (http, _):
+        async def scenario():
+            async with connected(env, str(http.base_url), tmp_path, mode) as client:
+                for profile, expected in (("simple-v1", set()), ("en-snowball-v1", {source})):
+                    result = await client.call_tool(
+                        "memory_recall", {"request": recall_request(
+                            env, query="Lark approve", search_profile=profile,
+                        )},
+                    )
+                    assert not result.is_error
+                    payload = result.structured_content["result"]
+                    assert payload["search_profile"] == profile
+                    assert {item["memory_id"] for item in payload["items"]} == expected
+        asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("mode,version", [("auto", "2026-07-28"), ("legacy", "2025-11-25")])
 def test_real_stdio_lifecycle_and_native_semantics(env, api_process, tmp_path, mode, version):
     source = env.observe("東京都の契約は Gold です。").json()["memory_id"]

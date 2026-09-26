@@ -106,6 +106,34 @@ printf '%s %s %s\\n' "$query_policy" "$retention_policy" "$max_calls"`,
   }
 });
 
+test("English profile selection is explicit, sequential-only, and forwarded without a budget change", () => {
+  const source = readFileSync(new URL("./evaluate-agent-memory-containers.sh", import.meta.url), "utf8");
+  const parsing = source.split('[[ "$model" =~')[0];
+  for (const [options, accepted, profile, ceiling] of [
+    [[], true, "simple-v1", 100],
+    [["--english-search-profile", "simple-v1"], true, "simple-v1", 100],
+    [["--english-search-profile", "en-snowball-v1"], false],
+    [["--query-policy", "bounded-lexical-v5", "--english-search-profile", "en-snowball-v1"], false],
+    [["--query-policy", "bounded-lexical-v6", "--english-search-profile", "en-snowball-v1",
+      "--cohort", "distractor-synthetic-v1", "--retention-policy", "review-v1"],
+      true, "en-snowball-v1", 160],
+    [["--english-search-profile", "unknown"], false],
+    [["--english-search-profile"], false],
+    [["--english-search-profile", "--query-policy"], false],
+    [["--english-search-profile", "simple-v1", "--english-search-profile", "simple-v1"], false],
+  ]) {
+    const result = spawnSync("bash", ["-c", `${parsing}
+printf '%s %s\\n' "$english_search_profile" "$max_calls"`,
+    "harness", "private-test", model, "high", "--allow-copilot", ...options],
+    { encoding: "utf8" });
+    assert.equal(result.status, accepted ? 0 : 2, result.stderr);
+    if (accepted) assert.equal(result.stdout.trim(), `${profile} ${ceiling}`);
+  }
+  assert.ok(source.includes('--english-search-profile "$english_search_profile"'));
+  assert.ok(source.includes("english_search_profile:$english_profile"));
+  assert.ok(source.includes("git status --porcelain"));
+});
+
 for (const ceiling of [1, 160]) {
   test(`bridge honors ${ceiling} guest queue calls without model calls`,
   { timeout: 60000 }, async () => {

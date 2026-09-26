@@ -98,6 +98,22 @@ def batch_request(scope=None):
     )
 
 
+@pytest.mark.integration
+def test_real_sdk_english_profile_is_explicit_and_echoed(env, api_process):
+    source = env.observe("Lark approval requires checking logs.").json()["memory_id"]
+    with api_process("sdk-english-profile.log") as (http, _):
+        async def scenario():
+            async with AsyncMemoryClient(str(http.base_url), env.token()) as sdk:
+                for profile, expected in (("simple-v1", set()), ("en-snowball-v1", {source})):
+                    result = await sdk.recall(Recall(
+                        scope_ids=[env.scopes[0]], purpose="test",
+                        search_profile=profile, query="Lark approve",
+                    ))
+                    assert result.search_profile == profile
+                    assert {str(item.memory_id) for item in result.items} == expected
+        asyncio.run(scenario())
+
+
 class Chunks(httpx.AsyncByteStream):
     def __init__(self, parts):
         self.parts = parts

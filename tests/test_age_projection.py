@@ -151,7 +151,7 @@ def test_publish_verified_artifact_serves_real_native_paths_equal_to_sql(env, ar
     assert receipt.node_count == 3 and receipt.edge_revision_count == 2
     assert receipt.captured_access_epoch == current.head.input_snapshot.access_epoch
     assert receipt.captured_deletion_epoch == current.head.input_snapshot.deletion_epoch
-    assert receipt.captured_schema_version == 22
+    assert receipt.captured_schema_version == 23
     assert all(rls and forced for _, _, rls, forced, _ in physical_graphs(env)[receipt.graph_name])
     assert_native_matches(env, graph, current.head.id)
     metadata = operate(env)
@@ -442,12 +442,12 @@ def seed_authenticated_old_generation(env, *, recorded, schema):
     return generation_row(env, identifier)
 
 
-@pytest.mark.parametrize("schema", [19, 20, 21])
+@pytest.mark.parametrize("schema", [19, 20, 21, 22])
 def test_authenticated_old_building_can_be_read_abandoned_and_rebuilt(env, artifact_dir, schema):
     graph_fixture(env)
     old = seed_authenticated_old_generation(env, recorded=False, schema=schema)
     current = execute(env)
-    assert current.current_input.schema_version == 22
+    assert current.current_input.schema_version == 23
     assert current.building.input_snapshot.schema_version == schema
     assert current.building.input_digest == old["input_digest"]
     assert current.building.source_matches is False
@@ -458,7 +458,7 @@ def test_authenticated_old_building_can_be_read_abandoned_and_rebuilt(env, artif
     abandoned = abandon(env, current)
     assert abandoned.building is None and abandoned.head is None
     newer, path = prepared(env, artifact_dir)
-    assert newer.head.input_snapshot.schema_version == 22 and newer.head.parent_id is None
+    assert newer.head.input_snapshot.schema_version == 23 and newer.head.parent_id is None
     assert publish(env, newer, path).serving_enabled
     history = generation_row(env, old["id"])
     assert history["state"] == "abandoned" and history["finished_at"] is not None
@@ -467,15 +467,15 @@ def test_authenticated_old_building_can_be_read_abandoned_and_rebuilt(env, artif
         assert history[key] == old[key]
 
 
-@pytest.mark.parametrize("schema", [19, 20, 21])
-def test_authenticated_old_head_stays_immutable_and_requires_new22_publication(
+@pytest.mark.parametrize("schema", [19, 20, 21, 22])
+def test_authenticated_old_head_stays_immutable_and_requires_new23_publication(
     env, artifact_dir, monkeypatch, schema,
 ):
     graph = graph_fixture(env)
     old = seed_authenticated_old_generation(env, recorded=True, schema=schema)
     current = execute(env)
     assert current.head.input_snapshot.schema_version == schema
-    assert current.head.source_matches is False and current.current_input.schema_version == 22
+    assert current.head.source_matches is False and current.current_input.schema_version == 23
     assert generation_row(env, old["id"]) == old
     before = physical_graphs(env)
     with forbid_graph_ddl(monkeypatch):
@@ -501,13 +501,13 @@ def test_authenticated_old_head_stays_immutable_and_requires_new22_publication(
             )
     assert operate(env).projection is None and generation_row(env, old["id"]) == old
     newer, path = prepared(env, artifact_dir)
-    assert newer.head.input_snapshot.schema_version == 22 and newer.head.parent_id == old["id"]
+    assert newer.head.input_snapshot.schema_version == 23 and newer.head.parent_id == old["id"]
     assert publish(env, newer, path).serving_enabled
     assert_native_matches(env, graph, newer.head.id)
     assert generation_row(env, old["id"]) == old
 
 
-@pytest.mark.parametrize("schema", [20, 21])
+@pytest.mark.parametrize("schema", [20, 21, 22])
 def test_existing_enabled_old_schema_receipt_is_stale_until_explicit_disable_and_rebuild(
     env, artifact_dir, monkeypatch, schema,
 ):
@@ -558,7 +558,7 @@ def test_existing_enabled_old_schema_receipt_is_stale_until_explicit_disable_and
     assert not disabled.projection.enabled and not disabled.serving_enabled
     assert disabled.projection.captured_schema_version == schema
     newer, new_path = prepared(env, artifact_dir)
-    assert newer.head.input_snapshot.schema_version == 22
+    assert newer.head.input_snapshot.schema_version == 23
     assert newer.head.parent_id == current.head.id
     assert publish(env, newer, new_path, expected_revision=disabled.revision).serving_enabled
     assert_native_matches(env, graph, newer.head.id)

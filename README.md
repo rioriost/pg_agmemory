@@ -6,7 +6,7 @@
 is [`rioriost/pg_agmemory`](https://github.com/rioriost/pg_agmemory); the local checkout directory, Python package,
 and service are `pg_agmemory`. Run the commands below from that local checkout.
 
-**M5 development: 0.4.0.dev1 / API v1 / schema 22.** The new
+**M5 development: 0.4.0.dev1 / API v1 / schema 23.** The new
 [operational foundations](docs/operations/README.md#m5-operational-foundations)
 include explicit read-only embedding-migration assessment and one-shot monitoring
 export. [Implementation and deployment acceptance remain separate](docs/PG_AGMEMORY_IMPLEMENTATION_PLAN.md#m5-implementation-versus-deployment-acceptance):
@@ -35,6 +35,11 @@ including one second reserved for errors; COMMIT-time expiry remains unknown.
 Migration 022 removes repeated history/evidence scans from deferred revision
 checks without relaxing that budget or RLS. Follow the
 [schema-22 upgrade procedure](docs/operations/README.md#schema-22-revision-validation).
+Migration 023 adds explicit **`en-snowball-v1`** English stemming and stop-word
+removal, with profile-aware query guidance and no change to default `simple-v1`
+or Japanese matching. It adds English projections to existing and new memories;
+follow the [schema-23 upgrade procedure](docs/operations/README.md#schema-23-english-projections).
+This is a retrieval option, not a claim that the failed v6 model evaluation is repaired.
 The published M4 release and its qualification remain unchanged.
 
 **M4 integration pilot: v0.3.0 / API v1 / schema 21.** An administrator-only

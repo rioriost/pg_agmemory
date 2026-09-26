@@ -24,7 +24,7 @@ from pg_agmemory.native_client import (
     NativeSettings,
     failure,
 )
-from pg_agmemory.query_planning import LEXICAL_QUERY_GUIDANCE
+from pg_agmemory.query_planning import NATIVE_QUERY_GUIDANCE
 
 MAX_INPUT_BYTES = 32768
 HookEvent = Literal["session_start", "task_switch", "after_compaction"]
@@ -33,7 +33,7 @@ logger = logging.getLogger("pg_agmemory.recall_hook")
 
 class HookInput(Contract):
     event: HookEvent
-    query: Annotated[str, Field(max_length=4096, description=LEXICAL_QUERY_GUIDANCE)]
+    query: Annotated[str, Field(max_length=4096, description=NATIVE_QUERY_GUIDANCE)]
     working_snapshot_id: UUID | None = None
 
     @model_validator(mode="after")

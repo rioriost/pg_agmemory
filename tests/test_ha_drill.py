@@ -314,7 +314,7 @@ def test_report_pins_schema_and_never_authorizes_general_serving():
     report = passed_report()
     assert report.format == "pgag-ha-drill-v5"
     assert report.service_version == __version__
-    assert report.schema_version == 22 and report.api_version == "v1"
+    assert report.schema_version == 23 and report.api_version == "v1"
     assert report.postgres_version_num == 180006 and report.pgvector_version == "0.8.6"
     for field in (
         "production_qualified", "host_failure_domain_independent", "network_partition_qualified",

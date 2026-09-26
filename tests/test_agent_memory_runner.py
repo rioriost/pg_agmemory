@@ -429,11 +429,17 @@ def native_fixture(tmp_path, monkeypatch):
                 capabilities["lexical_query"] = failure.get(
                     "lexical_query_contract", runner.query_planning.lexical_query_contract(),
                 )
+            if not failure.get("omit_profile_contracts"):
+                capabilities["lexical_query_profiles"] = failure.get("lexical_query_profiles", {
+                    profile: runner.query_planning.lexical_query_contract(profile)
+                    for profile in runner.query_planning.SEARCH_PROFILES
+                })
             if (
                 failure.get("change_contract_after_startup")
                 and sum(path == "/v1/capabilities" for _, path, _, _ in requests) > 2
             ):
                 capabilities["lexical_query"] = {"format": "changed-contract"}
+                capabilities["lexical_query_profiles"] = {}
             return native_response(200, json=capabilities)
         if request.url.path == "/v1/observe":
             assert data["scope_id"] == str(identity.scope_id)
@@ -551,6 +557,7 @@ def native_fixture(tmp_path, monkeypatch):
 
 def memory_case(
     fixture, bridge, *, query_policy="legacy-v1", retention_policy="model-purge-v1",
+    english_search_profile="simple-v1",
 ):
     return asyncio.run(runner.memory_arm(
         fixture["case"], fixture["identity"], "owned-subject", fixture["foreign"],
@@ -558,6 +565,7 @@ def memory_case(
         bridge, fixture["journal"],
         query_policy=query_policy,
         retention_policy=retention_policy,
+        english_search_profile=english_search_profile,
     ))
 
 
@@ -882,6 +890,7 @@ def real_native_roundtrip(
     env, api_process, tmp_path, case, query, answer, query_policy, *, retained_event_id=None,
     retention_policy="model-purge-v1",
     final_mutation=None, keep_event_ids=None, bounded_plans=None, final_mutation_round=2,
+    english_search_profile="simple-v1",
 ):
     retained_event_id = retained_event_id or case.events[1].event_id
     retained_event = next(event for event in case.events if event.event_id == retained_event_id)
@@ -908,6 +917,7 @@ def real_native_roundtrip(
         sentinel_id = await runner.seed_sentinel(
             config, foreign, env.subjects[1], env.private_key, journal,
             query_policy=query_policy,
+            english_search_profile=english_search_profile,
         )
         async with runner.authenticated_client(
             config, env.subjects[0], env.private_key, journal, case.case_id,
@@ -966,12 +976,16 @@ def real_native_roundtrip(
             env.private_key, bridge, journal,
             query_policy=query_policy,
             retention_policy=retention_policy,
+            english_search_profile=english_search_profile,
         )
         if final_mutation is not None:
             assert measured.error == "not_found", detail
             assert measured.answer is None and detail["context_available"] is False
             assert detail["context_events"] == []
             assert detail["bounded_retrieval"]["final_validation_calls"] == 1
+            assert detail["bounded_retrieval"]["final_request"]["search_profile"] == (
+                runner.lexical_profile(case.language, english_search_profile)
+            )
             assert detail["bounded_retrieval"]["cached_fallback_used"] is False
             assert detail["bounded_retrieval"]["planning_cache_discarded"] is True
             assert len(bridge.calls) == 1 + planning_calls
@@ -1013,6 +1027,17 @@ def real_native_roundtrip(
             assert progress["planning_complete"] is True
             assert progress["planning_schedule"] == "sequential-v1"
             assert progress["final_validation_calls"] == 1 and progress["revalidated"] is True
+            assert progress["search_profile"] == runner.lexical_profile(
+                case.language, english_search_profile,
+            )
+            assert progress["final_request"]["search_profile"] == progress["search_profile"]
+            for phase, prompt in bridge.prompts:
+                if phase.startswith("recall_query_round_"):
+                    instructions, raw = prompt.split("INPUT=", 1)
+                    assert json.loads(raw)["search_profile"] == progress["search_profile"]
+                    assert (runner.query_planning.ENGLISH_QUERY_GUIDANCE in instructions) is (
+                        case.language == "en" and english_search_profile == "en-snowball-v1"
+                    )
         retained_id = UUID(detail["observed_event_ids"][retained_event_id])
         async with runner.authenticated_client(
             config, env.subjects[0], env.private_key, journal, case.case_id,
@@ -1092,9 +1117,13 @@ def test_legacy_prompt_scoring_prefix_and_case_cohort_remain_byte_identical():
         Path(runner.recipe.__file__).read_bytes().split(b"def pilot_report(")[0],
     ).hexdigest() == "5240b3e0ee9385a8f451809570c4dfe45f5db4872fb0a78028def1d96ba4752b"
     assert original != "f5b7120d3cd44235e7165da6151030a4966d964959d66186ee8d81be0b293b13"
-    assert hashlib.sha256(
-        Path(runner.query_planning.__file__).read_bytes(),
-    ).hexdigest() == "47935c8a17cca92c5b9c51300c70e35fbfdef8aee59a4f044b191cc01a10c746"
+    default_contract = runner.query_planning.lexical_query_contract()
+    assert default_contract["search_profiles"] == ["simple-v1", "ja-janome-0.5.0-v1"]
+    assert default_contract["english_stemming"] is False
+    assert default_contract["dictionary"] == "simple"
+    assert hashlib.sha256(runner.query_planning.LEXICAL_QUERY_GUIDANCE.encode()).hexdigest() == (
+        "5e6d1d9e006fdd7577296f02b615f5cabacfeb56d51ff185fe3846f8837ad655"
+    )
     from pg_agmemory import retention_review
 
     assert hashlib.sha256(runner.bounded_recall._PROMPT.encode()).hexdigest() == (
@@ -1266,10 +1295,17 @@ def test_v2_capability_mismatch_prevents_model_dispatch_and_observe(native_fixtu
     assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
 
 
-def test_v2_contract_is_rechecked_before_purge_without_model_retry(native_fixture):
+@pytest.mark.parametrize("query_policy,profile", [
+    ("lexical-v2", "simple-v1"), ("bounded-lexical-v6", "en-snowball-v1"),
+])
+def test_v2_contract_is_rechecked_before_purge_without_model_retry(
+    native_fixture, query_policy, profile,
+):
     native_fixture["failure"]["change_contract_after_startup"] = True
-    bridge = DecisionBridge(native_fixture["case"], query_policy="lexical-v2")
-    measured, detail = memory_case(native_fixture, bridge, query_policy="lexical-v2")
+    bridge = DecisionBridge(native_fixture["case"], query_policy=query_policy)
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy=query_policy, english_search_profile=profile,
+    )
     assert measured.error == "lexical_query_contract_mismatch"
     assert detail["stopped_at_phase"] == "query_contract_before_purge"
     assert len(bridge.calls) == 1
@@ -1287,8 +1323,13 @@ def test_v2_contract_comparison_does_not_coerce_boolean_to_integer(native_fixtur
     assert not bridge.calls and not native_fixture["stored"]
 
 
+@pytest.mark.parametrize("query_policy,profile,missing", [
+    ("lexical-v2", "simple-v1", "omit_lexical_contract"),
+    ("bounded-lexical-v6", "en-snowball-v1", "omit_profile_contracts"),
+    ("bounded-lexical-v6", "en-snowball-v1", "omit_lexical_contract"),
+])
 def test_v2_run_checks_real_capability_before_any_control_model_dispatch(
-    tmp_path, native_fixture, transport, monkeypatch,
+    tmp_path, native_fixture, transport, monkeypatch, query_policy, profile, missing,
 ):
     from argparse import Namespace
 
@@ -1301,7 +1342,7 @@ def test_v2_run_checks_real_capability_before_any_control_model_dispatch(
     key_path.write_bytes(b"unit-test-bearer-is-stubbed")
     key_path.chmod(0o600)
     monkeypatch.setenv("PGAG_AGENT_EVAL_JWT_PRIVATE_KEY_FILE", str(key_path))
-    native_fixture["failure"]["omit_lexical_contract"] = True
+    native_fixture["failure"][missing] = True
 
     async def provision_without_database(*args):
         return native_fixture["foreign"]
@@ -1310,11 +1351,15 @@ def test_v2_run_checks_real_capability_before_any_control_model_dispatch(
     journal = runner.Journal(tmp_path / "v2-failed-startup")
     summary = asyncio.run(runner.run(Namespace(
         api_url=native_fixture["config"].api_url, bridge=transport.directory,
-        query_policy="lexical-v2", cohort="pilot-v1", retention_policy="model-purge-v1",
+        query_policy=query_policy, cohort="pilot-v1", retention_policy="model-purge-v1",
+        english_search_profile=profile,
     ), journal))
     assert summary["fatal_error"]["code"] == "lexical_query_contract_mismatch"
     assert summary["calls_dispatched"] == 0
-    assert summary["query_policy"] == "lexical-v2"
+    assert summary["query_policy"] == query_policy
+    assert summary["budget"]["lexical_profiles"] == {
+        "en": profile, "ja": "ja-janome-0.5.0-v1",
+    }
     assert summary["evaluation_cohort"]["held_out"] is False
     assert not list(transport.queue.iterdir())
     assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
@@ -1345,6 +1390,7 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
 
     async def capture_arguments(args, journal):
         selected.append(args.query_policy)
+        assert args.english_search_profile == "simple-v1"
         assert args.cohort == "pilot-v1"
         assert args.retention_policy == (
             "review-v1" if args.query_policy in runner.BOUNDED_QUERY_POLICIES else "model-purge-v1"
@@ -1360,6 +1406,126 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
     assert runner.main() == 0
     assert selected == [expected]
     assert json.loads(capsys.readouterr().out)["calls_dispatched"] == 0
+
+
+def test_runner_cli_explicit_english_profile_keeps_sequential_budget_and_review(
+    tmp_path, monkeypatch, capsys,
+):
+    async def capture_arguments(args, journal):
+        assert args.english_search_profile == "en-snowball-v1"
+        assert args.query_policy == "bounded-lexical-v6" and args.retention_policy == "review-v1"
+        assert runner.logical_call_limit(args.query_policy) == 160
+        return {"status": "completed", "calls_dispatched": 0}
+
+    monkeypatch.setattr(runner, "run", capture_arguments)
+    monkeypatch.setenv("PGAG_AGENT_EVAL_API_URL", "http://127.0.0.1:58000")
+    monkeypatch.setattr(sys, "argv", [
+        "evaluate-agent-memory.py", "--output", str(tmp_path / "english-output"),
+        "--bridge", str(tmp_path / "bridge"), "--query-policy", "bounded-lexical-v6",
+        "--english-search-profile", "en-snowball-v1",
+    ])
+    assert runner.main() == 0
+    assert json.loads(capsys.readouterr().out)["calls_dispatched"] == 0
+
+
+@pytest.mark.parametrize("query_policy", runner.QUERY_POLICIES)
+def test_english_profile_metadata_is_explicit_and_old_recipes_stay_default(query_policy):
+    implicit = runner.query_policy_metadata(query_policy)
+    assert implicit == runner.query_policy_metadata(query_policy, "simple-v1")
+    assert "english_search_profile" not in implicit
+    for invalid in ("english", "", None):
+        with pytest.raises(runner.EvaluationFailure, match="invalid_english_search_profile"):
+            runner.query_policy_metadata(query_policy, invalid)
+    if query_policy != "bounded-lexical-v6":
+        with pytest.raises(
+            runner.EvaluationFailure, match="english_search_profile_requires_sequential_policy",
+        ):
+            runner.query_policy_metadata(query_policy, "en-snowball-v1")
+        return
+    selected = runner.query_policy_metadata(query_policy, "en-snowball-v1")
+    components = selected["recipe_components"]
+    assert selected["recipe_sha256"] != implicit["recipe_sha256"]
+    assert components["format"] == "pgag-agent-memory-profile-query-recipe-v1"
+    assert selected["english_search_profile"] == components["english_search_profile"] == (
+        runner.query_planning.ENGLISH_PROFILE
+    )
+    assert components["japanese_search_profile"] == "ja-janome-0.5.0-v1"
+    assert components["japanese_query_contract"] == runner.query_planning.lexical_query_contract()
+    assert selected["query_planning_contract"] == runner.query_planning.lexical_query_contract(
+        "en-snowball-v1",
+    )
+    assert selected["query_planning_contract_sha256"] == hashlib.sha256(
+        runner.json_bytes(selected["query_planning_contract"]),
+    ).hexdigest()
+    assert components["english_planner_instructions_sha256"] == hashlib.sha256(
+        runner.bounded_recall.search_prompt(
+            "Which route?", "en-snowball-v1", planner_policy="sequential-v3",
+        ).split("INPUT=", 1)[0].encode() + b"INPUT=",
+    ).hexdigest()
+    for name, module in (
+        ("query_planning", runner.query_planning), ("bounded_recall", runner.bounded_recall),
+    ):
+        assert selected[f"{name}_sha256"] == components[f"{name}_sha256"] == hashlib.sha256(
+            Path(module.__file__).read_bytes(),
+        ).hexdigest()
+    assert selected["recipe_sha256"] == hashlib.sha256(runner.json_bytes(components)).hexdigest()
+    assert selected["recipe_sha256"] == runner.recipe_digest(query_policy, "en-snowball-v1")
+    for field in (
+        "planner_policy", "planning_schedule", "evidence_selection", "planning_rounds",
+        "searches_per_round", "logical_model_call_limit", "search_calls_maximum",
+        "final_required_reference_calls_maximum", "max_items", "context_budget_bytes",
+    ):
+        assert components[field] == implicit["recipe_components"][field]
+
+
+def test_english_profile_cohort_recipe_tampering_and_provenance_are_rejected():
+    cases = runner.select_cohort("distractor-synthetic-v1")
+    arguments = ("distractor-synthetic-v1", cases, "bounded-lexical-v6", "review-v1")
+    default = runner.cohort_metadata(*arguments)
+    selected = runner.cohort_metadata(*arguments, "en-snowball-v1")
+    runner.verify_cohort_metadata(selected, *arguments, "en-snowball-v1")
+    for field in (
+        "dataset_sha256", "scorer_source_sha256", "fixed_prompt_sha256",
+        "retention_review_sha256", "evaluation_cohort",
+    ):
+        assert selected[field] == default[field]
+    assert selected["evaluation_cohort"]["known_cohort_reuse"] is None
+    assert selected["evaluation_cohort"]["first_use_in_owned_run"] is None
+    with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+        runner.verify_cohort_metadata(default, *arguments, "en-snowball-v1")
+    for field, value in (
+        ("english_search_profile", "simple-v1"),
+        ("japanese_search_profile", "en-snowball-v1"),
+        ("english_planner_instructions_sha256", "0" * 64),
+        ("query_planning_contract", runner.query_planning.lexical_query_contract()),
+    ):
+        changed = selected | {
+            "query_recipe_components": selected["query_recipe_components"] | {field: value},
+        }
+        with pytest.raises(runner.EvaluationFailure, match="cohort_metadata_mismatch"):
+            runner.verify_cohort_metadata(changed, *arguments, "en-snowball-v1")
+
+
+@pytest.mark.parametrize("changed", [
+    None, {}, {"en-snowball-v1": None},
+    {"en-snowball-v1": runner.query_planning.lexical_query_contract()},
+    {"en-snowball-v1": runner.query_planning.lexical_query_contract("en-snowball-v1") | {
+        "english_stemming": 1,
+    }},
+])
+def test_english_profile_contract_gate_fails_before_observation_or_planning(
+    native_fixture, changed,
+):
+    native_fixture["failure"]["lexical_query_profiles"] = changed
+    bridge = DecisionBridge(native_fixture["case"], query_policy="bounded-lexical-v6")
+    measured, detail = memory_case(
+        native_fixture, bridge, query_policy="bounded-lexical-v6",
+        english_search_profile="en-snowball-v1", retention_policy="review-v1",
+    )
+    assert measured.error == "lexical_query_contract_mismatch"
+    assert detail["stopped_at_phase"] == "native_connect"
+    assert not bridge.calls and not native_fixture["stored"]
+    assert all(path == "/v1/capabilities" for _, path, _, _ in native_fixture["requests"])
 
 
 @pytest.mark.parametrize("option,accepted", [
@@ -1403,6 +1569,16 @@ def test_runner_cli_versioned_query_policy(tmp_path, monkeypatch, capsys, option
     (["--retention-policy", "review-v1", "--retention-policy", "review-v1"], False),
     (["--retention-policy", "approve"], False),
     (["--retention-policy", "--cohort"], False),
+    (["--english-search-profile", "simple-v1"], True),
+    (["--english-search-profile", "en-snowball-v1"], False),
+    (["--english-search-profile", "en-snowball-v1", "--query-policy", "bounded-lexical-v5"], False),
+    (["--english-search-profile", "en-snowball-v1", "--query-policy", "bounded-lexical-v6"], True),
+    (["--english-search-profile", "en-snowball-v1", "--query-policy", "bounded-lexical-v6",
+      "--cohort", "distractor-synthetic-v1", "--retention-policy", "review-v1"], True),
+    (["--english-search-profile", "unknown"], False),
+    (["--english-search-profile", "--query-policy"], False),
+    (["--english-search-profile"], False),
+    (["--english-search-profile", "simple-v1", "--english-search-profile", "simple-v1"], False),
 ])
 def test_owned_shell_accepts_only_versioned_query_policy_without_starting_guests(option, accepted):
     result = subprocess.run(
@@ -1613,6 +1789,13 @@ def test_runner_cli_rejects_invalid_cohort_before_output_creation(tmp_path, monk
     ["--retention-policy", "review-v1", "--retention-policy", "model-purge-v1"],
     ["--cohort", "distractor-synthetic-v1", "--wrong-flag", "value"],
     ["--coho", "distractor-synthetic-v1"],
+    ["--english-search-profile", "unknown"],
+    ["--english-search-profile", "en-snowball-v1"],
+    ["--english-search-profile", "en-snowball-v1", "--query-policy", "bounded-lexical-v5"],
+    ["--english-search-profile", "simple-v1", "--english-search-profile", "simple-v1"],
+    ["--english-search-profile=simple-v1", "--english-search-profile=en-snowball-v1"],
+    ["--english-search-profile", "--query-policy"],
+    ["--english-search-profile"],
 ])
 def test_runner_cli_rejects_duplicate_or_unknown_flags_before_output_creation(
     tmp_path, monkeypatch, option,
@@ -2225,10 +2408,13 @@ def test_real_native_bounded_review_retains_pending_rows_without_model(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("query_policy", runner.BOUNDED_QUERY_POLICIES)
+@pytest.mark.parametrize("query_policy,english_search_profile", [
+    *((policy, "simple-v1") for policy in runner.BOUNDED_QUERY_POLICIES),
+    ("bounded-lexical-v6", "en-snowball-v1"),
+])
 @pytest.mark.parametrize("mutation", ["purge", "revoke"])
 def test_real_native_final_refs_observe_current_purge_and_acl_without_cached_fallback(
-    env, api_process, tmp_path, mutation, query_policy,
+    env, api_process, tmp_path, mutation, query_policy, english_search_profile,
 ):
     real_native_roundtrip(
         env, api_process, tmp_path, runner.recipe.pilot_cases()[0], "report locale", "en-GB",
@@ -2240,6 +2426,27 @@ def test_real_native_final_refs_observe_current_purge_and_acl_without_cached_fal
             '{"queries":[]}',
         ] if query_policy == "bounded-lexical-v6" else None,
         final_mutation_round=4 if query_policy == "bounded-lexical-v6" else 2,
+        english_search_profile=english_search_profile,
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("case_index,query,answer", [
+    (0, "reports locales", "en-GB"), (2, "日付表記", "ISO8601"),
+])
+def test_real_native_english_profile_stemming_and_japanese_mapping(
+    env, api_process, tmp_path, case_index, query, answer,
+):
+    real_native_roundtrip(
+        env, api_process, tmp_path, runner.recipe.pilot_cases()[case_index],
+        query, answer, "bounded-lexical-v6", retention_policy="review-v1",
+        english_search_profile="en-snowball-v1",
+        bounded_plans=[
+            '{"queries":[{"terms":["runnerabsentone"]}]}',
+            '{"queries":[{"terms":["runnerabsenttwo"]}]}',
+            '{"queries":[{"terms":["runnerabsentthree"]}]}',
+            json.dumps({"queries": [{"terms": query.split()}]}, ensure_ascii=False),
+        ],
     )
 
 
@@ -2281,7 +2488,10 @@ def extended_history_case(language):
     )
 
 
-def test_v6_four_sequential_queries_use_feedback_and_fresh_late_evidence(native_fixture):
+@pytest.mark.parametrize("english_search_profile", runner.ENGLISH_SEARCH_PROFILES)
+def test_v6_four_sequential_queries_use_feedback_and_fresh_late_evidence(
+    native_fixture, english_search_profile,
+):
     case = extended_history_case("en")
     native_fixture["case"] = case
     target = case.events[16]
@@ -2301,6 +2511,7 @@ def test_v6_four_sequential_queries_use_feedback_and_fresh_late_evidence(native_
     )
     measured, detail = memory_case(
         native_fixture, bridge, query_policy="bounded-lexical-v6", retention_policy="review-v1",
+        english_search_profile=english_search_profile,
     )
     assert measured.error is None, detail
     assert measured.answer.answer == "FIXTURE32"
@@ -2309,6 +2520,7 @@ def test_v6_four_sequential_queries_use_feedback_and_fresh_late_evidence(native_
     progress = detail["bounded_retrieval"]
     assert progress["query_policy"] == "bounded-lexical-v6"
     assert progress["planner_policy"] == "sequential-v3"
+    assert progress["search_profile"] == english_search_profile
     assert progress["planning_schedule"] == "sequential-v1"
     assert progress["evidence_selection"] == "round-robin-v1"
     assert progress["planning_calls"] == progress["search_calls"] == 4
@@ -2344,6 +2556,7 @@ def test_v6_four_sequential_queries_use_feedback_and_fresh_late_evidence(native_
     ]
     assert len(reads) == 5 and all(read["token_budget"] == 8000 for read in reads)
     assert all(read["max_items"] <= 8 for read in reads)
+    assert all(read["search_profile"] == english_search_profile for read in reads)
     assert all(read["as_of"] == read["known_at"] == reads[0]["as_of"] for read in reads)
     assert [read["query"] for read in reads[:-1]] == [
         item["query"] for item in expected_feedback
@@ -2596,12 +2809,14 @@ def test_distractor_eight_event_partition_fails_closed_after_all_observations(na
     assert not any(path == "/v1/forget" for _, path, _, _ in native_fixture["requests"])
 
 
-@pytest.mark.parametrize("query_policy,stop_round", [
-    *((policy, None) for policy in runner.BOUNDED_QUERY_POLICIES),
-    ("bounded-lexical-v6", 3),
+@pytest.mark.parametrize("query_policy,stop_round,english_search_profile", [
+    *((policy, None, "simple-v1") for policy in runner.BOUNDED_QUERY_POLICIES),
+    ("bounded-lexical-v6", 3, "simple-v1"),
+    ("bounded-lexical-v6", None, "en-snowball-v1"),
+    ("bounded-lexical-v6", 3, "en-snowball-v1"),
 ])
 def test_distractor_all_twenty_cases_fit_real_bridge_policy_call_and_payload_limits(
-    native_fixture, transport, query_policy, stop_round,
+    native_fixture, transport, query_policy, stop_round, english_search_profile,
 ):
     from pg_agmemory.agent_evaluation_distractor import DistractorMemoryCase
 
@@ -2632,6 +2847,9 @@ def test_distractor_all_twenty_cases_fit_real_bridge_policy_call_and_payload_lim
                     suffixes = () if number == stop_round else (f"step{number}",)
                     assert number <= planning_calls
                     data = json.loads(prompt.split("INPUT=", 1)[1])
+                    assert data["search_profile"] == runner.lexical_profile(
+                        case.language, english_search_profile,
+                    )
                     assert len(data["search_feedback"]) == number - 1
                     assert all(entry["returned_items"] == 0 for entry in data["search_feedback"])
                 else:
@@ -2694,6 +2912,7 @@ def test_distractor_all_twenty_cases_fit_real_bridge_policy_call_and_payload_lim
                 native_fixture["sentinel_id"], native_fixture["config"], b"test-key",
                 bridge, native_fixture["journal"],
                 query_policy=query_policy, retention_policy="review-v1",
+                english_search_profile=english_search_profile,
             )
             assert measured.error is None, detail
             assert len(detail["observed_event_ids"]) == len(native_fixture["stored"]) == 32

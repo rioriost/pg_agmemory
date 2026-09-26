@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from pg_agmemory.capture_policy import POLICY_COLUMNS, stored_policy
 from pg_agmemory.database import Connection, connect
-from pg_agmemory.lexical import JAPANESE_PROFILE, segment
+from pg_agmemory.lexical import JAPANESE_PROFILE, PROJECTED_PROFILES, segment, text_search_config
 from pg_agmemory.models import (
     AssertionHistory,
     EpisodeSummary,
@@ -296,12 +296,16 @@ class MemoryService:
                     data.source_namespace,
                 ),
             )
-            await self.conn.execute(
-                """INSERT INTO memory.episode_lexical
-                   (tenant_id,episode_id,scope_id,profile,search_text)
-                   VALUES (%s,%s,%s,%s,to_tsvector('simple',%s))""",
-                (self.tenant, object_id, data.scope_id, JAPANESE_PROFILE, segment(data.content)),
-            )
+            for profile in PROJECTED_PROFILES:
+                await self.conn.execute(
+                    """INSERT INTO memory.episode_lexical
+                       (tenant_id,episode_id,scope_id,profile,search_text)
+                       VALUES (%s,%s,%s,%s,to_tsvector(%s::regconfig,%s))""",
+                    (
+                        self.tenant, object_id, data.scope_id, profile, text_search_config(profile),
+                        segment(data.content) if profile == JAPANESE_PROFILE else data.content,
+                    ),
+                )
             await self.conn.execute(
                 """INSERT INTO memory_ops.source_event
                    (tenant_id, scope_id, event_digest, request_digest, object_id)
@@ -442,19 +446,18 @@ class MemoryService:
         ).fetchone()
         if identity is None:
             raise MemoryError("not_found", 404)
-        await self.conn.execute(
-            """INSERT INTO memory.assertion_lexical
-               (tenant_id,assertion_id,revision,scope_id,profile,search_text)
-               VALUES (%s,%s,%s,%s,%s,to_tsvector('simple',%s))""",
-            (
-                self.tenant,
-                object_id,
-                revision,
-                scope_id,
-                JAPANESE_PROFILE,
-                segment(identity["subject"] + " " + identity["predicate"] + " " + data.value),
-            ),
-        )
+        content = identity["subject"] + " " + identity["predicate"] + " " + data.value
+        for profile in PROJECTED_PROFILES:
+            await self.conn.execute(
+                """INSERT INTO memory.assertion_lexical
+                   (tenant_id,assertion_id,revision,scope_id,profile,search_text)
+                   VALUES (%s,%s,%s,%s,%s,to_tsvector(%s::regconfig,%s))""",
+                (
+                    self.tenant, object_id, revision, scope_id, profile,
+                    text_search_config(profile),
+                    segment(content) if profile == JAPANESE_PROFILE else content,
+                ),
+            )
 
     async def revise_assertion(
         self, object_id: UUID, data: ReviseAssertion, key: str
@@ -551,6 +554,7 @@ class MemoryService:
             "query": segment(data.query) if data.search_profile == JAPANESE_PROFILE else data.query,
             "browse": data.query == "",
             "profile": data.search_profile,
+            "configuration": text_search_config(data.search_profile),
             "tenant": self.tenant,
             "scopes": data.scope_ids,
             "kind": data.filters.kind if data.filters else None,
@@ -567,19 +571,22 @@ class MemoryService:
             "retrieval_mode": data.retrieval_mode,
         }
         ranking = """SELECT *, CASE WHEN %(browse)s THEN 0::real
-                            ELSE ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
+                            ELSE ts_rank_cd(search_text,
+                                            plainto_tsquery(%(configuration)s::regconfig,%(query)s))
                             END AS rank
                      FROM candidates WHERE (%(browse)s
-                       OR search_text @@ plainto_tsquery('simple',%(query)s))
+                       OR search_text @@ plainto_tsquery(%(configuration)s::regconfig,%(query)s))
                        AND NOT (id = ANY(%(required_ids)s::uuid[]))
                      ORDER BY rank DESC NULLS LAST, created_at DESC, id LIMIT %(limit)s"""
         if data.vector_query is not None:
             ranking = """WITH lexical AS (
                          SELECT id,revision,row_number() OVER (
-                             ORDER BY ts_rank_cd(search_text,plainto_tsquery('simple',%(query)s))
+                             ORDER BY ts_rank_cd(search_text,
+                                       plainto_tsquery(%(configuration)s::regconfig,%(query)s))
                                       DESC,created_at DESC,id) AS lexical_rank
                          FROM candidates WHERE %(retrieval_mode)s = 'hybrid'
-                           AND search_text @@ plainto_tsquery('simple',%(query)s)
+                           AND search_text @@
+                               plainto_tsquery(%(configuration)s::regconfig,%(query)s)
                      ), distances AS MATERIALIZED (
                          SELECT id,revision,
                                 embedding OPERATOR(public.<=>) %(vector)s::public.vector(768)
@@ -614,7 +621,7 @@ class MemoryService:
                 by_reference[(ref.memory_id, ref.revision)] for ref in data.required_memory_refs
             ]
         lexical_incomplete = vector_incomplete = False
-        if data.search_profile == JAPANESE_PROFILE or data.vector_query is not None:
+        if data.search_profile in PROJECTED_PROFILES or data.vector_query is not None:
             ordering = (
                 "ranked.fusion_score DESC,ranked.id"
                 if data.vector_query is not None
@@ -638,7 +645,7 @@ class MemoryService:
             ranked = [row for row in combined if row["id"] is not None]
             lexical_incomplete = bool(
                 data.retrieval_mode != "vector"
-                and data.search_profile == JAPANESE_PROFILE
+                and data.search_profile in PROJECTED_PROFILES
                 and coverage["lexical_incomplete"]
             )
             vector_incomplete = bool(

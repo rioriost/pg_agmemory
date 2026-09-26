@@ -2,6 +2,30 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
+## Opt-in English stemming
+
+**0.4.0.dev1 / API v1 / schema 23** adds `en-snowball-v1`: stored projections
+and queries both use PostgreSQL English Snowball/stop words, then AND the
+remaining lexemes. This addresses literal wordform mismatches without asking
+an LLM to enumerate every inflection. It is not synonym/vector search;
+names and identifiers can be normalized too, and a nonempty stop-word-only
+query never becomes browse. Default simple and opt-in Japanese behavior remain
+unchanged, with current authorization, temporal selection, purge and fresh
+reference checks applied to English as well.
+
+Capabilities, Native/OpenAPI, MCP, hook and bounded planning describe the
+selected profile. The v6 evaluation can explicitly choose
+`--english-search-profile en-snowball-v1`; Japanese cases and the 160-call,
+four-search/one-validation ceilings remain unchanged. No new model score is
+claimed by this implementation, and the v6 timeout/regression below remain
+published. This does not repair provider reliability or qualify product usefulness.
+
+Migration backfills English rows and new writes maintain both projections,
+adding storage/write work; production overhead is unmeasured.
+Use the [schema-23 upgrade and recovery boundaries](operations/README.md#schema-23-english-projections)
+and [profile/reindex instructions](operations/README.md#lexical-profile-and-reindex-operations).
+Older graph/recovery evidence is not automatically current after the upgrade.
+
 ## Explicit sequential search schedule
 
 `bounded-lexical-v6` lets each search result inform the next plan: up to four

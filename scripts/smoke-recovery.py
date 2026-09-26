@@ -1,4 +1,4 @@
-"""Disposable schema-22 recovery smoke; not a restore tool for existing databases.
+"""Disposable schema-23 recovery smoke; not a restore tool for existing databases.
 
 The helper exports committed server metadata, never remembered test deletion IDs.
 It applies exact operational state after bounded deletion replay and exercises
@@ -171,7 +171,7 @@ def snapshot(url):
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         versions = rows(conn, "SELECT version FROM public.pgag_schema_migration ORDER BY version")
-        require(versions == [{"version": n} for n in range(1, 23)], "schema22 required")
+        require(versions == [{"version": n} for n in range(1, 24)], "schema23 required")
         database = rows(conn, """SELECT current_setting('server_version_num')::int AS postgres,
                                        extversion AS pgvector FROM pg_extension
                                 WHERE extname='vector'""")
@@ -262,7 +262,7 @@ def validate_evidence(before, latest):
     histories = []
     for evidence in (before, latest):
         require(evidence["format"] == "pgag-isolated-purge-drill-v3", "unknown evidence format")
-        require(evidence["schema_version"] == 22, "schema22 required")
+        require(evidence["schema_version"] == 23, "schema23 required")
         require(len(evidence["tenant"]) == 1, "exactly one disposable tenant required")
         for table in ("memory.scope_synthesis_policy", "memory.scope_capture_policy",
                       "memory_ops.model_call",
@@ -345,7 +345,7 @@ def validate_source_authority(before, latest):
 def validate_application_evidence(before, latest):
     require(before["format"] == latest["format"] == "pgag-isolated-purge-drill-v7",
             "application evidence v7 required")
-    require(before["schema_version"] == latest["schema_version"] == 22, "schema22 required")
+    require(before["schema_version"] == latest["schema_version"] == 23, "schema23 required")
     validate_source_authority(before, latest)
     require(len(before["tenant"]) == len(latest["tenant"]) == 1, "single tenant required")
     require(before["principals"] == latest["principals"] and before["objects"] == latest["objects"],
@@ -998,8 +998,8 @@ async def recover(admin_url, directory):
         "status": "passed",
         "m2_qualified": False,
         "m3_qualified": False,
-        "scope": "schema22-derived-memory-operational-state-application-v7",
-        "schema_version": 22,
+        "scope": "schema23-derived-memory-operational-state-application-v7",
+        "schema_version": 23,
         "source_authority_recovery": "exact_content_only",
         "source_authority_revalidation": "explicit",
         "automatic_source_grant_refresh": False,
@@ -1065,7 +1065,7 @@ async def recover(admin_url, directory):
 
 async def main():
     require(sys.platform == "linux", "run only through the isolated Linux container helper")
-    require(SCHEMA_VERSION == 22, "this bounded smoke is pinned to schema22")
+    require(SCHEMA_VERSION == 23, "this bounded smoke is pinned to schema23")
     build_identity()
     operation = sys.argv[1]
     directory = Path(os.environ["PGAG_RECOVERY_DIRECTORY"])

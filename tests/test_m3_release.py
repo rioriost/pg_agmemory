@@ -34,7 +34,7 @@ from pg_agmemory.recovery_apply import CONTENT_TABLES, ROW_TABLES, RecoveryBundl
 
 ROOT = Path(__file__).resolve().parents[1]
 AGE_COMMIT = "72707aab7ce982bf13cad3d102bd869dab07d64b"
-PROFILE_DIGEST = "9987ab2fb791948de1c5310758fd9d639d9cbe365c08cb3405838ff27ef07ab1"
+PROFILE_DIGEST = "1b5c047e6b32da6d301a94f950ef943b79c7f5767d76bd86cc6ee08d4f31ab3f"
 M4_PROFILE_DIGEST = "cba4b77ce48090e5e675406fd3a26d6d1f4be1a8efbaa7837f4a1cd76f0aff55"
 M5_V5_PROFILE_DIGEST = "ecd01f7169e2d19e2c6f46e4b4e19cb3e179f3f2d6b9e82eb05e04b5936350b6"
 M3_PROFILE_DIGEST = "37b0379d66341047d2def85621feff9f949cc5a42e3826d3746f51c175e0db0d"
@@ -59,7 +59,7 @@ def fingerprints(tables):
     return tuple(StateFingerprint(table=table, rows=0, digest="a" * 64) for table in tables)
 
 
-def connection(*, role=None, versions=range(1, 23)):
+def connection(*, role=None, versions=range(1, 24)):
     conn = MagicMock()
     conn.__aenter__ = AsyncMock(return_value=conn)
     conn.__aexit__ = AsyncMock(return_value=False)
@@ -106,10 +106,10 @@ def test_release_version_matches_project_and_editable_lock_root():
     assert roots[0]["source"] == {"editable": "."}
 
 
-def test_schema_twenty_two_is_a_packaged_migration_ledger_not_an_age_install(monkeypatch):
-    assert database.SCHEMA_VERSION == len(database.MIGRATIONS) == 22
-    assert tuple(int(name.split("_", 1)[0]) for name in database.MIGRATIONS) == tuple(range(1, 23))
-    assert database.MIGRATIONS[-1] == "022_bounded_revision_checks.sql"
+def test_schema_twenty_three_is_a_packaged_migration_ledger_not_an_age_install(monkeypatch):
+    assert database.SCHEMA_VERSION == len(database.MIGRATIONS) == 23
+    assert tuple(int(name.split("_", 1)[0]) for name in database.MIGRATIONS) == tuple(range(1, 24))
+    assert database.MIGRATIONS[-1] == "023_english_fts.sql"
     statements = tuple(
         files("pg_agmemory").joinpath("storage", name).read_text()
         for name in database.MIGRATIONS
@@ -135,11 +135,11 @@ def test_schema_twenty_two_is_a_packaged_migration_ledger_not_an_age_install(mon
     calls = conn.execute.call_args_list
     assert [call.args[1] for call in calls if call.args[0].startswith(
         "INSERT INTO public.pgag_schema_migration"
-    )] == [(version,) for version in range(1, 23)]
+    )] == [(version,) for version in range(1, 24)]
     assert [call.args[0] for call in calls if call.args[0] in statements] == list(statements)
 
 
-def test_runtime_requires_the_entire_schema_twenty_two_ledger(monkeypatch):
+def test_runtime_requires_the_entire_schema_twenty_three_ledger(monkeypatch):
     valid = connection()
     monkeypatch.setattr(database, "connect", AsyncMock(return_value=valid))
     asyncio.run(database.validate_runtime("unused-offline"))
@@ -148,7 +148,8 @@ def test_runtime_requires_the_entire_schema_twenty_two_ledger(monkeypatch):
     assert database.VECTOR_QUERY in queries
     assert not any("ag_catalog" in query or "extname='age'" in query for query in queries)
     for versions in (
-        range(1, 20), range(1, 21), range(1, 22), range(1, 24), (*range(1, 21), 22), (22,),
+        range(1, 20), range(1, 21), range(1, 22), range(1, 23), range(1, 25),
+        (*range(1, 22), 23), (23,),
     ):
         conn = connection(versions=versions)
         monkeypatch.setattr(database, "connect", AsyncMock(return_value=conn))
@@ -190,7 +191,7 @@ def test_api_v1_reports_m5_candidate_without_changing_backend_readiness(monkeypa
         capabilities = asyncio.run(endpoint())
         assert tuple(capabilities[key] for key in (
             "api_version", "service_version", "schema_version", "stage", "graph_backend",
-        )) == ("v1", "0.4.0.dev1", 22, "m5-production-candidate", backend)
+        )) == ("v1", "0.4.0.dev1", 23, "m5-production-candidate", backend)
         assert {"graph_expand", "entities", "structured_relations"} <= set(capabilities["features"])
         assert capabilities["request_deadline"] == {
             "scope": "v1_http", "seconds": 30.0, "error_response_reserve_seconds": 1.0,
@@ -284,7 +285,7 @@ def test_native_distribution_pins_remain_exact_not_just_matching_labels():
 
 def test_pilot_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profile, benchmark):
     assert (profile["name"], profile["service_version"], profile["format"]) == (
-        "M5-bounded-native-graph-v6", "0.4.0.dev1", "pgag-graph-resource-profile-v1",
+        "M5-bounded-native-graph-v7", "0.4.0.dev1", "pgag-graph-resource-profile-v1",
     )
     assert digest(profile) == benchmark.FROZEN_PROFILE_DIGEST == PROFILE_DIGEST
     assert benchmark.load_profile(ROOT / "examples/graph-resource-profile.json") == profile
@@ -295,6 +296,7 @@ def test_pilot_profile_has_a_new_fixed_identity_not_a_relaxed_validator(profile,
         {"name": "M3-bounded-native-graph-v1"}, {"service_version": "0.1.3"},
         {"name": "M5-bounded-native-graph-v5", "schema_version": 21},
         {"name": "M5-bounded-native-graph-v5"},
+        {"name": "M5-bounded-native-graph-v6", "schema_version": 22},
         {"gate": {**profile["gate"], "end_to_end_p95_ms_exclusive": 1501}},
     ):
         with pytest.raises(benchmark.BenchmarkError, match="profile_not_frozen"):
@@ -338,6 +340,19 @@ def test_frozen_m5_v5_profile_retains_its_schema21_identity(profile, benchmark):
         benchmark.validate_profile(historical)
 
 
+def test_frozen_m5_v6_profile_retains_its_schema22_identity(profile, benchmark):
+    payload = (ROOT / "examples/graph-resource-profile-m5-v6.json").read_bytes()
+    historical = json.loads(payload)
+    assert digest(historical) == (
+        "9987ab2fb791948de1c5310758fd9d639d9cbe365c08cb3405838ff27ef07ab1"
+    )
+    assert historical == profile | {
+        "name": "M5-bounded-native-graph-v6", "schema_version": 22,
+    }
+    with pytest.raises(benchmark.BenchmarkError, match="profile_not_frozen"):
+        benchmark.validate_profile(historical)
+
+
 def test_pilot_profile_preserves_workload_dimensions_and_thresholds(profile):
     assert tuple(tuple(case[field] for field in (
         "id", "shape", "nodes_per_scope", "seed_count", "direction",
@@ -361,7 +376,7 @@ def test_pilot_profile_preserves_workload_dimensions_and_thresholds(profile):
     }
 
 
-def test_recovery_v1_schema_twenty_two_artifacts_never_authorize_restore(snapshot):
+def test_recovery_v1_schema_twenty_three_artifacts_never_authorize_restore(snapshot):
     history = DeletionHistory(
         tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1, records=(),
     )
@@ -380,11 +395,11 @@ def test_recovery_v1_schema_twenty_two_artifacts_never_authorize_restore(snapsho
         assert parsed == artifact and parsed.format == expected_format
         assert parsed.restore_authorized is False
         schema = value["reference"] if isinstance(artifact, RecoveryBundle) else value
-        assert schema["schema_version"] == 22
+        assert schema["schema_version"] == 23
         for change in ({"restore_authorized": True}, {"format": expected_format[:-1] + "2"}):
             with pytest.raises(ValidationError):
                 model.model_validate_json(json.dumps(value | change))
-        for previous_schema in (20, 21):
+        for previous_schema in (20, 21, 22):
             schema["schema_version"] = previous_schema
             with pytest.raises(ValidationError):
                 model.model_validate_json(json.dumps(value))
@@ -397,7 +412,7 @@ def test_recovery_v1_schema_twenty_two_artifacts_never_authorize_restore(snapsho
     assert all(table.table in CONTENT_TABLES for table in snapshot.tables[-3:])
 
 
-def test_graph_recovery_artifacts_keep_v1_schema_twenty_two_and_require_publication(snapshot):
+def test_graph_recovery_artifacts_keep_v1_schema_twenty_three_and_require_publication(snapshot):
     graph_input = GraphInput(
         tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1,
         tables=fingerprints(INPUT_TABLES),
@@ -412,7 +427,7 @@ def test_graph_recovery_artifacts_keep_v1_schema_twenty_two_and_require_publicat
         (GraphArtifact, artifact, "pgag-graph-artifact-v1"),
     ):
         parsed = model.model_validate_json(value.model_dump_json())
-        assert parsed == value and parsed.format == expected_format and parsed.schema_version == 22
+        assert parsed == value and parsed.format == expected_format and parsed.schema_version == 23
     assert artifact.serving_enabled is False and artifact.permission_filter_required is True
     for changes in ({"serving_enabled": True}, {"permission_filter_required": False}):
         with pytest.raises(ValidationError):
@@ -428,7 +443,7 @@ def test_graph_recovery_artifacts_keep_v1_schema_twenty_two_and_require_publicat
     assert check.processing_state_matches is False and check.restore_authorized is False
 
 
-@pytest.mark.parametrize("schema", [19, 20, 21])
+@pytest.mark.parametrize("schema", [19, 20, 21, 22])
 def test_historical_graph_inputs_remain_readable_without_becoming_current(snapshot, schema):
     current = GraphInput(
         tenant_id=snapshot.tenant_id, access_epoch=1, deletion_epoch=1,
@@ -437,7 +452,7 @@ def test_historical_graph_inputs_remain_readable_without_becoming_current(snapsh
     historical = GraphInput.model_validate_json(json.dumps(
         current.model_dump(mode="json") | {"schema_version": schema},
     ))
-    assert historical.schema_version == schema and current.schema_version == 22
+    assert historical.schema_version == schema and current.schema_version == 23
     assert historical.tables == current.tables
     assert input_digest(historical, b"historical-test-key") != input_digest(
         current, b"historical-test-key",

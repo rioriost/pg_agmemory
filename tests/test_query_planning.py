@@ -12,7 +12,11 @@ from pg_agmemory.database import Settings
 from pg_agmemory.mcp_adapter import TOOLS
 from pg_agmemory.models import Recall
 from pg_agmemory.query_planning import (
+    ENGLISH_PROFILE,
+    ENGLISH_QUERY_GUIDANCE,
     LEXICAL_QUERY_GUIDANCE,
+    NATIVE_QUERY_GUIDANCE,
+    SEARCH_PROFILES,
     LexicalQueryPlan,
     lexical_query_contract,
     lexical_query_prompt,
@@ -177,9 +181,9 @@ def test_contract_is_fresh_and_shared_guidance_matches_capabilities_openapi_hook
     assert {key: second[key] for key in expected_metadata} == expected_metadata
     assert LEXICAL_QUERY_GUIDANCE
     for model in (Recall, HookInput):
-        assert model.model_fields["query"].description == LEXICAL_QUERY_GUIDANCE
+        assert model.model_fields["query"].description == NATIVE_QUERY_GUIDANCE
         assert model.model_json_schema()["properties"]["query"]["description"] == (
-            LEXICAL_QUERY_GUIDANCE
+            NATIVE_QUERY_GUIDANCE
         )
     app = create_app(Settings("unused", "unused", "unused", "unused"))
     endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/capabilities")
@@ -187,14 +191,43 @@ def test_contract_is_fresh_and_shared_guidance_matches_capabilities_openapi_hook
     assert capabilities["lexical_query"] == second
     assert _contains_exact_value(capabilities["lexical_query"], LEXICAL_QUERY_GUIDANCE)
     assert capabilities["default_search_profile"] == "simple-v1"
-    assert capabilities["search_profiles"] == list(PROFILES)
+    assert capabilities["search_profiles"] == SEARCH_PROFILES
+    assert capabilities["lexical_query_profiles"] == {
+        profile: lexical_query_contract(profile) for profile in SEARCH_PROFILES
+    }
+    assert capabilities["english_fts"]["configuration"] == "pg_catalog.english"
+    assert capabilities["english_fts"]["literal_identifiers_guaranteed"] is False
     recall_schema = app.openapi()["components"]["schemas"]["Recall"]
-    assert recall_schema["properties"]["query"]["description"] == LEXICAL_QUERY_GUIDANCE
+    assert recall_schema["properties"]["query"]["description"] == NATIVE_QUERY_GUIDANCE
     tool = next(spec for spec in TOOLS if spec.name == "memory_recall").definition()
-    assert LEXICAL_QUERY_GUIDANCE in tool.description
+    assert NATIVE_QUERY_GUIDANCE in tool.description
     assert tool.input_schema["$defs"]["Recall"]["properties"]["query"]["description"] == (
-        LEXICAL_QUERY_GUIDANCE
+        NATIVE_QUERY_GUIDANCE
     )
+
+
+def test_english_contract_and_prompt_are_explicit_without_changing_literal_contract():
+    contract = lexical_query_contract(ENGLISH_PROFILE)
+    assert contract["english_stemming"] is True
+    assert contract["dictionary"] == "pg_catalog.english"
+    assert contract["stop_words"] == "postgresql_english"
+    assert contract["search_profiles"] == [ENGLISH_PROFILE]
+    assert contract["nonempty_zero_lexeme_query"] == "no_matches"
+    assert contract["automatic_browse_fallback"] is False
+    assert contract["automatic_query_rewrite"] is False
+    assert contract["boolean_operators"] is False
+    assert lexical_query_contract("simple-v1") == lexical_query_contract(PROFILES[1])
+    assert lexical_query_contract()["english_stemming"] is False
+    _distinct_containers(contract, lexical_query_contract(ENGLISH_PROFILE))
+    prompt = lexical_query_prompt("Which checks apply to Lark?", ENGLISH_PROFILE)
+    assert ENGLISH_QUERY_GUIDANCE in prompt
+    assert LEXICAL_QUERY_GUIDANCE not in prompt
+    assert json.loads(prompt[prompt.rfind('{"question":'):])["search_profile"] == ENGLISH_PROFILE
+    request = Recall(scope_ids=[uuid4()], purpose="test", search_profile=ENGLISH_PROFILE)
+    assert request.search_profile == ENGLISH_PROFILE
+    for value in (None, True, 1, [], {}, "english", "unknown-profile"):
+        with pytest.raises(ValueError):
+            lexical_query_contract(value)
 
 
 def _observe(env, content, **changes):

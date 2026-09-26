@@ -12,6 +12,7 @@ import psycopg
 import uvicorn
 
 from pg_agmemory.database import migrate, reindex_lexical
+from pg_agmemory.lexical import JAPANESE_PROFILE, PROJECTED_PROFILES
 from pg_agmemory.transactions import CommitOutcomeUnknown, transaction
 from pg_agmemory.worker import run
 
@@ -165,11 +166,17 @@ def _main() -> None:
         "--print-profile-digest", action="store_true",
         help="Worker: validate local profile and print policy digest without making model calls",
     )
+    parser.add_argument(
+        "--profile", choices=PROJECTED_PROFILES,
+        help="Reindex-lexical: replace only this profile (default: Japanese)",
+    )
     args = parser.parse_args()
     if args.once and args.command != "worker":
         parser.error("--once is only supported by worker")
     if (args.provider_config or args.print_profile_digest) and args.command != "worker":
         parser.error("provider configuration is only supported by worker")
+    if args.profile is not None and args.command != "reindex-lexical":
+        parser.error("--profile is only supported by reindex-lexical")
     if args.command == "reindex-lexical" and args.subject is not None:
         parser.error("reindex-lexical rebuilds all tenants; --subject is not supported")
     if args.command == "scope-access":
@@ -235,7 +242,9 @@ def _main() -> None:
     elif args.command == "migrate":
         migrate(os.environ["PGAG_ADMIN_DATABASE_URL"])
     elif args.command == "reindex-lexical":
-        print(json.dumps(reindex_lexical(os.environ["PGAG_ADMIN_DATABASE_URL"])))
+        print(json.dumps(reindex_lexical(
+            os.environ["PGAG_ADMIN_DATABASE_URL"], profile=args.profile or JAPANESE_PROFILE,
+        )))
     elif args.command == "worker":
         profile = None
         if args.provider_config is not None:

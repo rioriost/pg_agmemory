@@ -230,7 +230,8 @@ def test_actual_cli_invalid_configuration_and_connection_failure_are_explicit():
 
 
 @pytest.mark.integration
-def test_real_hook_all_events_match_native_recall_and_do_not_write(env, api_process):
+@pytest.mark.parametrize("profile", ["ja-janome-0.5.0-v1", "en-snowball-v1"])
+def test_real_hook_all_events_match_native_recall_and_do_not_write(env, api_process, profile):
     source = env.observe("Gold contract for 東京都").json()["memory_id"]
     assertion = env.remember(source).json()["memory_id"]
     env.observe("OTHER_TENANT_SECRET Gold", index=1)
@@ -240,7 +241,7 @@ def test_real_hook_all_events_match_native_recall_and_do_not_write(env, api_proc
             api_url=str(http.base_url),
             api_token=env.token(),
             scope_ids=[env.scopes[0]],
-            search_profile="ja-janome-0.5.0-v1",
+            search_profile=profile,
             timeout_seconds=10,
         )
         native_request = config.request(HookInput(event="session_start", query="Gold"))

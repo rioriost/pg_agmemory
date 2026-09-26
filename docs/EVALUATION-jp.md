@@ -2,6 +2,28 @@
 
 [English](EVALUATION.md)
 
+## 明示的な英語profile比較
+
+schema23の`en-snowball-v1`は、promptやscheduleだけでなく**Nativeの照合方式**を変えます。
+v6 runnerで`--english-search-profile en-snowball-v1`を明示指定でき、
+既定は引き続き`simple-v1`、日本語caseは`ja-janome-0.5.0-v1`です。
+選択した英語契約とprofile別planner指示はrecipeに記録します。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-english-01 gpt-6-astra high --allow-copilot \
+  --cohort distractor-synthetic-v1 --query-policy bounded-lexical-v6 \
+  --retention-policy review-v1 --english-search-profile en-snowball-v1
+```
+
+reader、保持判断、data/gold、厳密採点は維持します。
+160 model call、各caseで検索4回＋最新参照検査1回の上限は同じで、
+実件数は終了planや失敗によって変わります。
+新source/schema/profileのidentity、全後退、不完全/不明な分母、usage、latencyを記録します。
+失敗したv6を完走扱いにしたり、欠けたarmだけretryしたり、
+Snowballで発見・scalar形式・provider timeoutが修復すると仮定してはいけません。
+実装や決定的な語形testは新しいmodel品質測定ではなく、ここで新実測結果は主張しません。
+
 ## 逐次計画の比較
 
 `bounded-lexical-v6`はNative検索やreaderではなく、**計画scheduleと指示**を変更します。

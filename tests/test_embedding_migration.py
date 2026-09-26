@@ -138,7 +138,7 @@ def test_invalid_request_never_connects(monkeypatch, bad):
 def test_empty_universe_is_not_positive_completeness_and_has_no_side_effect(env):
     before = canonical_state(env)
     result = inspect(env)
-    assert result.schema_version == SCHEMA_VERSION == 22
+    assert result.schema_version == SCHEMA_VERSION == 23
     assert result.visible_revisions == result.eligible_revisions == 0
     assert result.status == "empty" and result.blockers == ()
     assert result.assessment_scope == "principal_scope_time_projection_snapshot"

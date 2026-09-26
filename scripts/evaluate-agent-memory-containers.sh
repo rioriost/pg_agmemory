@@ -4,7 +4,7 @@ set -Eeuo pipefail
 umask 077
 
 usage() {
-    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5|bounded-lexical-v6] [--retention-policy model-purge-v1|review-v1] [--cohort pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1]"
+    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1|bounded-lexical-v3|bounded-lexical-v4|bounded-lexical-v5|bounded-lexical-v6] [--retention-policy model-purge-v1|review-v1] [--cohort pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1] [--english-search-profile simple-v1|en-snowball-v1]"
     echo "Apple Container only; at most 100 calls, 120 with bounded-lexical-v3/v4/v5, or 160 with v6."
     echo "Synthetic fixtures only; model-selected purge applies only to this owned disposable DB."
     echo "Uses existing host Copilot authentication without copying credentials into guests."
@@ -16,16 +16,18 @@ usage() {
     echo "v3/v4 use literal-v1 planning; v5 opts into discovery-v2 planning with unchanged budgets."
     echo "v6 uses sequential-v3 planning: up to four one-query rounds and a higher model-call budget."
     echo "All bounded policies keep four Native searches plus one fresh final validation."
+    echo "English defaults to simple-v1; en-snowball-v1 requires bounded-lexical-v6. Japanese is unchanged."
     echo "review-v1 defers model forget proposals; it does not authorize Native purge."
 }
 if [[ "${1:-}" == --help ]]; then usage; exit 0; fi
-if [[ $# != 4 && $# != 6 && $# != 8 && $# != 10 ]]; then usage >&2; exit 2; fi
+if [[ $# != 4 && $# != 6 && $# != 8 && $# != 10 && $# != 12 ]]; then usage >&2; exit 2; fi
 if [[ "$4" != --allow-copilot ]]; then usage >&2; exit 2; fi
 directory="$1" model="$2" effort="$3"
 query_policy=lexical-v2
 cohort=pilot-v1
 retention_policy=model-purge-v1
-query_seen=false cohort_seen=false retention_seen=false
+english_search_profile=simple-v1
+query_seen=false cohort_seen=false retention_seen=false english_profile_seen=false
 shift 4
 while [[ $# -gt 0 ]]; do
     [[ $# -ge 2 && "$2" != --* ]] || { usage >&2; exit 2; }
@@ -39,6 +41,9 @@ while [[ $# -gt 0 ]]; do
         --retention-policy)
             [[ "$retention_seen" == false ]] || { usage >&2; exit 2; }
             retention_policy="$2" retention_seen=true ;;
+        --english-search-profile)
+            [[ "$english_profile_seen" == false ]] || { usage >&2; exit 2; }
+            english_search_profile="$2" english_profile_seen=true ;;
         *) usage >&2; exit 2 ;;
     esac
     shift 2
@@ -51,6 +56,12 @@ if [[ "$retention_seen" == false && "$bounded_query" == true ]]; then
 fi
 case "$retention_policy" in model-purge-v1|review-v1) ;; *) usage >&2; exit 2 ;; esac
 case "$cohort" in pilot-v1|unseen-synthetic-v1|distractor-synthetic-v1) ;; *) usage >&2; exit 2 ;; esac
+case "$english_search_profile" in simple-v1|en-snowball-v1) ;; *) usage >&2; exit 2 ;; esac
+if [[ "$english_search_profile" != simple-v1 && "$query_policy" != bounded-lexical-v6 ]]; then
+    echo "en-snowball-v1 requires --query-policy bounded-lexical-v6" >&2
+    usage >&2
+    exit 2
+fi
 max_calls=100
 if [[ "$bounded_query" == true ]]; then max_calls=120; fi
 if [[ "$query_policy" == bounded-lexical-v6 ]]; then max_calls=160; fi
@@ -111,10 +122,12 @@ cleanup() {
     if [[ "$cleanup_failed" == true ]]; then result=1; failure_code=owned_cleanup_failed; fi
     jq -n --arg run "$run_id" --arg revision "$source_revision" --arg policy "$query_policy" \
         --arg cohort "$cohort" \
+        --arg english_profile "$english_search_profile" \
         --arg retention "$retention_policy" --argjson max_calls "$max_calls" \
         --arg failure "$failure_code" --argjson success "$([[ $result == 0 ]] && echo true || echo false)" \
         '{format:"pgag-agent-eval-harness-v1",run_id:$run,source_revision:$revision,
           query_policy:$policy,retention_policy:$retention,cohort_id:$cohort,
+          english_search_profile:$english_profile,
           logical_model_call_limit:$max_calls,held_out:false,held_out_external:false,
           completed:$success,failure_code:(if $success then null else $failure end),
           production_qualified:false,external_effects_executed:false}' \
@@ -235,6 +248,7 @@ container run --name "${run_id}-runner" --user "$(id -u):$(id -g)" \
     -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/work/src \
     "$image" timeout 2400s python /work/scripts/evaluate-agent-memory.py \
         --output /drill/results --bridge /bridge --query-policy "$query_policy" --cohort "$cohort" \
+        --english-search-profile "$english_search_profile" \
         --retention-policy "$retention_policy" \
         > "$directory/runner.log" 2>&1
 failure_code=bridge_shutdown_failed

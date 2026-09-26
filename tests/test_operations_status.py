@@ -243,7 +243,7 @@ def test_empty_snapshot_exact_contract_is_a_noop_not_authority(env):
     assert lower <= result.evaluated_at <= upper
     assert result.model_dump(exclude={"evaluated_at"}) == {
         "format": "pgag-operations-status-v1",
-        "service_version": __version__, "api_version": "v1", "schema_version": 22,
+        "service_version": __version__, "api_version": "v1", "schema_version": 23,
         "tenant_id": env.tenants[0], "access_epoch": 1, "deletion_epoch": 1,
         "in_recovery": False, "primary_snapshot": True,
         "restore_authorized": False, "source_authorization_verified": False,

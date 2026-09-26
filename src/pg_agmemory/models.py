@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-from pg_agmemory.query_planning import LEXICAL_QUERY_GUIDANCE
+from pg_agmemory.query_planning import NATIVE_QUERY_GUIDANCE
 from pg_agmemory.query_planning import SearchProfile as SearchProfile
 
 ShortText = Annotated[str, Field(min_length=1, max_length=256)]
@@ -226,7 +226,7 @@ class RecallFilters(Contract):
 
 
 class Recall(Contract):
-    query: Annotated[str, Field(max_length=4096, description=LEXICAL_QUERY_GUIDANCE)] = ""
+    query: Annotated[str, Field(max_length=4096, description=NATIVE_QUERY_GUIDANCE)] = ""
     scope_ids: Annotated[list[UUID], Field(min_length=1, max_length=32)]
     purpose: ShortText
     as_of: AwareDatetime | None = None

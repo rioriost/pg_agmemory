@@ -291,7 +291,7 @@ def test_live_probe_uses_read_only_runtime_catalogs_without_identity_or_mutation
             == 0
         )
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["stage"] == "m5-production-candidate" and caps["schema_version"] == 22
+    assert caps["stage"] == "m5-production-candidate" and caps["schema_version"] == 23
     assert caps["operations_status_administration"] == {
         "command": "operations-status",
         "transport": "admin-cli",

@@ -10,6 +10,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from test_vectors import request, upload
 
+from pg_agmemory.query_planning import ENGLISH_PROFILE, JAPANESE_PROFILE
+
 
 def bind(conn, env, index):
     conn.execute(
@@ -97,15 +99,21 @@ def test_prepared_set_policies_match_original_scalar_oracle(env, permissions, ex
                     (Jsonb(rows), kind, kind),
                     prepare=True,
                 ).fetchall()
-                actual = conn.execute(
-                    sql.SQL("SELECT {} AS id FROM {} ORDER BY {}").format(
-                        sql.Identifier(column),
-                        sql.Identifier(*table.split(".")),
-                        sql.Identifier(column),
-                    ),
-                    prepare=True,
-                ).fetchall()
-                assert actual == expected, (index, table)
+                profiles = (
+                    [JAPANESE_PROFILE, ENGLISH_PROFILE] if table.endswith("_lexical") else [None]
+                )
+                for profile in profiles:
+                    actual = conn.execute(
+                        sql.SQL("SELECT {} AS id FROM {} {} ORDER BY {}").format(
+                            sql.Identifier(column),
+                            sql.Identifier(*table.split(".")),
+                            sql.SQL("WHERE profile=%s" if profile is not None else ""),
+                            sql.Identifier(column),
+                        ),
+                        (profile,) if profile is not None else (),
+                        prepare=True,
+                    ).fetchall()
+                    assert actual == expected, (index, table, profile)
             expected_tombstones = conn.execute(
                 """SELECT id FROM jsonb_to_recordset(%s) AS x
                    (tenant_id uuid,id uuid,scope_id uuid,kind text,tombstoned boolean)

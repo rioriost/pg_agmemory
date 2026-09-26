@@ -521,7 +521,7 @@ def test_runtime_cannot_modify_or_delete_projection_directly(env, operation):
 @pytest.mark.integration
 def test_extension_pin_rls_and_no_ann_index_are_verified(env):
     caps = env.client.get("/v1/capabilities", headers=env.headers()).json()
-    assert caps["schema_version"] == 22
+    assert caps["schema_version"] == 23
     assert caps["embeddings"]["extension_version"] == VECTOR_VERSION
     with psycopg.connect(env.admin_url) as conn:
         assert conn.execute("SHOW server_version_num").fetchone()[0] == "180006"
