@@ -7,13 +7,36 @@
 The opt-in `bounded-lexical-v4` replaces first-admitted selection with a
 bounded round-robin merge of per-query results. Follow-up lists are visited
 before initial lists; query order and Native rank remain deterministic.
-No model ranker or extra search is added. The output remains eight items /
+No model ranker or larger search budget is added. The output remains eight items /
 8,000 Native context bytes, with unchanged epoch/content checks and fresh
 final references. V3/default helper behavior remains first-admitted; exact
 historical source hashes remain tied to the recorded commits.
 The comparison reuses the known distractor cohort with unchanged prompts,
 gold/scoring, model and review policy, and the same 120-call ceiling.
 See [the versioned comparison](EVALUATION.md#versioned-evidence-admission-correction).
+
+At frozen **`357a57b`**, the 120-call GPT-6 Astra/high repeat improves exact
+correctness **13/20 → 16/20** and answerable correctness **9/16 → 12/16**.
+Delivered required-source coverage rises **59.375% → 81.25%**, matching
+raw-search coverage; all four formerly dropped sources reach the answerer.
+Three cases still fail to retrieve required evidence and abstain.
+One receives/cites its source but returns `640 tiles per file` instead of
+the required scalar `640 tiles`; it remains an exact-match miss, not a
+post-hoc correct answer. Controls stay 4/20 and 8/20; chains improve 0/4 → 1/4.
+Retention proposals match 504 keep / 136 forget labels, but all 136 deletions
+remain pending, with zero Native Forget calls/purges. There are 65 searches
+and 20 fresh validations; reader-path p95 is **39.01 s**, versus 35.92 s.
+This known-cohort repeat repairs observed admission loss, not remaining
+discovery gaps, generalization or production acceptance.
+See [measured findings](EVALUATION.md#known-cohort-v4-result-admission-loss-fixed-discovery-gaps-remain)
+and the [aggregate](../examples/copilot-memory-admission-v4-result.json).
+
+The exact measured source passes all eight jobs in
+[run 36213207824](https://github.com/rioriost/pg_agmemory/actions/runs/36213207824):
+each native core reports **5,365 passed / 134 skipped**; packaged installation,
+isolated COMMIT/request checks, offline bridge, HA/PITR and patched AGE also pass.
+An earlier non-reproduced local empty-context failure is disclosed in the
+evaluation report; no temporal semantics or fallback was relaxed.
 
 ## Fixed-policy longer-history evaluation
 

@@ -37,6 +37,79 @@ but is not a fresh authorization check or a new answer-quality measurement.
 Any live repeat is frozen in a clean commit before inference, and the original
 adverse result remains published without retrospective rescoring.
 
+### Known-cohort v4 result: admission loss fixed, discovery gaps remain
+
+The frozen **`357a57b`** run uses GPT-6 Astra/high and completes **120 model
+calls / 60 arm outcomes**, with no malformed responses, retries or unmeasured
+arms. Cases/gold, scorer, planner/answer/retention prompt text and review
+policy remain unchanged. All fixed control/retention prompt hashes match
+the first run. This is **known-cohort reuse**, not new held-out evidence.
+See the [reviewed aggregate](../examples/copilot-memory-admission-v4-result.json).
+
+| Measure | First-use v3 | Known-cohort v4 |
+|---|---:|---:|
+| Native exact correctness | 13/20 | **16/20** |
+| Answerable exact correctness | 9/16 | **12/16** |
+| Raw-search required-source coverage | 81.25% | 81.25% |
+| Delivered required-source coverage | 59.375% | **81.25%** |
+| Cited required-source recall | 56.25% | **81.25%** |
+| Two-event chains correct | 0/4 | **1/4** |
+| Planning, reads and answer sum p95 | 35.92 s | 39.01 s |
+
+Controls remain **4/20** without memory and **8/20** with two recent events.
+All four formerly discarded required sources (cases 01, 02, 05, 08) now
+reach the answerer; no returned required source is lost in this run.
+Cases 01, 02 and 08 gain exact correctness, with no previously correct
+case regressing. All four twice-corrected histories remain correct.
+Before inference, replaying all 20 original trajectories exactly reproduced
+v3's final references and improved v4's selected coverage from 59.375% to
+81.25%. That replay used no new model/database calls and did not claim
+fresh authorization or predict an answer score.
+
+The four remaining exact-match misses have different causes. Cases
+**03, 06 and 17** still retrieve neither required source and abstain;
+reselection cannot recover evidence that no search returned. Case **05**
+now receives and cites the correct source, but returns **`640 tiles per file`**
+instead of the frozen scalar **`640 tiles`**. The longer phrase is present
+in its cited source. It still fails the unchanged exact-string oracle:
+the score remains **16/20**, not a post-hoc semantic 17/20. The fixed scorer
+also flags this miss as `unsupported_answer`; that flag is not a separate
+hallucination judgment. The three remaining retrieval misses and scalar
+output contract require different follow-up work.
+
+Retention again matches all **504 keep / 136 forget labels**. Review defers
+all 136 proposals and verifies they remain readable; zero Native Forget
+calls/purges occur. This does not repair the earlier cohort's wrong proposal
+or complete forgetting. V4 performs **65 searches and 20 fresh validations**
+versus 63 and 20, within unchanged four-plus-one per-case ceilings.
+Usage is **467,782 input / 18,274 output tokens**, 467,422 cache-write and
+zero cache-read tokens, with 120 reported API/premium requests. Reported
+676,007,500,000 nano-AIU is not a verified monetary bill.
+
+Reader-path p50/p95 are **28.92/39.01 s**; these sum two planning calls,
+actual Native reads and the answer call, excluding retention/setup.
+Runner-side call times include queue wait; aggregate Copilot-call
+percentiles use bridge-reported duration. Overall runner duration is
+**1,166.404 s**. Single stochastic cloud runs do not establish a causal
+latency regression, a production SLA or unseen generalization.
+No helper, prompt, model policy or scorer is changed after this measurement,
+and no extra model call is used to diagnose it.
+
+Local validation caveat: an initial real-HTTP, scripted-model run had seven
+empty-context failures across both v3 and v4. The unchanged source subsequently
+passed the eight targeted cases and two complete 889-case runs, including a
+final run without diagnostics or source overlays. A read-only clock diagnostic
+did not reproduce the failure; its root cause remains unconfirmed. No sleep,
+temporal-filter relaxation or cached fallback was introduced. These engineering
+test reruns are separate from the single, unretried real-model measurement.
+
+The exact measured source passes all eight native jobs in
+[run 36213207824](https://github.com/rioriost/pg_agmemory/actions/runs/36213207824).
+Both core suites report **5,365 passed / 134 skipped**, with separate 18 COMMIT
+and 13 request cases and six offline bridge checks. Packaged installation,
+HA, PITR and patched AGE also pass on both architectures; each AGE run passes
+218 cases. This validates the implementation, not product acceptance.
+
 ## Fixed-policy evaluation with longer distractor histories
 
 `--cohort distractor-synthetic-v1` selects a separate, explicitly versioned

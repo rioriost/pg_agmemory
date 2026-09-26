@@ -6,13 +6,34 @@
 
 opt-inの`bounded-lexical-v4`は、先着順ではなくqueryごとの結果を
 上限付きround-robinで採用します。追加roundのlistを先に扱い、
-query順とNative順位を決定的に維持します。model rankerや検索回数は追加しません。
+query順とNative順位を決定的に維持します。
+model rankerは追加せず、検索回数の上限も引き上げません。
 出力は最大8 item / Native 8,000 byteのままで、
 epoch/content検査と最終参照の最新検査も維持します。
 v3とhelper既定の動作は先着順のまま、過去sourceのhashは記録済みcommitに結び付けます。
 既知のdistractor cohortを再利用し、prompt、gold/採点、model、review policyと
 120 call上限を固定して比較します。
 [version付き比較](EVALUATION-jp.md#version付きの根拠採用方式の修正)を参照してください。
+
+固定した**`357a57b`**のGPT-6 Astra/high・120 call再実測で、
+厳密正答は**13/20 → 16/20**、回答可能な問題では**9/16 → 12/16**へ改善しました。
+回答者に届く必要source coverageは**59.375% → 81.25%**となり、検索応答のcoverageと一致し、
+以前捨てられた4 sourceは全て届きました。3問は必要根拠を取得できず辞退しています。
+別の1問は正しいsourceを取得・引用しましたが、要求されたscalarの`640 tiles`ではなく
+`640 tiles per file`と回答したため、事後に正答へ読み替えず厳密一致の不正答として残します。
+controlは4/20・8/20、根拠chainは0/4 → 1/4でした。
+保持提案はkeep 504 / forget 136件のgoldと一致しますが、136件全て保留で、
+Native Forget呼出し・物理purgeは0件です。検索65回と最新参照検査20回、
+読取経路p95は以前の35.92秒に対し**39.01秒**でした。
+既知cohortで観測された採用漏れの修復であり、発見の不足、汎化、本番受入の完了ではありません。
+[実測結果](EVALUATION-jp.md#既知cohortのv4結果-採用時の欠落は解消発見の不足は残る)と
+[集計](../examples/copilot-memory-admission-v4-result.json)を参照してください。
+
+同一sourceの[run 36213207824](https://github.com/rioriost/pg_agmemory/actions/runs/36213207824)は
+8 job全て成功し、両native coreは**5,365 passed / 134 skipped**でした。
+packaged install、分離COMMIT/request、offline bridge、HA/PITR、patched AGEも成功しています。
+先行するlocal検証で再現しなかった空contextの失敗は評価reportに明記し、
+時刻の意味やfallbackを緩和していません。
 
 ## Policyを固定した長い履歴の評価
 

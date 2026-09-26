@@ -34,6 +34,74 @@ v4 recipeは選択方式と実helper sourceを明示的に結びます。
 最新の認可検査や新しい回答品質測定ではありません。
 実推論前にcleanなcommitへ固定し、以前の不十分な結果を事後採点し直しません。
 
+### 既知cohortのv4結果: 採用時の欠落は解消、発見の不足は残る
+
+固定した**`357a57b`**をGPT-6 Astra/highで実測し、
+**120 model call / 60 arm結果**を完走しました。
+不正応答、retry、未測定armはありません。case/gold、採点、計画/回答/保持prompt文、
+review policyは変更せず、固定したcontrol/保持promptのhashも初回と全て一致しました。
+これは**既知cohortの再利用**であり、新しいheld-out証跡ではありません。
+[確認済み集計](../examples/copilot-memory-admission-v4-result.json)を参照してください。
+
+| 指標 | 初回v3 | 既知cohortのv4 |
+|---|---:|---:|
+| Native厳密一致の正答 | 13/20 | **16/20** |
+| 回答可能な問題の厳密正答 | 9/16 | **12/16** |
+| 検索応答の必要source coverage | 81.25% | 81.25% |
+| 回答者に届いた必要source coverage | 59.375% | **81.25%** |
+| 引用された必要source recall | 56.25% | **81.25%** |
+| 2 eventの根拠chainの正答 | 0/4 | **1/4** |
+| 計画・検索・回答の合算p95 | 35.92秒 | 39.01秒 |
+
+controlは記憶なし**4/20**、直近2 eventが**8/20**のままです。
+以前捨てられた4問（01、02、05、08）の必要sourceは全て回答者に届き、
+今回、検索で返った必要sourceの採用漏れはありません。
+01、02、08が厳密正答へ改善し、以前正答したcaseの後退はありません。
+二度訂正された履歴4件も引き続き正答しました。
+推論前の元20履歴のoffline再入力では、v3の最終参照集合を厳密に再現し、
+v4の選択coverageが59.375%から81.25%へ改善することを確認しました。
+新しいmodel/DB呼出しは使わず、最新認可の確認や回答scoreの予測とはしていません。
+
+未達4問は原因が異なります。**03、06、17**では引き続き必要sourceが二つとも取得できず、
+回答を辞退しました。検索で返らない根拠は再選択だけでは回復できません。
+**05**は正しいsourceを受け取り引用しましたが、
+固定scalarの**`640 tiles`**ではなく**`640 tiles per file`**を返しました。
+長い方の表現も引用source内にありますが、変更していない厳密な文字列一致では不正答です。
+事後の意味評価で17/20に読み替えず、**16/20**を維持します。
+既存採点はこの不一致を`unsupported_answer`にも数えますが、
+これは独立したhallucination判定ではありません。
+残る検索の未達3問とscalar出力契約は、別の改善課題です。
+
+保持提案は今回も**keep 504 / forget 136件**のgoldと全て一致しました。
+reviewは136件全てを保留し、引き続き読めることを確認しています。
+Native Forget呼出しと物理purgeは0件であり、以前の別cohortの誤提案の修復や忘却完了ではありません。
+実検索は**65回、最新参照検査20回**で、以前の63回・20回に対し、
+各caseの4回＋1回という上限は同じです。
+usageは**入力467,782 / 出力18,274 token**、cache-write 467,422、cache-read 0、
+報告されたAPI/premium requestは120件でした。
+報告値676,007,500,000 nano-AIUは、確定した金額ではありません。
+
+読取経路のp50/p95は**28.92/39.01秒**です。
+計画2回、実Native読取、回答呼出しの合計で、保持判断とsetupは除きます。
+runner側のmodel時間にはqueue待ちを含め、全Copilot呼出しのpercentileはbridge報告durationを使います。
+runner全体は**1,166.404秒**でした。確率的なcloud実行各1回では、
+遅延差の因果関係、本番SLA、未見dataへの汎化は認定できません。
+実測後のhelper、prompt、model policy、採点の変更や診断目的の追加model callはありません。
+
+local検証の留保として、scripted modelを使う最初の実HTTP実行では、
+v3/v4双方にまたがる7件でcontextが空になる失敗がありました。
+sourceを変えずに対象8件と889件の全体実行2回は成功し、
+最後の実行は診断の追加やsource overlayなしです。
+read-onlyの時計診断でも失敗を再現できず、根本原因は未確定です。
+sleep、時刻filterの緩和、cacheへのfallbackは追加していません。
+この実装検証の再実行と、retryなしの実model測定1回は区別します。
+
+実測と同一sourceの[run 36213207824](https://github.com/rioriost/pg_agmemory/actions/runs/36213207824)では、
+native 8 job全てが成功しました。両coreは**5,365 passed / 134 skipped**、
+別実行のCOMMIT 18件、request 13件、offline bridge 6件も成功しています。
+packaged install、HA、PITR、patched AGEも両architectureで成功し、AGEは各218件でした。
+これは実装の検証であり、プロダクトの受入完了ではありません。
+
 ## Policyを固定した長いdistractor履歴の評価
 
 `--cohort distractor-synthetic-v1`は、別versionの合成cohortを選びます。
