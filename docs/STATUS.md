@@ -2,7 +2,28 @@
 
 [日本語](STATUS-jp.md) | [Project README](../README.md) | [Implementation plan](PG_AGMEMORY_IMPLEMENTATION_PLAN.md)
 
-## New synthetic cohort: fixed model and query policy
+## Bounded evidence workflow and non-destructive retention review
+
+`bounded-lexical-v3` is an explicit caller-side policy: two model planning
+rounds, at most four scoped literal searches and one fresh required-reference
+validation. The caller pins time, scope, filters and profile. Pending IDs are
+excluded before follow-up planning; changed epochs, conflicting items or failed
+final validation discard the workflow rather than using cached answers.
+Merged context remains bounded to eight items / 8,000 Native context bytes.
+No Native SQL/ranking, authorization, migration or default search behavior changes.
+
+The separate `review-v1` policy never authorizes a purge from a model proposal.
+It leaves rows present and independently reviewable, withholding proposed IDs
+only from this workflow's context. Proposal mistakes are still scored; zero
+physical purges is not successful forgetting or a global deletion guard.
+Selecting v3 defaults to review, while existing no-flag evaluation behavior
+remains v2/model-purge. The known-cohort comparison allows at most 120 model
+calls instead of 100 and makes that extra search/planning budget explicit.
+Original cases, query-v2, answer prompts and scoring formulas remain unchanged.
+See [workflow semantics](operations/README.md#bounded-follow-up-and-retention-review)
+and [versioned comparison](EVALUATION.md#bounded-evidence-and-review-only-retention-comparison).
+
+## Previous new synthetic cohort: fixed model and query policy
 
 `unseen-synthetic-v1` adds 20 separately authored English/Japanese scenarios,
 139 events and more varied evidence positions, including near-topic distractors,

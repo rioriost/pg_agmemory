@@ -4,20 +4,23 @@ set -Eeuo pipefail
 umask 077
 
 usage() {
-    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1] [--cohort pilot-v1|unseen-synthetic-v1]"
-    echo "Apple Container only; at most 100 fresh Copilot calls using the selected model."
+    echo "Usage: $0 NEW_PRIVATE_PROJECT_DIRECTORY MODEL REASONING_EFFORT --allow-copilot [--query-policy lexical-v2|legacy-v1|bounded-lexical-v3] [--retention-policy model-purge-v1|review-v1] [--cohort pilot-v1|unseen-synthetic-v1]"
+    echo "Apple Container only; at most 100 calls, or 120 with bounded-lexical-v3."
     echo "Synthetic fixtures only; model-selected purge applies only to this owned disposable DB."
     echo "Uses existing host Copilot authentication without copying credentials into guests."
     echo "No embeddings, background worker, production data, or external effect execution."
-    echo "Defaults: query policy lexical-v2; cohort pilot-v1. No externally held-out claim."
+    echo "Defaults: lexical-v2, model-purge-v1, pilot-v1. Known-cohort regression, not held out."
+    echo "Selecting bounded-lexical-v3 defaults retention to review-v1 unless explicitly overridden."
+    echo "review-v1 defers model forget proposals; it does not authorize Native purge."
 }
 if [[ "${1:-}" == --help ]]; then usage; exit 0; fi
-if [[ $# != 4 && $# != 6 && $# != 8 ]]; then usage >&2; exit 2; fi
+if [[ $# != 4 && $# != 6 && $# != 8 && $# != 10 ]]; then usage >&2; exit 2; fi
 if [[ "$4" != --allow-copilot ]]; then usage >&2; exit 2; fi
 directory="$1" model="$2" effort="$3"
 query_policy=lexical-v2
 cohort=pilot-v1
-query_seen=false cohort_seen=false
+retention_policy=model-purge-v1
+query_seen=false cohort_seen=false retention_seen=false
 shift 4
 while [[ $# -gt 0 ]]; do
     [[ $# -ge 2 && "$2" != --* ]] || { usage >&2; exit 2; }
@@ -28,12 +31,21 @@ while [[ $# -gt 0 ]]; do
         --cohort)
             [[ "$cohort_seen" == false ]] || { usage >&2; exit 2; }
             cohort="$2" cohort_seen=true ;;
+        --retention-policy)
+            [[ "$retention_seen" == false ]] || { usage >&2; exit 2; }
+            retention_policy="$2" retention_seen=true ;;
         *) usage >&2; exit 2 ;;
     esac
     shift 2
 done
-case "$query_policy" in lexical-v2|legacy-v1) ;; *) usage >&2; exit 2 ;; esac
+case "$query_policy" in lexical-v2|legacy-v1|bounded-lexical-v3) ;; *) usage >&2; exit 2 ;; esac
+if [[ "$retention_seen" == false && "$query_policy" == bounded-lexical-v3 ]]; then
+    retention_policy=review-v1
+fi
+case "$retention_policy" in model-purge-v1|review-v1) ;; *) usage >&2; exit 2 ;; esac
 case "$cohort" in pilot-v1|unseen-synthetic-v1) ;; *) usage >&2; exit 2 ;; esac
+max_calls=100
+if [[ "$query_policy" == bounded-lexical-v3 ]]; then max_calls=120; fi
 [[ "$model" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || exit 2
 case "$effort" in low|medium|high|xhigh) ;; *) exit 2 ;; esac
 cd -P "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -91,9 +103,11 @@ cleanup() {
     if [[ "$cleanup_failed" == true ]]; then result=1; failure_code=owned_cleanup_failed; fi
     jq -n --arg run "$run_id" --arg revision "$source_revision" --arg policy "$query_policy" \
         --arg cohort "$cohort" \
+        --arg retention "$retention_policy" --argjson max_calls "$max_calls" \
         --arg failure "$failure_code" --argjson success "$([[ $result == 0 ]] && echo true || echo false)" \
         '{format:"pgag-agent-eval-harness-v1",run_id:$run,source_revision:$revision,
-          query_policy:$policy,cohort_id:$cohort,held_out:false,held_out_external:false,
+          query_policy:$policy,retention_policy:$retention,cohort_id:$cohort,
+          logical_model_call_limit:$max_calls,held_out:false,held_out_external:false,
           completed:$success,failure_code:(if $success then null else $failure end),
           production_qualified:false,external_effects_executed:false}' \
         > "$directory/harness.json" || result=1
@@ -191,7 +205,7 @@ Path("/drill/config.json").write_text(json.dumps({
 '
 failure_code=copilot_bridge_start_failed
 node scripts/copilot-eval-bridge.mjs --directory "$PWD/$directory/bridge" \
-    --model "$model" --reasoning-effort "$effort" --max-calls 100 --run-id "$run_id" \
+    --model "$model" --reasoning-effort "$effort" --max-calls "$max_calls" --run-id "$run_id" \
     > "$directory/bridge.log" 2>&1 &
 bridge_pid=$!
 for ((attempt=0; attempt<30; attempt++)); do
@@ -213,6 +227,7 @@ container run --name "${run_id}-runner" --user "$(id -u):$(id -g)" \
     -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/work/src \
     "$image" timeout 2400s python /work/scripts/evaluate-agent-memory.py \
         --output /drill/results --bridge /bridge --query-policy "$query_policy" --cohort "$cohort" \
+        --retention-policy "$retention_policy" \
         > "$directory/runner.log" 2>&1
 failure_code=bridge_shutdown_failed
 printf '{"run_id":"%s"}\n' "$run_id" > "$directory/bridge/stop.json"

@@ -24,7 +24,8 @@ test("arguments require an explicit model, bounded calls and owned run identity"
     "--max-calls", "100", "--run-id", "agent-eval-0123456789abcdef"];
   assert.equal(parseArguments(args).max_calls, 100);
   assert.throws(() => parseArguments(args.concat("--model", "other")));
-  assert.throws(() => parseArguments(args.map((value) => value === "100" ? "101" : value)));
+  assert.equal(parseArguments(args.map((value) => value === "100" ? "120" : value)).max_calls, 120);
+  assert.throws(() => parseArguments(args.map((value) => value === "100" ? "121" : value)));
   assert.throws(() => parseArguments(args.map((value) => value === "high" ? "auto" : value)));
 });
 

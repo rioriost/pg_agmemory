@@ -3309,6 +3309,70 @@ nonfinite and extra-field plans fail explicitly rather than browsing all memory.
 The caller remains responsible for term selection: without stemming or vector
 retrieval, a different word form or synonym can still miss the intended event.
 
+### Bounded follow-up and retention review
+
+`pg_agmemory.bounded_recall` is an **opt-in caller workflow**, not a new server
+search mode. `SearchPlan` contains up to two literal queries. The caller may
+run at most two planning rounds, four search requests and one final
+required-reference validation, with at most eight merged items and an
+8,000-byte Native context budget. Round two sees only previously retrieved,
+admitted evidence and the issued query history; it may follow an observed
+reference or propose another explicit query. An empty follow-up *plan* stops
+searching; no empty search query or unbounded browse is generated.
+
+`BoundedRecall` requires caller-pinned `as_of` and `known_at`. Scope, filters,
+profile, mode and budget stay fixed across requests. It rejects conflicting
+items, duplicated queries, out-of-order responses and observed access/deletion
+epoch changes. Whole-item merging is bounded and any truncation is explicit.
+Before exposing answer context, nonempty results are fetched again with exact
+required references and `max_items` equal to their count: this is reference
+validation, not optional browsing. Missing, deleted or no-longer-authorized
+references fail rather than falling back to cached evidence. Current
+authorization/deletion still apply to the pinned historical snapshot.
+This does not retract evidence legitimately delivered before a later revocation.
+
+The SDK remains the transport; a chosen model only produces plans:
+
+```python
+from pg_agmemory.bounded_recall import (
+    BoundedRecall, parse_search_plan, search_prompt,
+)
+
+# base_request is lexical, with trusted scopes/filters, <=8 items and pinned times.
+search = BoundedRecall(base_request, excluded_memory_ids=review.excluded_memory_ids)
+for round_number in (1, 2):
+    prompt = search_prompt(
+        question, base_request.search_profile,
+        items=search.planning_items, previous_queries=search.queries,
+        round_number=round_number,
+    )
+    raw = await selected_model(prompt)
+    plan = parse_search_plan(raw, allow_empty=round_number == 2)
+    for request in search.requests(plan):
+        search.record(request, await client.recall(request))
+final_request = search.final_request()
+result = search.finish(await client.recall(final_request) if final_request else None)
+```
+
+`pg_agmemory.retention_review.review_retention(observed_refs, proposed_forget_ids)`
+turns model suggestions into a **pending review**, never a `Forget` request.
+`purge_authorized` is always false. Pending IDs can be excluded from this
+workflow's context, including through `exclude_pending_result` for one-query
+callers; their Native rows remain present and readable to authorized callers.
+Filtered projections mark incomplete/truncated coverage and preserve the
+server's epochs. This is not server-wide suppression, successful forgetting,
+backup erasure, durable review-queue storage or a new authorization boundary.
+The caller must persist/reconcile pending reviews and derive any later explicit
+deletion approval independently of model output, using existing Native
+authorization and deletion semantics. Existing authorized `forget` remains
+available; this helper does not globally restrict other clients.
+
+The evaluation policy `review-v1` records proposal quality separately from
+physical deletion. It performs no Native purge; deferred proposals, including
+wrong proposals, remain visible in the report. A zero purge count must not be
+presented as perfect deletion quality. Only the owned disposable lab is
+destroyed during ordinary operator cleanup.
+
 ## Exact structured recall filters
 
 **Retained recall-filter contract; v0.0.26 implementation verified locally and in native CI.**

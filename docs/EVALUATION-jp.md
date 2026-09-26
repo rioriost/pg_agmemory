@@ -2,6 +2,54 @@
 
 [English](EVALUATION.md)
 
+## 上限付き根拠探索とreview-only保持の比較
+
+opt-inの`bounded-lexical-v3` / `review-v1`は、観測したquery/根拠chainと
+不可逆な保持操作の課題を扱います。Native SQL、RLS、既存case、
+query-v2 module、回答/採点式は変更しません。
+測定済み合成cohortの再利用であり、**新たな未使用評価ではありません**。
+二つのpolicyを同時に変えるため、改善を検索だけの効果と分離して認定しません。
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-bounded-review-01 gpt-6-astra high --allow-copilot \
+  --cohort unseen-synthetic-v1 --query-policy bounded-lexical-v3 \
+  --retention-policy review-v1
+```
+
+v3は**最大120 model call**です。従来と同じ保持提案20件、
+control回答40件、Native最終回答20件に、計画が最大40件です。
+従来100 callからの明示的な予算増加で、隠れたretryではありません。
+各caseは計画2 round、各roundのliteral query最大2個、
+Native検索4回と最後のreference-only検査1回までに制限します。
+scope/filter/profileと`as_of`/`known_at`を固定し、
+pending review IDを追加計画・回答contextへ渡す前に除外します。
+whole-item mergeは最大8 item / Native context 8,000 byte、
+計画promptにも8,000 byte上限があり省略itemを明示します。
+index不完全、epoch変更、応答矛盾、最新の参照検査失敗ではcaseを停止し、
+cached成功へのfallbackや空query browseをしません。
+最終の空queryは非空exact required refsと同数の`max_items`を指定する検査だけです。
+
+`review-v1`はNative Forgetのpreview/purgeを**呼びません**。
+modelのforget提案を全てreview待ちとし、rowが権限あるoperatorから引き続き読めることを検査します。
+このworkflow内の除外であり、全体のアクセス失効や忘却完了ではありません。
+後の削除には、既存Native機構を使う独立した信頼できる判断が必要です。
+終了時の所有lab破棄はoperator cleanupであり、model指示による削除ではありません。
+
+保持scoreは誤ったforgetも含む**提案品質**として表示し、
+purge済みを意味する`unsafe_deleted`という名前をそのまま流用しません。
+実行Native purgeゼロ、保留件数、`deletion_completed=false`を別に記録します。
+gold labelで操作を承認/拒否しません。回復可能なrowを残すことを、
+完全な保持選択、privacy消去、永続review queue、
+helperを使わないclientも含めた本番削除保護とは扱いません。
+
+flagなしは従来の`lexical-v2` / `model-purge-v1`と100 call上限を維持します。
+v3を選び保持flagを省略した場合はreview modeになり、
+明示的なoverrideは別version比較用に残します。
+raw計画、実行query、最新参照検査、提案/操作、資源上限をrecipe v4で結び、
+失敗も分母に残します。model ID/effortは固定し、
+正確なweightはprovider管理下で未検証です。
+
 ## 別途固定した評価cohortの選択
 
 既定の`--cohort pilot-v1`は従来の20件を選びます。
@@ -36,7 +84,8 @@ source hashの変更は正しく記録し、`pgag-agent-memory-cohort-recipe-v3`
 過去の公開結果は元identityを維持し、厳密な再現には現在のfile hashではなく
 各結果の記録source revisionを使います。
 
-21個の隔離tenant identity、最大100 model call、retry・query拡大・空query fallbackなしは同じです。
+legacy/v2は21個の隔離tenant identity、最大100 model call、
+retry・query拡大・空query fallbackなしを維持します。
 不正・未測定を含む全arm/caseを残します。toolなしのmodelへ選択根拠だけを渡すことで
 隠れたfileからの取得を防ぎますが、自律した実務agentやbackground workerの試験ではありません。
 

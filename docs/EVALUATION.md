@@ -2,6 +2,59 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Bounded evidence and review-only retention comparison
+
+The opt-in pair `bounded-lexical-v3` / `review-v1` addresses the observed
+query/chain and irreversible-retention risks without altering Native SQL,
+RLS, the original cases, the original query-v2 module or answer/scoring formulas.
+It is a repeat of an already measured synthetic cohort, **not another unseen
+test**. Two policies change together, so any improvement is not a controlled
+attribution to search alone.
+
+```bash
+bash scripts/evaluate-agent-memory-containers.sh \
+  .review-artifacts/copilot-bounded-review-01 gpt-6-astra high --allow-copilot \
+  --cohort unseen-synthetic-v1 --query-policy bounded-lexical-v3 \
+  --retention-policy review-v1
+```
+
+V3 uses **at most 120 model calls**: the unchanged 20 retention proposals,
+40 control answers, 20 final Native answers and up to 40 planning calls.
+This is an explicit increase from the earlier 100-call recipe, not a hidden
+retry. Each case allows two planning rounds, at most two literal queries per
+round, at most four Native searches and one final reference-only validation.
+Scope/filter/profile and `as_of`/`known_at` stay fixed. Pending review IDs are
+removed before follow-up planning and reader context. The whole-item merge is
+bounded to eight items / 8,000 Native context bytes; the planning prompt also
+has an 8,000-byte limit and marks omitted items. Incomplete indexes, changed
+epochs, conflicting responses or failed fresh validation terminate the case;
+there is no cached-success fallback or empty-query browse. A final empty query
+is allowed only with nonempty exact required refs and an equal `max_items`.
+
+`review-v1` does **not** perform Native Forget preview or purge. All model
+forget suggestions become pending review. Their rows remain accessible to
+authorized operators and are verified present; exclusion is local to this
+workflow, not global access revocation or completed forgetting. Later deletion
+requires an independent trusted decision through existing Native mechanisms.
+The harness's eventual destruction of its owned lab is operator cleanup,
+not model-directed deletion.
+
+The report labels retention scores as **proposal quality**, including wrong
+forget proposals, rather than reusing `unsafe_deleted` as though a purge had
+occurred. It separately records zero executed Native purges, pending counts
+and `deletion_completed=false`. No gold label approves or vetoes an action.
+Keeping recoverable rows must not be reported as perfect retention selection,
+privacy erasure, a persistent review queue or a production deletion safeguard
+for clients that bypass this optional helper.
+
+No flags retain the older `lexical-v2` / `model-purge-v1` behavior and 100-call
+limit. Selecting v3 without a retention flag chooses review mode; explicit
+policy overrides remain available for separately versioned comparisons.
+Raw plans, issued queries, fresh-validation outcomes, proposal/actions and
+resource budgets are bound to recipe v4. All failures remain in the
+denominators; the model identifier/effort is fixed and exact model weights
+remain provider-managed and unattested.
+
 ## Selecting a separately frozen evaluation cohort
 
 `--cohort pilot-v1` remains the default and selects the original 20 cases.
@@ -41,7 +94,7 @@ protected prompt/case/scoring prefix, and query recipe. Previous published
 results retain their original identities. Use their recorded source revision
 for exact historical reproduction, not the current file hash.
 
-The run still uses 21 isolated tenant identities and at most 100 model calls,
+Legacy/v2 runs use 21 isolated tenant identities and at most 100 model calls,
 with no retry, query expansion or empty-query fallback. Every arm/case remains
 in the report, including invalid and unmeasured outcomes. Keeping model calls
 tool-free and passing only selected evidence prevents retrieval from hidden

@@ -678,6 +678,13 @@ serverへのLLM呼出し、query書換え、OR検索、browse fallbackは追加�
 [query契約](docs/operations/README-jp.md#lexical-query-planning)と
 [別versionの比較](docs/EVALUATION-jp.md#lexical-v2-query-planning-comparison)を参照してください。
 
+明示的な追加探索には`pg_agmemory.bounded_recall`が計画2 round・scoped検索4回までと、
+その後の最新required-reference検査を提供します。
+`pg_agmemory.retention_review`はmodelのforget提案を削除承認にせず保留します。
+caller所有のopt-in workflowであり、server全体の認可を変えたり、
+pending rowを全clientから読めなくしたりするものではありません。
+[上限とreview契約](docs/operations/README-jp.md#上限付き追加検索と保持review)を参照してください。
+
 ## Exact structured recall filters
 
 **既存recall filter契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**

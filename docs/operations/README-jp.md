@@ -2950,6 +2950,64 @@ space結合でqueryを作り、正答値の代入やmodel/provider変更は行�
 term選択はcallerの責任であり、stemming/vector検索がない場合、
 語形や同義語の違いで必要eventを取り逃す可能性は残ります。
 
+### 上限付き追加検索と保持review
+
+`pg_agmemory.bounded_recall`は**opt-inのcaller側workflow**で、serverの新検索modeではありません。
+`SearchPlan`はliteral queryを最大2個含みます。計画は最大2 round、
+検索4 requestと最後のrequired-reference検査1回まで、
+mergeは最大8 item・Native context 8,000 byteまでです。
+2 round目へ渡すのは、取得・採用済みの根拠と実行query履歴だけです。
+観測した参照をたどるか、別の明示queryを提案できます。
+空の追加*計画*は終了を示し、空検索queryや無制限browseを生成しません。
+
+`BoundedRecall`にはcallerが固定した`as_of`/`known_at`が必要です。
+scope/filter/profile/mode/budgetをrequest間で固定し、矛盾item、query重複、
+順序違いの応答、観測したaccess/deletion epoch変更を拒否します。
+whole-item mergeを制限し、切捨ては明示します。
+回答context公開前に、非空結果をexact required referenceで再取得します。
+`max_items`はreference数と等しく、これは追加browseではなく参照検査です。
+欠落・削除・権限喪失はcached根拠へfallbackせず失敗します。
+固定した過去時点にも現在の認可/削除規則を適用します。
+後から失効した場合、以前正当に渡した根拠を取り戻せるという意味ではありません。
+
+SDKをtransportとし、選択modelは計画だけを生成します。
+
+```python
+from pg_agmemory.bounded_recall import (
+    BoundedRecall, parse_search_plan, search_prompt,
+)
+
+# base_requestはlexical、信頼したscope/filter、最大8 item、固定時点を指定する。
+search = BoundedRecall(base_request, excluded_memory_ids=review.excluded_memory_ids)
+for round_number in (1, 2):
+    prompt = search_prompt(
+        question, base_request.search_profile,
+        items=search.planning_items, previous_queries=search.queries,
+        round_number=round_number,
+    )
+    raw = await selected_model(prompt)
+    plan = parse_search_plan(raw, allow_empty=round_number == 2)
+    for request in search.requests(plan):
+        search.record(request, await client.recall(request))
+final_request = search.final_request()
+result = search.finish(await client.recall(final_request) if final_request else None)
+```
+
+`pg_agmemory.retention_review.review_retention(observed_refs, proposed_forget_ids)`は
+model提案を**review待ち**にし、`Forget` requestを作りません。
+`purge_authorized`は常にfalseです。pending IDはこのworkflowのcontextから除外でき、
+単発検索には`exclude_pending_result`も使えますが、Native rowは残り、
+権限のあるcallerからは読めます。filter後の結果はcoverageの不完全/切捨てを示し、
+server epochは変更しません。
+server全体の抑制、忘却完了、backup消去、永続review queue、新しい認可境界ではありません。
+callerがpending reviewを永続化・照合し、後の明示削除承認をmodel出力とは独立に取得して、
+既存Native認可/削除契約を使う必要があります。
+認可済みの既存`forget`は利用可能で、他clientを全体的に制限するhelperではありません。
+
+評価の`review-v1`は提案品質と物理削除を分け、Native purgeを呼びません。
+誤提案を含む保留件数をreportに残し、purgeゼロを完全な削除判断と扱いません。
+通常のoperator cleanupで破棄するのは、所有する使い捨てlabだけです。
+
 ## Exact structured recall filters
 
 **既存recall filter契約を維持します。v0.0.26実装はlocal・native CI検証済みです。**

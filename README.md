@@ -731,6 +731,13 @@ No model call, query rewrite, OR search or browse fallback is added to the serve
 See [the query contract](docs/operations/README.md#lexical-query-planning)
 and [the separately versioned comparison](docs/EVALUATION.md#lexical-v2-query-planning-comparison).
 
+For explicit follow-up, `pg_agmemory.bounded_recall` permits two planning rounds
+and four scoped searches, followed by fresh required-reference validation.
+`pg_agmemory.retention_review` keeps model forget suggestions pending rather
+than authorizing deletion. These are caller-owned opt-in workflows; they do not
+change server-wide authorization or make pending rows globally unreadable.
+See [bounds and review semantics](docs/operations/README.md#bounded-follow-up-and-retention-review).
+
 ## Exact structured recall filters
 
 **Retained recall-filter contract; v0.0.26 implementation verified locally and in native CI.**

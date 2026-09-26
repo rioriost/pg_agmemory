@@ -15,7 +15,7 @@ owned.json has exactly format="pgag-agent-eval-owned-v1", run_id, api_url,
 admin_url_hash (SHA-256 of the exact admin URL), jwt_issuer,
 jwt_audience, and synthetic_fixture_purge_consent=true.
 The bridge's transport.json has format="pgag-copilot-transport-v1", run_id,
-model, reasoning_effort, cli_version, max_calls (1..100), fresh_session_per_call=true,
+model, reasoning_effort, cli_version, max_calls (1..120), fresh_session_per_call=true,
 custom_instructions=false, tools_allowed=false, model_weights_revision_verified=false,
 and optional model_revision (null when unknown).
 Directories must be private (0700), files private (0600), and queue/output empty.
@@ -26,6 +26,9 @@ Query policy defaults to lexical-v2, which verifies the shared Native lexical
 planning contract before model dispatch. Explicit legacy-v1 preserves the original
 query prompt/parser. Cohort defaults to pilot-v1; unseen-synthetic-v1 selects the
 separately authored synthetic dataset, not blinded or externally held-out real-world data.
+bounded-lexical-v3 explicitly budgets two planning calls and at most five retrieval
+reads per case (four searches plus required-reference revalidation). review-v1
+withholds forget proposals only in this workflow, without authorizing physical purge.
 """
 
 from __future__ import annotations
@@ -41,7 +44,7 @@ import re
 import stat
 import sys
 import time
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -54,10 +57,11 @@ import jwt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pg_agmemory import agent_evaluation as recipe
-from pg_agmemory import query_planning
+from pg_agmemory import bounded_recall, query_planning
 from pg_agmemory.models import (
     Explain,
     Forget,
+    MemoryReference,
     Observe,
     Recall,
     RecallFilters,
@@ -68,13 +72,16 @@ from pg_agmemory.native_client import NativeSettings
 from pg_agmemory.sdk import AsyncMemoryClient, MemoryClientError
 
 MAX_CALLS = 100
+MAX_TRANSPORT_CALLS = 120
 MAX_BYTES = 65536
 RESPONSE_TIMEOUT = 180.0
 JWT_BACKDATE_SECONDS = 30
 RUN_ID = re.compile(r"agent-eval-[a-z0-9]{8,32}\Z")
 ARMS = ("no_memory", "recent_window", "pg_agmemory")
-QueryPolicy = Literal["legacy-v1", "lexical-v2"]
-QUERY_POLICIES = ("legacy-v1", "lexical-v2")
+QueryPolicy = Literal["legacy-v1", "lexical-v2", "bounded-lexical-v3"]
+QUERY_POLICIES = ("legacy-v1", "lexical-v2", "bounded-lexical-v3")
+RetentionPolicy = Literal["model-purge-v1", "review-v1"]
+RETENTION_POLICIES = ("model-purge-v1", "review-v1")
 Cohort = Literal["pilot-v1", "unseen-synthetic-v1"]
 COHORTS = ("pilot-v1", "unseen-synthetic-v1")
 
@@ -111,7 +118,7 @@ class TransportMetadata(StrictModel):
     model: Annotated[str, Field(min_length=1, max_length=128)]
     reasoning_effort: Annotated[str, Field(min_length=1, max_length=64)]
     cli_version: Annotated[str, Field(min_length=1, max_length=256)]
-    max_calls: Annotated[int, Field(ge=1, le=MAX_CALLS)]
+    max_calls: Annotated[int, Field(ge=1, le=MAX_TRANSPORT_CALLS)]
     fresh_session_per_call: Literal[True]
     custom_instructions: Literal[False]
     tools_allowed: Literal[False]
@@ -255,7 +262,12 @@ class FileBridge:
     def __init__(
         self, directory: Path, journal: Journal, *, run_id: str,
         timeout: float = RESPONSE_TIMEOUT, poll_interval: float = 0.1,
+        max_calls: int = MAX_CALLS,
     ) -> None:
+        require(
+            type(max_calls) is int and 1 <= max_calls <= MAX_TRANSPORT_CALLS,
+            "invalid_llm_call_limit",
+        )
         require(0 < timeout <= RESPONSE_TIMEOUT, "invalid_bridge_timeout")
         require(0 < poll_interval <= 1, "invalid_poll_interval")
         self.directory = private_directory(directory)
@@ -270,6 +282,7 @@ class FileBridge:
             RUN_ID.fullmatch(run_id) is not None and self.metadata.run_id == run_id,
             "transport_run_mismatch",
         )
+        self.max_calls = min(max_calls, self.metadata.max_calls)
         self.journal = journal
         self.timeout = timeout
         self.poll_interval = poll_interval
@@ -285,7 +298,7 @@ class FileBridge:
         require(not self.inflight, "concurrent_bridge_call")
         require(isinstance(prompt, str) and bool(prompt.strip()), "invalid_prompt")
         require(len(prompt.encode("utf-8")) <= MAX_BYTES, "prompt_size_limit")
-        require(len(self.calls) < self.metadata.max_calls, "llm_call_limit")
+        require(len(self.calls) < self.max_calls, "llm_call_limit")
         self.check_metadata()
         call_id = f"{len(self.calls) + 1:06d}"
         request_path = self.queue / f"{call_id}.request.json"
@@ -378,6 +391,8 @@ def safe_error(exc: BaseException, *, mutation: bool = False) -> dict[str, Any]:
         return exc.error.model_dump(mode="json")
     if isinstance(exc, EvaluationFailure):
         return {"code": exc.code, "outcome_unknown": exc.outcome_unknown or mutation}
+    if isinstance(exc, bounded_recall.BoundedRecallError):
+        return {"code": exc.code, "outcome_unknown": False}
     return {"code": type(exc).__name__, "outcome_unknown": mutation}
 
 
@@ -516,8 +531,8 @@ async def authenticated_client(
                 "native_completed", case_id=case_id, operation="capabilities",
                 elapsed_seconds=time.monotonic() - started,
             )
-            if query_policy == "lexical-v2":
-                await verify_query_contract(client, journal, case_id)
+            if query_policy != "legacy-v1":
+                await verify_query_contract(client, journal, case_id, query_policy=query_policy)
             yield client
     except BaseException as exc:
         if not connected:
@@ -530,6 +545,7 @@ async def authenticated_client(
 
 async def verify_query_contract(
     client: AsyncMemoryClient, journal: Journal, case_id: str,
+    *, query_policy: QueryPolicy = "lexical-v2",
 ) -> None:
     journal.emit(
         "native_intent", case_id=case_id, operation="lexical_query_contract", mutation=False,
@@ -540,7 +556,7 @@ async def verify_query_contract(
         expected = query_planning.lexical_query_contract()
         received = capabilities.get("lexical_query") if isinstance(capabilities, dict) else None
         journal.emit(
-            "query_contract_received", case_id=case_id, query_policy="lexical-v2",
+            "query_contract_received", case_id=case_id, query_policy=query_policy,
             lexical_query=received,
             expected_contract_sha256=hashlib.sha256(json_bytes(expected)).hexdigest(),
         )
@@ -549,6 +565,21 @@ async def verify_query_contract(
             and json_bytes(received) == json_bytes(expected),
             "lexical_query_contract_mismatch",
         )
+        if query_policy == "bounded-lexical-v3":
+            required = capabilities.get("required_context")
+            journal.emit(
+                "required_context_contract_received", case_id=case_id,
+                required_context=required,
+            )
+            require(
+                isinstance(required, dict)
+                and type(required.get("max_refs")) is int and required["max_refs"] >= 8
+                and isinstance(required.get("retrieval_modes"), list)
+                and "lexical" in required["retrieval_modes"]
+                and required.get("order") == "request_order"
+                and required.get("budget_policy") == "all_required_or_error",
+                "required_context_contract_mismatch",
+            )
     except BaseException as exc:
         journal.emit(
             "native_failure", case_id=case_id, operation="lexical_query_contract",
@@ -585,6 +616,21 @@ async def native_call(
 
 def lexical_profile(language: str) -> SearchProfile:
     return "ja-janome-0.5.0-v1" if language == "ja" else "simple-v1"
+
+
+def logical_call_limit(query_policy: QueryPolicy) -> int:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    return 120 if query_policy == "bounded-lexical-v3" else MAX_CALLS
+
+
+def resolve_retention_policy(
+    query_policy: QueryPolicy, retention_policy: RetentionPolicy | None,
+) -> RetentionPolicy:
+    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    if retention_policy is None:
+        return "review-v1" if query_policy == "bounded-lexical-v3" else "model-purge-v1"
+    require(retention_policy in RETENTION_POLICIES, "invalid_retention_policy")
+    return retention_policy
 
 
 def recall_request(scope_id: UUID, query: str, *, language: str = "en") -> Recall:
@@ -717,7 +763,7 @@ async def plan_recall_query(
     case: recipe.AgentMemoryCase, bridge: FileBridge, journal: Journal,
     query_policy: QueryPolicy,
 ) -> tuple[str, dict[str, Any]]:
-    require(query_policy in QUERY_POLICIES, "invalid_query_policy")
+    require(query_policy in ("legacy-v1", "lexical-v2"), "invalid_query_policy")
     profile = lexical_profile(case.language)
     prompt = (
         recipe.recall_prompt(case) if query_policy == "legacy-v1"
@@ -748,12 +794,119 @@ async def plan_recall_query(
     return compiled, detail
 
 
+async def bounded_retrieval(
+    case: recipe.AgentMemoryCase, identity: Provisioned, client: AsyncMemoryClient,
+    bridge: FileBridge, journal: Journal, snapshot: datetime, excluded_ids: list[UUID],
+    native: Callable[..., Awaitable[Any]], detail: dict[str, Any], memory_ids: Mapping[str, UUID],
+) -> bounded_recall.BoundedRecallResult:
+    base = recall_request(identity.scope_id, "", language=case.language).model_copy(update={
+        "as_of": snapshot, "known_at": snapshot,
+    })
+    workflow = bounded_recall.BoundedRecall(base, excluded_memory_ids=excluded_ids)
+    progress: dict[str, Any] = {
+        "as_of": snapshot.isoformat(), "known_at": snapshot.isoformat(),
+        "search_profile": base.search_profile, "search_calls": 0,
+        "final_validation_calls": 0, "planning_calls": 0, "rounds": [],
+        "excluded_memory_ids": [str(value) for value in excluded_ids],
+        "read_latency_ms": [], "revalidated": False, "cached_fallback_used": False,
+    }
+    detail["bounded_retrieval"] = progress
+    for round_number in (1, 2):
+        prompt = bounded_recall.search_prompt(
+            case.question, base.search_profile, items=workflow.planning_items,
+            previous_queries=workflow.queries, round_number=round_number,
+        )
+        calls_before = len(bridge.calls)
+        try:
+            raw = await bridge.call(
+                prompt, case_id=case.case_id, phase=f"recall_query_round_{round_number}",
+            )
+        finally:
+            progress["planning_calls"] += len(bridge.calls) - calls_before
+        round_detail: dict[str, Any] = {"round": round_number, "raw_plan": raw}
+        progress["rounds"].append(round_detail)
+        journal.emit(
+            "bounded_plan_received", case_id=case.case_id, **round_detail,
+            query_policy="bounded-lexical-v3",
+        )
+        plan = bounded_recall.parse_search_plan(raw, allow_empty=round_number == 2)
+        requests = workflow.requests(plan)
+        round_detail["plan"] = plan.model_dump(mode="json")
+        round_detail["compiled_queries"] = [request.query for request in requests]
+        journal.emit("bounded_plan_compiled", case_id=case.case_id, **round_detail)
+        for request in requests:
+            progress["search_calls"] += 1
+            require(progress["search_calls"] <= 4, "bounded_search_call_limit")
+            started = time.monotonic()
+            try:
+                result = await native(
+                    "bounded_search", lambda request=request: client.recall(request),
+                    round=round_number, search_call=progress["search_calls"],
+                    request=request.model_dump(mode="json"),
+                )
+            except BaseException:
+                try:
+                    workflow.finish(None)
+                except bounded_recall.BoundedRecallError as cleanup:
+                    progress["planning_cache_discarded"] = (
+                        cleanup.code == "invalid_final_recall_state"
+                    )
+                    journal.emit(
+                        "bounded_search_cache_discarded", case_id=case.case_id,
+                        cleanup_code=cleanup.code,
+                    )
+                raise
+            finally:
+                progress["read_latency_ms"].append(float((time.monotonic() - started) * 1000))
+            returned_context(case, result, memory_ids)
+            workflow.record(request, result)
+    final_request = workflow.final_request()
+    final_response = None
+    if final_request is not None:
+        require(
+            bool(final_request.required_memory_refs) and final_request.query == ""
+            and final_request.max_items == len(final_request.required_memory_refs) <= 8,
+            "invalid_final_reference_request",
+        )
+        progress["final_validation_calls"] = 1
+        progress["final_request"] = final_request.model_dump(mode="json")
+        started = time.monotonic()
+        try:
+            final_response = await native(
+                "bounded_final_validation", lambda: client.recall(final_request),
+                request=final_request.model_dump(mode="json"),
+            )
+        except BaseException:
+            try:
+                workflow.finish(None)
+            except bounded_recall.BoundedRecallError as cleanup:
+                progress["planning_cache_discarded"] = cleanup.code == "missing_final_recall"
+                journal.emit(
+                    "bounded_final_cache_discarded", case_id=case.case_id,
+                    cleanup_code=cleanup.code,
+                )
+            raise
+        finally:
+            progress["read_latency_ms"].append(float((time.monotonic() - started) * 1000))
+    result = workflow.finish(final_response)
+    progress.update(
+        revalidated=result.revalidated, search_calls=result.search_requests,
+        compiled_queries=list(result.queries), truncated=result.truncated,
+        final_validation_skipped_empty=final_request is None,
+        returned_memory_ids=[str(item.memory_id) for item in result.items],
+    )
+    journal.emit("bounded_retrieval_completed", case_id=case.case_id, **progress)
+    return result
+
+
 async def memory_arm(
     case: recipe.AgentMemoryCase, identity: Provisioned, subject: str,
     foreign: Provisioned, sentinel_id: UUID, config: OwnedConfig, key: bytes,
     bridge: FileBridge, journal: Journal,
     *, query_policy: QueryPolicy = "lexical-v2",
+    retention_policy: RetentionPolicy | None = None,
 ) -> tuple[recipe.ArmObservation, dict[str, Any]]:
+    retention_policy = resolve_retention_policy(query_policy, retention_policy)
     start = len(bridge.calls)
     context: tuple[recipe.Event, ...] = ()
     memory_ids: dict[str, UUID] = {}
@@ -763,6 +916,7 @@ async def memory_arm(
     native_latencies = []
     detail: dict[str, Any] = {
         "arm": "pg_agmemory", "status": "started", "query_policy": query_policy,
+        "retention_policy": retention_policy,
         "context_available": False,
     }
     phase = "native_connect"
@@ -773,6 +927,7 @@ async def memory_arm(
     ) -> Any:
         started = time.monotonic()
         try:
+            require(retention_policy in RETENTION_POLICIES, "invalid_retention_policy")
             return await native_call(
                 journal, case.case_id, operation, call, mutation=mutation, **fields,
             )
@@ -813,6 +968,8 @@ async def memory_arm(
             raw = await bridge.call(
                 recipe.retention_prompt(case), case_id=case.case_id, phase="retention",
             )
+            detail["actor_proposal"] = True
+            detail["retention_proposal_raw"] = raw
             try:
                 retention = recipe.validate_retention(case, raw)
             except (ValueError, TypeError):
@@ -821,10 +978,50 @@ async def memory_arm(
             journal.emit(
                 "retention_validated", case_id=case.case_id, decision=retention.model_dump(),
             )
-            if retention.forget_ids:
-                if query_policy == "lexical-v2":
+            excluded_ids: list[UUID] = []
+            if retention_policy == "review-v1":
+                from pg_agmemory.retention_review import review_retention
+
+                phase = "retention_review"
+                review = review_retention(
+                    [MemoryReference(memory_id=value, revision=1) for value in memory_ids.values()],
+                    [memory_ids[event_id] for event_id in retention.forget_ids],
+                )
+                require(review.purge_authorized is False, "review_cannot_authorize_purge")
+                excluded_ids = list(review.excluded_memory_ids)
+                require(
+                    set(excluded_ids)
+                    == {memory_ids[event_id] for event_id in retention.forget_ids},
+                    "retention_review_partition_mismatch",
+                )
+                detail["workflow_excluded_memory_ids"] = [str(value) for value in excluded_ids]
+                detail["retention_review"] = {
+                    "actor_proposal": True, "purge_authorized": False,
+                    "physical_purges": 0, "deletion_completed": False,
+                    "deferred_count": len(excluded_ids),
+                    "pending_review_refs": [
+                        ref.model_dump(mode="json") for ref in review.pending_review_refs
+                    ],
+                    "retained_refs": [
+                        ref.model_dump(mode="json") for ref in review.retained_refs
+                    ],
+                    "pending_scope": "this_workflow_only_not_global_erasure",
+                }
+                journal.emit(
+                    "retention_deferred", case_id=case.case_id, **detail["retention_review"],
+                )
+                for memory_id in excluded_ids:
+                    await native(
+                        "verify_pending_readable",
+                        lambda memory_id=memory_id: client.explain(Explain(memory_id=memory_id)),
+                    )
+                detail["retention_review"]["pending_rows_verified_readable"] = len(excluded_ids)
+            elif retention.forget_ids:
+                if query_policy != "legacy-v1":
                     phase = "query_contract_before_purge"
-                    await verify_query_contract(client, journal, case.case_id)
+                    await verify_query_contract(
+                        client, journal, case.case_id, query_policy=query_policy,
+                    )
                 targets = [memory_ids[event_id] for event_id in retention.forget_ids]
                 for mode in ("preview", "purge"):
                     phase = f"forget_{mode}"
@@ -863,18 +1060,32 @@ async def memory_arm(
                     else:
                         raise EvaluationFailure("purged_episode_still_visible")
                 detail["purged_objects_verified_absent"] = len(targets)
-            phase = "recall_decision"
-            compiled_query, query_detail = await plan_recall_query(
-                case, bridge, journal, query_policy,
-            )
-            detail.update(query_detail)
-            detail["recall_decision"] = {"query": compiled_query}
-            phase = "recall"
-            result = await native(
-                "recall", lambda: client.recall(recall_request(
-                    identity.scope_id, compiled_query, language=case.language,
-                )),
-            )
+            if query_policy == "bounded-lexical-v3":
+                phase = "bounded_retrieval"
+                snapshot = datetime.now(UTC)
+                result = await bounded_retrieval(
+                    case, identity, client, bridge, journal, snapshot, excluded_ids,
+                    native, detail, memory_ids,
+                )
+            else:
+                phase = "recall_decision"
+                compiled_query, query_detail = await plan_recall_query(
+                    case, bridge, journal, query_policy,
+                )
+                detail.update(query_detail)
+                detail["recall_decision"] = {"query": compiled_query}
+                phase = "recall"
+                result = await native(
+                    "recall", lambda: client.recall(recall_request(
+                        identity.scope_id, compiled_query, language=case.language,
+                    )),
+                )
+                if retention_policy == "review-v1":
+                    from pg_agmemory.retention_review import exclude_pending_result
+
+                    returned_context(case, result, memory_ids)
+                    result = exclude_pending_result(result, excluded_ids)
+                    detail["recall_projection"] = "local_pending_review_exclusion_not_server_purge"
             context, mapping = returned_context(case, result, memory_ids)
             require(
                 not set(retention.forget_ids) & {event.event_id for event in context},
@@ -887,7 +1098,9 @@ async def memory_arm(
             )
             detail["recall_mapping"] = mapping
             detail["recall_context_pack"] = result.context_pack.model_dump()
-            detail["recall_coverage"] = result.coverage.model_dump()
+            detail["recall_coverage"] = (
+                result.coverage.model_dump() if isinstance(result, RecallResult) else None
+            )
             phase = "answer"
             raw = await bridge.call(
                 recipe.answer_prompt(case, context), case_id=case.case_id, phase="pg_agmemory",
@@ -953,21 +1166,33 @@ def recipe_digest(query_policy: QueryPolicy = "legacy-v1") -> str:
 def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
     require(query_policy in QUERY_POLICIES, "invalid_query_policy")
     base_digest = recipe_digest("legacy-v1")
-    contract = query_planning.lexical_query_contract() if query_policy == "lexical-v2" else None
+    contract = query_planning.lexical_query_contract() if query_policy != "legacy-v1" else None
     module_digest = (
         hashlib.sha256(Path(query_planning.__file__).read_bytes()).hexdigest()
-        if query_policy == "lexical-v2" else None
+        if query_policy != "legacy-v1" else None
     )
     components = {
         "format": "pgag-agent-memory-query-recipe-v2", "query_policy": query_policy,
         "base_recipe_sha256": base_digest, "query_planning_sha256": module_digest,
         "query_planning_contract": contract,
     }
+    bounded_source_sha = None
+    if query_policy == "bounded-lexical-v3":
+        bounded_source_sha = hashlib.sha256(Path(bounded_recall.__file__).read_bytes()).hexdigest()
+        components.update({
+            "format": "pgag-agent-memory-bounded-query-recipe-v3",
+            "bounded_recall_sha256": bounded_source_sha,
+            "planning_rounds": 2, "search_calls_maximum": 4,
+            "final_required_reference_calls_maximum": 1,
+            "max_items": 8, "context_budget_bytes": 8000,
+            "fixed_temporal_anchors": "after_observation_before_planning",
+        })
     return {
         "query_policy": query_policy, "base_recipe_sha256": base_digest,
         "query_planning_sha256": module_digest, "query_planning_contract": contract,
+        "bounded_recall_sha256": bounded_source_sha,
         "recipe_digest_format": (
-            components["format"] if query_policy == "lexical-v2"
+            components["format"] if query_policy != "legacy-v1"
             else "sha256-agent-evaluation-source-v1"
         ),
         "recipe_sha256": (
@@ -977,7 +1202,7 @@ def query_policy_metadata(query_policy: QueryPolicy) -> dict[str, Any]:
         "query_planning_contract_sha256": (
             hashlib.sha256(json_bytes(contract)).hexdigest() if contract is not None else None
         ),
-        "recipe_components": components if query_policy == "lexical-v2" else None,
+        "recipe_components": components if query_policy != "legacy-v1" else None,
     }
 
 
@@ -1022,7 +1247,9 @@ def select_cohort(cohort: str) -> tuple[recipe.AgentMemoryCase, ...]:
 
 def cohort_metadata(
     cohort: str, cases: tuple[recipe.AgentMemoryCase, ...], query_policy: QueryPolicy,
+    retention_policy: RetentionPolicy | None = None,
 ) -> dict[str, Any]:
+    retention_policy = resolve_retention_policy(query_policy, retention_policy)
     require(cases == select_cohort(cohort), "cohort_dataset_mismatch")
     if cohort == "pilot-v1":
         dataset_source = Path(recipe.__file__)
@@ -1034,9 +1261,16 @@ def cohort_metadata(
     query_metadata = query_policy_metadata(query_policy)
     dataset_sha = hashlib.sha256(json_bytes([case.model_dump() for case in cases])).hexdigest()
     protected_sha = hashlib.sha256(scorer_source.split(b"def pilot_report(")[0]).hexdigest()
+    review_source_sha = None
+    if retention_policy == "review-v1":
+        from pg_agmemory import retention_review
+
+        review_source_sha = hashlib.sha256(Path(retention_review.__file__).read_bytes()).hexdigest()
     components = {
-        "format": "pgag-agent-memory-cohort-recipe-v3", "cohort_id": cohort,
+        "format": "pgag-agent-memory-cohort-recipe-v4", "cohort_id": cohort,
         "query_policy": query_policy, "query_recipe_sha256": query_metadata["recipe_sha256"],
+        "retention_policy": retention_policy, "retention_review_sha256": review_source_sha,
+        "logical_model_call_limit": logical_call_limit(query_policy),
         "query_recipe_components": query_metadata["recipe_components"],
         "dataset_sha256": dataset_sha,
         "dataset_source_sha256": hashlib.sha256(dataset_source.read_bytes()).hexdigest(),
@@ -1045,6 +1279,7 @@ def cohort_metadata(
     }
     return {
         **query_metadata, "cohort_id": cohort, "dataset_sha256": dataset_sha,
+        "retention_policy": retention_policy, "retention_review_sha256": review_source_sha,
         "cases_sha256": dataset_sha,
         "dataset_source_sha256": components["dataset_source_sha256"],
         "scorer_source_sha256": components["scorer_source_sha256"],
@@ -1056,9 +1291,9 @@ def cohort_metadata(
         "fixed_prompt_sha256": fixed_prompt_hashes(cases),
         "evaluation_cohort": {
             "id": cohort,
-            "kind": "same_20_case_regression_cohort" if cohort == "pilot-v1" else "new_synthetic",
+            "kind": "known_synthetic_regression_cohort", "known_cohort_reuse": True,
             "held_out": False, "held_out_external": False, "blinded_real_world": False,
-            "first_use_in_owned_run": True, "first_use_scope": "fresh_output_directory_only",
+            "first_use_in_owned_run": False, "first_use_scope": "not_claimed",
             "prior_model_exposure_verified": False,
             "baseline_revision": "9c84c7f" if cohort == "pilot-v1" else None,
         },
@@ -1067,9 +1302,9 @@ def cohort_metadata(
 
 def verify_cohort_metadata(
     metadata: Mapping[str, Any], cohort: str, cases: tuple[recipe.AgentMemoryCase, ...],
-    query_policy: QueryPolicy,
+    query_policy: QueryPolicy, retention_policy: RetentionPolicy | None = None,
 ) -> None:
-    expected = cohort_metadata(cohort, cases, query_policy)
+    expected = cohort_metadata(cohort, cases, query_policy, retention_policy)
     require(
         all(key in metadata and json_bytes(metadata[key]) == json_bytes(value)
             for key, value in expected.items()),
@@ -1140,7 +1375,51 @@ def evidence_coverage_summary(
     }
 
 
+def review_proposal_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    def proposal_quality(value: dict[str, Any]) -> dict[str, Any]:
+        result = dict(value)
+        for old, new in (
+            ("unsafe_deleted", "unsafe_forget_proposals"),
+            ("known_unsafe_deleted", "known_unsafe_forget_proposals"),
+        ):
+            if old in result:
+                result[new] = result.pop(old)
+        return result
+
+    result = dict(metrics)
+    result["retention_proposal_quality"] = proposal_quality(result.pop("retention")) | {
+        "interpretation": "model_proposal_quality_not_deletion_outcomes",
+    }
+    result["cases"] = []
+    for item in metrics["cases"]:
+        row = dict(item)
+        proposal = row.pop("retention")
+        row["retention_proposal_quality"] = (
+            proposal_quality(proposal) if proposal is not None else None
+        )
+        result["cases"].append(row)
+    return result
+
+
+def review_execution_summary(details: Mapping[str, dict[str, Any]]) -> dict[str, Any]:
+    rows = [detail["arms"]["pg_agmemory"] for detail in details.values()]
+    counts = [
+        row["retention_review"]["deferred_count"] if "retention_review" in row else None
+        for row in rows
+    ]
+    return {
+        "policy": "review-v1", "scope": "this_runner_not_external_trusted_actors",
+        "known_actor_proposals": sum(row.get("actor_proposal") is True for row in rows),
+        "physical_purges": 0, "deletion_completed": False, "purge_authorized": False,
+        "deferred_count": sum(counts) if all(value is not None for value in counts) else None,
+        "known_deferred_count": sum(value for value in counts if value is not None),
+        "unknown_proposal_cases": sum(value is None for value in counts),
+        "pending_scope": "this_workflow_only_not_global_erasure",
+    }
+
+
 async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
+    args.retention_policy = resolve_retention_policy(args.query_policy, args.retention_policy)
     cases = select_cohort(args.cohort)
     require(len(cases) == 20, "fixed_case_count_required")
     case_details: dict[str, dict[str, Any]] = {}
@@ -1149,7 +1428,7 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
     config = None
     fatal = None
     manifest: dict[str, Any] = {
-        **cohort_metadata(args.cohort, cases, args.query_policy),
+        **cohort_metadata(args.cohort, cases, args.query_policy, args.retention_policy),
         "format": "pgag-agent-memory-evaluation-v1",
         "benchmark_qualified": False, "automatic_effects": False,
         "synthetic_fixture_only": True, "fixture_purge_consent_required": True,
@@ -1163,7 +1442,14 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         },
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "budget": {
-            "llm_calls_maximum": MAX_CALLS, "call_retries": 0,
+            "llm_calls_maximum": logical_call_limit(args.query_policy), "call_retries": 0,
+            "planning_rounds_per_case": 2 if args.query_policy == "bounded-lexical-v3" else 1,
+            "retrieval_search_calls_per_case": (
+                4 if args.query_policy == "bounded-lexical-v3" else 1
+            ),
+            "retrieval_final_validation_calls_per_case": (
+                1 if args.query_policy == "bounded-lexical-v3" else 0
+            ),
             "response_timeout_seconds": RESPONSE_TIMEOUT,
             "prompt_bytes_maximum": MAX_BYTES, "response_bytes_maximum": MAX_BYTES,
             "recall_items_maximum": 8, "recall_context_bytes": 8000,
@@ -1195,14 +1481,20 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         key_path = os.environ.get("PGAG_AGENT_EVAL_JWT_PRIVATE_KEY_FILE", "")
         require(bool(key_path), "private_key_file_required")
         key = private_read(Path(key_path), limit=16384)
-        bridge = FileBridge(args.bridge, journal, run_id=config.run_id)
-        manifest["budget"]["llm_calls_maximum"] = bridge.metadata.max_calls
+        bridge = FileBridge(
+            args.bridge, journal, run_id=config.run_id,
+            max_calls=logical_call_limit(args.query_policy),
+        )
+        manifest["budget"]["transport_call_ceiling"] = bridge.metadata.max_calls
+        manifest["budget"]["effective_llm_calls_maximum"] = bridge.max_calls
         manifest["transport"] = bridge.metadata.model_dump() | {
             "revision_attested": False, "fresh_context_per_call_required": True,
             "tools_allowed": False,
         }
         journal.emit("run_started", manifest=manifest)
-        verify_cohort_metadata(manifest, args.cohort, cases, args.query_policy)
+        verify_cohort_metadata(
+            manifest, args.cohort, cases, args.query_policy, args.retention_policy,
+        )
         # Provisioning is restricted to the matched owned admin target; runtime traffic
         # below never uses admin credentials or bypasses the HTTP authorization boundary.
         foreign_subject = f"{config.run_id}:foreign-sentinel"
@@ -1238,14 +1530,17 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
             measured, arm_detail = await memory_arm(
                 case, identity, subject, foreign, sentinel_id, config, key, bridge, journal,
                 query_policy=args.query_policy,
+                retention_policy=args.retention_policy,
             )
             observations[(case.case_id, "pg_agmemory")] = measured
             detail["arms"]["pg_agmemory"] = arm_detail
             journal.emit("case_completed", case_id=case.case_id)
             if measured.error in ("isolation_breach", "foreign_or_invalid_recall_item"):
                 raise EvaluationFailure("isolation_breach")
-            if measured.error == "lexical_query_contract_mismatch":
-                raise EvaluationFailure("lexical_query_contract_mismatch")
+            if measured.error in (
+                "lexical_query_contract_mismatch", "required_context_contract_mismatch",
+            ):
+                raise EvaluationFailure(measured.error)
             if bridge.poisoned:
                 raise EvaluationFailure("bridge_outcome_unknown", outcome_unknown=True)
     except Exception as exc:
@@ -1275,10 +1570,25 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
                 detail["arms"][arm]["evidence_coverage"] = evidence_coverage(
                     case, detail["arms"][arm],
                 )
+                if arm == "pg_agmemory" and args.retention_policy == "review-v1":
+                    quality = recipe.score_retention(
+                        case, observations[slot].retention,
+                    ).model_dump()
+                    quality["unsafe_forget_proposals"] = quality.pop("unsafe_deleted")
+                    detail["arms"][arm]["retention_proposal_quality"] = quality
+                    deferred = detail["arms"][arm].get("retention_review")
+                    detail["arms"][arm]["retention_execution"] = {
+                        "physical_purges": 0, "deletion_completed": False,
+                        "deferred_count": None if deferred is None else deferred["deferred_count"],
+                        "purge_authorized": False,
+                        "scope": "this_runner_not_external_trusted_actors",
+                    }
             detail["metadata"] = manifest
             journal.save(f"case-{case.case_id}.json", detail)
     calls = [] if bridge is None else bridge.calls
     metrics = recipe.pilot_report(tuple(observations.values()), cases=cases)
+    if args.retention_policy == "review-v1":
+        metrics = review_proposal_metrics(metrics)
     failures = sum(item.answer is None for item in observations.values())
     summary = {
         **manifest, "status": "failed" if fatal or failures else "completed",
@@ -1296,6 +1606,8 @@ async def run(args: argparse.Namespace, journal: Journal) -> dict[str, Any]:
         "metrics": metrics,
         "evidence_coverage": evidence_coverage_summary(cases, case_details),
     }
+    if args.retention_policy == "review-v1":
+        summary["retention_execution"] = review_execution_summary(case_details)
     journal.save("summary.json", summary)
     journal.emit(
         "run_completed", status=summary["status"], calls_dispatched=len(calls),
@@ -1318,10 +1630,15 @@ def main() -> int:
         help="Versioned query planning; legacy-v1 explicitly replays the original query recipe",
     )
     parser.add_argument(
+        "--retention-policy", choices=RETENTION_POLICIES, default=None,
+        help="Defaults to review-v1 for bounded-lexical-v3, otherwise model-purge-v1",
+    )
+    parser.add_argument(
         "--cohort", choices=COHORTS, default="pilot-v1",
         help="Fixed synthetic dataset selection; no arbitrary dataset paths",
     )
     args = parser.parse_args()
+    args.retention_policy = resolve_retention_policy(args.query_policy, args.retention_policy)
     if not args.api_url:
         parser.error("PGAG_AGENT_EVAL_API_URL or --api-url is required")
     try:

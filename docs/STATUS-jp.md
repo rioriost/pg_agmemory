@@ -2,7 +2,25 @@
 
 [English](STATUS.md) | [プロジェクトREADME](../README-jp.md) | [実装プラン](PG_AGMEMORY_IMPLEMENTATION_PLAN-jp.md)
 
-## 新しい合成cohort: modelとquery policyを固定
+## 上限付き根拠探索と非破壊の保持review
+
+`bounded-lexical-v3`は明示的なcaller側policyです。
+model計画2 round、scoped literal検索4回、最後の最新required-reference検査1回までとし、
+時点・scope・filter・profileを固定します。pending IDを追加計画前に除外し、
+epoch変更・item矛盾・最終検査失敗はcached回答へ切り替えずworkflowを破棄します。
+merge contextは最大8 item / Native context 8,000 byteを維持します。
+Native SQL/ranking、認可、migration、既定検索の動作は変更しません。
+
+別policyの`review-v1`はmodel提案をpurge承認にしません。
+rowを残して独立reviewを可能にし、このworkflowのcontextだけで提案IDを保留扱いにします。
+提案の誤りは採点に残し、物理purgeゼロを忘却成功や全体の削除guardと扱いません。
+v3選択時の既定はreviewですが、flagなしの既存評価はv2/model-purgeのままです。
+測定済みcohortでの比較は100ではなく最大120 model callとし、
+追加の検索/計画予算を明示します。元case、query-v2、回答prompt、採点式は変更しません。
+[workflow契約](operations/README-jp.md#上限付き追加検索と保持review)と
+[version付き比較](EVALUATION-jp.md#上限付き根拠探索とreview-only保持の比較)を参照してください。
+
+## 以前の新しい合成cohort: modelとquery policyを固定
 
 `unseen-synthetic-v1`は別途作成した英日20 scenario、139 eventです。
 根拠位置を変え、類似topicのdistractor、根拠chain 2件、二度の訂正3件を含み、
