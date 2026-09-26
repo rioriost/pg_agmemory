@@ -118,9 +118,10 @@ def observation_state_delta(reference, memory_id):
     }
 
     def increment(item):
-        return item.model_copy(update={"rows": item.rows + 1, "digest": "e" * 64}) if (
-            item.table in growing
-        ) else item
+        if item.table not in growing:
+            return item
+        delta = 2 if item.table == "memory.episode_lexical" else 1
+        return item.model_copy(update={"rows": item.rows + delta, "digest": "e" * 64})
 
     return {
         "episodes": reference.episodes + (drill.pitr.Episode(
@@ -1292,6 +1293,7 @@ def test_uncertain_delta_allows_one_observe_without_changing_existing_control_st
     ("old_episode", "uncertain_write_changed_acknowledged_content"),
     ("extra_write", "uncertain_write_delta_mismatch"),
     ("missing_lexical", "uncertain_write_delta_mismatch"),
+    ("extra_lexical", "uncertain_write_delta_mismatch"),
     ("effect", "uncertain_write_changed_unrelated_state"),
     ("access_epoch", "uncertain_write_changed_unrelated_state"),
     ("source", "uncertain_write_changed_unrelated_state"),
@@ -1313,9 +1315,10 @@ def test_uncertain_delta_rejects_retries_and_unrelated_effect_or_authority_chang
             item.model_copy(update={"rows": item.rows + 1})
             if item.table == "memory.episode" else item for item in after.content
         )})
-    elif change == "missing_lexical":
+    elif change in ("missing_lexical", "extra_lexical"):
+        delta = -1 if change == "missing_lexical" else 1
         after = after.model_copy(update={"content": tuple(
-            item.model_copy(update={"rows": item.rows - 1})
+            item.model_copy(update={"rows": item.rows + delta})
             if item.table == "memory.episode_lexical" else item for item in after.content
         )})
     elif change == "effect":
@@ -2609,6 +2612,24 @@ def test_renewal_delta_allows_only_one_observation_with_unchanged_authority():
     baseline = post_probe_reference()
     candidate = renewed_reference(baseline, uuid4())
     drill.check_renewal_delta(baseline, candidate)
+
+
+@pytest.mark.parametrize("identity_field", ["renewal_id", "disconnect_id"])
+@pytest.mark.parametrize("lexical_delta", [0, 1, 2, 3])
+def test_observation_delta_requires_exactly_two_lexical_projections(identity_field, lexical_delta):
+    baseline = post_probe_reference()
+    factory = renewed_reference if identity_field == "renewal_id" else reconnected_reference
+    candidate = factory(baseline, uuid4())
+    candidate = candidate.model_copy(update={"content": tuple(
+        item.model_copy(update={"rows": item.rows + lexical_delta - 2})
+        if item.table == "memory.episode_lexical" else item for item in candidate.content
+    )})
+    if lexical_delta == 2:
+        drill.check_observation_delta(baseline, candidate, identity_field)
+    else:
+        prefix = "renewal" if identity_field == "renewal_id" else "disconnect"
+        with pytest.raises(drill.pitr.DrillError, match=prefix + "_write_delta_mismatch"):
+            drill.check_observation_delta(baseline, candidate, identity_field)
 
 
 @pytest.mark.parametrize("change,code", [

@@ -87,6 +87,14 @@ CONTENT_TABLES = pitr.CONTENT_TABLES | {
     "memory_ops.tool_effect_identity": "scope_id,run_id,operation_id",
     "memory_ops.audit_event": "id",
 }
+OBSERVATION_ROW_DELTAS = {
+    "memory.episode": 1,
+    "memory.episode_lexical": 2,
+    "memory.object": 1,
+    "memory_ops.audit_event": 1,
+    "memory_ops.source_event": 1,
+    "memory_ops.idempotency": 1,
+}
 SOURCE = SourceIdentity(
     source_system="synthetic-ha", dataset_id="owned-two-node-lab", source_subject=READER,
 )
@@ -1173,16 +1181,13 @@ def check_uncertain_delta(before, after):
     require(all(previous.get(episode.object_id) == episode for episode in after.episodes
                 if episode.object_id != after.fixture.uncertain_id),
             "uncertain_write_changed_acknowledged_content")
-    growing = {
-        "memory.episode", "memory.episode_lexical", "memory_ops.audit_event", "memory.object",
-        "memory_ops.source_event", "memory_ops.idempotency",
-    }
     for old, new in zip(
         (*before.content, *before.processing.tables),
         (*after.content, *after.processing.tables), strict=True,
     ):
-        if old.table in growing:
-            require(new.rows == old.rows + 1, "uncertain_write_delta_mismatch")
+        if old.table in OBSERVATION_ROW_DELTAS:
+            require(new.rows == old.rows + OBSERVATION_ROW_DELTAS[old.table],
+                    "uncertain_write_delta_mismatch")
         else:
             require(old == new, "uncertain_write_changed_unrelated_state")
     require(before.source_cursor == after.source_cursor
@@ -1555,16 +1560,13 @@ def check_observation_delta(before, after, identity_field):
             prefix + "_cluster_identity_mismatch")
     require(tuple(e for e in after.episodes if e.object_id != memory_id) == before.episodes,
             prefix + "_changed_original_episodes")
-    growing = {
-        "memory.episode", "memory.episode_lexical", "memory_ops.audit_event", "memory.object",
-        "memory_ops.source_event", "memory_ops.idempotency",
-    }
     for old, new in zip(
         (*before.content, *before.processing.tables),
         (*after.content, *after.processing.tables), strict=True,
     ):
         require(new.table == old.table and (
-            new.rows == old.rows + 1 if old.table in growing else new == old
+            new.rows == old.rows + OBSERVATION_ROW_DELTAS[old.table]
+            if old.table in OBSERVATION_ROW_DELTAS else new == old
         ), prefix + "_write_delta_mismatch")
     require(before.source_cursor == after.source_cursor
             and before.effect_status == after.effect_status
