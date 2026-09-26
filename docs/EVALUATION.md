@@ -23,8 +23,91 @@ calls still depend on stop plans and failures. Record new source/schema/profile
 identities, all regressions, partial/unknown denominators, usage and latency.
 Do not reuse the failed v6 run as if it completed, retry its missing arm, or
 assume Snowball repairs discovery, scalar formatting or provider timeouts.
-Implementation and deterministic wordform tests are not a new model-quality
-measurement. No new real-model result is claimed here.
+Implementation and deterministic wordform tests alone are not a new
+model-quality measurement; the separate frozen run is reported below.
+
+### English-profile result: complete known-cohort success, not product qualification
+
+One GPT-6 Astra/high run at frozen **`e6482bf`** completes all twenty cases:
+**20/20 exact Native answers**, versus **4/20** without memory and **8/20**
+with recent context. English and Japanese each score **10/10**, all four
+two-source chains are correct, and all sixteen answerable cases receive and
+cite their required sources. There are no observed answer regressions or
+model-call failures. See the
+[reviewed aggregate](../examples/copilot-memory-english-profile-v1-result.json).
+
+| Measure | V6, simple English | V6, English Snowball |
+|---|---:|---:|
+| Run status / completed Native arms | failed / 19 | completed / 20 |
+| Exact correctness, all 20 slots | 18/20 | **20/20** |
+| Correct on the same 19 previously measured cases | 18/19 | **19/19** |
+| Two-source chains correct | 3/4 | **4/4** |
+| Delivered required-source macro coverage | 14/15; one unknown | **16/16; none unknown** |
+| Model calls / ceiling | 137/160; one failed | **136/160; none failed** |
+| Plans / searches / fresh validations | 58 / 43 / 19 | **56 / 39 / 20** |
+| Reader-path p50 / p95 | 37.98 / 59.02 s; 19 paths | **33.22 / 57.54 s; 20 paths** |
+| Reader-path p95, same 19 cases | 59.02 s | **61.17 s** |
+
+The observed correction is **case 06**: `Morrowquay approve` now returns the
+source containing “approval through the Heron review route,” and `Heron review`
+finds the second source. Both are freshly validated and cited for the exact
+answer **`Lantern desk`**. The prior run returned neither required source.
+This trajectory is consistent with the implemented `approve`/`approval`
+stemming match, but Native matching **and English planner instructions**
+changed; one stochastic run cannot isolate their causal contributions.
+
+**Case 19 is newly measured, not a correction of an observed wrong answer.**
+Its previous retention call timed out before retrieval. This run returns
+`中心印の先合わせ` with its required source; the old timeout and unknown usage
+remain published unchanged. On the same fifteen previously measurable
+answerable cases, required-source macro coverage improves **14/15 → 15/15**;
+case 19 supplies the sixteenth measurement. Across all current answerable
+cases, raw, delivered and cited coverage are each **16/16 macro**, or
+**20/20 required sources**.
+
+Limits remain visible even in this successful run. Case 03 still requires
+four Japanese searches to follow its chain. Case 05 still needs a fourth
+`Velvetbeam file` query and returns exactly `640 tiles`; this is not a general
+scalar-format repair. In case 17, `Flintpetal failure` still matches nothing:
+the planner uses `Flintpetal prevents` to find the first hop, then
+`Anchor sequence`. Snowball does not make `failure` and `failed` synonymous.
+All twenty bounded workflows report truncation: complete required evidence
+for these questions is not exhaustive retrieval or large-corpus qualification.
+
+All **20 retention proposals** match the synthetic gold partition:
+**504 keeps / 136 forget proposals**, with no unsafe proposal in this run.
+All 136 proposed-forget rows remain pending and independently readable.
+There are **zero Native Forget calls and zero physical purges**. This is
+review-only proposal quality, not completed forgetting, global erasure, or
+proof that the earlier unsafe proposal cannot recur.
+
+All **136 calls** have reported usage: **536,958 input / 17,105 output tokens**,
+536,550 cache-write tokens, zero cache-read tokens, 9,165 reasoning tokens,
+136 API/premium requests and 756,620,500,000 nano-AIU. Token categories overlap;
+do not sum them. Monetary cost and managed model-weight revision are unverified.
+The old run's usage is only a 136-successful-call subtotal, not a known total
+against which to claim cost savings. Native-search p95 rises **51.65 → 73.47 ms**
+(43 versus 39 searches). The full-run reader-path p95 falls slightly, but
+on the **same nineteen cases** it instead rises **59.02 → 61.17 s**.
+The samples, plans and host/provider conditions differ. Reader timing sums every actual
+plan, search, fresh validation and answer, excluding setup and retention.
+This is neither a controlled speed comparison nor a production overhead measure.
+
+Raw-artifact audits link all prompts, responses, plans, feedback and final
+references, with no retries, JSON repair, hidden browse or diagnostic model
+calls. All sixty control/retention prompts match archived v6 byte-for-byte;
+data/gold, scorer, reader instructions, Japanese planner instructions and
+resource ceilings are unchanged. Exact-source
+[CI run 36246513214](https://github.com/rioriost/pg_agmemory/actions/runs/36246513214)
+passes all eight jobs, with **5,722 passed / 137 skipped** per native core,
+plus installed profiles, isolated COMMIT/request, bridge and recovery/PITR/HA/AGE.
+
+The cohort is reused synthetic data, not blinded, independently human-authored
+or externally held out. This is a positive end-to-end memory result on a known
+task set, **not product usefulness or production acceptance**. The next distinct
+evidence should come from fixed, previously unseen agent tasks and sustained
+use, not further tuning to obtain another perfect score on these twenty cases.
+Defaults remain unchanged.
 
 ## Sequential planning comparison
 

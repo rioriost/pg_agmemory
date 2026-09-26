@@ -22,7 +22,88 @@ reader、保持判断、data/gold、厳密採点は維持します。
 新source/schema/profileのidentity、全後退、不完全/不明な分母、usage、latencyを記録します。
 失敗したv6を完走扱いにしたり、欠けたarmだけretryしたり、
 Snowballで発見・scalar形式・provider timeoutが修復すると仮定してはいけません。
-実装や決定的な語形testは新しいmodel品質測定ではなく、ここで新実測結果は主張しません。
+実装や決定的な語形testだけでは新しいmodel品質測定になりません。
+別途固定して実行した結果を以下に示します。
+
+### 英語profile結果: 既知cohortでは全件成功、プロダクト認定とは分離
+
+固定した**`e6482bf`**でGPT-6 Astra/highを1回実行し、20 case全てを完走しました。
+Nativeの厳密正答は**20/20**で、記憶なし**4/20**、直近context**8/20**でした。
+英語・日本語は各**10/10**、2 sourceをたどるchainは**4/4**です。
+回答可能な16 case全てで必要sourceを取得・提示・引用し、
+観測された回答の後退やmodel call失敗はありません。
+[監査済み集計](../examples/copilot-memory-english-profile-v1-result.json)を参照してください。
+
+| 指標 | V6・英語simple | V6・English Snowball |
+|---|---:|---:|
+| run状態 / 完了Native arm | failed / 19 | completed / 20 |
+| 全20枠での厳密正答 | 18/20 | **20/20** |
+| 前回測定できた同じ19 caseでの正答 | 18/19 | **19/19** |
+| 2 source chainの正答 | 3/4 | **4/4** |
+| 提示した必要sourceのmacro coverage | 14/15・別に1件不明 | **16/16・不明なし** |
+| model call / 上限 | 137/160・1件失敗 | **136/160・失敗なし** |
+| 計画 / 検索 / 最新参照検査 | 58 / 43 / 19 | **56 / 39 / 20** |
+| 読取経路p50 / p95 | 37.98 / 59.02秒・19経路 | **33.22 / 57.54秒・20経路** |
+| 同じ19 caseでの読取経路p95 | 59.02秒 | **61.17秒** |
+
+観測できた修正は**case 06**です。`Morrowquay approve`で
+“approval through the Heron review route”を含むsourceが取得され、
+`Heron review`で2つ目のsourceに到達しました。
+両方を最新検査して引用し、**`Lantern desk`**と厳密正答しました。
+前回は必要sourceをどちらも取得できませんでした。
+この経路は実装した`approve`/`approval`のstemming照合と整合しますが、
+**Native照合と英語planner指示の両方**が変わっています。
+確率的な1回の実行では、それぞれの因果的な寄与を分離できません。
+
+**case 19は新たに測定できた成功であり、観測済み誤答の修正ではありません。**
+前回は保持判断のtimeoutで検索前に停止しました。
+今回は必要sourceとともに`中心印の先合わせ`を返しましたが、
+過去のtimeoutと不明usageはそのまま残します。
+前回測定可能だった同じ回答可能15 caseで、必要sourceのmacro coverageは
+**14/15 → 15/15**となり、case 19が16件目の測定を加えています。
+今回の全回答可能caseではraw検索・提示context・引用の各coverageが
+**macro 16/16、必要source数では20/20**です。
+
+全件正答でも制限は残っています。03の日本語chainには依然4検索が必要です。
+05も4回目の`Velvetbeam file`でsourceに到達して`640 tiles`と厳密正答しており、
+一般的なscalar形式修復ではありません。
+17では`Flintpetal failure`が依然0件で、plannerは`Flintpetal prevents`から
+最初のsource、`Anchor sequence`から次のsourceを取得しました。
+Snowballは`failure`と`failed`を同義にしません。
+20 workflow全てがtruncationを報告しています。この質問集合の必要根拠が揃ったことを、
+網羅検索や大規模corpusの認定と混同してはいけません。
+
+**20件の保持提案**は合成goldの分類と一致し、**keep 504 / forget提案136**で、
+今回の危険なforget提案は0件でした。
+136行全てを保留にし、別の読取で現在も読めることを確認しました。
+**Native Forget 0回・物理purge 0件**です。
+これはreview-onlyの提案品質であり、忘却の完了、全体消去、
+過去の危険な提案が再発しないことの証明ではありません。
+
+**136 call全て**でusageが得られました。入力**536,958** / 出力**17,105 token**、
+cache-write 536,550、cache-read 0、reasoning 9,165、
+API/premium request各136、756,620,500,000 nano-AIUです。
+token区分は重複するため加算しません。金銭費用とmanaged model weight revisionは未検証です。
+前回usageは成功136 call分の小計にすぎず、既知の総費用として削減率を出せません。
+Native検索p95は**51.65 → 73.47 ms**（43検索対39検索）へ増え、
+全経路の読取p95はわずかに減りましたが、**同じ19 case**では逆に
+**59.02 → 61.17秒**へ増えています。sample・plan・host/provider条件は異なります。
+読取時間は全ての実計画・検索・最新検査・回答を合計し、setupと保持判断を除外しています。
+制御された速度比較や本番追加負荷の測定ではありません。
+
+raw証跡でprompt・response・plan・feedback・最新参照の対応を監査しました。
+retry、JSON修復、隠れたbrowse、診断用model callはありません。
+control/保持の60 promptは前回v6とbyte単位で一致し、
+data/gold、scorer、reader指示、日本語planner指示、資源上限も維持しています。
+同一sourceの[CI run 36246513214](https://github.com/rioriost/pg_agmemory/actions/runs/36246513214)は
+8 job全て成功し、両native coreは**5,722 passed / 137 skipped**でした。
+installed profile、分離COMMIT/request、bridge、recovery/PITR/HA/AGEも成功しています。
+
+このcohortは再利用した合成dataで、blind・独立した人手作成・外部holdoutではありません。
+既知task集合で記憶を端から端まで使った良好な結果ですが、
+**プロダクト有用性や本番運用の認定ではありません**。
+次の別種の証跡は、この20 caseをさらに調整することではなく、
+未見の固定agent taskや継続利用から得る必要があります。既定動作は変更しません。
 
 ## 逐次計画の比較
 

@@ -14,8 +14,18 @@ stop wordだけの非空queryをbrowseには変えません。
 capabilities、Native/OpenAPI、SDK、MCP、hook、上限付き計画でprofileごとの説明を公開します。
 v6評価では`--english-search-profile en-snowball-v1`を明示指定できます。
 日本語caseと160 call・検索4回＋検査1回の上限は変えません。
-この実装だけで新しいmodel scoreを主張せず、後述v6のtimeout/後退も残します。
-providerの信頼性修復やプロダクト有用性の認定ではありません。
+別途固定した**`e6482bf`**のGPT-6 Astra/high実測では、
+**136/160 call**で**20/20厳密正答**となり、回答可能16 case全てで必要sourceを提示しました。
+06の欠けたchainを回復し、19は前回timeout後の新たな測定であって観測済み誤答の修正ではありません。
+回答の後退はなく、controlは4/20と8/20のままです。
+forget提案136件は全て保留・読取可能で、Native Forgetもpurgeも行っていません。
+20読取経路のp50/p95は**33.22/57.54秒**、
+Native検索p95は**73.47 ms**で前回の51.65 msより増えています。
+同じ19読取経路でのp95も**59.02 → 61.17秒**へ増えています。
+再利用した合成cohortであり、一般化や本番性能の認定ではありません。
+後述v6の失敗と不明usageも残します。
+[内訳](EVALUATION-jp.md#英語profile結果-既知cohortでは全件成功プロダクト認定とは分離)と
+[集計](../examples/copilot-memory-english-profile-v1-result.json)を参照してください。
 
 migrationは英語行をbackfillし、新規書込みは両projectionを維持するため、
 容量/書込み処理量が増えます。本番の追加負荷は未測定です。

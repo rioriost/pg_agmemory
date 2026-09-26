@@ -16,9 +16,20 @@ reference checks applied to English as well.
 Capabilities, Native/OpenAPI, SDK, MCP, hook and bounded planning describe the
 selected profile. The v6 evaluation can explicitly choose
 `--english-search-profile en-snowball-v1`; Japanese cases and the 160-call,
-four-search/one-validation ceilings remain unchanged. No new model score is
-claimed by this implementation, and the v6 timeout/regression below remain
-published. This does not repair provider reliability or qualify product usefulness.
+four-search/one-validation ceilings remain unchanged. The separate frozen
+**`e6482bf`** GPT-6 Astra/high run completes **20/20 exact answers** with
+**136/160 calls** and full required-source coverage across all sixteen
+answerable cases. Case 06's missing chain is recovered; case 19 is newly
+measured after the prior timeout, not a corrected observed answer.
+No answer regressions occur. Controls remain 4/20 and 8/20.
+All 136 forget proposals stay pending/readable, with no Native Forget or purge.
+Reader-path p50/p95 is **33.22/57.54 s** across twenty paths; Native-search
+p95 is **73.47 ms**, higher than the prior run's 51.65 ms.
+On the same nineteen reader paths, p95 also rises **59.02 → 61.17 s**.
+This reused synthetic cohort does not qualify generalization or production
+performance. The v6 failure below remains published, with its unknown usage.
+See [findings](EVALUATION.md#english-profile-result-complete-known-cohort-success-not-product-qualification)
+and [aggregate](../examples/copilot-memory-english-profile-v1-result.json).
 
 Migration backfills English rows and new writes maintain both projections,
 adding storage/write work; production overhead is unmeasured.
