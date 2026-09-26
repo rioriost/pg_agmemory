@@ -31,6 +31,93 @@ accuracy gain and the actual planning-call/latency/usage tradeoff.
 V3-v5/default behavior remains unchanged; implementation alone supplies no
 live v6 result or unseen/product qualification.
 
+### V6 result: late chains recovered, but a regression and a timeout remain
+
+The single run at frozen **`375cddb`** is **failed**, not a complete successful
+comparison: 137 model calls are dispatched, 136 succeed, and case **19** times
+out during retention before retrieval or answering. The local 150-second
+process deadline and mid-stream cancellation are confirmed; the upstream
+delay's cause and that call's usage remain unknown. Its partial output is
+neither repaired nor used. The wrapper exits nonzero, preserves the failed
+arm and cleans up owned resources. No retry or replacement run is performed.
+See the [reviewed aggregate](../examples/copilot-memory-sequential-v6-result.json).
+
+| Measure | V5 | V6 |
+|---|---:|---:|
+| Native exact correctness, failures included in denominator | 17/20 | **18/20** |
+| Answerable exact correctness | 13/16 | **14/16** |
+| Completed Native arms | 20/20 | **19/20** |
+| Two-event chains correct | 2/4 | **3/4** |
+| Dispatched model calls / ceiling | 120/120 | **137/160** |
+| Planning, reads and answer sum p95 | 38.63 s (20 paths) | **59.02 s (19 paths)** |
+
+Controls remain **4/20** without memory and **8/20** with recent context.
+Cases **03, 05 and 17** gain exact correctness. In 03, round three discovers
+the first hop with `菫時計舎 希望`; round four follows `若紫受付` to
+`手書き連絡箱`, replacing v5's wrong first-hop answer. In 17,
+`Flintpetal failed` similarly finds the first hop in round three and
+`Anchor sequence` reaches `clamp before tracing` in round four.
+In 05, the fourth query `Velvetbeam file` recovers the source and the unchanged
+reader returns exactly `640 tiles`. This is one observed exact answer, **not
+a general scalar-format fix** or a reason to rescore the earlier v4 miss.
+
+The improvement is not uniform. **Case 06**, correct in v5, now retrieves
+neither required source and abstains. `Morrowquay inspection`, `Morrowquay`
+and `Morrowquay desk` return topic-related material but not the chain;
+`Morrowquay approve` returns nothing. More sequential feedback does not
+guarantee useful wordforms or sufficient evidence. **Case 19** was also
+previously correct, but this run provides no answer or retrieval measurement
+for it. The overall score remains **18/20**, not a success-only 18/19.
+Among the 19 completed Native answers, none of the non-abstained answers
+is incorrect under the fixed scorer.
+
+Raw-search, delivered and cited required-source coverage are **93.33% over
+15 measurable answerable cases**: 14 fully covered, one uncovered, and one
+additional case unknown. V5's 84.375% used all 16 answerable cases; the
+denominators differ. No returned required evidence is dropped in the measured
+trajectories. Case 19's absent search is **not** an empty search response.
+All four expected abstentions and all four twice-corrected histories pass.
+
+The 19 completed workflows make **58 planning calls, 43 searches and 19
+fresh validations**. Six cases use two planning calls, six use three and
+seven use four. Fifteen stop with an empty plan, including three whose stop
+is the fourth call; four consume all four searches. Thus an early-stop flag
+does not always mean fewer than four planning calls. All final contexts are
+nonempty, all 19 report bounded truncation, and no cached fallback is used.
+The maximum four searches plus one validation, eight items and 8,000 Native
+bytes are unchanged, but the model ceiling is deliberately higher.
+
+The **19 valid retention decisions** match their **479 keep / 129 forget**
+gold labels; all 129 known proposals remain pending and verified readable.
+The twentieth proposal is unknown, so neither full-cohort retention quality
+nor a total proposal count of 136 is claimed. Native Forget calls and physical
+purges remain zero. This does not complete forgetting or repair the earlier
+cohort's mistaken retention proposal.
+
+For the **136 calls with usage evidence only**, the subtotal is **532,751
+input / 18,356 output tokens**, 532,343 cache-write and zero cache-read tokens,
+136 API/premium requests and 757,616,750,000 reported nano-AIU.
+Full-run usage is **unknown**, not this subtotal plus an assumed zero-cost
+timeout; no monetary bill is verified.
+Reader-path p50/p95 are **37.98/59.02 s**, summing all actual planning calls,
+reads and answer with queue wait, excluding retention/setup and the case
+stopped before retrieval. Runner duration is **1,516.865215 s**, including
+the failed call. The reader percentile omits that retention timeout and is
+not a full-cohort or same-sample latency comparison.
+
+This remains a known-cohort synthetic experiment with a higher model-call
+ceiling, an observed retrieval regression and incomplete measurement.
+**V6 stays opt-in; defaults and product/production qualification are unchanged.**
+No source, prompt, gold or scorer changes follow this inference.
+
+The exact measured source passes all eight jobs in
+[run 36232502119](https://github.com/rioriost/pg_agmemory/actions/runs/36232502119).
+Both native cores report **5,622 passed / 134 skipped**, with separate
+18 COMMIT and 13 request cases, eight offline bridge checks, packaged
+installation, HA/PITR and patched AGE on both architectures; each AGE
+integration suite passes 218 cases. These implementation checks do not
+turn the failed model evaluation into a successful one.
+
 ## Discovery-only planner comparison
 
 `bounded-lexical-v5` selects the opt-in `discovery-v2` planner and the same

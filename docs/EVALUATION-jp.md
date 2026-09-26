@@ -26,6 +26,82 @@ data、gold、reader/保持/control prompt、採点は維持し、
 後退、不完全なchain、厳密文字列の不一致も、正答率の変化と実計画call数/latency/usageとともに報告します。
 v3-v5と既定動作は変えず、実装だけでv6実scoreや未見data/プロダクトの認定を主張しません。
 
+### V6結果: 後半のchainを回復する一方、後退とtimeoutが残る
+
+固定した**`375cddb`**での1回の実測は**failed**であり、完全に成功した比較ではありません。
+137 model callを送信し136件は成功しましたが、**19**の保持判断がtimeoutし、
+検索・回答へ進めませんでした。localの150秒process期限とstream途中の取消しは確認済みですが、
+上流で遅れた原因と当該callのusageは不明です。部分出力は修復も利用もせず、
+wrapperは非0で終了し、失敗armを記録して所有resourceを片付けました。
+retryや置換用の再実測は行っていません。
+[確認済み集計](../examples/copilot-memory-sequential-v6-result.json)を参照してください。
+
+| 指標 | V5 | V6 |
+|---|---:|---:|
+| 失敗も分母に含むNative厳密正答 | 17/20 | **18/20** |
+| 回答可能な問題の厳密正答 | 13/16 | **14/16** |
+| 完了したNative arm | 20/20 | **19/20** |
+| 2 eventの根拠chainの正答 | 2/4 | **3/4** |
+| 送信model call数 / 上限 | 120/120 | **137/160** |
+| 計画・検索・回答の合算p95 | 38.63秒（20経路） | **59.02秒（19経路）** |
+
+controlは記憶なし**4/20**、直近context**8/20**のままです。
+**03、05、17**が厳密正答へ改善しました。03では第3 roundの`菫時計舎 希望`で
+最初の根拠を発見し、第4 roundの`若紫受付`から`手書き連絡箱`へ到達して、
+v5の誤った最初の参照の回答を解消しました。17も第3 roundの`Flintpetal failed`で
+最初の根拠、第4 roundの`Anchor sequence`で`clamp before tracing`へ到達しました。
+05は第4 queryの`Velvetbeam file`でsourceを回復し、変更していないreaderが
+厳密に`640 tiles`と回答しました。これは今回の観測であり、
+**一般的なscalar形式の修正**や、以前のv4の不一致を事後に正答へ変える根拠ではありません。
+
+一様な改善ではありません。v5で正答した**06**は必要な2 sourceをどちらも取得できず、
+辞退へ後退しました。`Morrowquay inspection`、`Morrowquay`、`Morrowquay desk`は
+同じtopicの資料を返しますがchainには届かず、`Morrowquay approve`は空でした。
+逐次feedbackを増やしても、有効な語形や十分な根拠は保証されません。
+以前正答した**19**も、今回は回答・検索とも未測定です。
+全体scoreは**18/20**のままとし、成功分だけの18/19へ変更しません。
+完了した19 Native回答では、辞退しなかった回答に固定scorer上の誤答はありません。
+
+検索応答・配信・引用の必要source coverageは、**測定可能な回答可能15 caseに対して93.33%**です。
+14件は全根拠あり、1件は根拠なし、別の1件は不明です。
+v5の84.375%は回答可能16 case全てを分母としており、分母は同一ではありません。
+実測した検索で返った必要根拠の採用漏れはありません。
+19の検索未実行を**空の検索結果とは扱いません**。
+期待された4辞退と、2度訂正された4履歴は全て正答しました。
+
+完了した19 workflowの実行は**計画58 call、検索43回、最新参照検査19回**でした。
+計画call数は2回が6件、3回が6件、4回が7件です。
+15件は空planで終了しますが、そのうち3件は第4 callが終了指示で、
+残り4件は検索4回を使い切りました。早期終了flagは、必ずしも計画callが4回未満という意味ではありません。
+19件全ての最終contextは非空で、上限付きtruncationを報告し、cached fallbackはありません。
+最大検索4回＋検査1回、8 item / Native 8,000 byteは維持しますが、
+model予算上限は意図的に増やしています。
+
+**有効な保持判断19件**は該当する**keep 479 / forget 129件**のgoldと一致し、
+既知の129提案全てが保留・読取可能でした。20件目の提案は不明なので、
+全cohortの保持品質や提案総数136件を確認済みとはしません。
+Native Forget呼出し・物理purgeは0件です。忘却の完了でも、
+以前のcohortにあった誤保持提案の修復でもありません。
+
+**usage証跡がある136 callだけの小計**は**入力532,751 / 出力18,356 token**、
+cache-write 532,343、cache-read 0、API/premium request 136件、
+報告nano-AIU 757,616,750,000です。全実行usageは**不明**であり、
+timeout分を0と仮定して小計を総量にしません。金額も未確認です。
+読取経路p50/p95は**37.98/59.02秒**で、全実計画call・検索・回答とqueue待ちを合算し、
+保持/setupと検索前に停止したcaseは除きます。
+runner全体は失敗call込みで**1,516.865215秒**でした。
+読取percentileには保持timeoutが含まれず、全cohortや同一sampleのlatency比較ではありません。
+
+既知の合成cohortでmodel上限を増やした実験であり、検索の後退と未測定が残ります。
+**v6はopt-inのまま、既定動作もプロダクト/本番認定も変えません。**
+この推論後にsource、prompt、gold、採点は変更していません。
+
+同一sourceの[run 36232502119](https://github.com/rioriost/pg_agmemory/actions/runs/36232502119)は
+8 job全て成功しました。両native coreは**5,622 passed / 134 skipped**、
+別実行のCOMMIT 18件、request 13件、offline bridge 8件、
+packaged install、HA/PITR、patched AGEも両architectureで成功し、AGE integrationは各218件です。
+実装の検証が成功しても、失敗したmodel評価を成功扱いにはしません。
+
 ## 発見plannerだけを変える比較
 
 `bounded-lexical-v5`はopt-inの`discovery-v2` plannerを選び、

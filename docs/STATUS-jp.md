@@ -12,6 +12,28 @@ Native検索4回＋最終検査1回、round-robin採用、8 item / 8,000-byte co
 既存policy、reader/採点、保持判断、Nativeの意味は変更しません。
 [既知cohortの比較契約](EVALUATION-jp.md#逐次計画の比較)を参照してください。
 
+固定した**`375cddb`**の実測は**failed**です。136 callは成功しましたが、
+保持判断1件が150秒でtimeoutし、19のNative armは未測定になりました。
+全体の厳密正答はv5の17/20に対し**18/20**で、失敗caseも分母に残しています。
+03/05/17は改善する一方、以前正答した06のchainは両sourceを失い辞退へ後退しました。
+chainは**3/4**、完了した非辞退回答に固定scorer上の誤答はありません。
+必要source coverageは**測定可能な回答可能15 caseに対して93.33%**で、
+別の1件は不明です。v5と分母が同じ比較ではありません。
+
+実call数は明示した160上限内で**120 → 137**へ増えました。
+完了した19 workflowでは計画58 call、検索43回、最新参照検査19回です。
+読取経路p95は**38.63 → 59.02秒**ですが、19経路のみで保持timeoutを含みません。
+既知のforget提案129件は全て保留・読取可能で、20件目の提案とusageは不明です。
+retryもpurgeも行わず、既定動作は変えません。
+改善と後退・未測定が混在する比較であり、プロダクト有用性の認定ではありません。
+[内訳](EVALUATION-jp.md#v6結果-後半のchainを回復する一方後退とtimeoutが残る)と
+[集計](../examples/copilot-memory-sequential-v6-result.json)を参照してください。
+
+同一sourceの[run 36232502119](https://github.com/rioriost/pg_agmemory/actions/runs/36232502119)は
+8 job全て成功し、両native coreは**5,622 passed / 134 skipped**でした。
+installed profile、分離COMMIT/request、bridge、HA/PITR/AGEも成功しています。
+実装検証の成功でmodel評価の失敗を消すことはしません。
+
 ## 明示選択する発見planner
 
 `bounded-lexical-v5`はplannerだけを変え、`discovery-v2`で

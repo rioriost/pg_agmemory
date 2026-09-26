@@ -13,6 +13,29 @@ ceiling grows from two to four, so the twenty-case model budget is explicitly
 Existing policies, reader/scorer, retention and Native semantics are unchanged.
 See [the known-cohort comparison contract](EVALUATION.md#sequential-planning-comparison).
 
+The frozen **`375cddb`** run is **failed**, with 136 successful calls and one
+150-second retention timeout, leaving case 19's Native arm unmeasured.
+Overall exact correctness is **18/20**, versus v5's 17/20; the failed case
+stays in the denominator. Cases 03/05/17 improve, but the previously correct
+chain in 06 loses both sources and abstains. Chains score **3/4**; the
+completed non-abstained answers contain no fixed-scorer errors.
+Required-source coverage is **93.33% over 15 measurable answerable cases**,
+with one further case unknown, not directly the same denominator as v5.
+
+Actual calls rise **120 → 137**, under the explicit 160 ceiling.
+The 19 completed workflows use 58 plans, 43 searches and 19 fresh validations;
+reader-path p95 rises **38.63 → 59.02 s**, but covers only 19 paths and excludes
+the retention timeout. All 129 known forget proposals remain pending/readable;
+the twentieth proposal and its usage are unknown. No retries or purges occur.
+Defaults stay unchanged; this mixed, incomplete comparison does not qualify
+product usefulness. See [findings](EVALUATION.md#v6-result-late-chains-recovered-but-a-regression-and-a-timeout-remain)
+and [aggregate](../examples/copilot-memory-sequential-v6-result.json).
+
+Exact-source [run 36232502119](https://github.com/rioriost/pg_agmemory/actions/runs/36232502119)
+passes all eight jobs, with **5,622 passed / 134 skipped** in each native core,
+plus installed profiles, isolated COMMIT/request, bridge and HA/PITR/AGE.
+Passing implementation checks does not erase the failed model evaluation.
+
 ## Opt-in discovery planner
 
 `bounded-lexical-v5` isolates a planner change: `discovery-v2` emphasizes
