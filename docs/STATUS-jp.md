@@ -20,6 +20,30 @@ v3選択時の既定はreviewですが、flagなしの既存評価はv2/model-pu
 [workflow契約](operations/README-jp.md#上限付き追加検索と保持review)と
 [version付き比較](EVALUATION-jp.md#上限付き根拠探索とreview-only保持の比較)を参照してください。
 
+**`6610f0b`**の両policy初回実測では、GPT-6 Astra/highを固定し、
+同じ既知cohortのNative正答が**9/20 → 20/20**、
+回答可能な問題では**5/16 → 16/16**、必要根拠の取得coverageは**100%**になりました。
+根拠chain二つも正答し、controlは4/20と8/20のままです。
+実行した検索は48回、最新参照検査は20回でした。
+
+誤ったforget提案1件は残り、保持partitionは全20 caseで前回と同じです。
+review modeは**91提案すべてを保留**し、全pending rowが読めることを確認して、
+**Native Forget送信・物理purgeともゼロ**でした。
+このworkflowによる誤削除の実行は防ぎますが、modelの保持判断改善や削除完了ではありません。
+model callは**100 → 120**、計画/検索/回答合計p95は
+**23.25 → 37.89秒**に増加しました。CLI/bridgeを含み、保持判断/setupを除きます。
+既知の合成cohortでの回帰比較であり、実務への一般化、本番SLA、製品/本番認定ではありません。
+[実測結果](EVALUATION-jp.md#boundedreview実測結果)と
+[確認済み集計](../examples/copilot-memory-bounded-review-result.json)では、
+以前の不十分な結果とboundedな切捨てflagも保持しています。
+
+実測した同一実装は
+[run36204128294](https://github.com/rioriost/pg_agmemory/actions/runs/36204128294)で
+native **全8ジョブ**に成功しました。両coreは**5,027 passed / 134 skipped**、
+別途18 COMMIT/13 request case、offline bridge 6件も成功しています。
+packaged install、HA/PITR/patched AGEは両architectureで成功し、
+AGEは各218件に成功しました。この工程検証で実測の認定範囲を広げません。
+
 ## 以前の新しい合成cohort: modelとquery policyを固定
 
 `unseen-synthetic-v1`は別途作成した英日20 scenario、139 eventです。

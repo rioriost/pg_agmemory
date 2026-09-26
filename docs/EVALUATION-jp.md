@@ -50,6 +50,52 @@ raw計画、実行query、最新参照検査、提案/操作、資源上限をre
 失敗も分母に残します。model ID/effortは固定し、
 正確なweightはprovider管理下で未検証です。
 
+### Bounded/review実測結果
+
+**`6610f0b`**で両policyの初回比較を行い、**120 model call / 60観測**を完走しました。
+不正応答・retry・未測定armはありません。
+[確認済み集計](../examples/copilot-memory-bounded-review-result.json)はcase/scorer、
+両helper module、非公開artifactに結び付いています。
+GPT-6 Astra/highと元の回答/保持promptは変更していません。
+
+| 同じcohortでの測定 | 前回の単発query/purge | Bounded/review |
+|---|---:|---:|
+| 記憶なしの正答 | 4/20 | 4/20 |
+| 直近履歴の正答 | 8/20 | 8/20 |
+| Native正答 | 9/20 | **20/20** |
+| 回答可能な問題のNative正答 | 5/16 | **16/16** |
+| 必要根拠の直接取得coverage | 34.375% | **100%** |
+| 誤ったmodel forget提案 | 1 | **1** |
+| 実行Native purge | 91 object | **0** |
+| Model call | 100 | **120** |
+
+保持partitionは全20 caseで前回と同じでした。正しいkeep提案48件とforget提案91件で、
+そのうち`unseen-02-e5`の別teamの継続制約を消そうとする1件は**model側では直っていません**。
+review modeは91提案すべてを保留し、権限あるcallerからrowが読めることを検査して、
+Native Forgetを一度も送信しませんでした。削除の完了・承認はありません。
+planner/readerからの除外はこのworkflow内だけで、全体のprivacy消去保証ではありません。
+
+**検索48回＋最新参照検査20回**で、各caseは検索最大4回・検査1回を守りました。
+以前失敗した根拠chain二つも正答しています。
+例えば`Copperwheel billing`と`Copperwheel`でrouting ruleを見つけ、
+追加の`Ledger review`と`Ledger`でdirectory entryを取得しました。
+最新検査後の実source二つを引用し、最終回答は`Billing desk`です。
+query/referenceは観測根拠から作り、gold labelは使いません。
+boundedな切捨てflagも全caseで残し、gold根拠100%を全corpus取得とは呼びません。
+
+追加計画の費用は増えています。model計画2回、全検索/最終検査、最終回答の合計は
+**p50 28.96秒 / p95 37.89秒**で、前回の**19.34 / 23.25秒**より遅くなりました。
+Native検索単独は**p50 50.20 ms / p95 69.77 ms**、
+最新検査は**52.64 / 67.36 ms**です。Copilot単発p95はCLI/bridge込み**13.00秒**でした。
+Copilot単発の集計はbridge報告のduration、回答callとread-path合計は
+queue待ちを含むrunner観測の経過時間を使います。合計は保持判断/setupを除きます。
+評価input/outputは**421,659 / 12,220 token**、reported premium request 120件、
+追加診断呼出しゼロです。実装/作成時usageを含まず、請求額ではありません。
+
+予算と二つのpolicyを変えた既知cohortの回帰比較としては成功ですが、
+一般化、本番保持判断、end-to-end高速化を認定しません。
+元の9/20の結果と実際の誤削除も、変更せず公開を維持します。
+
 ## 別途固定した評価cohortの選択
 
 既定の`--cohort pilot-v1`は従来の20件を選びます。

@@ -23,6 +23,32 @@ Original cases, query-v2, answer prompts and scoring formulas remain unchanged.
 See [workflow semantics](operations/README.md#bounded-follow-up-and-retention-review)
 and [versioned comparison](EVALUATION.md#bounded-evidence-and-review-only-retention-comparison).
 
+The first combined-policy measurement at **`6610f0b`**, with GPT-6 Astra/high,
+improves Native correctness on the same known cohort **9/20 → 20/20**, including
+**5/16 → 16/16** answerable questions and **100%** required-evidence coverage.
+Both evidence-chain questions are now correct; the controls remain 4/20 and
+8/20. Actual execution uses 48 searches and 20 fresh reference validations.
+
+The same wrong forget proposal remains: retention partitions are identical
+in all 20 cases. Review mode defers all **91 proposals**, verifies every
+pending row remains readable and executes **zero Native Forget requests /
+physical purges**. This prevents this workflow from executing the mistake;
+it does not improve the model's retention judgment or complete deletion.
+Model calls increase **100 → 120**, and the planning/read/answer sum p95
+increases **23.25 → 37.89 s**, including CLI/bridge overhead and excluding
+retention/setup. This is a known-synthetic regression, not real-workload
+generalization, a production SLA or product/production qualification.
+The [measured result](EVALUATION.md#measured-boundedreview-result) and
+[reviewed aggregate](../examples/copilot-memory-bounded-review-result.json)
+preserve the earlier adverse results and the bounded truncation flags.
+
+The exact measured implementation passes **all eight native jobs** in
+[run36204128294](https://github.com/rioriost/pg_agmemory/actions/runs/36204128294).
+Each core reports **5,027 passed / 134 skipped**, followed by separate
+18 COMMIT/13 request cases and six offline bridge checks. Packaged installation,
+HA, PITR and patched AGE pass on both architectures; each AGE run passes
+218 cases. These engineering results do not broaden the measurement's scope.
+
 ## Previous new synthetic cohort: fixed model and query policy
 
 `unseen-synthetic-v1` adds 20 separately authored English/Japanese scenarios,

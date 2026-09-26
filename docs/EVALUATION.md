@@ -55,6 +55,58 @@ resource budgets are bound to recipe v4. All failures remain in the
 denominators; the model identifier/effort is fixed and exact model weights
 remain provider-managed and unattested.
 
+### Measured bounded/review result
+
+The first combined-policy run at **`6610f0b`** completes **120 model calls /
+60 observations**, with no malformed responses, retries or unmeasured arms.
+The [reviewed aggregate](../examples/copilot-memory-bounded-review-result.json)
+binds the case, scorer, both helper modules and private artifacts. GPT-6
+Astra/high and the existing answer/retention prompts are unchanged.
+
+| Measurement on the same cohort | Previous single-query/purge run | Bounded/review run |
+|---|---:|---:|
+| No-memory correctness | 4/20 | 4/20 |
+| Recent-window correctness | 8/20 | 8/20 |
+| Native correctness | 9/20 | **20/20** |
+| Native correctness on answerable questions | 5/16 | **16/16** |
+| Direct required-evidence coverage | 34.375% | **100%** |
+| Wrong model forget proposals | 1 | **1** |
+| Executed Native purges | 91 objects | **0** |
+| Model calls | 100 | **120** |
+
+The retention partitions are identical across all 20 cases: 48 correct keep
+proposals and 91 forget proposals, of which one incorrectly targets the
+durable other-team constraint `unseen-02-e5`. That mistake is **not fixed by
+the model**. Review mode leaves all 91 suggestions pending, verifies their
+rows remain readable to an authorized caller and sends no Native Forget
+requests. No deletion is completed or approved. Reader/planner exclusion is
+local to this workflow, not a global privacy-erasure guarantee.
+
+There are **48 search requests plus 20 fresh reference validations**, with a
+per-case maximum of four searches and one validation. Both previously missed
+evidence chains are answered correctly. For example, `Copperwheel billing`
+and `Copperwheel` find the routing rule; the follow-up searches `Ledger review`
+and `Ledger` find the directory entry. The final answer is `Billing desk`,
+with both actual source events cited after fresh validation. Queries and refs
+come from observed evidence, not gold labels. Bounded truncation flags remain
+reported in all cases; full required-gold coverage is not exhaustive retrieval.
+
+The extra planning is not free: the sum of two model plans, all search/final
+reads and the final answer has **p50 28.96 s / p95 37.89 s**, versus **19.34 /
+23.25 s** before. Native searches alone have **p50 50.20 ms / p95 69.77 ms**;
+fresh validation is **52.64 / 67.36 ms**. Copilot-call p95 is **13.00 s**,
+including CLI/bridge overhead. The Copilot-call summary uses bridge-reported
+duration; answer-call timings and read-path sums use runner-observed elapsed
+time, including queue wait. The sums exclude retention/setup.
+Observed evaluation input/output usage is
+**421,659 / 12,220 tokens**, with 120 reported premium requests and no extra
+diagnostic calls. This excludes development/authoring usage and is not a bill.
+
+This is a successful known-cohort regression with increased budgets and two
+policy changes. It does not establish generalization, production retention
+correctness or an end-to-end speed improvement. The original 9/20 run and its
+destructive mistake remain published unchanged.
+
 ## Selecting a separately frozen evaluation cohort
 
 `--cohort pilot-v1` remains the default and selects the original 20 cases.
