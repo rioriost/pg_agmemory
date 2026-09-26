@@ -8,10 +8,34 @@
 保持すべき継続的な類似topicのdistractorを含みます。
 拡張case型は新datasetだけに限定し、元のcase契約、dataset、prompt、採点、
 bounded/review policy、120 call上限は変更しません。
-model利用前に履歴とgold labelをreview・commitします。
-初回利用の合成stress評価の準備であり、
+model利用前に履歴とgold labelをreview・commitしました。
+初回利用の合成stress評価であり、
 既知cohortの成功を再掲したり実務認定を主張したりするものではありません。
 [評価契約](EVALUATION-jp.md#policyを固定した長いdistractor履歴の評価)を参照してください。
+
+**`f12a3f4`**の初回実測は120 model callを完走し、
+Native正答は**13/20**、直近履歴は**8/20**、記憶なしは**4/20**でした。
+回答可能な問題ではNativeは**9/16**で、残る7問は辞退し、根拠chain 4問も全て辞退しました。
+断定した誤答はありません。必要根拠coverageは、
+Native検索応答の和集合では**81.25%**ですが、回答者へ届くと**59.375%**、
+引用では**56.25%**になります。4問では8 item枠が先の結果で埋まり、
+有用な追加検索結果が捨てられました。別の3問では必要根拠が取得されていません。
+以前の既知cohortの20/20は、distractorへの頑健性を認定しません。
+
+保持提案は**keep 504 / forget 136件すべて正解**でしたが、
+reviewは136件を全て保留し、rowが読めることを確認して、Native Forget送信・purgeはゼロです。
+以前のcohortの誤提案改善や忘却完了を意味しません。
+検索63回＋最新参照検査20回、計画/検索/回答p95は**35.92秒**で、本番SLAではありません。
+実測後にmodel/query/helper/採点を変更せず、追加model callも行っていません。
+[詳細](EVALUATION-jp.md#長い履歴の初回結果-有用な追加検索結果が採用されない)と
+[確認済み集計](../examples/copilot-memory-distractor-result.json)を参照してください。
+
+実測した同一sourceは
+[run36210096157](https://github.com/rioriost/pg_agmemory/actions/runs/36210096157)で
+native **全8ジョブ**に成功しました。両coreは**5,209 passed / 134 skipped**、
+別途18 COMMIT / 13 request case、offline bridge 6件も成功しています。
+packaged install、HA/PITR/patched AGEは両architectureで成功し、AGEは各218件です。
+評価incrementの工程確認であり、製品の検索品質が十分であることは認定しません。
 
 ## 上限付き根拠探索と非破壊の保持review
 

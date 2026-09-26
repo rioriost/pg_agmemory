@@ -38,6 +38,61 @@ bounded planner、review helper、model ID/effort、資源上限も維持し、
 runnerはこのcohortの初回利用/再利用を不明と記録します。
 確認済みreportが実行履歴から区別し、新しい出力directoryだけで初回とは判定しません。
 
+### 長い履歴の初回結果: 有用な追加検索結果が採用されない
+
+**`f12a3f4`**の初回実測は、**120 model call / 60 arm結果**を完走しました。
+不正応答、retry、未測定armはありません。
+最初の記録された推論より前にdatasetをreview・commitし、
+推論後にmodel、query/helper、保持policy、prompt、case、採点式を変更していません。
+[確認済み集計](../examples/copilot-memory-distractor-result.json)には、
+新cohortのidentityと変更していないpolicy/scorerのhashを記録しています。
+
+| arm | 正答 / 20 | 回答可能な問題の正答 / 16 | 回答辞退 |
+|---|---:|---:|---:|
+| 記憶なし | 4 | 0 | 20 |
+| 直近2 event | 8 | 4 | 16 |
+| Native bounded memory | **13** | **9** | **11** |
+
+必要な回答辞退4件と二度訂正された履歴4件は全て正答しました。
+一方、回答可能な7問で回答を辞退し、**根拠chain 4問は全て辞退**しました。
+断定した誤答はありませんが、以前の20/20だけでは、
+継続的なdistractorが多い場合の検索信頼性を示せません。
+異なるcohortなので、対応のある因果比較や実務品質の認定でもありません。
+
+journalと固定済み実装から、二つの失敗経路を分けられます。
+記録済み応答を未変更のhelperへ再入力し、DB/modelの追加呼出しなしに、
+全20 caseの最終参照集合を再現しました。
+
+- **4 case（01、02、05、08）**では、追加Native検索が不足する正解根拠を実際に返しています。
+  しかしcallerの8 item枠が埋まっており、`BoundedRecall.record()`は先に採用したitemを残して、
+  後から来た根拠を再選択せず捨てます。case 08ではplannerが正しく`空輪審査経路`を追跡し、
+  Nativeも担当部署のentryを返しましたが、最終contextには入りませんでした。
+  最新参照検査は採用済みrowを検証するだけで、関連性や根拠の十分さは保証しません。
+- **3 case（03、06、17）**では、どの検索も必要根拠を返しませんでした。
+  広いtopic検索で経路/教訓が埋もれ、追加検索にも語彙の不一致が残ります。
+  例えばqueryの`approve`に対し保存文は`approval`、
+  `failure`に対し保存文は`failed`で、固定のsimple profileにはstemmingがありません。
+
+回答可能な16問の必要根拠coverageは、**Native検索応答全体の和集合では81.25%**ですが、
+回答者へ渡る段階では**59.375%**です。従来の直接取得metricは渡したcontextを測り、
+途中で返った全結果を意味しません。引用ベースrecallは別に**56.25%**でした。
+全根拠が届いた9問、chainの半分だけが届いた1問、根拠が届かない6問に分かれます。
+切捨てflagは全20 caseで保持しています。
+
+保持提案は、継続的なdistractorを含めて**keep 504 / forget 136件すべて正解**でした。
+以前のcohortの誤提案が直ったことや、保持判断の一般的な正しさを意味しません。
+**136提案は全て保留し、rowが読めることを確認**しました。
+Native Forget送信・物理purgeともゼロで、削除の承認・完了はありません。
+
+根拠取得は**検索63回＋最新参照検査20回**で、各caseの4＋1上限は維持しました。
+検索p95は**66.68 ms**、最終検査p95は**73.83 ms**、
+計画2回/検索/回答の合計は**p50 27.87秒 / p95 35.92秒**です。保持判断/setupは除き、
+計測時計は後述のbounded/review結果と同じです。
+usageは**input 467,877 / output 17,862 token**、
+reported premium request 120件、追加診断model callはゼロでした。
+作成時usageを含まず請求額でもありません。高速化や製品の本番実用性は認定せず、
+初回結果を事後調整しません。根拠の採用方式と残る語彙の不一致は製品側の残作業です。
+
 ## 上限付き根拠探索とreview-only保持の比較
 
 opt-inの`bounded-lexical-v3` / `review-v1`は、観測したquery/根拠chainと

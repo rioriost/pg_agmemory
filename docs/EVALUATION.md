@@ -43,6 +43,66 @@ Subsequent runs of this cohort must be labeled reuse.
 The runner leaves first-use/reuse status unknown for this cohort; the reviewed
 result must establish it from recorded history, not a new output directory.
 
+### First longer-history result: useful follow-up evidence is discarded
+
+The first run at **`f12a3f4`** completes **120 model calls / 60 arm outcomes**
+without malformed responses, retries or missing arms. The dataset was reviewed
+and committed before this first recorded evaluation; no model, query/helper,
+retention policy, prompt, case or scoring formula changed after inference.
+The [reviewed aggregate](../examples/copilot-memory-distractor-result.json)
+records the new cohort identity and unchanged policy/scorer hashes.
+
+| Arm | Correct / 20 | Answerable correct / 16 | Abstentions |
+|---|---:|---:|---:|
+| No memory | 4 | 0 | 20 |
+| Recent two events | 8 | 4 | 16 |
+| Native bounded memory | **13** | **9** | **11** |
+
+All four required abstentions and four twice-corrected histories are correct.
+Seven answerable questions abstain, including **all four evidence chains**.
+There are no incorrect non-abstained answers. The earlier 20/20 therefore does
+not establish reliable retrieval with durable distractors. This is a different
+cohort, not a paired causal comparison or a real-world quality certification.
+
+Replaying the recorded responses through the unchanged helper reproduces all
+20 final reference sets without additional database or model calls.
+The journal and frozen implementation separate two failure mechanisms:
+
+- In **four cases (01, 02, 05, 08)**, follow-up Native searches actually return
+  missing gold evidence, but the caller's eight-item context is already full.
+  `BoundedRecall.record()` keeps the first admitted items and drops later
+  additions instead of reconsidering the evidence set. For case 08, the
+  planner correctly follows `空輪審査経路`; Native returns the department
+  directory entry, yet the final context still lacks it. Fresh validation
+  validates the admitted rows, not their relevance or sufficiency.
+- In **three cases (03, 06, 17)**, no search returns required evidence.
+  Broad topic results crowd out the route/lesson; refinement still has lexical
+  gaps, such as `approve` versus stored `approval`, or `failure` versus
+  stored `failed`. The fixed simple profile does not stem these words.
+
+Across 16 answerable cases, required-source coverage in the **union of raw
+Native search responses is 81.25%**, but only **59.375%** reaches the answerer.
+The existing direct retrieved metric measures that delivered context, not
+every intermediate result. Citation-based recall is separately **56.25%**.
+Nine cases receive all required evidence, one receives half a chain and six
+receive none. All 20 truncation flags remain reported.
+
+Retention proposals match **all 504 keep / 136 forget labels**, including
+every durable distractor. This does not repair the mistake on the previous
+cohort or establish generally correct retention. All **136 proposals are
+deferred and verified readable**; Native Forget calls and physical purges
+remain zero. No deletion is approved or completed.
+
+Evidence retrieval uses **63 searches + 20 fresh validations**, within the
+unchanged four-plus-one per-case cap. Search p95 is **66.68 ms**, final
+validation p95 **73.83 ms**, and the two-plan/read/answer sum is
+**p50 27.87 s / p95 35.92 s**, excluding retention/setup. Timing clocks follow
+the bounded/review report below. Usage is **467,877 input / 17,862 output
+tokens**, 120 reported premium requests, and no extra diagnostic model calls;
+these are not monetary bills and exclude authoring usage. Neither a speed
+improvement nor production usefulness is claimed. The first result remains
+unretuned; evidence admission and remaining lexical gaps are product work.
+
 ## Bounded evidence and review-only retention comparison
 
 The opt-in pair `bounded-lexical-v3` / `review-v1` addresses the observed

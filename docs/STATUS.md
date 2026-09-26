@@ -10,9 +10,35 @@ distractors that should survive retention. An extended case type is confined
 to the new dataset; the original case contract, datasets, prompts, scoring,
 bounded/review policies and 120-call ceiling remain unchanged. Histories and
 gold labels are reviewed and committed before model use.
-This prepares a first-use synthetic stress measurement, not another
+This is a first-use synthetic stress measurement, not another
 known-cohort success claim or real-world qualification.
 See [the evaluation contract](EVALUATION.md#fixed-policy-evaluation-with-longer-distractor-histories).
+
+The first run at **`f12a3f4`** completes 120 model calls: Native scores
+**13/20**, versus recent context **8/20** and no memory **4/20**.
+Native answers **9/16** answerable questions correctly; the other seven
+abstain, including all four evidence chains. No non-abstained answer is wrong.
+Delivered required-evidence coverage is **59.375%**, versus **81.25%** in the
+union of actual Native search responses and **56.25%** in citations.
+In four cases, useful follow-up results are discarded because the first-admitted
+eight-item context is full; three other cases never retrieve required evidence.
+The previous known-cohort 20/20 does not establish robust distractor handling.
+
+All **504 keep / 136 forget proposals** match gold. Review still defers all
+136 deletions, verifies their rows remain readable and performs zero Native
+Forget calls/purges. This does not repair the earlier cohort's mistaken proposal
+or complete forgetting. The run uses 63 searches plus 20 fresh validations;
+planning/read/answer p95 is **35.92 s**, not a production SLA.
+No model/query/helper/scorer change or additional model call follows the result.
+See [findings](EVALUATION.md#first-longer-history-result-useful-follow-up-evidence-is-discarded)
+and [reviewed aggregate](../examples/copilot-memory-distractor-result.json).
+
+The exact measured source passes **all eight native jobs** in
+[run36210096157](https://github.com/rioriost/pg_agmemory/actions/runs/36210096157).
+Each core reports **5,209 passed / 134 skipped**, with separate 18 COMMIT /
+13 request cases and six offline bridge checks. Packaged installation, HA,
+PITR and patched AGE pass on both architectures; each AGE run passes 218 cases.
+This verifies the evaluation increment, not adequate product retrieval quality.
 
 ## Bounded evidence workflow and non-destructive retention review
 
