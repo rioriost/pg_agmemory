@@ -76,3 +76,26 @@ def test_process_inventory_uses_uid_not_name(tmp_path: Path) -> None:
         directory.mkdir()
         (directory / "status").write_text(f"Name:\tpython\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
     assert guest.task_processes(tmp_path) == [20]
+
+
+@pytest.mark.parametrize("state", ["Z", "X"])
+def test_zombie_thread_group_is_not_treated_as_quiescent(tmp_path: Path, state: str) -> None:
+    for pid, threads in [(10, 1), (20, 2)]:
+        directory = tmp_path / str(pid)
+        directory.mkdir()
+        (directory / "status").write_text(
+            f"State:\t{state}\nUid:\t{guest.TASK_UID}\nThreads:\t{threads}\n",
+        )
+    assert guest.task_processes(tmp_path) == [20]
+
+
+@pytest.mark.parametrize("threads", [
+    "", "Threads:\t0\n", "Threads:\t-1\n", "Threads:\t1.5\n",
+    "Threads:\t1 trailing\n", "Threads:\tinvalid\n",
+])
+def test_unknown_zombie_thread_count_fails_closed(tmp_path: Path, threads: str) -> None:
+    directory = tmp_path / "20"
+    directory.mkdir()
+    (directory / "status").write_text(f"State:\tZ\nUid:\t{guest.TASK_UID}\n{threads}")
+    with pytest.raises(guest.GuestError, match="process_inventory_invalid"):
+        guest.task_processes(tmp_path)

@@ -132,14 +132,20 @@ def task_processes(proc: Path = Path("/proc")) -> list[int]:
             text = (entry / "status").read_text()
         except FileNotFoundError:
             continue
-        state = re.search(r"^State:\s+([A-Z])", text, re.MULTILINE)
-        if state is not None and state.group(1) in ("Z", "X"):
-            continue
         match = re.search(r"^Uid:\s+(\d+)\s+", text, re.MULTILINE)
         require(match is not None, "process_inventory_invalid")
         assert match is not None
-        if int(match.group(1)) == TASK_UID:
-            result.append(int(entry.name))
+        if int(match.group(1)) != TASK_UID:
+            continue
+        state = re.search(r"^State:\s+([A-Z])", text, re.MULTILINE)
+        if state is not None and state.group(1) in ("Z", "X"):
+            threads = re.search(r"^Threads:\s+([1-9][0-9]*)\s*$", text, re.MULTILINE)
+            require(threads is not None, "process_inventory_invalid")
+            assert threads is not None
+            # A zombie leader can still own live worker threads.
+            if int(threads.group(1)) == 1:
+                continue
+        result.append(int(entry.name))
     return sorted(result)
 
 

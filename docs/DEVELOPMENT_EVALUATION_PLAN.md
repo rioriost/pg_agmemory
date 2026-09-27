@@ -41,6 +41,16 @@ deadlines, normal editing of seeded files, and unknown grader outcomes.
 Held-out authoring may begin. Private qualification, frozen hash publication
 and live isolation gates remain required before a model-quality comparison.
 
+A subsequent content-independent sandbox check found that a zombie main thread
+can still have live workers. The task inventory now exempts a dead-state leader
+only when its thread count is unambiguously one; larger groups remain active,
+and malformed counts fail closed. The regression establishes the zombie leader
+and advancing heartbeat, rejects the old helper, and verifies worker termination
+before VM removal with the corrected helper. This generic execution correction
+does not change task contents, prompts, scoring or budgets. Refresh the source
+commit, images, CI and private qualification before live dispatch; preserve the
+earlier qualification evidence and unchanged pack hashes.
+
 ## Question and scope
 
 Does cross-session memory help a fresh development agent produce correct
@@ -134,6 +144,11 @@ Guest helpers are immutable and launch commands with a minimal environment,
 fixed working directory, bounded output and process deadlines. A timed-out
 command terminates the session and its entire owned guest; no orphaned task
 process is reused.
+
+Quiescence is checked at thread-group scope, not merely by the leader's state.
+A `Z`/`X` task leader with multiple threads is not quiescent. Missing or malformed
+thread counts prevent capture. A successful signal is not termination proof:
+the independent trusted inventory must confirm quiescence before artifact reads.
 
 At a session boundary export only manifest-allowed regular files. Reject
 symlinks, hardlinks, special files, traversal, unexpected paths, more than

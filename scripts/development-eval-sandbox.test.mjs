@@ -247,6 +247,93 @@ test("orphaned task processes cannot continue writing during artifact capture", 
   } finally { await guest.close(); }
 });
 
+test("a zombie main thread cannot hide a live worker from quiescence checks", {
+  skip: !process.env.PGAG_DEVELOPMENT_GUEST_IMAGE,
+  timeout: 60000,
+}, async () => {
+  const guest = new ExecutionGuest({
+    name: `pgag-dev-thread-group-${randomBytes(6).toString("hex")}`,
+    image: process.env.PGAG_DEVELOPMENT_GUEST_IMAGE, record: () => {},
+  });
+  try {
+    await guest.start(artifact({ "main.py": "pass\n" }).files);
+    const result = await guest.execute(`python - <<'PY'
+import subprocess,sys
+code='''import ctypes,os,threading,time
+from pathlib import Path
+def work():
+    for attempt in range(500):
+        status=Path(f"/proc/{os.getpid()}/status").read_text().splitlines()
+        if any(line.startswith("State:") and line.split()[1]=="Z" for line in status):
+            break
+        time.sleep(0.01)
+    else:
+        raise RuntimeError("main_thread_did_not_exit")
+    Path("/tmp/thread-heartbeat").write_text("-1")
+    print("ready",flush=True)
+    for index in range(600):
+        Path("/tmp/thread-heartbeat.tmp").write_text(str(index))
+        os.replace("/tmp/thread-heartbeat.tmp","/tmp/thread-heartbeat")
+        time.sleep(0.1)
+threading.Thread(target=work).start()
+ctypes.CDLL(None).pthread_exit(None)
+'''
+child=subprocess.Popen([sys.executable,"-c",code],stdin=subprocess.DEVNULL,
+    stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,start_new_session=True,text=True)
+assert child.stdout.readline()=="ready\\n"
+print(child.pid)
+PY`);
+    assert.equal(result.exitCode, 0);
+    const pid = Number(result.stdout.toString().trim());
+    assert.ok(Number.isSafeInteger(pid) && pid > 1);
+    const inspect = async (advance = false) => {
+      const observed = await guest.runner("container", [
+        "exec", "--user", "0:0", guest.name, "python", "-I", "-c", `import json,time
+from pathlib import Path
+heartbeat=Path("/tmp/thread-heartbeat")
+before=int(heartbeat.read_text())
+after=before
+deadline=time.monotonic()+5
+while ${advance ? 1 : 0} and after==before and time.monotonic()<deadline:
+    time.sleep(0.05)
+    after=int(heartbeat.read_text())
+try:
+    values=dict(line.split(":",1) for line in Path("/proc/${pid}/status").read_text().splitlines())
+except FileNotFoundError:
+    values=None
+print(json.dumps({"exists":values is not None,
+    "state":values["State"].strip().split()[0] if values else None,
+    "threads":int(values["Threads"]) if values else None,
+    "before":before,"after":after}))
+`,
+      ], { timeoutMs: 10000 });
+      assert.equal(observed.exitCode, 0, observed.stderr.toString());
+      return JSON.parse(observed.stdout);
+    };
+    const running = await inspect(true);
+    assert.equal(running.state, "Z");
+    assert.ok(running.threads >= 2);
+    assert.ok(running.after > running.before);
+    await assert.rejects(guest.helper("probe"), (error) =>
+      error.code === "guest_helper_failed" && error.guest_code === "task_processes_still_present");
+    let stoppedBeforeRemoval = false;
+    const close = guest.close.bind(guest);
+    guest.close = async (options) => {
+      if (guest.closed) return;
+      try {
+        const stopped = await inspect();
+        assert.ok(!stopped.exists || ["Z", "X"].includes(stopped.state) && stopped.threads === 1);
+        assert.ok(stopped.after < 599, "worker must stop before natural expiry");
+        stoppedBeforeRemoval = true;
+      } finally { await close(options); }
+    };
+    const captured = await guest.export(["main.py"]);
+    assert.equal(captured.files[0].sha256, sha256("pass\n"));
+    assert.equal(stoppedBeforeRemoval, true);
+    assert.equal(guest.closed, true);
+  } finally { await guest.close(); }
+});
+
 test("a started candidate timeout is a failed check and the guest is removed", {
   skip: !process.env.PGAG_DEVELOPMENT_GUEST_IMAGE,
   timeout: 60000,
