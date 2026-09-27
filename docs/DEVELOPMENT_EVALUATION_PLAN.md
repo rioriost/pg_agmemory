@@ -479,6 +479,111 @@ plan.
 - [Model/Environment protocols and global dotenv loading](https://github.com/SWE-agent/mini-swe-agent/blob/a83fcae82d2a08f0ee0c688f9d137b3566c097f8/src/minisweagent/__init__.py)
 - [Control-flow exceptions](https://github.com/SWE-agent/mini-swe-agent/blob/a83fcae82d2a08f0ee0c688f9d137b3566c097f8/src/minisweagent/exceptions.py)
 
+## Pre-edit interface agreement
+
+The two Astra/high workers supplied compatible controller and memory proposals.
+The following parent-owned decisions fix the remaining spelling, lifecycle and
+transport seams. They do not authorize implementation before the CI gate.
+
+**Shared vocabulary and dependency direction.** Arms are exactly
+`no_memory`, `handoff`, `pg_agmemory`; model phases are `work`, `handoff`,
+`memory_decision`, `memory_plan`. Worker B owns `BoundaryTranscript`,
+`ModelReply`, IPC/result/event contracts. Worker A owns `MemoryBinding`,
+`MemoryState`, `BoundaryKeys`, delivery/boundary results and memory-specific
+errors. A consumes B's transcript/reply through structural protocols, without
+importing B; B may import A's strict state models. Optional SDK dependencies
+must not be imported merely to construct the no-memory arm.
+
+**Controller input.** The fixed entry point has discriminated `work` and
+`boundary` modes. Both require protocol `pgag-development-controller-v1`,
+run/session/slot identities, frozen recipe hash, model spec, trusted
+`MemoryBinding`, and required nullable `memory_state`. There is no second
+`previous_handoff` field: the handoff note lives only in the arm-specific
+state. Work additionally receives the current brief, starting-tree hash,
+allowed output paths and entry point. Boundary instead receives the exact
+`BoundaryTranscript`, host-owned `boundary_id` and required nullable
+`BoundaryKeys`; it receives no grading results.
+
+`MemoryBinding` contains run ID, project ID, exact arm and a host-provisioned
+scope UUID. A bound state contains format `development-memory-state-v1`,
+the binding, completed-boundary count, last boundary ID, required nullable
+note, and up to twelve ordered current assertion records
+`{memory_id, revision, status}`. Status is `active` or `pending`.
+The handoff state contains only its replacement note and continuity metadata;
+pg_agmemory has a null note and reference-only assertion records.
+No-memory requires null state at every milestone. All arms begin with null
+state in milestone one. Later memory-arm states must match the trusted
+binding and exactly `milestone - 1` completed boundaries.
+
+**Separate work and boundary lifecycles.** Each mode starts a fresh trusted
+controller process/HOME. A fresh boundary controller must be able to call
+`maintain()` directly: it must not call `deliver()` again or repeat retrieval
+just to initialize memory state. Its input is the pre-boundary state from that
+work slot, not an agent object or a cached Native client. There is no
+no-memory boundary controller; no-memory remains null without manufacturing
+completion state. No boundary runs after milestone three.
+
+The agreed memory surface is:
+
+```python
+DevelopmentMemory(binding, *, session_number, state,
+                  native_factory, invoke, emit, now)
+
+async deliver(public_brief) -> MemoryDelivery
+async maintain(transcript, *, boundary_id, keys) -> MemoryBoundaryResult
+
+invoke(phase, prompt, planning_round) -> ModelReply  # synchronous and blocking
+```
+
+Each public memory method is single-use on its instance; `maintain` does not
+require a previous `deliver`. Async methods call `invoke` directly, never
+await it or create a concurrent request. A successful model reply exposes
+unaltered `text` and the unchanged host `receipt_ref`. It is returned only
+after host event/usage validation. `planning_round` is required, `1..4` for
+memory planning and null otherwise. A fresh one-use Native client context is
+opened inside each async method that needs it; none survives separate
+`asyncio.run()` calls.
+
+**IPC.** Controllers can request only `invoke_model` and `execute`. Requests
+contain protocol, registered session ID, monotonic sequence, operation and a
+strict operation-specific body. Model bodies contain phase, one fully rendered
+prompt and nullable planning round; execute bodies contain only a command.
+Replies echo the complete tuple. Success and failure variants carry typed
+results, measured/unknown usage and the applicable host invocation receipt.
+A nonzero command exit is a completed execute result; timeout/helper/cancellation
+is a terminal error. Export, grading, canaries, lifecycle and comparison are
+host-only. No controller/model field chooses a container, environment,
+executable, resource limit or deadline.
+
+**Boundary and Native identities.** The host supplies one Observe key, six
+distinct create keys and four distinct revision keys for each pg_agmemory
+boundary; unused slots are not dispatched. All keys and boundary IDs are
+caller-owned and recorded before use. Boundary keys are null for handoff.
+The transcript's exact text/hash and message-omission metadata are built by B
+and verified, not reconstructed, by A.
+Decision spans are half-open Unicode-code-point offsets into that exact text;
+derive evidence quotes locally and validate before assertion mutations.
+Partial known/uncertain mutation receipts remain evidence and block dependent
+sessions rather than publishing a partially successful continuity state.
+
+**Real SDK transport.** Native SDK settings accept plain HTTP only on loopback.
+Keep a real Native API process in a run-owned trusted runtime guest and launch
+fresh controller subprocesses in that same guest, with isolated HOME/config
+directories. They use the unchanged SDK against loopback and receive only
+their scoped API authorization, not database credentials. The API uses the
+restricted runtime DB role. Task/grading guests remain separate, networkless
+and without private mounts. Do not monkeypatch SDK transport, relax TLS
+verification or accept a private-container plain-HTTP hostname.
+
+Inventory is retrieved by at most twelve singleton required-reference reads,
+not by passing the registry into lexical search. Verify each exact current
+reference and complete item, with a 16 KiB final inventory cap; the Native
+8,000-byte per-response cap still applies. Pending contents may be fetched
+only for readability checks and are never rendered to a model. Optional
+candidate truncation alone does not mean a requested singleton is missing.
+SDK capability checks are separately recorded setup traffic. There are no
+Forget, history, explanation or worker methods in the memory port.
+
 ## Design review record
 
 The initial Astra/xhigh review found four implementation blockers. Revision 2
