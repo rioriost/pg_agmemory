@@ -16,6 +16,12 @@ const usage = {
   api_duration_ms: 1, monetary_cost_verified: false,
 };
 
+const fractionalNanoUsage = {
+  input_tokens: 4380, output_tokens: 2100, cache_read_tokens: 0, cache_write_tokens: 4377,
+  reasoning_tokens: 442, api_requests: 1, premium_requests: 1, nano_aiu: 15974250000.000002,
+  api_duration_ms: 30857, monetary_cost_verified: false,
+};
+
 const reference = (ordinal) => ({
   global_ordinal: ordinal, bridge_id: "test-run-no_memory",
   bridge_call_id: String(ordinal).padStart(6, "0"),
@@ -136,10 +142,50 @@ test("unit: known provider totals and transport health are independent", () => {
     assert.equal(audit.transport_healthy, outcome === "not_started");
   }
   const malformed = modelOperation(1);
-  malformed.result.usage.nano_aiu = 0.5;
+  malformed.result.usage.nano_aiu = "0.5";
   assert.equal(verifyControllerAccounting(controllerResult([malformed], {
     status: "failed", provider_api_requests: null,
   }), [malformed]).transport_healthy, false);
+});
+
+test("unit: financial usage accepts nullable finite fractions without changing the reported value",
+  () => {
+    for (const nano of [null, 0, 15974250000, 0.5, 15974250000.000002]) {
+      const operation = modelOperation(1);
+      operation.result.usage = { ...fractionalNanoUsage, nano_aiu: nano };
+      const original = JSON.stringify(operation.result.usage);
+      const result = controllerResult([operation]);
+      const audit = verifyControllerAccounting(result, [operation]);
+      assert.equal(audit.complete, true);
+      assert.equal(audit.transport_healthy, true);
+      assert.equal(audit.host_expected.provider_api_requests, 1);
+      assert.equal(JSON.stringify(operation.result.usage), original);
+      assert.equal(JSON.parse(original).nano_aiu, nano);
+    }
+    for (const nano of ["0.5", true, false, -0.5, NaN, Infinity, -Infinity]) {
+      const operation = modelOperation(1);
+      operation.result.usage = { ...fractionalNanoUsage, nano_aiu: nano };
+      const audit = verifyControllerAccounting(controllerResult([operation], {
+        status: "failed", provider_api_requests: null,
+      }), [operation]);
+      assert.equal(audit.transport_healthy, false);
+    }
+  });
+
+test("unit: fractional financial metadata does not relax API and token count guards", () => {
+  for (const field of [
+    "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
+    "reasoning_tokens", "api_requests",
+  ]) {
+    for (const value of [1.5, true, "1"]) {
+      const operation = modelOperation(1);
+      operation.result.usage = { ...fractionalNanoUsage, [field]: value };
+      const audit = verifyControllerAccounting(controllerResult([operation], {
+        status: "failed", provider_api_requests: null,
+      }), [operation]);
+      assert.equal(audit.transport_healthy, false, field);
+    }
+  }
 });
 
 test("unit: incomplete accounting requires an evidenced unacknowledged uncertainty tail", () => {
@@ -462,6 +508,23 @@ test("unit: accounted model format failure is not mistaken for controller corrup
   assert.equal(fixture.transport.ledger.stopped, false);
 });
 
+test("unit: reported fractional nano AIU passes future dispatch and reply publication unchanged",
+  async (t) => {
+    const snapshot = JSON.stringify(fractionalNanoUsage);
+    const fixture = await unitSession(t, { usage: fractionalNanoUsage });
+    const result = await fixture.session.run();
+    assert.equal(result.status, "submitted");
+    assert.equal(result.host_accounting.complete, true);
+    assert.equal(result.provider_api_requests, 1);
+    assert.equal(fixture.transport.ledger.stopped, false);
+    assert.equal(fixture.calls(), 1);
+    assert.deepEqual(fixture.published[0].result.usage, fractionalNanoUsage);
+    const encoded = JSON.stringify(fixture.published[0]);
+    assert.ok(encoded.includes('"nano_aiu":15974250000.000002'));
+    assert.equal(JSON.parse(encoded).result.usage.nano_aiu, fractionalNanoUsage.nano_aiu);
+    assert.equal(JSON.stringify(fractionalNanoUsage), snapshot);
+  });
+
 test("unit: acknowledged model response failure retains its known admission without poisoning ledger",
   async (t) => {
     const fixture = await unitSession(t, { modelError: new EvaluationError("model_response_failed") });
@@ -650,6 +713,7 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
     runtimeImage: process.env.PGAG_DEVELOPMENT_RUNTIME_IMAGE, record,
   });
   const ledger = new InvocationLedger({ record, runId, model: "gpt-6-astra", effort: "high" });
+  const nanoAiu = 15974250000.000002;
   const transport = {
     ledger,
     async invoke(context) {
@@ -657,7 +721,11 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       const text = context.phase === "handoff" ? '{"note":"Preserve the integer value."}'
         : context.phase === "memory_decision" ? '{"create":[],"revise":[],"propose_forget":[]}'
           : '{"final":"Synthetic protocol submission."}';
-      return { text, receipt_ref: admission.receipt, usage, duration_seconds: 0.001 };
+      return {
+        text, receipt_ref: admission.receipt,
+        usage: context.phase === "work" ? { ...usage, nano_aiu: nanoAiu } : usage,
+        duration_seconds: 0.001,
+      };
     },
   };
   const model = { model: "gpt-6-astra", reasoning_effort: "high" };
@@ -695,6 +763,18 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
         recent_events: records.slice(-5) }));
       assert.equal(work.query_attempts, 1);
       assert.equal(work.admitted_invocations, 1);
+      assert.equal(work.provider_api_requests, 1);
+      assert.equal(work.host_accounting.complete, true);
+      assert.equal(work.host_accounting.transport_healthy, true);
+      const replyBytes = await fs.readFile(path.join(
+        infrastructure.directory, "controllers", sessionId, "ipc", "replies", "000001.json",
+      ), "utf8");
+      assert.ok(replyBytes.includes('"nano_aiu":15974250000.000002'));
+      assert.equal(JSON.parse(replyBytes).result.usage.nano_aiu, nanoAiu);
+      const consumed = records.filter((row) => row.kind === "controller_event"
+        && row.event.session_id === sessionId && row.event.kind === "ipc_reply");
+      assert.equal(consumed.length, 1);
+      assert.equal(consumed[0].event.data.reply.result.usage.nano_aiu, nanoAiu);
       const captured = await guest.export(["main.py"]);
       assert.equal(captured.tree_sha256, seed.tree_sha256);
       if (arm === "no_memory") continue;

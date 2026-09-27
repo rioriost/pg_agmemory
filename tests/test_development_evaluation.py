@@ -15,6 +15,7 @@ from pg_agmemory.development_evaluation import (
     GradeRecord,
     InvocationRef,
     MemoryAuditEvent,
+    ModelUsage,
     VisibleMessage,
     audit_json,
     boundary_transcript,
@@ -60,6 +61,42 @@ def model_result(call=1):
         },
         "duration_ns": 1100000000,
     }
+
+
+FRACTIONAL_NANO_USAGE = {
+    "input_tokens": 4380, "output_tokens": 2100, "cache_read_tokens": 0, "cache_write_tokens": 4377,
+    "reasoning_tokens": 442, "api_requests": 1, "premium_requests": 1,
+    "nano_aiu": 15974250000.000002, "api_duration_ms": 30857, "monetary_cost_verified": False,
+}
+
+
+@pytest.mark.parametrize("nano_aiu", [None, 0, 15974250000, 0.5, 1.0, 15974250000.000002])
+def test_financial_usage_preserves_reported_numeric_value_and_type(nano_aiu):
+    usage = ModelUsage.model_validate(FRACTIONAL_NANO_USAGE | {"nano_aiu": nano_aiu})
+    restored = ModelUsage.model_validate_json(usage.model_dump_json())
+    for value in (usage.nano_aiu, usage.model_dump(mode="json")["nano_aiu"], restored.nano_aiu):
+        assert type(value) is type(nano_aiu)
+        assert value == nano_aiu
+        if isinstance(nano_aiu, float):
+            assert value.hex() == nano_aiu.hex()
+
+
+@pytest.mark.parametrize("nano_aiu", [
+    "0.5", True, False, -0.5, float("nan"), float("inf"), -float("inf"),
+])
+def test_financial_usage_rejects_non_numeric_negative_and_nonfinite_values(nano_aiu):
+    with pytest.raises(ValidationError):
+        ModelUsage.model_validate(FRACTIONAL_NANO_USAGE | {"nano_aiu": nano_aiu})
+
+
+@pytest.mark.parametrize("field", [
+    "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
+    "reasoning_tokens", "api_requests",
+])
+@pytest.mark.parametrize("value", [1.5, True, "1"])
+def test_financial_fraction_does_not_relax_api_or_token_integer_types(field, value):
+    with pytest.raises(ValidationError):
+        ModelUsage.model_validate(FRACTIONAL_NANO_USAGE | {field: value})
 
 
 def make_ipc(tmp_path, responder, *, work=True, arm="no_memory"):
@@ -257,6 +294,32 @@ def test_ipc_host_receipts_are_passed_through_and_no_commands_execute_locally(tm
         assert request["body"] == {"phase": "work", "prompt": "prompt", "planning_round": None}
         assert set(request) == {"protocol", "session_id", "sequence", "operation", "body"}
         assert (ipc.requests / "000001.json").stat().st_nlink == 1
+    finally:
+        events.close()
+
+
+def test_fractional_financial_usage_survives_file_ipc_and_audit_without_rounding(tmp_path):
+    def respond(request, response, now):
+        response["result"]["usage"] = dict(FRACTIONAL_NANO_USAGE)
+
+    ipc, events, _ = make_ipc(tmp_path, respond)
+    try:
+        reply = ipc.invoke("work", "prompt", None)
+        reported = FRACTIONAL_NANO_USAGE["nano_aiu"]
+        assert reply.usage.nano_aiu == reported
+        assert reply.usage.nano_aiu.hex() == reported.hex()
+        assert ipc.provider_requests == len(ipc.receipts) == 1
+        raw_reply = json.loads(private_read(ipc.replies / "000001.json", 70000))
+        assert raw_reply["result"]["usage"] == FRACTIONAL_NANO_USAGE
+        records = [
+            json.loads(line)
+            for line in (events.directory / "events.jsonl").read_bytes().splitlines()
+        ]
+        received = next(
+            record["data"]["reply"] for record in records if record["kind"] == "ipc_reply"
+        )
+        assert received["result"]["usage"] == FRACTIONAL_NANO_USAGE
+        assert received["result"]["usage"]["nano_aiu"].hex() == reported.hex()
     finally:
         events.close()
 

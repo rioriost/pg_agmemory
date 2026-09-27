@@ -363,7 +363,11 @@ class ModelUsage(StrictModel):
     reasoning_tokens: Count | None
     api_requests: Count
     premium_requests: Annotated[float, Field(ge=0, allow_inf_nan=False)]
-    nano_aiu: Count | None
+    nano_aiu: (
+        Annotated[int, Field(strict=True, ge=0)]
+        | Annotated[float, Field(strict=True, ge=0, allow_inf_nan=False)]
+        | None
+    )
     api_duration_ms: Annotated[float, Field(ge=0, allow_inf_nan=False)]
     monetary_cost_verified: Literal[False]
 

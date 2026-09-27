@@ -47,8 +47,7 @@ function usageAccounting(usage) {
   try {
     // Validate the full shape independently of the one-provider-request continuation gate.
     validateUsage({ ...usage, api_requests: 1 });
-    requireCondition(count(usage.api_requests)
-      && (usage.nano_aiu === null || count(usage.nano_aiu)), "failed_transport_accounting");
+    requireCondition(count(usage.api_requests), "failed_transport_accounting");
   } catch (error) {
     if (!(error instanceof EvaluationError)) throw error;
     return { known: false, healthy: false };

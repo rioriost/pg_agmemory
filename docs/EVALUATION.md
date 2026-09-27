@@ -2,10 +2,45 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Development-work evaluation: framework approved, live comparison pending
+## Development-work evaluation: first live attempt incomplete
+
+The [first live result](../examples/development-memory-pilot-v1-result.json)
+is **terminal failed**, not a completed three-arm comparison. On frozen
+`0f43765`, all eight source-CI jobs and the six live isolation canaries passed.
+The no-memory and handoff arms each completed the first milestone with 12/12
+checks. The first pg_agmemory work session became infrastructure-unknown;
+the other fifteen slots remain unrun. No cross-session memory was consumed,
+and no pg_agmemory capture or planning decision ran. These observations do not
+support an arm ranking or a memory-usefulness conclusion.
+
+The eighteenth invocation returned an otherwise successful response with one
+reported API request. Its model-level CLI usage contained
+`nano_aiu=15974250000.000002`, which the bridge preserved but the controller's
+integer-only metering validation rejected as `failed_transport_accounting`.
+This was not a provider-request-ceiling violation or a Native memory-quality
+failure. The run stopped without retry, artifact reconstruction or changed
+scoring; all owned guests were removed and all three bridge exits acknowledged.
+
+All eighteen reported API requests and their original receipts are retained.
+Observed usage was 83,060 input / 10,748 output tokens, with overlapping cache
+and reasoning categories reported separately. The exact decimal sum of retained
+model-metric JSON numeric lexemes is `157551500000.0000005` nano-AIU; the original
+JavaScript aggregate is `157551500000`. Neither is a verified bill. The audit
+does not overwrite the original summary, whose SHA256 is recorded in the public
+result. No replacement live run has been performed.
+
+The controller and Python usage contract have now been aligned with the existing
+bridge: nullable `nano_aiu` accepts finite, nonnegative integer or fractional
+numbers without rounding, string coercion or substitution from another total.
+API/token integer checks and the exactly-one-request gate remain unchanged.
+The observed value passed offline and real guest-IPC regressions with fake model
+replies, and Astra/xhigh approved the correction and this failed-attempt report.
+This does not retroactively complete the original run or authorize a retry.
+
+### Framework and preregistration
 
 The [mini-swe-agent implementation plan](DEVELOPMENT_EVALUATION_PLAN.md) defines
-the next comparison: no memory, a fixed-length handoff note, and pg_agmemory.
+the comparison: no memory, a fixed-length handoff note, and pg_agmemory.
 It uses actual code submissions and hidden acceptance cases, with fresh agents
 and isolated execution guests. Identical canonical restarts at each milestone
 prevent uncontrolled file-based carryover; this is a stage-gated handoff pilot,
@@ -13,9 +48,8 @@ not continuous development on an agent-owned branch.
 Revision 2 passed Astra/xhigh re-review with no remaining design blockers.
 The separate phase-one CI and pre-edit interface gates also passed. The
 implemented framework has now passed local integrated validation and
-Astra/xhigh implementation review. A separate author has privately qualified
-the task pack; live three-arm calls have not started, and no new usefulness
-result is claimed.
+Astra/xhigh implementation review. A separate author privately qualified the
+task pack before the first attempt; no new usefulness result is claimed.
 
 The first complete no-model protocol exercise passed eighteen work sessions
 and eight separate boundaries with 44 scripted invocations, real isolated
@@ -43,9 +77,9 @@ passed the same 139-row matrix on the new source-bound image; the earlier
 qualification is retained, not replaced. The parent verified both hashes and
 matrices without reading private task contents. These are qualification
 results, not agent work-model results.
-Execution remains bound to the clean `0f43765` checkout and its images even
-though this manifest is published in a later documentation-only commit.
-Source CI and the live canaries must pass before task calls.
+The first attempt used the clean `0f43765` checkout and its images even though
+the manifest was published in a later documentation-only commit.
+Source CI and the live canaries passed before task calls.
 
 ## Paired English projection cost measurement
 

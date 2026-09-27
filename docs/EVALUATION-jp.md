@@ -2,9 +2,40 @@
 
 [English](EVALUATION.md)
 
-## 開発業務の評価: framework承認済み、実比較は未実施
+## 開発業務の評価: 初回の実評価は未完了
 
-次は[mini-swe-agentの実装プラン](DEVELOPMENT_EVALUATION_PLAN.md)に従い、
+[初回の実評価結果](../examples/development-memory-pilot-v1-result.json)は
+**terminal failed**であり、3方式の比較完了ではありません。
+固定した`0f43765`のCI全8 jobと、実推論による隔離canary 6回は通過しました。
+記憶なし・引継ぎメモは、それぞれ最初のmilestoneで12/12件を満たしました。
+pg_agmemoryの最初のwork sessionは基盤側の判定でunknownとなり、残り15 slotは未実行です。
+session間の記憶はまだ消費されておらず、pg_agmemoryの保存判断・検索計画も0回です。
+方式間の優劣やメモリの有用性は判断できません。
+
+18回目の呼出しは、API request 1件の正常な応答でした。
+CLIのmodel別利用量に含まれる`nano_aiu=15974250000.000002`をbridgeはそのまま保持しましたが、
+controller側の整数限定の検証が`failed_transport_accounting`として拒否しました。
+API呼出し上限の超過でも、Nativeメモリ品質の失敗でもありません。
+再試行・成果物の再構築・採点変更は行わず、所有guestの削除と3 bridgeの終了を確認しました。
+
+18件のAPI requestと元のreceiptを保持しています。
+入力83,060／出力10,748 tokenで、重複し得るcache・reasoning区分は別記しています。
+model別JSON数値表記の厳密な十進合計は`157551500000.0000005` nano-AIU、
+元のJavaScript集計値は`157551500000`です。いずれも確定した請求額ではありません。
+監査値で元のsummaryを上書きせず、公開結果にそのSHA256を記録しました。
+代わりの実評価は実行していません。
+
+controllerとPythonの利用量契約は既存bridgeに合わせて修正しました。
+`nano_aiu`はnull、または有限・非負の整数／小数をそのまま受け付け、
+丸め・文字列からの変換・別の合計値への置換は行いません。
+API/tokenの整数検証とAPI request 1件のgateは維持しています。
+同じ数値をfake model応答に使うoffline確認・実guest IPC確認を通過し、
+Astra/xhighが修正と初回失敗レポートを承認しました。
+元の実行を完了扱いに変更したり、再試行を許可したりするものではありません。
+
+### Frameworkと事前登録
+
+[mini-swe-agentの実装プラン](DEVELOPMENT_EVALUATION_PLAN.md)に従い、
 「記憶なし」「固定長の引継ぎメモ」「pg_agmemory」を比較します。
 実際のコード成果物と非公開の受入caseを使い、agentと実行環境を毎session新規にします。
 fileによる意図しない記憶の持越しを防ぐため、各milestoneでは全armを同じ固定sourceから開始します。
@@ -13,7 +44,7 @@ fileによる意図しない記憶の持越しを防ぐため、各milestoneで�
 第1段階のCIと編集前interface合意に加え、実装したframeworkのローカル結合確認と
 Astra/xhighによる実装レビューも完了しました。
 別担当がtask packを作成し、非公開の適格性確認まで完了しました。
-3 armの実推論はまだ開始しておらず、新たな有用性の結果は主張していません。
+初回の実推論は上記の理由で中断しており、新たな有用性の結果は主張していません。
 
 最初のmodelなしの通し確認では、18 work sessionと8回の独立した記憶更新を、
 44回のscripted呼出し、実際の隔離guestと外部の成果物判定で実行しました。
@@ -39,8 +70,8 @@ task内容・model prompt・採点・budgetは変更していません。
 同じ139件のmatrixを再確認しました。初回の証跡も保持しています。
 親agentは非公開のtask内容を読まず、両方のhashと判定matrixを照合しています。
 これはtaskの適格性確認であり、work modelの開発成績ではありません。
-manifestは後続の文書commitで公開しますが、実行には固定した`0f43765`の
-clean checkoutとimageを使います。task呼出し前に対象sourceのCIとcanaryを通過させます。
+manifestは後続の文書commitで公開しましたが、実行には固定した`0f43765`の
+clean checkoutとimageを使いました。task呼出し前に対象sourceのCIとcanaryを通過しています。
 
 ## 英語projection追加負荷の対応比較
 
