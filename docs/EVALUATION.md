@@ -105,7 +105,15 @@ timeout after **5,773 passed / 137 skipped**, 18 isolated COMMIT checks,
 drill has no completion report and the subsequent bridge step is skipped.
 The job annotation confirms a timeout, not a reported test assertion failure.
 The final cleanup-only source `b543bd1` separately passes 59 targeted live
-benchmark checks and its two-order cleanup smoke; its broader CI is pending.
+benchmark checks and its two-order cleanup smoke. Its
+[CI run 36292440686](https://github.com/rioriost/pg_agmemory/actions/runs/36292440686)
+also ends with seven successful jobs and a Native amd64 40-minute timeout.
+Both architectures complete **5,781 passed / 137 skipped**, plus 18 COMMIT
+and 13 deadline checks; arm64 additionally completes 88 recovery and nine
+bridge checks. The remaining amd64 checks are not claimed complete.
+The Native job allowance is therefore increased **40 to 60 minutes**,
+preserving all checks and every other timeout. This is a CI scheduling fix,
+not a relaxed model-evaluation deadline; a complete new CI run remains required.
 
 ### Historical reader latency is dominated by model-call boundaries
 

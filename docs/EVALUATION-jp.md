@@ -98,7 +98,14 @@ request 13件、recovery契約88件の後、設定された40分のjob上限に�
 分離restore drillの完了報告はなく、後続bridge stepは未実行です。
 job annotationでtimeoutを確認しており、test assertionの失敗が報告されたわけではありません。
 cleanup限定修正後の`b543bd1`は、別途実DBの対象59 testと両順序のcleanup smokeに成功しています。
-その広範囲CIは確認待ちです。
+その[CI run 36292440686](https://github.com/rioriost/pg_agmemory/actions/runs/36292440686)も、
+7 job成功、Native amd64の40分timeoutで終了しました。
+両architectureで**5,781 passed / 137 skipped**、COMMIT 18件、deadline 13件は完了し、
+arm64ではさらにrecovery 88件とbridge 9件が完了しています。
+残るamd64検証の完了は主張しません。
+全検証と他のtimeoutを維持したまま、Native jobの許容時間だけを**40分から60分**へ増やします。
+CI実行枠の修正であり、model評価のdeadline緩和ではありません。
+新しいCIの全完了を引き続き要求します。
 
 ### 過去の読取時間はmodel call境界が大部分を占める
 

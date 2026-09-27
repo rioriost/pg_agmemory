@@ -10,7 +10,10 @@ the later cleanup-only fix does not replace those measurements. Targeted
 validation and the final cleanup smoke passed. Measured-source CI completed
 with seven successful jobs and one cancelled amd64 Native job, not an
 all-jobs pass. Its cancellation and the latest source CI must be resolved
-before implementation.
+before implementation. The same 40-minute Native amd64 timeout recurred at
+`b543bd1`, again with seven successful jobs. The Native CI allowance alone
+is increased to 60 minutes without removing checks or changing evaluation
+deadlines; the next complete CI result is still a prerequisite.
 
 ## Question and scope
 
