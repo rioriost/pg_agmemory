@@ -1,8 +1,8 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **revision 2 approved by Astra/xhigh for implementation, subject to the
-separate CI gate and pre-edit interface agreement**. No implementation or live
-evaluation is approved as complete.
+Status: **framework implementation approved for freeze by Astra/xhigh**.
+The local integrated gates passed; held-out authoring and private qualification
+are next. No live three-arm evaluation or model-quality result is complete.
 
 This is the second evaluation stage, following the bounded phase-one findings
 published in `b543bd1`. The first paired cost data remain tied to `a31e7c9`;
@@ -13,7 +13,33 @@ all-jobs pass. Its cancellation and the latest source CI must be resolved
 before implementation. The same 40-minute Native amd64 timeout recurred at
 `b543bd1`, again with seven successful jobs. The Native CI allowance alone
 is increased to 60 minutes without removing checks or changing evaluation
-deadlines; the next complete CI result is still a prerequisite.
+deadlines. At `8155413`, [CI run 36294598008](https://github.com/rioriost/pg_agmemory/actions/runs/36294598008)
+passes all eight jobs, including the previously incomplete amd64 checks.
+Both Astra/high workers accepted the final pre-edit interfaces before
+implementation was authorized.
+
+The first complete **no-model protocol run** exercised all eighteen isolated
+work sessions, eight separate memory boundaries, real Native Observe calls,
+artifact export and fresh-guest grading. It used 44 scripted invocations and
+empty pg_agmemory decisions; it is not a usefulness result or nonempty-memory
+qualification. A deterministic IPC publication-race correction also passed
+five subsequent unchanged-image integration repetitions.
+
+Nonempty Native integration exposed a separate clock-domain defect: a
+controller timestamp could precede an acknowledged revision's database
+timestamp when the database guest was about 62 ms ahead. Three cases failed
+closed with required-reference 404s. The reviewed correction below now passes
+the three deliberately skewed nonempty-memory cases and the focused legacy
+SDK/contract regression selection. Final local validation passed **959 Python
+tests** and **81 Node tests without skips**, including the full eighteen-slot
+no-model run; Ruff and mypy also passed. These are overlapping with earlier
+selections, not additional independent measurements.
+
+Astra/xhigh approved the temporal slice and closed all five framework review
+findings: fatal cleanup classification, failed-result accounting, active
+deadlines, normal editing of seeded files, and unknown grader outcomes.
+Held-out authoring may begin. Private qualification, frozen hash publication
+and live isolation gates remain required before a model-quality comparison.
 
 ## Question and scope
 
@@ -446,6 +472,34 @@ Report independent source/reference validity separately from task usefulness.
 One eighteen-slot pilot supports descriptive findings, not generalization or
 statistical superiority claims.
 
+## Reviewed server-resolved temporal bounds amendment
+
+Astra/xhigh approved an additive, opt-in correction for the observed clock
+skew. `include_temporal_bounds=true` requests the exact `as_of` and `known_at`
+already resolved by Native recall. The response includes those instants under
+`temporal_bounds`, including successful empty results. Default request and
+response JSON stay unchanged: omit the false request option and omit response
+bounds unless requested. Advertise `recall_temporal_bounds_v1` through the
+existing capability exchange; unsupported opt-in, missing/malformed bounds
+and mismatched explicit bounds fail without retry or downgrade.
+
+The first existing singleton inventory read or sequential lexical search
+omits both bounds, validates the returned pair, and uses it for the rest of
+that pass. An empty first search still establishes the pair. Reject an
+unpinned multi-query bootstrap. Subsequent searches and final validation
+check the same pair at full microsecond precision; post-write verification
+starts a fresh pass after acknowledged writes. This adds neither requests
+nor model calls and preserves the four-search-plus-one-validation ceiling.
+Controller time remains available for observed events, not Native visibility.
+
+These are **server-resolved temporal selection bounds**, not an MVCC snapshot,
+commit watermark, or guarantee against clock reversal or replica lag.
+A transaction stamped before the pin can commit later. Existing authorization,
+epoch, reference, provenance and fresh-validation guards remain necessary.
+Worker A owns the connected contracts/service/capability/SDK/bounded-reader
+change and focused compatibility/skew regressions; no SQL, migration, matching
+or isolation-level change is authorized.
+
 ## Implementation ownership and gates
 
 After Astra/xhigh review and resolution of meaningful findings:
@@ -472,6 +526,55 @@ first comparison once, audit evidence, and publish all outcomes. No user API
 credentials or paid alternative provider are required for this Copilot-first
 plan.
 
+## Coordinator entry point
+
+`scripts/evaluate-development-memory.mjs` is the host entry point. It requires
+a clean committed checkout, baked images carrying that source identity, a
+private pack, and a new private output directory. Python runs only inside
+Apple Container Linux guests; no source overlays or host-Python fallback.
+Keep input files mode 0600 and their directories mode 0700. Image inspection
+resolves tags to digests before use. Build the images after committing the
+framework:
+
+```bash
+source_revision=$(git rev-parse HEAD)
+container build --target development-execution \
+  --build-arg PGAG_DEVELOPMENT_SOURCE="$source_revision" \
+  --tag "pg-agmemory-development-execution:$source_revision" .
+container build --target development-runtime \
+  --build-arg PGAG_DEVELOPMENT_SOURCE="$source_revision" \
+  --tag "pg-agmemory-development-runtime:$source_revision" .
+```
+
+After the separate author creates the private pack, qualification executes
+the complete positive/negative-control matrix without model calls:
+
+```bash
+node scripts/evaluate-development-memory.mjs \
+  --qualify --pack "$PRIVATE_PACK" --directory "$NEW_QUALIFICATION_DIRECTORY" \
+  --execution-image "pg-agmemory-development-execution:$source_revision"
+```
+
+The live mode requires affirmative permission and matching qualification
+source, image digest, pack hash and execution matrix. It does not accept a
+bare declaration that a pack qualified:
+
+```bash
+node scripts/evaluate-development-memory.mjs \
+  --allow-copilot --pack "$PRIVATE_PACK" --directory "$NEW_RUN_DIRECTORY" \
+  --qualification "$NEW_QUALIFICATION_DIRECTORY/qualification.json" \
+  --runtime-image "pg-agmemory-development-runtime:$source_revision" \
+  --execution-image "pg-agmemory-development-execution:$source_revision" \
+  --model gpt-6-astra --reasoning-effort high
+```
+
+For protocol-only exercises, replace the live permission/qualification options
+with `--scripted-responses "$PRIVATE_SCRIPTED_RESPONSES"`. These responses are
+ordered `{arm,phase,text}` records; no Copilot process or isolation canary is
+started, and summary usage is explicitly synthetic. This mode cannot provide
+task-pack qualification or memory-usefulness evidence. Output archives are
+exclusive, non-resumable first runs; failures are not replaced in place.
+
 ## Verified upstream references
 
 - [Release v2.4.6](https://github.com/SWE-agent/mini-swe-agent/releases/tag/v2.4.6)
@@ -483,7 +586,8 @@ plan.
 
 The two Astra/high workers supplied compatible controller and memory proposals.
 The following parent-owned decisions fix the remaining spelling, lifecycle and
-transport seams. They do not authorize implementation before the CI gate.
+transport seams. Both workers accepted them, and implementation was authorized
+only after the CI gate passed.
 
 **Shared vocabulary and dependency direction.** Arms are exactly
 `no_memory`, `handoff`, `pg_agmemory`; model phases are `work`, `handoff`,

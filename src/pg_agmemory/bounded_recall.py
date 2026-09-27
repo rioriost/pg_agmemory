@@ -25,6 +25,7 @@ from pg_agmemory.models import (
     MemoryReference,
     Recall,
     RecallResult,
+    RecallTemporalBounds,
 )
 from pg_agmemory.query_planning import (
     ENGLISH_PROFILE,
@@ -403,13 +404,20 @@ class BoundedRecall:
     The default preserves first admission. Opt-in round-robin selection interleaves
     Native-ranked query lists, visiting follow-up lists first, without relevance scoring.
     Sequential scheduling permits four one-query rounds; the default retains two batches.
+    Server-current temporal selection bootstraps from a single validated response,
+    not a client clock. It pins predicates, not an MVCC snapshot or commit watermark.
     """
 
     def __init__(
         self, base_request: Recall, *, excluded_memory_ids: Sequence[UUID] = (),
         evidence_selection: Literal["first-admitted-v1", "round-robin-v1"] = "first-admitted-v1",
         planning_schedule: Literal["batched-v1", "sequential-v1"] = "batched-v1",
+        temporal_selection: Literal[
+            "client-pinned-v1", "server-current-v1"
+        ] = "client-pinned-v1",
     ) -> None:
+        if temporal_selection not in ("client-pinned-v1", "server-current-v1"):
+            raise BoundedRecallError("invalid_temporal_selection")
         if not isinstance(planning_schedule, str) or planning_schedule not in (
             "batched-v1", "sequential-v1",
         ):
@@ -426,10 +434,15 @@ class BoundedRecall:
                 base.retrieval_mode != "lexical" or base.vector_query is not None
                 or base.required_memory_refs or not base.scope_ids
                 or len(set(base.scope_ids)) != len(base.scope_ids)
-                or base.as_of is None or base.known_at is None
                 or base.max_items > MAX_ITEMS or base.token_budget > MAX_PROMPT_BYTES
                 or any(not isinstance(identity, UUID) for identity in excluded_memory_ids)
             ):
+                raise ValueError
+            if temporal_selection == "server-current-v1":
+                if base.as_of is not None or base.known_at is not None:
+                    raise ValueError
+                base.include_temporal_bounds = True
+            elif base.as_of is None or base.known_at is None:
                 raise ValueError
             build_context([], base.token_budget)
             self._excluded = frozenset(excluded_memory_ids)
@@ -438,6 +451,8 @@ class BoundedRecall:
         self._base = base
         self._evidence_selection = evidence_selection
         self._planning_schedule = planning_schedule
+        self._temporal_selection = temporal_selection
+        self._temporal_bounds: RecallTemporalBounds | None = None
         self._feedback: list[SearchFeedback] = []
         self._recording = False
         self._candidate_lists: list[_SearchCandidates] = []
@@ -506,6 +521,11 @@ class BoundedRecall:
             keys = [_term_set(query) for query in checked.queries]
             if self._planning_schedule == "sequential-v1" and len(keys) > 1:
                 raise ValueError
+            if (
+                self._temporal_selection == "server-current-v1"
+                and self._temporal_bounds is None and len(keys) != 1
+            ):
+                raise ValueError
             if not keys and self._rounds == 0:
                 raise ValueError
             if any(key in self._query_keys for key in keys):
@@ -545,6 +565,11 @@ class BoundedRecall:
             ):
                 self._fail("oversized_recall_response")
             value = RecallResult.model_validate(result.model_dump(), strict=True)
+            bounds = value.validated_temporal_bounds(request)
+            as_of = bounds.as_of if bounds is not None else request.as_of
+            known_at = bounds.known_at if bounds is not None else request.known_at
+            if self._temporal_bounds is not None and bounds != self._temporal_bounds:
+                self._fail("recall_temporal_bounds_changed")
             if (
                 value.search_profile != request.search_profile
                 or value.retrieval_mode != "lexical" or value.embedding_model is not None
@@ -566,7 +591,7 @@ class BoundedRecall:
                 if (
                     not 1 <= item.revision <= 1000 or not item.content or not item.requires_refresh
                     or item.recorded_at.tzinfo is None
-                    or (request.known_at is not None and item.recorded_at > request.known_at)
+                    or (known_at is not None and item.recorded_at > known_at)
                     or (request.filters is not None and request.filters.kind is not None
                         and item.type != request.filters.kind)
                 ):
@@ -574,16 +599,16 @@ class BoundedRecall:
                 if item.type == "episode" and (
                     item.revision != 1 or item.occurred_at is None
                     or item.occurred_at.tzinfo is None
-                    or (request.as_of is not None and item.occurred_at > request.as_of)
+                    or (as_of is not None and item.occurred_at > as_of)
                 ):
                     self._fail("invalid_recall_item")
                 if item.type == "assertion":
                     for bound in (item.valid_from, item.valid_to):
                         if bound is not None and bound.tzinfo is None:
                             self._fail("invalid_recall_item")
-                    if request.as_of is not None and (
-                        (item.valid_from is not None and item.valid_from > request.as_of)
-                        or (item.valid_to is not None and item.valid_to <= request.as_of)
+                    if as_of is not None and (
+                        (item.valid_from is not None and item.valid_from > as_of)
+                        or (item.valid_to is not None and item.valid_to <= as_of)
                     ):
                         self._fail("invalid_recall_item")
             pack, _, omitted = build_context(
@@ -636,6 +661,18 @@ class BoundedRecall:
                 self._fail("recall_request_mismatch")
             self._recording = True
             value = self._response(result, expected)
+            if (
+                self._temporal_selection == "server-current-v1"
+                and self._temporal_bounds is None
+            ):
+                bounds = value.temporal_bounds
+                if bounds is None:
+                    self._fail("missing_temporal_bounds")
+                self._temporal_bounds = bounds.model_copy(deep=True)
+                # Adopt effective selection only after validation; the issued request stays intact.
+                self._base = self._base.model_copy(update={
+                    "as_of": bounds.as_of, "known_at": bounds.known_at,
+                })
             additions = []
             for item in value.items:
                 signature = (

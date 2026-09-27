@@ -754,6 +754,20 @@ than authorizing deletion. These are caller-owned opt-in workflows; they do not
 change server-wide authorization or make pending rows globally unreadable.
 See [bounds and review semantics](docs/operations/README.md#bounded-follow-up-and-retention-review).
 
+For controllers whose wall clock differs from PostgreSQL, explicitly select
+`BoundedRecall(..., temporal_selection="server-current-v1")`. Its base request
+must omit both `as_of` and `known_at`. The first actual search must be a singleton;
+its validated server-returned temporal bounds are adopted even when it finds no
+items. Subsequent searches and required-reference validation reuse those exact
+bounds. This adds neither a clock probe nor a retry and preserves the four-search,
+one-validation ceiling. The default `client-pinned-v1` behavior still requires
+caller-supplied bounds. Issued requests are never rewritten after dispatch.
+
+These are **server-resolved temporal selection bounds**, not an MVCC snapshot or
+a commit watermark. Equal bounds do not freeze visibility: a transaction stamped
+before the pin may commit later. Fresh required-reference validation, consistency
+epochs, scope checks and pending exclusions remain necessary.
+
 ## Exact structured recall filters
 
 **Retained recall-filter contract; v0.0.26 implementation verified locally and in native CI.**
@@ -946,6 +960,22 @@ Use explicit arguments from trusted configuration, not memory/tool input.
 The following environment names are examples, **not automatically read by the SDK**.
 The scope must already be provisioned and authorized. This read-only example
 does not print private memories, tokens, inputs, or raw error responses.
+
+`Recall(include_temporal_bounds=True, ...)` explicitly requests a
+`temporal_bounds: {"as_of": ..., "known_at": ...}` response, including for empty
+results. The bounds are the exact PostgreSQL-resolved parameters used by that
+read. Omitted request bounds resolve to the existing database statement time;
+provided bounds are echoed as the same instants, preserving microseconds.
+The two temporal axes remain independent—`as_of <= known_at` is not required.
+The SDK caches the `recall_temporal_bounds_v1` capability from its existing
+startup exchange. Unsupported opt-in fails locally with
+`unsupported_native_capability` before recall; missing/mismatched metadata fails
+closed, without an extra capability request, retry or downgrade.
+
+The flag defaults to false and is omitted from default SDK request JSON for
+older strict servers. Default Native and SDK response JSON omit
+`temporal_bounds` entirely, rather than adding null; other existing null fields
+are preserved. No SQL migration or default search behavior changes.
 
 ```python
 import asyncio

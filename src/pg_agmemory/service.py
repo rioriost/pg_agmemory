@@ -709,7 +709,7 @@ class MemoryService:
                 (self.tenant, data.scope_ids),
             )
         ).fetchone()
-        return {
+        result = {
             "items": [item.model_dump(mode="json") for item in selected],
             "context_pack": context,
             "search_profile": data.search_profile,
@@ -734,6 +734,12 @@ class MemoryService:
             if not selected
             else None,
         }
+        if data.include_temporal_bounds:
+            result["temporal_bounds"] = {
+                "as_of": parameters["as_of"],
+                "known_at": parameters["known"],
+            }
+        return result
 
     async def explain(self, data: Explain) -> dict[str, Any]:
         obj = await self.object(data.memory_id)

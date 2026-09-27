@@ -121,6 +121,10 @@ class NativeHTTPClient:
     ) -> None:
         self.client = client
         self.safe_codes = safe_codes
+        self._features: frozenset[str] = frozenset()
+
+    def supports(self, feature: str) -> bool:
+        return feature in self._features
 
     async def exchange(
         self,
@@ -181,6 +185,7 @@ class NativeHTTPClient:
             raise failure("native_api_unavailable", retryable=True, unknown=mutation) from None
 
     async def validate(self) -> None:
+        self._features = frozenset()
         status, data = await self.exchange("/v1/capabilities")
         if (
             status != 200
@@ -195,6 +200,12 @@ class NativeHTTPClient:
             )
         ):
             raise failure("native_version_mismatch")
+        features = data.get("features", [])
+        self._features = (
+            frozenset(features)
+            if isinstance(features, list) and all(isinstance(item, str) for item in features)
+            else frozenset()
+        )
 
     async def request[T: BaseModel](
         self,

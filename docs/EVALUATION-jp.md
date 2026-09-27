@@ -2,7 +2,7 @@
 
 [English](EVALUATION.md)
 
-## 開発業務の評価: 設計承認済み、CI gateは確認待ち
+## 開発業務の評価: framework承認済み、実比較は未実施
 
 次は[mini-swe-agentの実装プラン](DEVELOPMENT_EVALUATION_PLAN.md)に従い、
 「記憶なし」「固定長の引継ぎメモ」「pg_agmemory」を比較します。
@@ -10,9 +10,22 @@
 fileによる意図しない記憶の持越しを防ぐため、各milestoneでは全armを同じ固定sourceから開始します。
 これは段階的な業務引継ぎのpilotであり、agent所有branchを継続開発する評価とは区別します。
 改訂2版はAstra/xhighの再レビューで設計上のblockerなしと承認されました。
-別途CIと編集前interface合意のgateが残っています。
-framework実装・task pack作成・3 armの実推論はまだ開始しておらず、
-新たな有用性の結果を主張していません。
+第1段階のCIと編集前interface合意に加え、実装したframeworkのローカル結合確認と
+Astra/xhighによる実装レビューも完了しました。
+task pack作成・3 armの実推論はまだ開始しておらず、新たな有用性の結果を主張していません。
+
+最初のmodelなしの通し確認では、18 work sessionと8回の独立した記憶更新を、
+44回のscripted呼出し、実際の隔離guestと外部の成果物判定で実行しました。
+pg_agmemoryの保存判断は空なので、非空の記憶や有用性を認定する結果ではありません。
+IPC公開競合の修正後、追加5回の同一imageによる結合確認も通過しました。
+一方、非空のNative確認3件でDBとcontrollerの時計ずれを検出しました。
+Astra/xhighが承認した、server側で決定した時刻境界を明示的に取得する修正により、
+意図的に時計をずらした非空の記憶caseと、関連する既存互換性の回帰確認は通過しました。
+最終のローカル確認ではPython 959件、Node 81件がskipなしで通過し、
+18 sessionのmodelなし通し実行も含めて確認しました。
+Astra/xhighはframeworkの指摘5件を解決済みと判断し、固定を承認しました。
+実推論には引き続き、別担当による未見task packの作成・非公開の適格性確認と、
+recipe固定・隔離確認のgateが必要です。
 
 ## 英語projection追加負荷の対応比較
 
@@ -105,7 +118,11 @@ arm64ではさらにrecovery 88件とbridge 9件が完了しています。
 残るamd64検証の完了は主張しません。
 全検証と他のtimeoutを維持したまま、Native jobの許容時間だけを**40分から60分**へ増やします。
 CI実行枠の修正であり、model評価のdeadline緩和ではありません。
-新しいCIの全完了を引き続き要求します。
+**`8155413`**の[run 36294598008](https://github.com/rioriost/pg_agmemory/actions/runs/36294598008)は
+8 job全て成功しました。両Native architectureで**5,781 passed / 137 skipped**、
+COMMIT 18件、deadline 13件、recovery 88件、bridge 9件を完了し、分離restore drillも完了しています。
+AGEは各architectureで契約84件・統合222件、PITRとHAも成功しました。
+以前のcancelled runを、遡って成功扱いにはしません。
 
 ### 過去の読取時間はmodel call境界が大部分を占める
 

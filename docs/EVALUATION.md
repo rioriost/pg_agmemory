@@ -2,7 +2,7 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Development-work evaluation: design approved, CI gate pending
+## Development-work evaluation: framework approved, live comparison pending
 
 The [mini-swe-agent implementation plan](DEVELOPMENT_EVALUATION_PLAN.md) defines
 the next comparison: no memory, a fixed-length handoff note, and pg_agmemory.
@@ -11,9 +11,23 @@ and isolated execution guests. Identical canonical restarts at each milestone
 prevent uncontrolled file-based carryover; this is a stage-gated handoff pilot,
 not continuous development on an agent-owned branch.
 Revision 2 passed Astra/xhigh re-review with no remaining design blockers.
-The separate CI and pre-edit interface gates remain. Framework implementation,
-task-pack creation and live three-arm calls have not started; no new usefulness
-result is claimed.
+The separate phase-one CI and pre-edit interface gates also passed. The
+implemented framework has now passed local integrated validation and
+Astra/xhigh implementation review. Task-pack creation and live three-arm
+calls have not started; no new usefulness result is claimed.
+
+The first complete no-model protocol exercise passed eighteen work sessions
+and eight separate boundaries with 44 scripted invocations, real isolated
+guests and external artifact grading. Its pg_agmemory decisions were empty,
+so it does not qualify nonempty memory or demonstrate usefulness. Five further
+IPC integration repetitions passed after a deterministic publication-race fix.
+Three nonempty Native cases exposed database/controller clock skew. The
+Astra/xhigh-approved opt-in server-time-bound correction now passes deliberately
+skewed memory cases and the focused compatibility regressions. Final local
+validation passed 959 Python tests and 81 Node tests without skips, including
+the full no-model run. Astra/xhigh closed the five framework findings and
+approved freeze. The live-call gate still requires a separately authored,
+privately qualified task pack and the frozen recipe/isolation checks.
 
 ## Paired English projection cost measurement
 
@@ -113,7 +127,13 @@ and 13 deadline checks; arm64 additionally completes 88 recovery and nine
 bridge checks. The remaining amd64 checks are not claimed complete.
 The Native job allowance is therefore increased **40 to 60 minutes**,
 preserving all checks and every other timeout. This is a CI scheduling fix,
-not a relaxed model-evaluation deadline; a complete new CI run remains required.
+not a relaxed model-evaluation deadline.
+At **`8155413`**, [run 36294598008](https://github.com/rioriost/pg_agmemory/actions/runs/36294598008)
+passes all eight jobs. Both Native architectures complete **5,781 passed /
+137 skipped**, plus 18 COMMIT, 13 deadline, 88 recovery and nine bridge checks;
+the isolated restore drill also completes. AGE reports 84 contract and 222
+integration checks per architecture, with PITR and HA successful.
+The earlier cancelled runs remain incomplete evidence, not retroactive passes.
 
 ### Historical reader latency is dominated by model-call boundaries
 

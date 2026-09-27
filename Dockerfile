@@ -14,7 +14,7 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
 
 FROM build AS test
-RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers --extra langgraph \
+RUN uv sync --frozen --extra dev --extra mcp --extra hook --extra sdk --extra providers --extra langgraph --extra development-eval \
     && python -m compileall -q .venv/lib/python3.12/site-packages/janome
 COPY tests/ ./tests/
 COPY examples/ ./examples/
@@ -33,7 +33,27 @@ COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/test-age-enabled-containers.sh scripts/smoke-age-recovery.py \
     scripts/test-age-recovery-containers.sh scripts/graph-resource-benchmark.py \
     scripts/measure-graph-resources.sh ./scripts/
+COPY scripts/development-eval-guest.py scripts/development-eval-native.py \
+    scripts/evaluate-development-session.py ./scripts/
 CMD ["sh", "-c", "ruff check . && mypy && mypy --strict tests/typing/sdk_usage.py tests/typing/langgraph_usage.py tests/typing/external_source_usage.py && pytest"]
+
+FROM build AS development-runtime
+RUN uv sync --frozen --no-dev --no-editable --extra development-eval \
+    && python -m compileall -q .venv/lib/python3.12/site-packages/janome
+COPY scripts/development-eval-native.py scripts/evaluate-development-session.py ./scripts/
+ARG PGAG_DEVELOPMENT_SOURCE=unfrozen
+LABEL io.pg-agmemory.evaluation.source=$PGAG_DEVELOPMENT_SOURCE
+CMD ["pg-agmemory", "serve"]
+
+FROM base AS development-execution
+RUN mkdir -p /opt/pgag-eval /workspace /home/task \
+    && touch /opt/pgag-eval/owned-guest
+COPY scripts/development-eval-guest.py /opt/pgag-eval/guest.py
+ARG PGAG_DEVELOPMENT_SOURCE=unfrozen
+LABEL io.pg-agmemory.evaluation.source=$PGAG_DEVELOPMENT_SOURCE
+WORKDIR /workspace
+ENV HOME=/home/task
+CMD ["python", "-I", "-c", "import signal,time; signal.signal(signal.SIGCHLD, signal.SIG_IGN); time.sleep(10800)"]
 
 FROM build AS runtime-deps
 RUN uv sync --frozen --no-dev --no-editable --extra mcp --extra hook --extra sdk --extra providers \

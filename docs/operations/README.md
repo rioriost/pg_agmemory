@@ -3354,7 +3354,7 @@ admitted evidence and the issued query history; it may follow an observed
 reference or propose another explicit query. An empty follow-up *plan* stops
 searching; no empty search query or unbounded browse is generated.
 
-`BoundedRecall` requires caller-pinned `as_of` and `known_at`. Scope, filters,
+By default, `BoundedRecall` requires caller-pinned `as_of` and `known_at`. Scope, filters,
 profile, mode and budget stay fixed across requests. It rejects conflicting
 items, duplicated queries, out-of-order responses and observed access/deletion
 epoch changes. Whole-item merging is bounded and any truncation is explicit.
@@ -3362,8 +3362,30 @@ Before exposing answer context, nonempty results are fetched again with exact
 required references and `max_items` equal to their count: this is reference
 validation, not optional browsing. Missing, deleted or no-longer-authorized
 references fail rather than falling back to cached evidence. Current
-authorization/deletion still apply to the pinned historical snapshot.
+authorization/deletion still apply to the selected temporal bounds.
 This does not retract evidence legitimately delivered before a later revocation.
+
+For server-resolved current temporal selection, explicitly choose
+`temporal_selection="server-current-v1"` with both initial bounds omitted.
+The first actual search must contain exactly one query. The helper requests
+`include_temporal_bounds=true`, validates the returned `temporal_bounds` pair
+before admitting any items, and adopts it even for an empty result. Subsequent
+searches and final required-reference validation reuse and verify the same pair.
+Issued requests are not retroactively mutated. A new post-write inventory pass
+likewise starts with an existing required-reference read with omitted bounds,
+then pins subsequent singleton reads to that response; no clock-probe request,
+sleep, retry or guessed future timestamp is needed.
+
+The SDK requires the cached `recall_temporal_bounds_v1` capability, obtained in
+its normal startup exchange. Default request JSON omits the false opt-in flag;
+default response JSON omits `temporal_bounds`, not other existing null fields.
+The server returns the exact already-resolved query parameters, including on
+empty results. Missing, malformed or mismatched opted-in bounds fail closed.
+Microseconds and independent `as_of`/`known_at` axes are preserved.
+These bounds are **selection predicates, not an MVCC snapshot or commit
+watermark**: a transaction stamped before the pin can commit afterward.
+Equal bounds alone therefore do not freeze visibility or replace final
+reference validation, epoch checks or pending exclusions.
 
 Evidence selection is explicit. The default `first-admitted-v1` preserves the
 earlier v3 behavior, including its inability to replace a full context.

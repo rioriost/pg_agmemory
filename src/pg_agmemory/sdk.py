@@ -328,10 +328,20 @@ class AsyncMemoryClient:
         )
 
     async def recall(self, request: Recall) -> RecallResult:
-        """Recall scoped evidence; lexical terms are ANDed without English stemming."""
-        return await self._post(
-            "/v1/recall", request, Recall, TypeAdapter(RecallResult), mutation=False
+        """Recall scoped evidence, optionally echoing checked server-resolved temporal bounds."""
+        native = self._connection()
+        data = _validated(request, Recall)
+        if data.include_temporal_bounds and not native.supports("recall_temporal_bounds_v1"):
+            raise failure("unsupported_native_capability")
+        result = await native.request(
+            "/v1/recall", data, TypeAdapter(RecallResult), mutation=False,
         )
+        if data.include_temporal_bounds:
+            try:
+                result.validated_temporal_bounds(data)
+            except (ValueError, TypeError, AttributeError):
+                raise failure("invalid_temporal_bounds") from None
+        return result
 
     async def get_assertion_history(self, request: AssertionHistory) -> AssertionHistoryPage:
         return await self._post(

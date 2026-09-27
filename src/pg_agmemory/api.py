@@ -421,6 +421,7 @@ def create_app(
                 "structured_remember",
                 "assertion_revisions",
                 "fts_recall",
+                "recall_temporal_bounds_v1",
                 "japanese_fts",
                 "explicit_embeddings",
                 "exact_vector_recall",

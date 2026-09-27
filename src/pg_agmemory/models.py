@@ -1,6 +1,7 @@
 import json
 import math
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -242,6 +244,16 @@ class Recall(Contract):
         default_factory=list
     )
     filters: RecallFilters | None = None
+    include_temporal_bounds: Annotated[bool, Field(strict=True)] = False
+
+    @model_serializer(mode="wrap")
+    def stable_request(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
+        result = handler(self)
+        if not self.include_temporal_bounds:
+            result.pop("include_temporal_bounds", None)
+        return dict(result)
 
     @model_validator(mode="after")
     def implicit_budget(self) -> "Recall":
@@ -483,6 +495,32 @@ class EpisodePage(BaseModel):
     consistency: Consistency
 
 
+class RecallTemporalBounds(BaseModel):
+    """Server-resolved selection bounds, not an MVCC snapshot or commit watermark."""
+
+    model_config = ConfigDict(
+        extra="forbid", strict=True, frozen=True, revalidate_instances="always",
+    )
+
+    as_of: AwareDatetime
+    known_at: AwareDatetime
+
+    @field_validator("as_of", "known_at", mode="before")
+    @classmethod
+    def aware_instant(cls, value: Any) -> datetime:
+        if isinstance(value, str):
+            if value != value.strip() or re.search(r"[.,]\d{7}", value):
+                raise ValueError("Temporal bounds require an aware ISO datetime")
+            instant = datetime.fromisoformat(value)
+        elif isinstance(value, datetime):
+            instant = value
+        else:
+            raise ValueError("Temporal bounds require an aware ISO datetime")
+        if instant.utcoffset() is None:
+            raise ValueError("Temporal bounds require an aware ISO datetime")
+        return instant
+
+
 class RecallResult(BaseModel):
     items: list[MemoryItem]
     context_pack: ContextPack
@@ -492,6 +530,40 @@ class RecallResult(BaseModel):
     retrieval_mode: RetrievalMode = "lexical"
     embedding_model: EmbeddingModel | None = None
     empty_reason: Literal["budget_exhausted", "not_found", "index_incomplete"] | None
+    temporal_bounds: RecallTemporalBounds | None = None
+
+    @model_serializer(mode="wrap")
+    def stable_result(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        result = handler(self)
+        if self.temporal_bounds is None:
+            result.pop("temporal_bounds", None)
+        return dict(result)
+
+    def validated_temporal_bounds(self, request: Recall) -> RecallTemporalBounds | None:
+        if not request.include_temporal_bounds:
+            return None
+        if self.temporal_bounds is None:
+            raise ValueError("Missing temporal bounds")
+        bounds = RecallTemporalBounds.model_validate(self.temporal_bounds.model_dump(), strict=True)
+        for requested in (request.as_of, request.known_at):
+            if requested is not None and requested.utcoffset() is None:
+                raise ValueError("Requested temporal bounds must be aware")
+        if (
+            (
+                request.as_of is not None
+                and request.as_of.astimezone(UTC) != bounds.as_of.astimezone(UTC)
+            )
+            or (
+                request.known_at is not None
+                and request.known_at.astimezone(UTC) != bounds.known_at.astimezone(UTC)
+            )
+            or (
+                request.as_of is None and request.known_at is None
+                and bounds.as_of.astimezone(UTC) != bounds.known_at.astimezone(UTC)
+            )
+        ):
+            raise ValueError("Mismatched temporal bounds")
+        return bounds
 
 
 class ExplainedSource(BaseModel):
