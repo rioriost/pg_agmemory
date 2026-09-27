@@ -31,8 +31,17 @@ performance. The v6 failure below remains published, with its unknown usage.
 See [findings](EVALUATION.md#english-profile-result-complete-known-cohort-success-not-product-qualification)
 and [aggregate](../examples/copilot-memory-english-profile-v1-result.json).
 
-Migration backfills English rows and new writes maintain both projections,
-adding storage/write work; production overhead is unmeasured.
+Migration backfills English rows and new writes maintain both projections.
+The first four-repetition [paired component measurement](EVALUATION.md#first-paired-result-storage-increases-latency-changes-are-mixed)
+at harness **`a31e7c9`** records **720 writes / 1,920 reads** without model
+calls. Lexical relation/index storage increases **106,496 bytes (+25%)**
+on the modest fixture; migration takes **16.524–22.561 ms**.
+Observe p50 rises **0.245–3.039 ms** within each paired repetition, while
+other latency changes are mixed, including a **205.619 ms** revision p95.
+Historical same-case reader decomposition attributes **99.58%** of the
+English run's reader time to planning/answering call boundaries, including
+orchestration, not just inference. Neither result qualifies production
+performance; production overhead remains unmeasured.
 Use the [schema-23 upgrade and recovery boundaries](operations/README.md#schema-23-english-projections)
 and [profile/reindex instructions](operations/README.md#lexical-profile-and-reindex-operations).
 Older graph/recovery evidence is not automatically current after the upgrade.

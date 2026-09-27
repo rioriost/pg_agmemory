@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 from collections import Counter
 from copy import deepcopy
@@ -419,7 +420,7 @@ def test_wrapper_bakes_both_archives_and_never_mounts_source_or_prunes_shared_re
     assert 'COPY benchmark/ /benchmark/' in wrapper
     assert '-v "$directory:/artifacts"' in wrapper
     assert ":/app" not in wrapper and ":/work" not in wrapper and ":ro" not in wrapper
-    assert 'container image rm "$image"' in wrapper and 'container rm --force "$db"' in wrapper
+    assert 'container image rm "$name"' in wrapper and 'container rm --force "$db"' in wrapper
     for forbidden in ("prune", "builder stop", "system stop", "docker run", "podman", "sudo"):
         assert forbidden not in wrapper
     assert "CREATE DATABASE" in wrapper and "WITH TEMPLATE" in wrapper
@@ -436,6 +437,112 @@ def test_wrapper_starts_and_removes_a_distinct_cluster_inside_each_serial_repeti
     assert "maximum_concurrent_database_containers:1" in wrapper
     assert "DROP ROLE" not in wrapper
     assert '"code":"container_phase_failed","phase":"%s","repetition":%d' in wrapper
+
+
+@pytest.mark.parametrize(("mode", "prior_status", "exit_status", "failures"), [
+    ("removed", 0, 0, 0),
+    ("already-absent-step", 7, 7, 0),
+    ("already-absent-images", 0, 0, 0),
+    ("database-removal-fails", 0, 1, 1),
+    ("image-removal-fails", 7, 7, 1),
+    ("successful-removal-still-present", 0, 1, 1),
+    ("inventory-unavailable", 0, 1, 2),
+    ("report-write-fails", 0, 1, None),
+])
+def test_cleanup_verifies_owned_absence_and_preserves_failure_status(
+    mode, prior_status, exit_status, failures,
+):
+    wrapper = (ROOT / "scripts/measure-english-profile-costs.sh").read_text()
+    functions = wrapper.split("cleanup_remove() {", 1)[1].split("trap cleanup EXIT\n", 1)[0]
+    # Execute the exact cleanup functions, replacing only the container CLI and
+    # persistence boundary. No files, container resources, or external tools are used.
+    script = "set -Eeuo pipefail\ncleanup_remove() {" + functions + r'''
+own_step=true
+own_db=true
+step=owned-step
+db=owned-db
+owned_images=(owned-image22 owned-image23)
+directory=private-output
+run_complete=true
+removals=0
+unexpected_calls=0
+container() {
+    case "$*" in
+        "rm --force owned-step")
+            removals=$((removals + 1))
+            [[ "$MODE" != already-absent-step ]]
+            ;;
+        "rm --force owned-db")
+            removals=$((removals + 1))
+            [[ "$MODE" != database-removal-fails ]]
+            ;;
+        "image rm owned-image22"|"image rm owned-image23")
+            removals=$((removals + 1))
+            if [[ "$MODE" == already-absent-images ]]; then return 1; fi
+            if [[ "$MODE" == image-removal-fails && "$3" == owned-image23 ]]; then return 1; fi
+            return 0
+            ;;
+        "list --all --quiet")
+            if [[ "$MODE" == inventory-unavailable ]]; then return 9; fi
+            printf 'buildkit\nunrelated-user-container\n'
+            if [[ "$MODE" == database-removal-fails ]]; then printf 'owned-db\n'; fi
+            return 0
+            ;;
+        "image list --quiet")
+            printf 'unrelated-user-image\n'
+            if [[ "$MODE" == image-removal-fails ||
+                  "$MODE" == successful-removal-still-present ]]; then
+                printf 'owned-image23\n'
+            fi
+            return 0
+            ;;
+        *)
+            unexpected_calls=$((unexpected_calls + 1))
+            return 97
+            ;;
+    esac
+}
+persist_cleanup_report() {
+    [[ "$removals" == 4 && "$unexpected_calls" == 0 ]] || return 98
+    if [[ "$MODE" == report-write-fails ]]; then return 31; fi
+    cleanup_report
+}
+trap cleanup EXIT
+exit "$PRIOR_STATUS"
+'''
+    result = subprocess.run(
+        ["/bin/bash", "-c", script],
+        env={"PATH": "", "MODE": mode, "PRIOR_STATUS": str(prior_status)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == exit_status, result.stderr
+    assert ("Completed private" in result.stdout) == (exit_status == 0)
+    if failures is None:
+        assert "Could not persist cleanup.json" in result.stderr
+        assert not result.stdout
+        return
+    report = json.loads(result.stdout.splitlines()[0])
+    assert report["run_exit_status"] == prior_status
+    assert report["exit_status"] == exit_status
+    assert report["cleanup_failures"] == failures
+    assert report["cleanup_complete"] is (failures == 0)
+    assert report["only_run_owned_resources_removed"] is (failures == 0)
+    assert report["buildkit_preserved"] is True
+    assert len(report["resources"]) == 4
+    by_name = {resource["name"]: resource for resource in report["resources"]}
+    if mode == "already-absent-step":
+        assert by_name["owned-step"]["outcome"] == "already_absent"
+        assert by_name["owned-step"]["removal_exit_status"] == 1
+    if mode == "already-absent-images":
+        assert by_name["owned-image22"]["outcome"] == "already_absent"
+        assert by_name["owned-image23"]["outcome"] == "already_absent"
+    if mode == "inventory-unavailable":
+        assert by_name["owned-step"]["outcome"] == "absence_unverified"
+        assert by_name["owned-db"]["inventory_exit_status"] == 9
+    if mode in ("image-removal-fails", "successful-removal-still-present"):
+        assert by_name["owned-image23"]["outcome"] == "still_present"
+    if mode == "database-removal-fails":
+        assert by_name["owned-db"]["outcome"] == "still_present"
 
 
 @pytest.mark.parametrize("option", ["--help", "-h"])

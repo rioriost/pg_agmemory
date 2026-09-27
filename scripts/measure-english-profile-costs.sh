@@ -71,20 +71,84 @@ if [[ "${2:-}" == "--smoke" ]]; then profile=smoke; repetitions=2; fi
 owned_images=()
 own_db=false
 own_step=false
+run_complete=false
+
+cleanup_remove() {
+    local kind="$1" name="$2" removal_status=0 inventory_status=0 listing="" present=false outcome
+    if [[ "$kind" == container ]]; then
+        container rm --force "$name" >/dev/null 2>&1 || removal_status=$?
+        listing="$(container list --all --quiet 2>/dev/null)" || inventory_status=$?
+    else
+        container image rm "$name" >/dev/null 2>&1 || removal_status=$?
+        listing="$(container image list --quiet 2>/dev/null)" || inventory_status=$?
+    fi
+    # A failed inspect is ambiguous. Only a successful full inventory can prove
+    # absence, including a --rm client already removed before this EXIT handler.
+    if (( inventory_status != 0 )); then
+        outcome=absence_unverified
+    else
+        while IFS= read -r candidate; do
+            if [[ "$candidate" == "$name" ]]; then present=true; fi
+        done <<<"$listing"
+        if [[ "$present" == true ]]; then
+            outcome=still_present
+        elif (( removal_status != 0 )); then
+            outcome=already_absent
+        else
+            outcome=removed
+        fi
+    fi
+    if [[ "$outcome" == absence_unverified || "$outcome" == still_present ]]; then
+        cleanup_failures=$((cleanup_failures + 1))
+    fi
+    cleanup_records+=("$(printf \
+        '{"kind":"%s","name":"%s","outcome":"%s","removal_exit_status":%d,"inventory_exit_status":%d}' \
+        "$kind" "$name" "$outcome" "$removal_status" "$inventory_status")")
+}
+
+cleanup_report() {
+    local separator="" record
+    printf '{"run_exit_status":%d,"exit_status":%d,"cleanup_complete":%s,' \
+        "$run_status" "$status" "$cleanup_complete"
+    printf '"cleanup_failures":%d,"only_run_owned_resources_removed":%s,' \
+        "$cleanup_failures" "$cleanup_complete"
+    printf '"buildkit_preserved":true,"resources":['
+    for record in "${cleanup_records[@]+"${cleanup_records[@]}"}"; do
+        printf '%s%s' "$separator" "$record"
+        separator=,
+    done
+    printf ']}\n'
+}
+
+persist_cleanup_report() {
+    cleanup_report >"$directory/cleanup.json"
+}
 
 cleanup() {
-    status=$?
+    run_status=$?
     trap - EXIT INT TERM
     set +e
-    if [[ "$own_step" == true ]]; then container rm --force "$step" >/dev/null 2>&1; fi
-    if [[ "$own_db" == true ]]; then
-        container rm --force "$db" >/dev/null 2>&1
-    fi
+    status=$run_status
+    cleanup_failures=0
+    cleanup_records=()
+    if [[ "$own_step" == true ]]; then cleanup_remove container "$step"; fi
+    if [[ "$own_db" == true ]]; then cleanup_remove container "$db"; fi
     for image in "${owned_images[@]+"${owned_images[@]}"}"; do
-        container image rm "$image" >/dev/null 2>&1
+        cleanup_remove image "$image"
     done
-    printf '{"exit_status":%d,"only_run_owned_resources_removed":true,"buildkit_preserved":true}\n' \
-        "$status" >"$directory/cleanup.json"
+    cleanup_complete=true
+    if (( cleanup_failures != 0 )); then
+        cleanup_complete=false
+        if (( status == 0 )); then status=1; fi
+        echo "Owned-resource cleanup incomplete; inspect cleanup.json." >&2
+    fi
+    if ! persist_cleanup_report; then
+        echo "Could not persist cleanup.json; cleanup status is not recorded." >&2
+        if (( status == 0 )); then status=1; fi
+    fi
+    if (( status == 0 )) && [[ "$run_complete" == true ]]; then
+        echo "Completed private Native-only cost protocol: $directory/result.json"
+    fi
     exit "$status"
 }
 trap cleanup EXIT
@@ -273,4 +337,4 @@ for ((repetition=1; repetition<=repetitions; repetition++)); do
     stop_database
 done
 run_phase "$image23" report unused /artifacts 1
-echo "Completed private Native-only cost protocol: $directory/result.json"
+run_complete=true

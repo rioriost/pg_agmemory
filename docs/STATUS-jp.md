@@ -28,7 +28,16 @@ Native検索p95は**73.47 ms**で前回の51.65 msより増えています。
 [集計](../examples/copilot-memory-english-profile-v1-result.json)を参照してください。
 
 migrationは英語行をbackfillし、新規書込みは両projectionを維持するため、
-容量/書込み処理量が増えます。本番の追加負荷は未測定です。
+容量/書込み処理量が増えます。
+harness **`a31e7c9`**による最初の4反復の[対応測定](EVALUATION-jp.md#最初の対応測定-容量は増加時間変化は一様ではない)では、
+modelを呼ばず**書込み720回・読取1,920回**を測定しました。
+小規模fixtureのlexical table/index容量は**106,496 byte（25%）**増え、
+migrationは**16.524–22.561 ms**でした。
+Observe p50は各対応反復で**0.245–3.039 ms**増えましたが、
+他の時間変化は一様ではなく、revision p95には**205.619 ms**も記録しています。
+過去の同じcaseの時間内訳では、英語runの読取時間の**99.58%**を
+計画/回答call境界が占めますが、推論以外の処理も含みます。
+どちらも本番性能の認定ではなく、本番の追加負荷は未測定です。
 [schema23移行とrecoveryの境界](operations/README-jp.md#schema-23-english-projections)と
 [profile/reindex手順](operations/README-jp.md#lexical-profileとreindexの運用)に従ってください。
 upgrade後に旧graph/recovery証跡を自動的に現在の証跡にはしません。

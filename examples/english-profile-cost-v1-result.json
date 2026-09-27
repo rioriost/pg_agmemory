@@ -1,0 +1,287 @@
+{
+  "format": "pgag-english-profile-cost-public-v1",
+  "status": "completed_offline_raw_evidence_audit",
+  "scope": "First default serial Native-only cost observation; not model evaluation or a causal English-only effect.",
+  "sources": {
+    "schema22": "3bb0ee2cb79aa476208ea6446eaa47345305cd0b",
+    "schema23": "b8d775d2d9bd1e14ebf9cea4b978a11dce06346c",
+    "harness": "a31e7c9ac7187d02d92f118ec2507b4d4ec89c33",
+    "harness_sha256": "80df0ea27fb85b8067ee020de1289a4d5b7c36f9ad901d0fe7830baf84ac70ab",
+    "wrapper_sha256": "eb17d4029ce031f18cb2b8b901ccf2c72899f8a6f6e2b7e77e512b228204797e",
+    "schema22_manifest_sha256": "ed9e7056e5d8d0e477df960003e474d42f70c879077c7832d3d7d81efdbd69f1",
+    "schema23_manifest_sha256": "685feca17218b22c972a7058a3e4e963e611ec6a03191b8393b624483c77d21e"
+  },
+  "raw_evidence_sha256": {
+    "full_build_identity_json": "2378646608fd46a11bfdde5c56fecb35033562e91eb001cc1ccfae78bbf17eb4",
+    "full_cleanup_json": "8e3a97688d1ce40841fb02c43a4b33548b07c055d8eb394d98a48b12f3522c11",
+    "full_phases_log": "19f2f5efacdd60be36a051e2e84a142c2ef9e423d93602bf99eac123bacb27ce",
+    "full_result_json": "a8453c07a43f81d760aa63a9aadf4397c5ab53bfd543ddc0af157f3b90416523",
+    "smoke_build_identity_json": "7b1f51955cbc11d597dc6789dc7abb54e50539d6f9c80a8a7379e7c4b2cd606d",
+    "smoke_cleanup_json": "8e3a97688d1ce40841fb02c43a4b33548b07c055d8eb394d98a48b12f3522c11",
+    "smoke_phases_log": "7944e260e978f93ceb94abe1b2b1d4406fe47d99c978dff3d0e5bc7d9802246b",
+    "smoke_result_json": "f8e6e71615fb650f350965e7f38d9bec780ba070e47b2ec3145e1c0cf3b8eaa4",
+    "failed_smoke_build_identity_json": "5a65693c35a1b89ca137160f9521ccc4ad794594ef9988f735829901fb4cf063",
+    "failed_smoke_cleanup_json": "af759ea858b831713eaef4823a955389beab449bb058161f00822bcd10255648",
+    "failed_smoke_phases_log": "3ded39ff1bc98e007f9295eafe192be6035f84907d185908a4efadaf7c53c062",
+    "r01": {
+      "seed": "6ee7ba61034b1b8f10374346fa4d17f05b9125d9c56bcadef005ffb62ae8d5d2",
+      "migration": "47d1ec48beda12d9a40879406601fef0dd142ecd804199eee29e318ff23a5d34",
+      "schema22": "2eb11a407bb8ea68b678c05af311357102c924b40f4362475e1352c932056157",
+      "schema23": "5398acc2ca9c9103b92574a60eaa5ca277aab37b8deacdf5029fff9e01f97ae7"
+    },
+    "r02": {
+      "seed": "cf991988e1d9c36753cde0d5d504f43c6f81c4f3fcf163161081b41d27583336",
+      "migration": "036fb8dc9a9eb3ead2920a6e80425bb122dce7e7331dbf873f064b15ea559f48",
+      "schema22": "7c8380c8d243cf5a695d3f87c8b4fb7427540e4c70321fdd32858dbefbfe7b43",
+      "schema23": "116d08cef1bace133aa785b49ccd5396e544a92fc679fb3f483f96f05b623be8"
+    },
+    "r03": {
+      "seed": "a48eaf177ff99ea40572f4ed3734199618d1b90a2d5b64b934ef727cb8b9d9b2",
+      "migration": "8a1c8c77a172aa4edde9b9eea0696b9bc5cb054bf26d05d90e0d32762f6f6389",
+      "schema22": "1702435a8508e3d993c5688b51cf7ca777947a9b45877e79bbb6dd9e1f4460dd",
+      "schema23": "2493c6503f0585e785051965725e5b3ea8b2ec1bfe6102c049088179570a8e3a"
+    },
+    "r04": {
+      "seed": "c5e759fea57c2004d939b6f6ae2f32692c733065990cfb47a2d4a6313b2c188b",
+      "migration": "06a3eff564029e73ba3252d28274a45c0662cce0cc2c867cb86247ed1fa228eb",
+      "schema22": "88388efe78989a0d23f175df06a0233f2a8e86df66833bd80c3fa7d89d812dfd",
+      "schema23": "8c7838b7e7326f501263ddcab781c56049944b23f18735c9465ff25c4aa1ea30"
+    }
+  },
+  "protocol": {
+    "format": "pgag-english-cost-spec-v1",
+    "name": "modest",
+    "seed": 20260927,
+    "repetitions": 4,
+    "episodes": 256,
+    "assertions": 32,
+    "topic_groups": 64,
+    "retained_payload_tombstones": 4,
+    "write_warmups_per_operation": 5,
+    "write_samples_per_operation": 30,
+    "read_warmups_per_query": 3,
+    "read_samples_per_query": 20,
+    "query_count": 8,
+    "request_concurrency": 1,
+    "http_timeout_seconds": 30,
+    "recall_max_items": 16,
+    "recall_byte_budget": 8000,
+    "warmup_writes_persist": true,
+    "automatic_processing": false,
+    "cold_cache_claimed": false,
+    "performance_gate": null
+  },
+  "environment": {
+    "postgres": "18.6 (Debian 18.6-1.pgdg12+2)",
+    "pgvector": "0.8.6",
+    "postgres_image": "docker.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a",
+    "architecture": "arm64",
+    "container_cli": "container CLI version 1.4.1 (build: release, commit: unspeci)",
+    "resources": {"database_cpus": 2, "database_memory_mib": 2048, "client_cpus": 2, "client_memory_mib": 2048},
+    "database_settings": [
+      {"name": "autovacuum", "setting": "off", "unit": null},
+      {"name": "fsync", "setting": "on", "unit": null},
+      {"name": "full_page_writes", "setting": "on", "unit": null},
+      {"name": "maintenance_work_mem", "setting": "131072", "unit": "kB"},
+      {"name": "max_connections", "setting": "32", "unit": null},
+      {"name": "max_parallel_workers_per_gather", "setting": "0", "unit": null},
+      {"name": "shared_buffers", "setting": "32768", "unit": "8kB"},
+      {"name": "synchronous_commit", "setting": "on", "unit": null},
+      {"name": "work_mem", "setting": "16384", "unit": "kB"}
+    ],
+    "cluster_lifecycle": "fresh_per_repetition",
+    "serial": true,
+    "shared_host": true
+  },
+  "timed_request_counts": {"writes": 720, "reads": 1920},
+  "excluded_warmup_counts": {"writes": 120, "reads": 288},
+  "orders": [
+    {"repetition": 1, "versions": ["schema22", "schema23"], "schema23_profiles": ["simple-v1", "en-snowball-v1"], "query_schedule_sha256": "9f775e1f2e8feef722414c113dc51022fcdd1b8dbd82621e9ad8c631b7880cf3"},
+    {"repetition": 2, "versions": ["schema23", "schema22"], "schema23_profiles": ["en-snowball-v1", "simple-v1"], "query_schedule_sha256": "dea59b974a5b2b9f1da6f3508177b839228c0d862e1694c2ed6fa8c1a9bd9b9a"},
+    {"repetition": 3, "versions": ["schema22", "schema23"], "schema23_profiles": ["simple-v1", "en-snowball-v1"], "query_schedule_sha256": "ed7868d9caa3f4320bff7f4e4443e7d1cd59ab2a101278c1d0e7a403fa4db33e"},
+    {"repetition": 4, "versions": ["schema23", "schema22"], "schema23_profiles": ["en-snowball-v1", "simple-v1"], "query_schedule_sha256": "09f04319376f4d401256d9c6036c3dff897f5993a6d8016c53071fa9e8bf52eb"}
+  ],
+  "fixture_fingerprints": [
+    {"logical": "3d802df01a0fa89278917482ef9d30a00cb8e84c06d3b8462ed228f5dc8c4b9b", "canonical_before": "279913c7067736aff44fb8bf490a6c70bcb9edf3d40509878309f4dcce8bd930", "japanese_before": "68936bf359a3526a18fc1f8944d9d27bca49bcf4b40481d673beb9d1611b5ca7"},
+    {"logical": "3d802df01a0fa89278917482ef9d30a00cb8e84c06d3b8462ed228f5dc8c4b9b", "canonical_before": "a20cfd239168fd95e8f1796581d0169d83c03955a08f373e8f1b03e209267097", "japanese_before": "15aaf9494d0f1ebab0cfff2e7502e739cb3c2065fbbd85db410a2cde76384b7e"},
+    {"logical": "3d802df01a0fa89278917482ef9d30a00cb8e84c06d3b8462ed228f5dc8c4b9b", "canonical_before": "0ff4dbf103a1d638867e3f68562af4cce0eb37f7b425653109d0246525346489", "japanese_before": "65666e0e248455d99c816ae82a8463d747894a23edcfb11520ae92b8591e36e3"},
+    {"logical": "3d802df01a0fa89278917482ef9d30a00cb8e84c06d3b8462ed228f5dc8c4b9b", "canonical_before": "a3fb62a30f941d2cb2fcf120842905aca049e7600147b109f1ae04c88fda6e2d", "japanese_before": "c4bc2148d1d87d5f168b119d85c4945015c566ce8094b03a351081965b1cdd16"}
+  ],
+  "validation": {
+    "schema22_seed_counts": {"memory.assertion": 32, "memory.assertion_revision": 64, "memory.episode": 256, "memory.object": 290, "memory.provenance_edge": 64, "memory_ops.deletion_request": 2, "memory_ops.deletion_target": 6, "memory_ops.object_tombstone": 6},
+    "both_post_write_counts": {"memory.assertion": 67, "memory.assertion_revision": 134, "memory.episode": 291, "memory.object": 360, "memory.provenance_edge": 134, "memory_ops.deletion_request": 2, "memory_ops.deletion_target": 6, "memory_ops.object_tombstone": 6},
+    "epochs_before_and_after": [1, 3],
+    "schema23_backfill_projections": {"assertion_lexical": {"en-snowball-v1": 60, "ja-janome-0.5.0-v1": 64}, "episode_lexical": {"en-snowball-v1": 254, "ja-janome-0.5.0-v1": 256}},
+    "schema23_post_write_projections": {"assertion_lexical": {"en-snowball-v1": 130, "ja-janome-0.5.0-v1": 134}, "episode_lexical": {"en-snowball-v1": 289, "ja-janome-0.5.0-v1": 291}},
+    "model_calls_in_all_guard_snapshots": 0,
+    "jobs_in_all_guard_snapshots": 0,
+    "cloned_canonical_and_japanese_hashes_match": true,
+    "raw_distributions_recomputed": true,
+    "matched_simple_cardinality_and_ids_verified": true,
+    "retained_history_and_provenance_guarded": true,
+    "native_purge_receipt_verified": true,
+    "suppression_and_purge_targets_distinct": true,
+    "warmup_writes_persist_and_count": true,
+    "required_refs_are_untimed_guards": true,
+    "timing_and_guard_scope": "Raw timing arrays and recorded counts/hashes independently checked. Frozen harness validates every response before retaining a timed sample, including identity, contents, revision, provenance, context and completeness. Raw HTTP bodies and canonical database rows were not persisted for an independent replay; projection-content, denied-reference and tombstone-exclusion claims rely on the checked harness assertions plus terminal success. This is not independent runtime deployment attestation."
+  },
+  "writes": {
+    "observe": {
+      "schema22": {"p50_ms": [84.715834, 85.672708, 88.429541, 84.493416], "p95_ms": [165.448667, 125.525667, 154.510166, 128.479916], "p50_range_ms": [84.493416, 88.429541], "p95_range_ms": [125.525667, 165.448667]},
+      "schema23": {"p50_ms": [84.960458, 88.711834, 89.978959, 87.417666], "p95_ms": [140.222333, 118.254208, 119.871, 123.967459], "p50_range_ms": [84.960458, 89.978959], "p95_range_ms": [118.254208, 140.222333]},
+      "p50_delta_ms": [0.244624, 3.039126, 1.549418, 2.92425],
+      "p95_delta_ms": [-25.226334, -7.271459, -34.639166, -4.512457],
+      "p50_delta_range_ms": [0.244624, 3.039126],
+      "p95_delta_range_ms": [-34.639166, -4.512457]
+    },
+    "remember": {
+      "schema22": {"p50_ms": [104.465208, 105.15675, 109.451834, 104.355125], "p95_ms": [162.617416, 158.865709, 145.611875, 159.803375], "p50_range_ms": [104.355125, 109.451834], "p95_range_ms": [145.611875, 162.617416]},
+      "schema23": {"p50_ms": [106.061959, 108.562751, 108.997167, 105.634959], "p95_ms": [146.548542, 147.925792, 171.894334, 146.622458], "p50_range_ms": [105.634959, 108.997167], "p95_range_ms": [146.548542, 171.894334]},
+      "p50_delta_ms": [1.596751, 3.406001, -0.454667, 1.279834],
+      "p95_delta_ms": [-16.068874, -10.939917, 26.282459, -13.180917],
+      "p50_delta_range_ms": [-0.454667, 3.406001],
+      "p95_delta_range_ms": [-16.068874, 26.282459]
+    },
+    "revision": {
+      "schema22": {"p50_ms": [110.723, 116.11475, 114.73125, 112.466709], "p95_ms": [154.705292, 154.755208, 147.115917, 171.623708], "p50_range_ms": [110.723, 116.11475], "p95_range_ms": [147.115917, 171.623708]},
+      "schema23": {"p50_ms": [112.625459, 112.346708, 114.990084, 112.765708], "p95_ms": [171.788583, 205.619167, 150.965625, 166.977167], "p50_range_ms": [112.346708, 114.990084], "p95_range_ms": [150.965625, 205.619167]},
+      "p50_delta_ms": [1.902459, -3.768042, 0.258834, 0.298999],
+      "p95_delta_ms": [17.083291, 50.863959, 3.849708, -4.646541],
+      "p50_delta_range_ms": [-3.768042, 1.902459],
+      "p95_delta_range_ms": [-4.646541, 50.863959]
+    }
+  },
+  "matched_simple_reads": {
+    "anchor": {
+      "selected_count": 4,
+      "schema22": {"p50_ms": [85.099667, 85.893875, 90.426375, 88.48325], "p95_ms": [89.753208, 115.778833, 96.219833, 92.450958], "p50_range_ms": [85.099667, 90.426375], "p95_range_ms": [89.753208, 115.778833]},
+      "schema23": {"p50_ms": [86.278708, 88.564875, 79.741959, 86.981709], "p95_ms": [91.66025, 95.241959, 91.650875, 103.668666], "p50_range_ms": [79.741959, 88.564875], "p95_range_ms": [91.650875, 103.668666]},
+      "p50_delta_ms": [1.179041, 2.671, -10.684416, -1.501541],
+      "p95_delta_ms": [1.907042, -20.536874, -4.568958, 11.217708],
+      "p50_delta_range_ms": [-10.684416, 2.671],
+      "p95_delta_range_ms": [-20.536874, 11.217708]
+    },
+    "literal-approval": {
+      "selected_count": 1,
+      "schema22": {"p50_ms": [83.9645, 82.8285, 87.431292, 84.742375], "p95_ms": [104.427958, 97.500792, 92.655458, 90.515417], "p50_range_ms": [82.8285, 87.431292], "p95_range_ms": [90.515417, 104.427958]},
+      "schema23": {"p50_ms": [84.89575, 84.912208, 77.193792, 83.494375], "p95_ms": [88.570458, 89.83575, 88.53, 92.043083], "p50_range_ms": [77.193792, 84.912208], "p95_range_ms": [88.53, 92.043083]},
+      "p50_delta_ms": [0.93125, 2.083708, -10.2375, -1.248],
+      "p95_delta_ms": [-15.8575, -7.665042, -4.125458, 1.527666],
+      "p50_delta_range_ms": [-10.2375, 2.083708],
+      "p95_delta_range_ms": [-15.8575, 1.527666]
+    },
+    "stem-approve": {
+      "selected_count": 1,
+      "schema22": {"p50_ms": [84.266208, 86.059917, 88.03975, 83.746834], "p95_ms": [101.386834, 95.19625, 99.712459, 88.703], "p50_range_ms": [83.746834, 88.03975], "p95_range_ms": [88.703, 101.386834]},
+      "schema23": {"p50_ms": [85.743292, 83.964041, 77.038959, 85.894542], "p95_ms": [91.668167, 91.35575, 99.848208, 88.711792], "p50_range_ms": [77.038959, 85.894542], "p95_range_ms": [88.711792, 99.848208]},
+      "p50_delta_ms": [1.477084, -2.095876, -11.000791, 2.147708],
+      "p95_delta_ms": [-9.718667, -3.8405, 0.135749, 0.008792],
+      "p50_delta_range_ms": [-11.000791, 2.147708],
+      "p95_delta_range_ms": [-9.718667, 0.135749]
+    },
+    "stem-run": {
+      "selected_count": 0,
+      "schema22": {"p50_ms": [81.887667, 84.476208, 83.594333, 80.978958], "p95_ms": [86.180041, 100.814209, 93.299416, 91.090583], "p50_range_ms": [80.978958, 84.476208], "p95_range_ms": [86.180041, 100.814209]},
+      "schema23": {"p50_ms": [82.792667, 84.360042, 78.236417, 82.440084], "p95_ms": [89.208042, 92.067458, 89.271958, 90.820333], "p50_range_ms": [78.236417, 84.360042], "p95_range_ms": [89.208042, 92.067458]},
+      "p50_delta_ms": [0.905, -0.116166, -5.357916, 1.461126],
+      "p95_delta_ms": [3.028001, -8.746751, -4.027458, -0.27025],
+      "p50_delta_range_ms": [-5.357916, 1.461126],
+      "p95_delta_range_ms": [-8.746751, 3.028001]
+    },
+    "stopwords": {
+      "selected_count": 0,
+      "schema22": {"p50_ms": [82.632833, 81.90725, 86.162834, 83.713875], "p95_ms": [86.318041, 86.419833, 90.784625, 90.803625], "p50_range_ms": [81.90725, 86.162834], "p95_range_ms": [86.318041, 90.803625]},
+      "schema23": {"p50_ms": [80.793584, 84.112458, 74.179083, 81.016875], "p95_ms": [88.937958, 91.62275, 91.586708, 87.997292], "p50_range_ms": [74.179083, 84.112458], "p95_range_ms": [87.997292, 91.62275]},
+      "p50_delta_ms": [-1.839249, 2.205208, -11.983751, -2.697],
+      "p95_delta_ms": [2.619917, 5.202917, 0.802083, -2.806333],
+      "p50_delta_range_ms": [-11.983751, 2.205208],
+      "p95_delta_range_ms": [-2.806333, 5.202917]
+    },
+    "not-found": {
+      "selected_count": 0,
+      "schema22": {"p50_ms": [81.179875, 82.713292, 86.6395, 83.187625], "p95_ms": [87.058458, 94.123834, 96.268251, 91.406709], "p50_range_ms": [81.179875, 86.6395], "p95_range_ms": [87.058458, 96.268251]},
+      "schema23": {"p50_ms": [81.120917, 82.984126, 75.874583, 82.461584], "p95_ms": [89.520709, 87.775875, 84.759541, 96.31775], "p50_range_ms": [75.874583, 82.984126], "p95_range_ms": [84.759541, 96.31775]},
+      "p50_delta_ms": [-0.058958, 0.270834, -10.764917, -0.726041],
+      "p95_delta_ms": [2.462251, -6.347959, -11.50871, 4.911041],
+      "p50_delta_range_ms": [-10.764917, 0.270834],
+      "p95_delta_range_ms": [-11.50871, 4.911041]
+    },
+    "current-revision": {
+      "selected_count": 1,
+      "schema22": {"p50_ms": [86.20475, 88.290375, 89.816959, 89.930167], "p95_ms": [94.199208, 98.80675, 95.797083, 103.015792], "p50_range_ms": [86.20475, 89.930167], "p95_range_ms": [94.199208, 103.015792]},
+      "schema23": {"p50_ms": [87.089833, 88.167, 79.199583, 87.70475], "p95_ms": [99.157584, 101.258625, 91.401792, 99.886542], "p50_range_ms": [79.199583, 88.167], "p95_range_ms": [91.401792, 101.258625]},
+      "p50_delta_ms": [0.885083, -0.123375, -10.617376, -2.225417],
+      "p95_delta_ms": [4.958376, 2.451875, -4.395291, -3.12925],
+      "p50_delta_range_ms": [-10.617376, 0.885083],
+      "p95_delta_range_ms": [-4.395291, 4.958376]
+    },
+    "historic-revision": {
+      "selected_count": 1,
+      "schema22": {"p50_ms": [86.443792, 85.897625, 88.6165, 86.073291], "p95_ms": [90.559542, 93.550417, 98.603584, 94.576208], "p50_range_ms": [85.897625, 88.6165], "p95_range_ms": [90.559542, 98.603584]},
+      "schema23": {"p50_ms": [85.005042, 85.400875, 77.763833, 85.224708], "p95_ms": [97.510333, 91.899167, 89.417, 92.9735], "p50_range_ms": [77.763833, 85.400875], "p95_range_ms": [89.417, 97.510333]},
+      "p50_delta_ms": [-1.43875, -0.49675, -10.852667, -0.848583],
+      "p95_delta_ms": [6.950791, -1.65125, -9.186584, -1.602708],
+      "p50_delta_range_ms": [-10.852667, -0.49675],
+      "p95_delta_range_ms": [-9.186584, 6.950791]
+    }
+  },
+  "schema23_english_reads": {
+    "anchor": {"selected_count": 4, "p50_ms": [88.225666, 90.726501, 86.984917, 88.689791], "p95_ms": [96.798, 99.488917, 94.890458, 94.371417], "p50_range_ms": [86.984917, 90.726501], "p95_range_ms": [94.371417, 99.488917]},
+    "literal-approval": {"selected_count": 4, "p50_ms": [89.673917, 89.86725, 90.949958, 89.156708], "p95_ms": [102.672041, 98.920042, 102.651833, 94.620583], "p50_range_ms": [89.156708, 90.949958], "p95_range_ms": [94.620583, 102.672041]},
+    "stem-approve": {"selected_count": 4, "p50_ms": [91.028501, 89.458625, 89.310583, 87.722792], "p95_ms": [95.897458, 103.221917, 97.845209, 93.131792], "p50_range_ms": [87.722792, 91.028501], "p95_range_ms": [93.131792, 103.221917]},
+    "stem-run": {"selected_count": 4, "p50_ms": [87.884834, 90.454084, 90.817209, 89.928875], "p95_ms": [90.436959, 101.633208, 100.392334, 102.03], "p50_range_ms": [87.884834, 90.817209], "p95_range_ms": [90.436959, 102.03]},
+    "stopwords": {"selected_count": 0, "p50_ms": [85.960875, 84.3545, 87.9155, 83.597625], "p95_ms": [98.127541, 94.906459, 102.747084, 96.546042], "p50_range_ms": [83.597625, 87.9155], "p95_range_ms": [94.906459, 102.747084]},
+    "not-found": {"selected_count": 0, "p50_ms": [85.2795, 85.141459, 86.233416, 85.26125], "p95_ms": [92.634791, 90.624583, 92.276542, 99.367792], "p50_range_ms": [85.141459, 86.233416], "p95_range_ms": [90.624583, 99.367792]},
+    "current-revision": {"selected_count": 1, "p50_ms": [90.099792, 90.598625, 90.936959, 90.045333], "p95_ms": [100.294208, 95.579125, 96.732917, 99.230125], "p50_range_ms": [90.045333, 90.936959], "p95_range_ms": [95.579125, 100.294208]},
+    "historic-revision": {"selected_count": 1, "p50_ms": [87.647416, 89.694542, 88.622292, 86.832542], "p95_ms": [96.341375, 101.532, 93.989666, 93.326958], "p50_range_ms": [86.832542, 89.694542], "p95_range_ms": [93.326958, 101.532]}
+  },
+  "migration": {
+    "elapsed_ms": [17.340875, 22.561167, 20.563125, 16.524208],
+    "range_ms": [16.524208, 22.561167],
+    "p50_ms": 17.340875,
+    "p95_ms": 22.561167,
+    "excluded_vacuum_analyze_ms": [58.156834, 56.208041, 57.3815, 55.983209],
+    "boundary": "public migrate(): connection, transaction, schema23 migration and commit; old API quiescent"
+  },
+  "storage": {
+    "before_migration": {"database_bytes": [14268095, 14268095, 14276287, 14259903], "combined_lexical_heap_main_bytes_range": [98304, 98304], "combined_lexical_index_bytes_range": [245760, 245760], "combined_lexical_total_bytes_range": [425984, 425984], "japanese_logical_tuple_bytes_range": [82944, 82944]},
+    "after_migration_transaction": {"database_bytes": [14374591, 14374591, 14382783, 14366399], "combined_lexical_heap_main_bytes_range": [172032, 172032], "combined_lexical_index_bytes_range": [278528, 278528], "combined_lexical_total_bytes_range": [532480, 532480], "japanese_logical_tuple_bytes_range": [82944, 82944], "english_logical_tuple_bytes_range": [73784, 73784]},
+    "after_migration_maintenance_and_guards": {"database_bytes": [14464703, 14464703, 14472895, 14456511], "combined_lexical_heap_main_bytes_range": [172032, 172032], "combined_lexical_index_bytes_range": [278528, 278528], "combined_lexical_total_bytes_range": [532480, 532480], "japanese_logical_tuple_bytes_range": [82944, 82944], "english_logical_tuple_bytes_range": [73784, 73784]},
+    "schema22_before_writes": {"database_bytes": [14268095, 14268095, 14276287, 14259903], "combined_lexical_heap_main_bytes_range": [98304, 98304], "combined_lexical_index_bytes_range": [245760, 245760], "combined_lexical_total_bytes_range": [425984, 425984], "japanese_logical_tuple_bytes_range": [82944, 82944]},
+    "schema23_before_writes": {"database_bytes": [14464703, 14464703, 14472895, 14456511], "combined_lexical_heap_main_bytes_range": [172032, 172032], "combined_lexical_index_bytes_range": [278528, 278528], "combined_lexical_total_bytes_range": [532480, 532480], "japanese_logical_tuple_bytes_range": [82944, 82944], "english_logical_tuple_bytes_range": [73784, 73784]},
+    "schema22_after_writes": {"database_bytes": [14522047, 14513855, 14522047, 14538431], "combined_lexical_heap_main_bytes_range": [106496, 106496], "combined_lexical_index_bytes_range": [278528, 286720], "combined_lexical_total_bytes_range": [466944, 475136], "japanese_logical_tuple_bytes_range": [98834, 98834]},
+    "schema23_after_writes": {"database_bytes": [14735039, 14759615, 14743231, 14735039], "combined_lexical_heap_main_bytes_range": [204800, 204800], "combined_lexical_index_bytes_range": [311296, 327680], "combined_lexical_total_bytes_range": [598016, 614400], "japanese_logical_tuple_bytes_range": [98834, 98834], "english_logical_tuple_bytes_range": [89254, 89254]},
+    "schema22_after_maintenance_reads_and_guards": {"database_bytes": [14612159, 14603967, 14612159, 14628543], "combined_lexical_heap_main_bytes_range": [106496, 106496], "combined_lexical_index_bytes_range": [278528, 286720], "combined_lexical_total_bytes_range": [466944, 475136], "japanese_logical_tuple_bytes_range": [98834, 98834]},
+    "schema23_after_maintenance_reads_and_guards": {"database_bytes": [14751423, 14775999, 14759615, 14751423], "combined_lexical_heap_main_bytes_range": [204800, 204800], "combined_lexical_index_bytes_range": [311296, 327680], "combined_lexical_total_bytes_range": [598016, 614400], "japanese_logical_tuple_bytes_range": [98834, 98834], "english_logical_tuple_bytes_range": [89254, 89254]},
+    "migration_delta_bytes": {
+      "transaction_database": [106496, 106496, 106496, 106496],
+      "transaction_combined_lexical_total": [106496, 106496, 106496, 106496],
+      "transaction_combined_lexical_indexes": [32768, 32768, 32768, 32768],
+      "maintained_database": [196608, 196608, 196608, 196608]
+    }
+  },
+  "smoke_evidence": {
+    "corrected_smoke": {"status": "completed", "repetitions": 2, "timed_writes": 36, "timed_reads": 144, "cleanup_exit_status": 0, "included_in_default_latency_metrics": false},
+    "original_smoke": {
+      "status": "failed",
+      "harness": "ab5acd01b337c7891084bbcc5a33ef521f3ca4f9",
+      "code": "DuplicateObject",
+      "cleanup_exit_status": 1,
+      "completed_repetitions": 1,
+      "failed_phase": "second seed",
+      "included_in_latency_metrics": false,
+      "explanation": "Original harness reused a cluster; immutable migration001 creates the global role again. Corrected harness uses a fresh cluster per repetition. This failed smoke is not a performance result."
+    }
+  },
+  "interpretation": {
+    "repetition_vector_order": "All per-repetition vectors are r01,r02,r03,r04.",
+    "paired_differences": "Schema23 minus schema22 within each cloned-fixture repetition. Differences are of per-arm nearest-rank quantiles, not quantiles of per-request paired differences.",
+    "warmups": "Writes exclude initial warmup triplets but their rows persist. Reads exclude recorded warmup orders. Startup, readiness, response decoding/validation, guards and VACUUM ANALYZE are outside HTTP timers.",
+    "latency_boundary": "Synchronous client loopback HTTP POST through complete response bytes, measured in integer perf_counter_ns. Published milliseconds are ns/1000000, not server-only CPU or SQL execution time.",
+    "sampling": "Four serial repetitions; write p95 is rank29 of30 and read p95 rank19 of20. Migration p95 is the maximum of4. Reported ranges are empirical min/max, not confidence intervals or significance tests. No speedup, non-significance or production-capacity conclusion is established.",
+    "comparison": "Matched simple-v1 uses the same query order and selected IDs/cardinality across frozen schema22/schema23 versions. English profile measurements are separate because stemming changes selectivity.",
+    "physical_storage": "Physical sizes include both lexical profiles and all relation/index overhead; shared indexes cannot be attributed to English by tuple-byte ratios. Logical tuple sums are not disk bytes. Database totals also include other tables/catalogs; post-maintenance snapshots follow untimed reads/guards as named.",
+    "limits": "Synthetic modest fixtures, single serial client and shared host; no hardware profiling, no cold-cache claim, no Japanese or saturated-query timing arm, no concurrency/scaling test, and no model calls.",
+    "cleanup": "Cleanup manifests report exit0 and run-owned resource removal for successful runs. This offline audit does not independently inspect current containers/processes; removal errors can be suppressed by the wrapper."
+  }
+}

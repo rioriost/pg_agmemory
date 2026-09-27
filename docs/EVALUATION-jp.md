@@ -23,9 +23,61 @@ required-reference検査は時間測定外の正しさ確認であり、
 
 model、embedding provider、workerは呼びません。
 wrapperが所有するDB・image・一時credentialだけを後片付けします。
+完了にはinventoryでの削除確認を要求し、測定自体が完了していても、
+cleanup失敗は`cleanup.json`に記録して非zeroで終了します。
 smokeは測定経路の確認であり、性能結果ではありません。
 共有hostの実時間とSQL counterだけでは、hardware hotspot、
 専有環境での性能、本番移行時間の上限は認定できません。
+
+### 最初の対応測定: 容量は増加、時間変化は一様ではない
+
+harness **`a31e7c9`**で最初の既定測定を4回完了しました。
+開始fixtureは各256 episodeと、2 revisionを持つ32 assertionです。
+[監査済み結果](../examples/english-profile-cost-v1-result.json)は
+**書込み720回・読取1,920回**を測定し、書込み120回・読取288回のwarmupを除外します。
+書込みwarmupの行はfixtureに残ります。
+反復ごとに新しい所有PostgreSQLクラスタを作り、同一fixtureの複製と交互のarm順序で比較します。
+model callとworker jobはありません。
+
+migration呼出しは、後続maintenanceを除いて**16.524–22.561 ms**でした。
+lexical table/indexの合計物理容量は、全反復で
+**425,984→532,480 byte、+106,496 byte（+25%）**となりました。
+これは両lexical tableの物理容量であり、共有indexの英語分への配賦でも、
+DB全体の増加率でもありません。
+過去revision、canonical/日本語fingerprint、epoch、削除manifestの整合性を保ち、
+保持中のtombstone payloadがbackfillで復活しないこともfixtureで確認します。
+
+| 書込み操作 | 対応するp50差 | 対応するp95差 | schema23のp95範囲 |
+|---|---:|---:|---:|
+| Observe | +0.245〜+3.039 ms | −34.639〜−4.512 ms | 118.254〜140.222 ms |
+| Remember | −0.455〜+3.406 ms | −16.069〜+26.282 ms | 146.549〜171.894 ms |
+| Revision | −3.768〜+1.902 ms | −4.647〜+50.864 ms | 150.966〜205.619 ms |
+
+差は**各反復内**のschema23−schema22で、操作・armごとに30 requestを測定しています。
+分位点同士の差であり、requestごとの対応差を分位点にしたものではありません。
+Observeのp50は4反復全てで増えますが、末尾の時間変化は一様な悪化ではありません。
+revision p95の観測最大値**205.619 ms**も、中央値だけの報告で隠していません。
+
+固定8 query・4反復で、同じ`simple-v1`のp95差は**−20.537〜+11.218 ms**でした。
+schema間の選択IDと件数は一致しています。英語profileは別測定です。
+approval/approveでは選択件数が**1→4**、runでは**0→4**となるため、
+同じ結果集合に対する追加負荷とは扱えません。
+query・armごとに20 requestを測定しています。
+時間はloopback HTTPの全response byte受信までで、decode/検査・setup・maintenanceは除外します。
+SQLだけの時間やserverのCPU時間ではありません。
+
+最初のsmokeは、次のfixtureがクラスタ共通roleを再作成して失敗しました。
+失敗証跡を残し、性能結果から除外しています。
+反復ごとにクラスタを分離したsmokeで両arm順序が完了した後、既定測定を実行しました。
+測定時のwrapperにはcleanup失敗を隠す可能性があり、
+時間証跡を置き換えず、後続のcleanup限定修正で失敗を明示するようにしました。
+別途行った実行後inventory確認では、3 runの所有container/imageは残っておらず、
+`buildkit`は保持されています。
+監査では生の時間配列から再集計し、記録されたidentity・件数・hashを確認しました。
+response内容や拒否の確認は固定harnessのassertionに依拠し、
+生のresponse bodyを独立再生できる形では保存していません。
+この小規模fixture・共有hostの4反復だけで、
+一般的な高速化、統計的な非有意性、本番移行時間の上限は認定しません。
 
 ### 過去の読取時間はmodel call境界が大部分を占める
 

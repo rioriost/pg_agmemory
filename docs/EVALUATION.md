@@ -24,9 +24,65 @@ Japanese timing controls are not part of this recipe.
 
 No model, embedding provider or worker is invoked. The wrapper owns its
 databases, images and temporary credentials and removes only those resources.
+Completion requires inventory-verified removal; cleanup failures are recorded
+in `cleanup.json` and return nonzero, including when measurements completed.
 The smoke run validates the measurement path, not performance. Wall-clock
 and SQL counters on a shared host do not establish hardware hotspots,
 exclusive-capacity performance or production migration bounds.
+
+### First paired result: storage increases, latency changes are mixed
+
+The first default run at harness **`a31e7c9`** completes four repetitions
+with 256 episodes and 32 two-revision assertions per starting fixture.
+The [audited result](../examples/english-profile-cost-v1-result.json) records
+**720 timed writes / 1,920 timed reads**, excluding 120 write and 288 read
+warmups. Write warmup rows remain in the fixtures. Each repetition uses a
+fresh owned PostgreSQL cluster, with matched clones and alternating arm order.
+There are no model calls or worker jobs.
+
+The migration call takes **16.524–22.561 ms**, excluding subsequent
+maintenance. Combined lexical relation/index storage rises from
+**425,984 to 532,480 bytes: +106,496 bytes (+25%)** in every repetition.
+This is total physical storage for both lexical tables, not an allocation
+of shared indexes to English, and not the percentage increase of the entire
+database. Historical revisions, canonical/Japanese fingerprints, epochs and
+deletion manifests remain consistent; the fixture also checks that retained
+tombstoned payloads are not revived by backfill.
+
+| Write operation | Paired p50 difference | Paired p95 difference | Schema-23 p95 range |
+|---|---:|---:|---:|
+| Observe | +0.245 to +3.039 ms | −34.639 to −4.512 ms | 118.254–140.222 ms |
+| Remember | −0.455 to +3.406 ms | −16.069 to +26.282 ms | 146.549–171.894 ms |
+| Revision | −3.768 to +1.902 ms | −4.647 to +50.864 ms | 150.966–205.619 ms |
+
+Differences are schema23 minus schema22 **within each repetition**, using
+30 measured requests per operation/arm. They are differences of quantiles,
+not quantiles of paired request differences. Observe p50 increases in all
+four repetitions, whereas the tail changes are not uniformly worse.
+The largest observed revision p95 is **205.619 ms**; it is not hidden by
+reporting medians alone.
+
+Across eight fixed queries and four repetitions, matched `simple-v1` p95
+differences span **−20.537 to +11.218 ms**, with identical selected IDs and
+cardinalities between schemas. English is a separate measurement:
+approval/approve selection changes **1→4**, and run selection **0→4**,
+so those timings are not same-result overhead comparisons. Each query/arm
+has 20 measured requests. Timers cover loopback HTTP through complete
+response bytes, excluding response decoding/validation, setup and maintenance;
+they are not SQL-only or server-CPU measurements.
+
+The original smoke failed when a second fixture tried to recreate a
+cluster-global role. Its evidence remains failed and excluded from performance
+results; the corrected fresh-cluster smoke completes both arm orders before
+the default run. That measured wrapper could suppress cleanup errors; a later
+cleanup-only fix makes failures explicit without replacing the timing evidence.
+Separate post-run inventories found none of the three runs' owned containers
+or images remaining, and preserved `buildkit`.
+The audit recomputes raw distributions and verifies recorded
+identities, counts and hashes. Response-content and denial checks rely on
+frozen harness assertions: raw response bodies were not retained for replay.
+Four serial repetitions on this modest shared-host fixture establish neither
+a general speedup, statistical non-significance nor production migration bounds.
 
 ### Historical reader latency is dominated by model-call boundaries
 
