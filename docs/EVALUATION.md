@@ -2,6 +2,19 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Development-work evaluation: design approved, CI gate pending
+
+The [mini-swe-agent implementation plan](DEVELOPMENT_EVALUATION_PLAN.md) defines
+the next comparison: no memory, a fixed-length handoff note, and pg_agmemory.
+It uses actual code submissions and hidden acceptance cases, with fresh agents
+and isolated execution guests. Identical canonical restarts at each milestone
+prevent uncontrolled file-based carryover; this is a stage-gated handoff pilot,
+not continuous development on an agent-owned branch.
+Revision 2 passed Astra/xhigh re-review with no remaining design blockers.
+The separate CI and pre-edit interface gates remain. Framework implementation,
+task-pack creation and live three-arm calls have not started; no new usefulness
+result is claimed.
+
 ## Paired English projection cost measurement
 
 `scripts/measure-english-profile-costs.sh` compares frozen schema-22
@@ -83,6 +96,16 @@ identities, counts and hashes. Response-content and denial checks rely on
 frozen harness assertions: raw response bodies were not retained for replay.
 Four serial repetitions on this modest shared-host fixture establish neither
 a general speedup, statistical non-significance nor production migration bounds.
+
+The measured-source [CI run 36290975056](https://github.com/rioriost/pg_agmemory/actions/runs/36290975056)
+is **cancelled, not an all-jobs pass**: seven jobs complete successfully,
+including Native arm64. Native amd64 reaches the configured 40-minute job
+timeout after **5,773 passed / 137 skipped**, 18 isolated COMMIT checks,
+13 request checks and 88 recovery-contract checks. The isolated restore
+drill has no completion report and the subsequent bridge step is skipped.
+The job annotation confirms a timeout, not a reported test assertion failure.
+The final cleanup-only source `b543bd1` separately passes 59 targeted live
+benchmark checks and its two-order cleanup smoke; its broader CI is pending.
 
 ### Historical reader latency is dominated by model-call boundaries
 

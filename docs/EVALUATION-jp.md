@@ -2,6 +2,18 @@
 
 [English](EVALUATION.md)
 
+## 開発業務の評価: 設計承認済み、CI gateは確認待ち
+
+次は[mini-swe-agentの実装プラン](DEVELOPMENT_EVALUATION_PLAN.md)に従い、
+「記憶なし」「固定長の引継ぎメモ」「pg_agmemory」を比較します。
+実際のコード成果物と非公開の受入caseを使い、agentと実行環境を毎session新規にします。
+fileによる意図しない記憶の持越しを防ぐため、各milestoneでは全armを同じ固定sourceから開始します。
+これは段階的な業務引継ぎのpilotであり、agent所有branchを継続開発する評価とは区別します。
+改訂2版はAstra/xhighの再レビューで設計上のblockerなしと承認されました。
+別途CIと編集前interface合意のgateが残っています。
+framework実装・task pack作成・3 armの実推論はまだ開始しておらず、
+新たな有用性の結果を主張していません。
+
 ## 英語projection追加負荷の対応比較
 
 `scripts/measure-english-profile-costs.sh`は固定したschema22の`3bb0ee2`と
@@ -78,6 +90,15 @@ response内容や拒否の確認は固定harnessのassertionに依拠し、
 生のresponse bodyを独立再生できる形では保存していません。
 この小規模fixture・共有hostの4反復だけで、
 一般的な高速化、統計的な非有意性、本番移行時間の上限は認定しません。
+
+測定sourceの[CI run 36290975056](https://github.com/rioriost/pg_agmemory/actions/runs/36290975056)は
+**cancelledであり、全job成功ではありません**。Native arm64を含む7 jobは成功しました。
+Native amd64は**5,773 passed / 137 skipped**、分離COMMIT 18件、
+request 13件、recovery契約88件の後、設定された40分のjob上限に達しました。
+分離restore drillの完了報告はなく、後続bridge stepは未実行です。
+job annotationでtimeoutを確認しており、test assertionの失敗が報告されたわけではありません。
+cleanup限定修正後の`b543bd1`は、別途実DBの対象59 testと両順序のcleanup smokeに成功しています。
+その広範囲CIは確認待ちです。
 
 ### 過去の読取時間はmodel call境界が大部分を占める
 
