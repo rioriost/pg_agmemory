@@ -2,6 +2,39 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Development-work evaluation: a separately preregistered second attempt
+
+The [second-attempt manifest](../examples/development-memory-pilot-v2-manifest.json)
+freezes a newly authored pack on corrected source `0c0f172`, whose
+[source CI](https://github.com/rioriost/pg_agmemory/actions/runs/36308617864)
+passed all eight jobs. This is not a continuation or replacement of the
+incomplete first attempt below, and their results will not be pooled.
+No second-attempt work-model calls have been dispatched at preregistration.
+
+A separate Astra/high author created two new three-milestone projects and
+attested semantic separation from the first pack without selection against
+its arm-specific responses. The pack has **79 acceptance cases**: 12
+history-sensitive, 49 explicitly memory-independent controls and 18
+unclassified cases. These strata do not overlap; all cases retain their role
+in overall scoring. One annotation-only authoring correction is preserved;
+no functional task correction was made. Private no-model qualification passed
+79 reference cases and rejected 60 canonical new-work cases and 27 designated
+defective checks across 22 defective implementations: **166 rows**, one
+qualification attempt. Defective implementations are qualification controls,
+not an additional evaluation-case stratum. The parent verified hashes,
+categories, schedule and the matrix without reading task contents.
+
+The exact eighteen-slot rotation, model, budgets and analysis rules are frozen
+before calls. Report M1 separately from memory-eligible M2-M3, retain all six
+planned slots per arm and all 237 scheduled checks, and distinguish candidate
+failures, unknowns and unrun work. Empty valid memory remains an assigned-arm
+outcome. Hidden grades are never treated as feedback the agent observed.
+Usage includes maintenance and failed admissions, with canaries and shared
+startup identified separately. Two project histories support descriptive
+findings, not eighteen independent experiments or general superiority claims.
+After terminal outcomes are frozen, release the task pack with an explicit
+hash relationship to the evaluated bytes.
+
 ## Development-work evaluation: first live attempt incomplete
 
 The [first live result](../examples/development-memory-pilot-v1-result.json)
@@ -27,7 +60,7 @@ and reasoning categories reported separately. The exact decimal sum of retained
 model-metric JSON numeric lexemes is `157551500000.0000005` nano-AIU; the original
 JavaScript aggregate is `157551500000`. Neither is a verified bill. The audit
 does not overwrite the original summary, whose SHA256 is recorded in the public
-result. No replacement live run has been performed.
+result. This first attempt has not been resumed or replaced.
 
 The controller and Python usage contract have now been aligned with the existing
 bridge: nullable `nano_aiu` accepts finite, nonnegative integer or fractional
