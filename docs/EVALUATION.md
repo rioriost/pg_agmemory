@@ -2,6 +2,32 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Paired English projection cost measurement
+
+`scripts/measure-english-profile-costs.sh` compares frozen schema-22
+`3bb0ee2` and schema-23 `b8d775d` components in owned Apple Container Linux
+guests. Commit the harness first, then use a new private output directory:
+
+```bash
+bash scripts/measure-english-profile-costs.sh .review-artifacts/english-cost-smoke --smoke
+bash scripts/measure-english-profile-costs.sh .review-artifacts/english-cost-01
+```
+
+The default measurement uses four serial repetitions, cloned fixtures and
+alternating arm order. It records migration/backfill time, projection table
+and index sizes, Observe/Remember/revision writes and fixed-query Native reads.
+Matched `simple-v1` queries compare schema overhead; English-profile queries
+are separately labeled because stemming can change selectivity. Warmups,
+sample counts, raw timings, cardinalities and preservation guards are recorded.
+Required-reference checks are untimed correctness guards; saturated-query and
+Japanese timing controls are not part of this recipe.
+
+No model, embedding provider or worker is invoked. The wrapper owns its
+databases, images and temporary credentials and removes only those resources.
+The smoke run validates the measurement path, not performance. Wall-clock
+and SQL counters on a shared host do not establish hardware hotspots,
+exclusive-capacity performance or production migration bounds.
+
 ## Explicit English-profile comparison
 
 The schema-23 `en-snowball-v1` profile is a **Native matching change**, not

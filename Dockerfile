@@ -25,6 +25,7 @@ COPY scripts/smoke-recovery.py scripts/test-recovery-containers.sh \
     scripts/smoke-pitr.py scripts/test-pitr-containers.sh \
     scripts/smoke-ha.py scripts/test-ha-containers.sh \
     scripts/resource-benchmark.py scripts/resource-probes.py \
+    scripts/english-profile-benchmark.py scripts/measure-english-profile-costs.sh \
     scripts/smoke-age.py scripts/test-age-containers.sh \
     scripts/age_graph_candidate.py scripts/test-age-graph-containers.sh \
     scripts/smoke-graph-artifact.py scripts/smoke-age-patched.py \

@@ -2,6 +2,31 @@
 
 [English](EVALUATION.md)
 
+## 英語projection追加負荷の対応比較
+
+`scripts/measure-english-profile-costs.sh`は固定したschema22の`3bb0ee2`と
+schema23の`b8d775d`を、所有するApple Container Linux環境で比較します。
+harnessをcommitしてから、新しい非公開出力directoryを指定します。
+
+```bash
+bash scripts/measure-english-profile-costs.sh .review-artifacts/english-cost-smoke --smoke
+bash scripts/measure-english-profile-costs.sh .review-artifacts/english-cost-01
+```
+
+既定測定は複製した同一fixtureを用いる4回の直列反復で、arm順序を交互にします。
+移行/backfill時間、projectionのtable/index容量、Observe/Remember/revision書込み、
+固定queryのNative読取を記録します。
+同じ`simple-v1` queryでschema追加負荷を比較し、stemmingで選択性が変わる英語profileは
+別の測定として扱います。warmup、sample数、生の時間、件数、状態保持の検査を記録します。
+required-reference検査は時間測定外の正しさ確認であり、
+飽和queryと日本語queryの時間比較はこのrecipeに含みません。
+
+model、embedding provider、workerは呼びません。
+wrapperが所有するDB・image・一時credentialだけを後片付けします。
+smokeは測定経路の確認であり、性能結果ではありません。
+共有hostの実時間とSQL counterだけでは、hardware hotspot、
+専有環境での性能、本番移行時間の上限は認定できません。
+
 ## 明示的な英語profile比較
 
 schema23の`en-snowball-v1`は、promptやscheduleだけでなく**Nativeの照合方式**を変えます。
