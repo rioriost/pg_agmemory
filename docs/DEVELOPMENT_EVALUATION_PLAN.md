@@ -1,8 +1,13 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **framework implementation approved for freeze by Astra/xhigh**.
-The local integrated gates passed; held-out authoring and private qualification
-are next. No live three-arm evaluation or model-quality result is complete.
+Status: **the separately preregistered v2 run and post-terminal audits are complete**.
+The [v2 result](../examples/development-memory-pilot-v2-result.json) records
+fourteen successful submissions and four dependent-unrun slots caused by
+memory-boundary contract failures. No-memory passed all six planned slots;
+added memory usefulness and production readiness are not established.
+The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
+separately. The remaining sections record the reviewed design and historical
+pre-live gates; no outcome below authorizes retry or retrospective scoring changes.
 
 This is the second evaluation stage, following the bounded phase-one findings
 published in `b543bd1`. The first paired cost data remain tied to `a31e7c9`;

@@ -2,7 +2,94 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Development-work evaluation: a separately preregistered second attempt
+## Development-work evaluation: no added memory benefit established
+
+The [second-attempt result](../examples/development-memory-pilot-v2-result.json)
+completed the preregistered run on `0c0f172`, with **14 successful submissions
+and four dependent-unrun slots**. All 183 evaluated acceptance checks passed;
+54 of the 237 scheduled checks were unavailable because the corresponding
+work slots never ran. There were no observed candidate-check failures or
+infrastructure-unknown slots. A completed coordinator run does not mean that
+all eighteen work slots executed.
+
+| Arm | Successful / planned slots | M2-M3 successes / planned | Checks passed / scheduled | Historical checks passed / scheduled | Dependent-unrun slots |
+|---|---:|---:|---:|---:|---:|
+| No memory | 6/6 | 4/4 | 79/79 | 12/12 | 0 |
+| Fixed handoff | 3/6 | 1/4 | 38/79 | 3/12 | 3 |
+| pg_agmemory | 5/6 | 3/4 | 66/79 | 9/12 | 1 |
+
+The missing checks are **unrun, not incorrect answers**. Both memory arms
+passed both M1 slots. Their reduced completion came from three rejected
+maintenance outputs, not from wrong submitted code:
+
+| Boundary | Rejection | Effect |
+|---|---|---|
+| Notice M1 handoff | Valid JSON note was 2,055 UTF-8 bytes: 7 over the 2,048-byte cap | Two later handoff slots unrun |
+| Asset M2 handoff | Valid JSON note was 2,181 bytes: 133 over the cap | One later handoff slot unrun |
+| Notice M2 pg_agmemory | First revision cited an in-range `[10,1157)` span whose exact quote ended in U+0020; the no-edge-whitespace contract rejected it | One later pg_agmemory slot unrun |
+
+All three proposed revision spans in the rejected PG decision ended in spaces.
+Its trace contains one Observe and six inventory reads, but no assertion
+writes. Prior state was preserved; there was no trimming, JSON repair, retry,
+fallback or replacement run. This is not evidence of an out-of-range span or
+a fabricated fact.
+
+The three successful PG boundaries created 15 facts and revised three.
+Three later PG sessions received nonempty memory: **455, 1,652 and 1,712
+bytes**, with 1, 4 and 4 reference occurrences respectively. Twelve lexical
+searches and three final validations selected twelve reference occurrences;
+three whole items were omitted to respect the delivery cap. All requested
+references were returned by final validation despite its `native_truncated`
+flag, which can also describe optional candidates. The single successful
+handoff delivered 1,954 bytes. These four nonempty deliveries were present
+in actual work-model inputs; exposure does not establish causal use.
+Some Native-current facts were superseded by the current task brief.
+Asset M3 received the corrected ordering revision, but Native currentness
+alone is not semantic freshness. **No forgetting proposals were made**:
+nonempty pending-exclusion behavior and forgetting quality remain untested.
+No destructive call appears in the instrumented controller traces.
+
+There were **101 admitted invocations and 101 reported API requests**, with
+no unknown usage or receipt mismatches: 76 work, 12 planning, seven maintenance
+and six canary calls. All three failed maintenance calls remain charged.
+The table below excludes two canary calls per arm:
+
+| Arm | Work calls | Memory calls | Input tokens | Output tokens |
+|---|---:|---:|---:|---:|
+| No memory | 32 | 0 | 173,212 | 25,398 |
+| Fixed handoff | 14 | 3 | 99,472 | 13,923 |
+| pg_agmemory | 30 | 16 | 258,702 | 46,990 |
+
+These totals cover **unequal executed work counts (6, 3, 5)** and are not a
+matched-task efficiency comparison. Overall, including canaries, usage was
+549,286 input / 86,505 output tokens over **2,440.826 seconds**. Overlapping
+cache/reasoning categories and non-additive timing windows are recorded
+separately in the result. The exact raw model-level nano-AIU decimal sum is
+`1119056749999.9999995`; the original JavaScript and raw top-level sums are
+`1119056750000`. Seven fractional-valued calls passed the corrected contract.
+None of these amounts is an invoice-verified price. The owned database grew
+from 11,941,567 to 12,850,879 allocated bytes; this is not a per-fact cost.
+All 200 registered resources have absence receipts, all three bridges exited,
+and independent inventory found no remaining run-owned containers.
+
+**This pilot did not demonstrate added memory usefulness.** No-memory passed
+all twelve preregistered historical checks. That category means an
+earlier-visible requirement origin, not that the information was absent from
+the current canonical source or brief: the supplied continuations contain
+previous parser and graph behavior. This baseline ceiling and only two
+project histories limit conclusions. Fail-closed memory guards worked, but
+maintenance-output reliability reduced availability. The first attempt remains
+separately incomplete; neither result establishes production readiness.
+
+The [released task pack](../examples/development-memory-pilot-v2-pack.json)
+is byte-identical to the evaluated pack, with no redactions or transformations.
+It includes original synthetic tasks, references and defective implementations;
+source payloads retain their base64 encoding. Live prompts, credentials and
+controller state are not included. The 933-file private evidence tree was
+sealed before post-hoc inspection and verified unchanged. No new scoring
+model or candidate replay was used.
+
+### Second-attempt preregistration and qualification
 
 The [second-attempt manifest](../examples/development-memory-pilot-v2-manifest.json)
 freezes a newly authored pack on corrected source `0c0f172`, whose
@@ -32,8 +119,8 @@ outcome. Hidden grades are never treated as feedback the agent observed.
 Usage includes maintenance and failed admissions, with canaries and shared
 startup identified separately. Two project histories support descriptive
 findings, not eighteen independent experiments or general superiority claims.
-After terminal outcomes are frozen, release the task pack with an explicit
-hash relationship to the evaluated bytes.
+The post-terminal task release above preserves the evaluated bytes and the
+manifest's hash relationship.
 
 ## Development-work evaluation: first live attempt incomplete
 

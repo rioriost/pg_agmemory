@@ -1,0 +1,1806 @@
+{
+  "format": "pgag-development-public-result-v2",
+  "status": "completed_with_memory_boundary_failures",
+  "original_run_status": "completed",
+  "original_run_failure": null,
+  "first_outcomes_preserved": true,
+  "automatic_retry_performed": false,
+  "all_planned_work_slots_executed": false,
+  "run_id": "pgag-dev-8150c88ba4deeb8f0036dbb2",
+  "framework_source": "0c0f172f005b20f526c99f6b7ee5b3690cf0c5ea",
+  "source_ci_run": 36308617864,
+  "source_ci_successful_jobs": 8,
+  "preregistration_commit": "fbac2b3ccb4907ebb2ebe2ceef5090d46c6c5657",
+  "preregistration_sha256": "dc844e73be5995d8996af27d2e27bcccb7c7a050d8e869f8bfc23b1ea3598639",
+  "pack_sha256": "5f91f12f5f6b073615cb9d97698047c857099b78c6695d16c00c492610ac51ac",
+  "qualification_sha256": "08ec8a016e1287916baf0a9637825175a843184543644eaf4375d749ed835062",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "prior_attempt": {
+    "result": "development-memory-pilot-v1-result.json",
+    "preserved": true,
+    "pooled": false
+  },
+  "denominators": {
+    "project_histories": 2,
+    "matched_milestones": 6,
+    "planned_work_slots": 18,
+    "executed_work_slots": 14,
+    "successful_submissions": 14,
+    "candidate_failure_slots": 0,
+    "infrastructure_unknown_slots": 0,
+    "dependent_unrun_slots": 4,
+    "other_unrun_slots": 0,
+    "scheduled_acceptance_checks": 237,
+    "evaluated_acceptance_checks": 183,
+    "passed_acceptance_checks": 183,
+    "failed_candidate_checks": 0,
+    "unavailable_checks_in_dependent_unrun_slots": 54,
+    "unknown_checks": 0
+  },
+  "arms": {
+    "no_memory": {
+      "planned_slots": 6,
+      "successful_slots": 6,
+      "dependent_unrun_slots": 0,
+      "other_unrun_slots": 0,
+      "unknown_slots": 0,
+      "submitted_candidate_failure_slots": 0,
+      "other_work_failure_slots": 0,
+      "m1": {
+        "successes": 2,
+        "planned": 2
+      },
+      "m2_m3": {
+        "successes": 4,
+        "planned": 4
+      },
+      "all": {
+        "scheduled": 79,
+        "passed": 79,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 0
+      },
+      "history": {
+        "scheduled": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 0
+      },
+      "memory_independent": {
+        "scheduled": 49,
+        "passed": 49,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 0
+      },
+      "unclassified": {
+        "scheduled": 18,
+        "passed": 18,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 0
+      },
+      "m2_m3_checks": {
+        "all": {
+          "scheduled": 54,
+          "passed": 54,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 24,
+          "passed": 24,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 18,
+          "passed": 18,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "handoff": {
+      "planned_slots": 6,
+      "successful_slots": 3,
+      "dependent_unrun_slots": 3,
+      "other_unrun_slots": 0,
+      "unknown_slots": 0,
+      "submitted_candidate_failure_slots": 0,
+      "other_work_failure_slots": 0,
+      "m1": {
+        "successes": 2,
+        "planned": 2
+      },
+      "m2_m3": {
+        "successes": 1,
+        "planned": 4
+      },
+      "all": {
+        "scheduled": 79,
+        "passed": 38,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 41
+      },
+      "history": {
+        "scheduled": 12,
+        "passed": 3,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 9
+      },
+      "memory_independent": {
+        "scheduled": 49,
+        "passed": 34,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 15
+      },
+      "unclassified": {
+        "scheduled": 18,
+        "passed": 1,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 17
+      },
+      "m2_m3_checks": {
+        "all": {
+          "scheduled": 54,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 41
+        },
+        "history": {
+          "scheduled": 12,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 9
+        },
+        "memory_independent": {
+          "scheduled": 24,
+          "passed": 9,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 15
+        },
+        "unclassified": {
+          "scheduled": 18,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 17
+        }
+      }
+    },
+    "pg_agmemory": {
+      "planned_slots": 6,
+      "successful_slots": 5,
+      "dependent_unrun_slots": 1,
+      "other_unrun_slots": 0,
+      "unknown_slots": 0,
+      "submitted_candidate_failure_slots": 0,
+      "other_work_failure_slots": 0,
+      "m1": {
+        "successes": 2,
+        "planned": 2
+      },
+      "m2_m3": {
+        "successes": 3,
+        "planned": 4
+      },
+      "all": {
+        "scheduled": 79,
+        "passed": 66,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 13
+      },
+      "history": {
+        "scheduled": 12,
+        "passed": 9,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 3
+      },
+      "memory_independent": {
+        "scheduled": 49,
+        "passed": 45,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 4
+      },
+      "unclassified": {
+        "scheduled": 18,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unavailable": 6
+      },
+      "m2_m3_checks": {
+        "all": {
+          "scheduled": 54,
+          "passed": 41,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 13
+        },
+        "history": {
+          "scheduled": 12,
+          "passed": 9,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 3
+        },
+        "memory_independent": {
+          "scheduled": 24,
+          "passed": 20,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 4
+        },
+        "unclassified": {
+          "scheduled": 18,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 6
+        }
+      }
+    }
+  },
+  "slots": [
+    {
+      "ordinal": 1,
+      "slot_id": "notice-syntax-1-no_memory",
+      "project_index": 1,
+      "milestone": 1,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "81a7d85e1864bc5dc56d93feb8cf32c2039df77389f2f549dfd287912877172b",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 2,
+      "slot_id": "notice-syntax-1-handoff",
+      "project_index": 1,
+      "milestone": 1,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "cccfc9fd2ad691d0b539f35cf6de54f319eb3e29ebffba97a015a54e779583d8",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "failed",
+        "reason": "invalid_handoff_note",
+        "global_invocation_ordinal": 16,
+        "bridge_call_id": "000008"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "first_session",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 3,
+      "slot_id": "notice-syntax-1-pg_agmemory",
+      "project_index": 1,
+      "milestone": 1,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "9bad9db69b74214733a36d4f9f01f4d1930861a1c3a5ccfbece2a144fc6ccf5b",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "boundary_completed",
+        "reason": null,
+        "global_invocation_ordinal": 23,
+        "bridge_call_id": "000009"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "first_session",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 4,
+      "slot_id": "asset-dependencies-1-handoff",
+      "project_index": 2,
+      "milestone": 1,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "2d2133db486eff48198b1d1eed208694f52af20dd116056168a8c4831f55ab63",
+      "checks": {
+        "all": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "boundary_completed",
+        "reason": null,
+        "global_invocation_ordinal": 27,
+        "bridge_call_id": "000012"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "first_session",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 5,
+      "slot_id": "asset-dependencies-1-pg_agmemory",
+      "project_index": 2,
+      "milestone": 1,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "7b6bf276cb4fd4595f04c088bdf918a47eadcbe58e6e2df358e600471705e327",
+      "checks": {
+        "all": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "boundary_completed",
+        "reason": null,
+        "global_invocation_ordinal": 32,
+        "bridge_call_id": "000014"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "first_session",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 6,
+      "slot_id": "asset-dependencies-1-no_memory",
+      "project_index": 2,
+      "milestone": 1,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "d3ac9c1b5f0eab027aeb395d670c48b662a330140e7fca35aaf0b26b2969f091",
+      "checks": {
+        "all": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 12,
+          "passed": 12,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 7,
+      "slot_id": "notice-syntax-2-pg_agmemory",
+      "project_index": 1,
+      "milestone": 2,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "ee9682a0efe43747254f9de368f59582949c0004b54bdcb37f3aa9a050de67b6",
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 14,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "failed",
+        "reason": "invalid_memory_provenance",
+        "global_invocation_ordinal": 48,
+        "bridge_call_id": "000026"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 455,
+        "empty_reason": null,
+        "selected_reference_occurrences": 1,
+        "delivered_reference_occurrences": 1,
+        "omitted_whole_items": 0,
+        "revalidated": true,
+        "native_truncated": true,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": true
+      }
+    },
+    {
+      "ordinal": 8,
+      "slot_id": "notice-syntax-2-no_memory",
+      "project_index": 1,
+      "milestone": 2,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "dfa29a0211b0e2b63208d9064f76b63bede9a90cd9e63556e0734208a69898c7",
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 14,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 9,
+      "slot_id": "notice-syntax-2-handoff",
+      "project_index": 1,
+      "milestone": 2,
+      "arm": "handoff",
+      "status": "unrun",
+      "reason": "memory_boundary_failed",
+      "task_success": false,
+      "artifact_sha256": null,
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 14
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 3
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 4
+        },
+        "unclassified": {
+          "scheduled": 7,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 7
+        }
+      },
+      "boundary": null,
+      "memory_delivery": null
+    },
+    {
+      "ordinal": 10,
+      "slot_id": "asset-dependencies-2-no_memory",
+      "project_index": 2,
+      "milestone": 2,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "e7d86c2f4ab1457082a1d60e01d23aae9c691160e5c4b1e5c9dd5d00dc5abf8f",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 9,
+          "passed": 9,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 11,
+      "slot_id": "asset-dependencies-2-handoff",
+      "project_index": 2,
+      "milestone": 2,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "d76c0a60c8db041557ed2b1f62228c8b25824c71be995445f175761848d9c055",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 9,
+          "passed": 9,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "failed",
+        "reason": "invalid_handoff_note",
+        "global_invocation_ordinal": 67,
+        "bridge_call_id": "000019"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 1954,
+        "empty_reason": null,
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": true
+      }
+    },
+    {
+      "ordinal": 12,
+      "slot_id": "asset-dependencies-2-pg_agmemory",
+      "project_index": 2,
+      "milestone": 2,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "8b5067055c85e014596be4a95c8e43d27bdc20afc01bb2435abb140f13c512d4",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 9,
+          "passed": 9,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": {
+        "status": "boundary_completed",
+        "reason": null,
+        "global_invocation_ordinal": 79,
+        "bridge_call_id": "000038"
+      },
+      "memory_delivery": {
+        "utf8_bytes": 1652,
+        "empty_reason": null,
+        "selected_reference_occurrences": 5,
+        "delivered_reference_occurrences": 4,
+        "omitted_whole_items": 1,
+        "revalidated": true,
+        "native_truncated": true,
+        "delivery_truncated": true,
+        "exact_nonempty_text_present_in_work_input": true
+      }
+    },
+    {
+      "ordinal": 13,
+      "slot_id": "notice-syntax-3-handoff",
+      "project_index": 1,
+      "milestone": 3,
+      "arm": "handoff",
+      "status": "unrun",
+      "reason": "memory_boundary_failed",
+      "task_success": false,
+      "artifact_sha256": null,
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 13
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 3
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 4
+        },
+        "unclassified": {
+          "scheduled": 6,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 6
+        }
+      },
+      "boundary": null,
+      "memory_delivery": null
+    },
+    {
+      "ordinal": 14,
+      "slot_id": "notice-syntax-3-pg_agmemory",
+      "project_index": 1,
+      "milestone": 3,
+      "arm": "pg_agmemory",
+      "status": "unrun",
+      "reason": "memory_boundary_failed",
+      "task_success": false,
+      "artifact_sha256": null,
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 13
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 3
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 4
+        },
+        "unclassified": {
+          "scheduled": 6,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 6
+        }
+      },
+      "boundary": null,
+      "memory_delivery": null
+    },
+    {
+      "ordinal": 15,
+      "slot_id": "notice-syntax-3-no_memory",
+      "project_index": 1,
+      "milestone": 3,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "1318b3c3d4b0745c48810039f09c9722935df8c73ba7d12ea5ec3ef585c8fc9b",
+      "checks": {
+        "all": {
+          "scheduled": 13,
+          "passed": 13,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 6,
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 16,
+      "slot_id": "asset-dependencies-3-pg_agmemory",
+      "project_index": 2,
+      "milestone": 3,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "5902bf1bc821ab21afe899a0528caee0362ad6487e77d7db8c1883a76348b4b2",
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 14,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 1712,
+        "empty_reason": null,
+        "selected_reference_occurrences": 6,
+        "delivered_reference_occurrences": 4,
+        "omitted_whole_items": 2,
+        "revalidated": true,
+        "native_truncated": true,
+        "delivery_truncated": true,
+        "exact_nonempty_text_present_in_work_input": true
+      }
+    },
+    {
+      "ordinal": 17,
+      "slot_id": "asset-dependencies-3-no_memory",
+      "project_index": 2,
+      "milestone": 3,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "artifact_sha256": "c6e82c53ed757791d99e0cbb8469dc246bc0a1ce333851f0d742c19a8f83f9f6",
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 14,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 3,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        },
+        "unclassified": {
+          "scheduled": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 0
+        }
+      },
+      "boundary": null,
+      "memory_delivery": {
+        "utf8_bytes": 0,
+        "empty_reason": "no_memory",
+        "selected_reference_occurrences": 0,
+        "delivered_reference_occurrences": 0,
+        "omitted_whole_items": 0,
+        "revalidated": false,
+        "native_truncated": false,
+        "delivery_truncated": false,
+        "exact_nonempty_text_present_in_work_input": null
+      }
+    },
+    {
+      "ordinal": 18,
+      "slot_id": "asset-dependencies-3-handoff",
+      "project_index": 2,
+      "milestone": 3,
+      "arm": "handoff",
+      "status": "unrun",
+      "reason": "memory_boundary_failed",
+      "task_success": false,
+      "artifact_sha256": null,
+      "checks": {
+        "all": {
+          "scheduled": 14,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 14
+        },
+        "history": {
+          "scheduled": 3,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 3
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 7
+        },
+        "unclassified": {
+          "scheduled": 4,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unavailable": 4
+        }
+      },
+      "boundary": null,
+      "memory_delivery": null
+    }
+  ],
+  "memory": {
+    "handoff": {
+      "attempted_boundaries": 3,
+      "successful_boundaries": 1,
+      "failed_boundaries": 2,
+      "nonempty_work_deliveries": 1,
+      "delivered_utf8_bytes": 1954,
+      "failures": [
+        {
+          "slot_id": "notice-syntax-1-handoff",
+          "global_invocation_ordinal": 16,
+          "bridge_call_id": "000008",
+          "reason": "invalid_handoff_note",
+          "valid_json": true,
+          "note_utf8_bytes": 2055,
+          "limit_bytes": 2048,
+          "excess_bytes": 7,
+          "dependent_unrun_slots": 2
+        },
+        {
+          "slot_id": "asset-dependencies-2-handoff",
+          "global_invocation_ordinal": 67,
+          "bridge_call_id": "000019",
+          "reason": "invalid_handoff_note",
+          "valid_json": true,
+          "note_utf8_bytes": 2181,
+          "limit_bytes": 2048,
+          "excess_bytes": 133,
+          "dependent_unrun_slots": 1
+        }
+      ]
+    },
+    "pg_agmemory": {
+      "attempted_boundaries": 4,
+      "successful_boundaries": 3,
+      "failed_boundaries": 1,
+      "created_facts": 15,
+      "revised_facts": 3,
+      "proposed_pending_exclusions": 0,
+      "pending_exclusion_behavior_exercised": false,
+      "nonempty_work_deliveries": 3,
+      "delivered_utf8_bytes": 3819,
+      "planner_calls": 12,
+      "lexical_search_requests": 12,
+      "final_validations": 3,
+      "selected_reference_occurrences": 12,
+      "delivered_reference_occurrences": 9,
+      "omitted_whole_item_occurrences": 3,
+      "failed_boundary": {
+        "slot_id": "notice-syntax-2-pg_agmemory",
+        "global_invocation_ordinal": 48,
+        "bridge_call_id": "000026",
+        "reason": "invalid_memory_provenance",
+        "first_rejected_action": "revise",
+        "first_rejected_action_index": 0,
+        "first_span_codepoints": {
+          "start": 10,
+          "end": 1157,
+          "length": 1147
+        },
+        "span_in_range": true,
+        "first_quote_trailing_codepoint": "U+0020",
+        "rejected_condition": "The exact in-range provenance quote had trailing whitespace.",
+        "proposed_revisions": 3,
+        "proposed_spans_with_trailing_spaces": 3,
+        "observe_operations": 1,
+        "inventory_reads": 6,
+        "assertion_writes": 0,
+        "partial_assertion_mutation_observed": false,
+        "dependent_unrun_slots": 1
+      },
+      "validity": {
+        "provenance_reference_scope_revision_and_byte_checks_audited": true,
+        "native_temporal_passes": 8,
+        "successfully_written_fact_versions_citing_current_brief": 18,
+        "semantic_truth_or_entailment_proven": false,
+        "final_validation_truncated_flag": "All three final responses set native_truncated while returning all required refs; optional candidates also affect this flag. Whole-item byte-budget omissions are reported separately."
+      }
+    },
+    "recorded_destructive_operations": 0,
+    "destructive_observation_scope": "Instrumented controller traces, not an independent audit of all external database activity.",
+    "actual_nonempty_work_input_exposures": 4,
+    "causal_use_or_benefit_proven": false,
+    "qualitative_findings": [
+      "The successful asset-dependencies M1 handoff note (1954 bytes) was supplied to the M2 work model. It still described manifest-order tie breaking, while the full current M2 brief explicitly corrected that rule to lexicographic ordering. The common system prompt marked historical memory fallible and the current brief/source authoritative.",
+      "Notice-syntax M2 received one current Native revision1 assertion restating the old exact request shape. Its statement that the input has exactly action/pattern/bindings is superseded by the visible M2 brief's optional missing field. Only this one of six stored facts was selected/delivered; the old unconditional missing-binding-default fact itself was not retrieved.",
+      "Asset-dependencies M2 PG delivery included the version-qualified original manifest-order ready-node policy. The complete current brief explicitly superseded it with lexicographic ready-node ordering. This is semantic staleness relative to the new task, not a stale Native revision or temporal-pin failure.",
+      "Asset-dependencies M2 maintenance successfully revised three facts and added three closure facts. M3 delivery included the corrected ordering rule at revision2, the revised blocked-output rule at revision2, and two new closure facts. The old revision1 ordering rule was not delivered to M3.",
+      "All eighteen successfully written/revised fact versions cite spans wholly within the current visible brief's serialized field, rather than the later work-message portion of the boundary transcript. This establishes the citation region only, not semantic entailment or a usefulness score.",
+      "All twelve lexical searches report native_truncated=false. The three final required-reference responses report native_truncated=true while returning every requested ref. Frozen Native code also sets this flag when optional candidates exceed max_items; it is not evidence of missing required refs. Separate 2048-byte delivery clipping omitted one whole item at asset M2 and two at asset M3."
+    ],
+    "observability_limits": [
+      "Provenance checks prove exact spans/quotes in the current visible transcript, not semantic entailment or task usefulness.",
+      "Actual work-prompt inclusion proves memory text was supplied to the model; it does not prove attention, causal use or benefit.",
+      "Native currentness is checked against registered refs, returned temporal selection bounds and fresh required-reference responses. Same bounds are not an MVCC snapshot or a commit watermark.",
+      "MemoryItem has no scope_id; scope evidence is the exact issued request, bound registry and acknowledged same-scope creation/provenance chain, not an independently returned item scope field.",
+      "No pending exclusions were proposed. Pending readability is 0/0 and no live nonempty pending-exclusion behavior is established by this cohort.",
+      "No destructive method appears in the instrumented controller traces. This is not an independent audit of all external database activity.",
+      "No independent post-failure database dump was inspected. The failed PG boundary's no-assertion-write finding rests on complete serial intent/receipt traces and the frozen prevalidation control flow.",
+      "The retained index's claimed tree digest matches the supplied digest; every indexed file content/size was independently verified. No alternate tree-canonicalization algorithm is asserted.",
+      "Model usage, costs, elapsed durations, hidden case grouping and grading were not re-audited here."
+    ]
+  },
+  "usage": {
+    "coordinator_dispatched_invocations": 101,
+    "reported_api_requests": 101,
+    "ok_transport_responses": 101,
+    "unknown_usage_invocations": 0,
+    "work_invocations": 76,
+    "handoff_invocations": 3,
+    "pg_memory_decision_invocations": 4,
+    "pg_memory_planning_invocations": 12,
+    "canary_invocations": 6,
+    "controller_model_receipts": 95,
+    "controller_ipc_acknowledgments": 157,
+    "original_summary_known_subtotal": {
+      "input_tokens": 549286,
+      "output_tokens": 86505,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 548983,
+      "reasoning_tokens": 46719,
+      "api_requests": 101,
+      "premium_requests": 101,
+      "nano_aiu": 1119056750000,
+      "api_duration_ms": 1487077
+    },
+    "model_level_nano_aiu_sum_of_reported_decimal_lexemes": "1119056749999.9999995",
+    "top_level_nano_aiu_sum_of_reported_decimal_lexemes": "1119056750000",
+    "model_minus_original_summary_nano_aiu_decimal": "-0.0000005",
+    "fractional_nano_aiu_calls_preserved": 7,
+    "decimal_audit_does_not_replace_original_summary": true,
+    "by_arm_reported_decimal_totals": {
+      "no_memory": {
+        "including_canaries": {
+          "admissions": 34,
+          "input_tokens": "179173",
+          "output_tokens": "25457",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "179071",
+          "reasoning_tokens": "9149",
+          "api_requests": "34",
+          "premium_requests": "34",
+          "nano_aiu": "351225750000",
+          "api_duration_ms": "425752"
+        },
+        "excluding_canaries": {
+          "admissions": 32,
+          "input_tokens": "173212",
+          "output_tokens": "25398",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "173116",
+          "reasoning_tokens": "9126",
+          "api_requests": "32",
+          "premium_requests": "32",
+          "nano_aiu": "343481000000",
+          "api_duration_ms": "421680"
+        }
+      },
+      "handoff": {
+        "including_canaries": {
+          "admissions": 19,
+          "input_tokens": "105438",
+          "output_tokens": "13982",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "105381",
+          "reasoning_tokens": "7032",
+          "api_requests": "19",
+          "premium_requests": "19",
+          "nano_aiu": "201693250000.000002",
+          "api_duration_ms": "264923"
+        },
+        "excluding_canaries": {
+          "admissions": 17,
+          "input_tokens": "99472",
+          "output_tokens": "13923",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "99421",
+          "reasoning_tokens": "7014",
+          "api_requests": "17",
+          "premium_requests": "17",
+          "nano_aiu": "193942250000.000002",
+          "api_duration_ms": "261510"
+        }
+      },
+      "pg_agmemory": {
+        "including_canaries": {
+          "admissions": 48,
+          "input_tokens": "264675",
+          "output_tokens": "47066",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "264531",
+          "reasoning_tokens": "30538",
+          "api_requests": "48",
+          "premium_requests": "48",
+          "nano_aiu": "566137749999.9999975",
+          "api_duration_ms": "796402"
+        },
+        "excluding_canaries": {
+          "admissions": 46,
+          "input_tokens": "258702",
+          "output_tokens": "46990",
+          "cache_read_tokens": "0",
+          "cache_write_tokens": "258564",
+          "reasoning_tokens": "30503",
+          "api_requests": "46",
+          "premium_requests": "46",
+          "nano_aiu": "558292999999.999998",
+          "api_duration_ms": "792372"
+        }
+      }
+    },
+    "by_arm_and_phase_reported_decimal_totals": [
+      {
+        "arm": "no_memory",
+        "phase": "canary",
+        "admissions": 2,
+        "input_tokens": "5961",
+        "output_tokens": "59",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5955",
+        "reasoning_tokens": "23",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7744750000",
+        "api_duration_ms": "4072"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "work",
+        "admissions": 32,
+        "input_tokens": "173212",
+        "output_tokens": "25398",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "173116",
+        "reasoning_tokens": "9126",
+        "api_requests": "32",
+        "premium_requests": "32",
+        "nano_aiu": "343481000000",
+        "api_duration_ms": "421680"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "handoff",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "memory_decision",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "memory_plan",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "handoff",
+        "phase": "canary",
+        "admissions": 2,
+        "input_tokens": "5966",
+        "output_tokens": "59",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5960",
+        "reasoning_tokens": "18",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7751000000",
+        "api_duration_ms": "3413"
+      },
+      {
+        "arm": "handoff",
+        "phase": "work",
+        "admissions": 14,
+        "input_tokens": "74917",
+        "output_tokens": "11826",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "74875",
+        "reasoning_tokens": "6207",
+        "api_requests": "14",
+        "premium_requests": "14",
+        "nano_aiu": "152765750000.000002",
+        "api_duration_ms": "219395"
+      },
+      {
+        "arm": "handoff",
+        "phase": "handoff",
+        "admissions": 3,
+        "input_tokens": "24555",
+        "output_tokens": "2097",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "24546",
+        "reasoning_tokens": "807",
+        "api_requests": "3",
+        "premium_requests": "3",
+        "nano_aiu": "41176500000",
+        "api_duration_ms": "42115"
+      },
+      {
+        "arm": "handoff",
+        "phase": "memory_decision",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "handoff",
+        "phase": "memory_plan",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "canary",
+        "admissions": 2,
+        "input_tokens": "5973",
+        "output_tokens": "76",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5967",
+        "reasoning_tokens": "35",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7844749999.9999995",
+        "api_duration_ms": "4030"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "work",
+        "admissions": 30,
+        "input_tokens": "173355",
+        "output_tokens": "25658",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "173265",
+        "reasoning_tokens": "10954",
+        "api_requests": "30",
+        "premium_requests": "30",
+        "nano_aiu": "344961249999.999999",
+        "api_duration_ms": "441979"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "handoff",
+        "admissions": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "memory_decision",
+        "admissions": 4,
+        "input_tokens": "38454",
+        "output_tokens": "19051",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "38442",
+        "reasoning_tokens": "17486",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "143319500000",
+        "api_duration_ms": "274978"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "memory_plan",
+        "admissions": 12,
+        "input_tokens": "46893",
+        "output_tokens": "2281",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "46857",
+        "reasoning_tokens": "2063",
+        "api_requests": "12",
+        "premium_requests": "12",
+        "nano_aiu": "70012249999.999999",
+        "api_duration_ms": "75415"
+      }
+    ],
+    "failed_maintenance": {
+      "handoff": {
+        "admissions": 2,
+        "nano_aiu": "29759750000",
+        "unknown_api_requests": 0
+      },
+      "pg_agmemory": {
+        "admissions": 1,
+        "nano_aiu": "38415500000",
+        "unknown_api_requests": 0
+      }
+    },
+    "failed_maintenance_nano_aiu_total_decimal": "68175250000",
+    "monetary_cost_verified": false,
+    "overlapping_token_categories_not_summed": true,
+    "engineering_authoring_and_posthoc_analysis_usage_included": false,
+    "arm_total_comparison_limit": "Executed work counts differ (6, 3, 5); raw arm totals are not matched-task cost or efficiency estimates."
+  },
+  "timing": {
+    "wall_seconds": 2440.826,
+    "observed_intervals_non_additive": [
+      {
+        "phase": "grading_execution_envelope_including_setup",
+        "intervals": 183,
+        "known_intervals": 183,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "245.589",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "grading_envelope_including_setup_cleanup",
+        "intervals": 183,
+        "known_intervals": 183,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "357.496",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "setup_plus_retrieval",
+        "intervals": 14,
+        "known_intervals": 14,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "134.504649267",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "work",
+        "intervals": 14,
+        "known_intervals": 14,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "1500.635416358",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "maintenance_including_setup",
+        "intervals": 7,
+        "known_intervals": 7,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "352.395872118",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "native_operation_nested_in_controller",
+        "intervals": 77,
+        "known_intervals": 77,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "3.437828542",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "work_finish_to_capture_envelope",
+        "intervals": 14,
+        "known_intervals": 14,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "5.195",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "shared_native_startup_observed_envelope",
+        "intervals": 1,
+        "known_intervals": 1,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "6.019",
+        "additive_with_other_rows": false
+      },
+      {
+        "phase": "shared_canary_gate_including_bridge_startup",
+        "intervals": 1,
+        "known_intervals": 1,
+        "unknown_intervals": 0,
+        "observed_seconds_sum": "41.87",
+        "additive_with_other_rows": false
+      }
+    ],
+    "caveats": [
+      "Controller elapsed_ns intervals have per-process monotonic origins; they are not cross-process timestamps.",
+      "Host timestamp envelopes use millisecond wall-clock observations, including orchestration and observation delay.",
+      "Capture has no dedicated start event: its envelope starts at observed work completion, not an invented export start.",
+      "Model/Native/candidate durations are nested in work/retrieval/maintenance/grading envelopes; do not add them as disjoint stages.",
+      "Missing endpoints remain unknown. Bridge duration and provider API duration are distinct clocks, not causal attribution.",
+      "Shared startup excludes unobserved setup before the first infrastructure intent. The canary envelope includes bridge initialization; neither window is an invented disjoint total.",
+      "Runtime and controller failure/uncertainty cost partitions overlap; valid response costs in a failed maintenance session are still retained.",
+      "No task correctness, speedup, significance or reproducible performance-defect inference is made."
+    ]
+  },
+  "storage": {
+    "database_bytes_before": 11941567,
+    "database_bytes_after": 12850879,
+    "database_bytes_delta": 909312,
+    "reported_relation_bytes_before": 802816,
+    "reported_relation_bytes_after": 1540096,
+    "measurement": "owned_database_and_allocated_memory_relations",
+    "per_fact_cost_claimed": false
+  },
+  "cleanup": {
+    "registered_resources_with_absence_receipts": 200,
+    "owned_containers_remaining": 0,
+    "bridge_exits_acknowledged": 3,
+    "checked_bridge_pids_absent": true,
+    "cleanup_elapsed_ms": 857,
+    "cleanup_failures": [],
+    "unrelated_resources_preserved": true
+  },
+  "evidence": {
+    "original_summary_sha256": "d7dbd7096f09e7dcf65c3489e3d3b3e95f278be0fcf6cf392a4eb8f1ed345497",
+    "private_evidence_index_sha256": "573690932ee8988f16b92956bf0d0d25cb2716b8b578755d495d65f4edef9f61",
+    "private_evidence_tree_sha256": "0c63a761c47ce06043aab50682720a36432059257f5ddb5a7499535154b8454a",
+    "private_evidence_files": 933,
+    "private_evidence_bytes": 21336018,
+    "accounting_audit_sha256": "49779cdc118544b3f8790353af1868fc9aeb2a60024aa9cc43e819d63cbf4320",
+    "detailed_accounting_audit_sha256": "81d9a289f8099f0205c32d40c3934c9bc64865b8d99b03835713d6ae058a32f6",
+    "memory_audit_sha256": "391bcc89c62dc6558d9e2680105fe671d014dd7d3bf94d4317c36301c73b26c0",
+    "functional_audit_sha256": "191bfba1804f9ee7dd51d1362fe2a4a513c1897be5f42c114f7b1921ed93d4b3",
+    "grading_audit_sha256": "ab0508fa09818b352adc30a6168b121b04b5392f4b9d64d9f7de37d2a28bcb2d",
+    "grading_receipt_artifact_case_bindings_verified": 183,
+    "distinct_grading_guests": 183,
+    "all_original_files_verified_unchanged": true,
+    "task_contents_disclosed_to_parent_only_after_terminal_freeze": true,
+    "regrading_or_model_replay_performed": false
+  },
+  "task_release": {
+    "file": "development-memory-pilot-v2-pack.json",
+    "file_sha256": "7970198881d4cee14b86313a90428e1e0c009b39f24bc3fedb8953350daed532",
+    "byte_identical_to_evaluated_pack": true,
+    "redactions": [],
+    "transformations": [],
+    "includes": "Original synthetic briefs, canonical trees, acceptance cases, reference and defective implementations; source payloads retain their base64 encoding.",
+    "live_prompts_credentials_and_controller_state_included": false
+  },
+  "interpretation": {
+    "observed_availability": "No-memory completed 6/6 planned slots, handoff 3/6 and pg_agmemory 5/6. Differences here are dependent-unrun outcomes from memory-boundary contract failures, not observed wrong candidate answers.",
+    "added_memory_usefulness_established": false,
+    "no_memory_history_cases_passed": 12,
+    "no_memory_history_cases_scheduled": 12,
+    "history_label_limit": "The preregistered history category records an earlier-visible requirement origin, not proof that the information is absent from the current canonical code or brief.",
+    "baseline_ceiling": "All no-memory slots and historical checks passed. Canonical continuations expose prior parser and graph behavior, so this pilot does not establish a need for extra narrative memory.",
+    "robustness": "Fail-closed guards preserved contracts but three invalid maintenance outputs prevented four later work slots.",
+    "native_currentness_is_semantic_freshness": false,
+    "forgetting_quality_evaluated": false,
+    "statistical_superiority_or_generalization_claimed": false,
+    "production_qualified": false,
+    "interventions": 0,
+    "next_work_not_performed": "Improve maintenance-output contract reliability in separately labeled regression work; any renewed held-out usefulness claim requires separately preregistered tasks, not replacement of these outcomes."
+  }
+}
