@@ -1,7 +1,8 @@
 """Serial, synthetic Native API cost protocol; no workers, models, or performance gates.
 
 The wrapper bakes this identical harness into both immutable source images. Each
-repetition clones one prepopulated schema-22 database, measures one clone unchanged,
+repetition uses a fresh private PostgreSQL cluster and clones one prepopulated
+schema-22 database, measures one clone unchanged,
 and upgrades the other with the schema-23 client while no API process is running.
 Administrative fixture tombstones deliberately retain payloads, unlike the separate
 Native purge fixture. PostgreSQL storage is physical per relation/index; per-profile
@@ -52,10 +53,20 @@ CANONICAL_TABLES = (
     "memory.assertion_revision", "memory.provenance_edge", "memory_ops.object_tombstone",
     "memory_ops.deletion_request", "memory_ops.deletion_target",
 )
+RUN_CONTEXT = {"phase": "startup", "repetition": None}
 
 
 class BenchmarkError(RuntimeError):
     pass
+
+
+def failure_record(exc):
+    code = str(exc) if isinstance(exc, BenchmarkError) else type(exc).__name__
+    result = {"status": "failed", "code": code, "schema": SCHEMA_VERSION, **RUN_CONTEXT}
+    sqlstate = getattr(exc, "sqlstate", None)
+    if isinstance(sqlstate, str) and re.fullmatch(r"[A-Z0-9]{5}", sqlstate):
+        result["sqlstate"] = sqlstate
+    return result
 
 
 def require(condition, code):
@@ -192,9 +203,10 @@ def provision(url, run_id):
     ]
     subject = f"english-costs-{run_id}"
     with psycopg.connect(url) as conn:
-        if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone():
-            conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE pgag_runtime")
-                         .format(sql.Identifier(role), sql.Literal(password)))
+        require(conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone() is None,
+                "owned_runtime_role_already_exists")
+        conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE pgag_runtime")
+                     .format(sql.Identifier(role), sql.Literal(password)))
         conn.execute("INSERT INTO memory.tenant(id,dedup_secret) VALUES (%s,%s)",
                      (tenant, secrets.token_bytes(32)))
         conn.execute("INSERT INTO memory.principal VALUES (%s,%s,%s)",
@@ -699,6 +711,9 @@ def seed(directory, spec, identity):
     with psycopg.connect(url) as conn:
         require(conn.execute("SELECT to_regnamespace('memory')").fetchone()[0] is None,
                 "seed_requires_empty_database")
+        require(conn.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname='pgag_runtime'"
+        ).fetchone() is None, "seed_requires_fresh_cluster_pgag_runtime_exists")
     migrate(url)
     verify_database(url, 22)
     actor = provision(url, os.environ["PGAG_BENCHMARK_RUN_ID"])
@@ -834,6 +849,7 @@ def report(directory, spec, identity):
     write_json(directory / "result.json", {
         "format": "pgag-english-profile-costs-v1", "status": "completed",
         "harness_source": identity,
+        "cluster_lifecycle": "fresh_per_repetition",
         "spec": spec, "repetitions": repetitions, "migration_latency_ns": distribution(migrations),
         "native_only": True, "real_models": False, "schema22_simple_vs_schema23_simple": (
             "Paired fixed-workload observations of frozen versions, including added projections. "
@@ -845,7 +861,8 @@ def report(directory, spec, identity):
         ),
         "limitations": [
             "Synthetic modest data; no production capacity or performance improvement claim.",
-            "One serial client and one private database container; host contention is possible.",
+            "One serial client; a fresh private PostgreSQL cluster per repetition.",
+            "Only one database container runs at a time; host contention is possible.",
             "Autovacuum disabled; explicit untimed VACUUM ANALYZE and read warmups are recorded.",
             "No cold-cache claim, confidence interval, significance test, or latency gate.",
             "Timing excludes server startup, response validation, guards, and maintenance.",
@@ -861,6 +878,7 @@ def main():
     parser.add_argument("--profile", choices=("modest", "smoke"), default="modest")
     parser.add_argument("--repetition", type=int, default=1)
     args = parser.parse_args()
+    RUN_CONTEXT.update(phase=args.command, repetition=args.repetition)
     require(sys.platform.startswith("linux"), "linux_guest_required")
     require(args.directory.is_dir() and not args.directory.is_symlink(),
             "private_directory_required")
@@ -878,7 +896,7 @@ def main():
             upgrade(args.directory, seeded, identity)
         else:
             measure(args.directory, seeded, identity, args.repetition)
-    print(canonical({"status": "completed", "phase": args.command, "schema": SCHEMA_VERSION}))
+    print(canonical({"status": "completed", "schema": SCHEMA_VERSION, **RUN_CONTEXT}))
 
 
 if __name__ == "__main__":
@@ -886,6 +904,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         # Do not emit connection strings, credentials, or HTTP request headers.
-        code = str(exc) if isinstance(exc, BenchmarkError) else type(exc).__name__
-        print(canonical({"status": "failed", "code": code}), file=sys.stderr)
+        print(canonical(failure_record(exc)), file=sys.stderr)
         raise SystemExit(1) from None

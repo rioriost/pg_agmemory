@@ -270,6 +270,70 @@ def test_schema_mismatch_is_rejected_before_connecting(monkeypatch):
         bench.verify_database("unused", 22)
 
 
+def test_next_seed_rejects_surviving_cluster_role_before_migration(monkeypatch):
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, query):
+            self.query = query
+            return self
+
+        def fetchone(self):
+            if "to_regnamespace" in self.query:
+                return (None,)
+            assert self.query == "SELECT 1 FROM pg_roles WHERE rolname='pgag_runtime'"
+            return (1,)
+
+    def forbidden_migration(_):
+        raise AssertionError("An existing cluster-global role must not be ignored")
+
+    monkeypatch.setattr(bench, "SCHEMA_VERSION", 22)
+    monkeypatch.setattr(bench, "owned_url", lambda: "unused")
+    monkeypatch.setattr(bench.psycopg, "connect", lambda _: Connection())
+    monkeypatch.setattr(bench, "migrate", forbidden_migration)
+    with pytest.raises(bench.BenchmarkError, match="seed_requires_fresh_cluster"):
+        bench.seed(Path("."), bench.specification("smoke"), {})
+
+
+def test_provision_does_not_silently_reuse_a_preexisting_login_role(monkeypatch):
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, query, parameters):
+            assert query == "SELECT 1 FROM pg_roles WHERE rolname=%s"
+            assert parameters == ("pgag_en_runtime_012345abcdef",)
+            return self
+
+        def fetchone(self):
+            return (1,)
+
+    monkeypatch.setenv("PGAG_BENCHMARK_RUNTIME_PASSWORD", "synthetic-test-only")
+    monkeypatch.setattr(bench.psycopg, "connect", lambda _: Connection())
+    with pytest.raises(bench.BenchmarkError, match="owned_runtime_role_already_exists"):
+        bench.provision("unused", "012345abcdef")
+
+
+def test_failure_records_identify_phase_repetition_schema_and_sqlstate_without_credentials(
+    monkeypatch,
+):
+    monkeypatch.setattr(bench, "RUN_CONTEXT", {"phase": "seed", "repetition": 2})
+    monkeypatch.setattr(bench, "SCHEMA_VERSION", 22)
+    failure = bench.failure_record(psycopg.errors.DuplicateObject("sensitive must-not-log"))
+    assert failure == {
+        "status": "failed", "code": "DuplicateObject", "schema": 22,
+        "phase": "seed", "repetition": 2, "sqlstate": "42710",
+    }
+    assert "must-not-log" not in bench.canonical(failure)
+
+
 def test_upgrade_requires_quiescence_and_does_not_terminate_other_clients(monkeypatch):
     class Connection:
         def __enter__(self):
@@ -360,6 +424,18 @@ def test_wrapper_bakes_both_archives_and_never_mounts_source_or_prunes_shared_re
         assert forbidden not in wrapper
     assert "CREATE DATABASE" in wrapper and "WITH TEMPLATE" in wrapper
     assert "repetition % 2" in wrapper and "180006" in wrapper
+
+
+def test_wrapper_starts_and_removes_a_distinct_cluster_inside_each_serial_repetition():
+    wrapper = (ROOT / "scripts/measure-english-profile-costs.sh").read_text()
+    loop = wrapper.split("for ((repetition=1;", 1)[1]
+    assert loop.index('start_database "$label"') < loop.index('run_phase "$image22" seed')
+    assert loop.index('stop_database\n') > loop.index('DROP DATABASE')
+    assert 'db="pgag-en-${run_id}-${repetition_label}-db"' in wrapper
+    assert 'cluster_lifecycle:"fresh_per_repetition"' in wrapper
+    assert "maximum_concurrent_database_containers:1" in wrapper
+    assert "DROP ROLE" not in wrapper
+    assert '"code":"container_phase_failed","phase":"%s","repetition":%d' in wrapper
 
 
 @pytest.mark.parametrize("option", ["--help", "-h"])

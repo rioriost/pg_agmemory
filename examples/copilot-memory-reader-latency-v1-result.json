@@ -1,0 +1,260 @@
+{
+  "format": "pgag-copilot-memory-reader-latency-result-v1",
+  "status": "completed_descriptive_analysis_of_archived_runs",
+  "scope": "Historical reader latency, not a live Native benchmark or a causal profile comparison.",
+  "related_results": {
+    "baseline": "copilot-memory-sequential-v6-result.json",
+    "english": "copilot-memory-english-profile-v1-result.json"
+  },
+  "evidence_sha256": {
+    "historical_latency_report": "60528b575ead9876e539d726339b8fe1d00957ea46af2f2ce30fcd9a778269f0",
+    "historical_latency_analyzer": "45335c4590e43ef675fb1c57d57504a76974591cf75179c8b4856c86a76df30e",
+    "independent_result_audit": "6cef10c760b55230b76be2209cad4d7c40dcbc0269844bdcf52a770d59cf9ebb",
+    "independent_result_analyzer": "2ca8061cf47f91f3381f2d3a42581e684c11f5d35cfe932d3a4dd02f416014a6",
+    "english_raw_artifact_audit": "614d70a9a3e593601c0b7abf1ec7e22cfcd8ad04c5a9ec3be23b1526be7ef80a",
+    "baseline_raw_artifact_audit": "ebc8b03e7af23b418faa7a616a3a7b6fe6cc4ce558f3a45be95abe50a1645856",
+    "baseline_summary": "02711b8f277e277ac2ed72a6cb000bff7d343ce2aa2f59cbb9ae214cb8049dea",
+    "baseline_journal": "5fb7750cbd2f67e1bbeb7d9511b17a569ecf4904815ecd4df7a38dbf27b3ce39",
+    "english_summary": "e274175ed8da7d94b6ce1a01e0224cc3326dd20919fd764cc44432527bddd00f",
+    "english_journal": "a4de6e7d484b7a7b201f4fecb36da88285f4bb95983717c3abb83a734babc1ef"
+  },
+  "english_frozen_source_sha256": {
+    "runner": "9176506c1188324073c9ca41a35d12ce85cca3043097c7d39605227e50021d00",
+    "bounded_helper": "0bed4787d4ece2cf72630baf300cbf40139c3d6942f0138d602278dc40d97312",
+    "query_planning": "ca218f380c6171bf6be37935a9a7e82cce2c54ad0fc7af06760b188fcd9d280c",
+    "dataset_and_gold": "61ecd4ea9067de238799c0c76d01852424c882f935ad99647b155ac88c35a55f",
+    "scorer": "956b448443d0d47cfe5c84ae19922b4473bc6a1a3105904b219b56f16748cc47",
+    "retention_review": "406a6892e449c115f82f68f40b88b30d46dfc9ec3cb5d846cb39fd485c13fe4c",
+    "model_bridge": "8d45c82cbbd5cb0333f9cbfc4c25efbfc0a8d22c07cd448eb2a061de30b44cb5",
+    "evaluation_wrapper": "bc5e0416e566911c53d1ef67cb1beae42420f13d661a3d029d094f2bdfa62639",
+    "native_api": "67de5cca8b415877542eb5d8334f6fbc01f969a7be52cf0b1e0a189fbcff3802",
+    "lexical": "0ab1548ea3e378cbbfaee09cc8a21bcf56aff1ebdadfa7394f05638f7f6722b6",
+    "native_service": "fe89112dd6926f435892b8694c1bf298815a1b6183023a00e42fd5581aff0571",
+    "english_storage_migration": "3841f7b4389731a3458bfda780d6514334da8b9cba8fd565e0dad83e7b71ee9e"
+  },
+  "fixed_identity": {
+    "dataset_sha256": "dc19d2a8d2cfb60af91986fe08737f43ea4542e44a5b2df96b3383fd6c7dbe5d",
+    "scorer_sha256": "956b448443d0d47cfe5c84ae19922b4473bc6a1a3105904b219b56f16748cc47",
+    "japanese_instruction_sha256": "0b454122d64d83265108d13e787ea8ef8477b8b9526cb8615fca2ee5ca1acc09",
+    "english_instruction_sha256": "1a2539596602b0248cfb55299bc50521e3a4c28bdf5923f9a824e537624a1a57",
+    "current_query_recipe_sha256": "ca4794b80af13ce957baf6259c952d36fdab304db7771b9d1ead4940c2ccf5be",
+    "baseline_query_recipe_sha256": "dc1908576ee7866e709900da2bae4931b64b20818c3849c415bc1edc8a6aa32b",
+    "fixed_control_and_retention_prompts_byte_equal": true
+  },
+  "identity_limit": "Hashes identify archived reports and declared frozen sources. Source deployment is not independently attested. English matching and instructions changed; Japanese instruction bytes and profile did not. Adaptive Japanese prompts, queries and evidence may still differ.",
+  "runs": {
+    "baseline": {
+      "source_revision": "375cddb2439803a6d3bc6e48a91f5031784ace35",
+      "status": "failed",
+      "model": "gpt-6-astra",
+      "reasoning_effort": "high",
+      "english_search_profile": "simple-v1",
+      "japanese_search_profile": "ja-janome-0.5.0-v1",
+      "complete_reader_paths": 19,
+      "runner_elapsed_seconds": 1516.865215,
+      "calls": 137,
+      "successful_calls": 136,
+      "raw_api_duration_measured_calls": 136,
+      "unknown_api_duration_calls": [
+        {"call_id": "000131", "case_id": "distractor-19", "phase": "retention", "status": "error"}
+      ]
+    },
+    "english": {
+      "source_revision": "e6482bfaeeb6cc00dc7d6abd1b534951532b65a2",
+      "status": "completed",
+      "model": "gpt-6-astra",
+      "reasoning_effort": "high",
+      "english_search_profile": "en-snowball-v1",
+      "japanese_search_profile": "ja-janome-0.5.0-v1",
+      "complete_reader_paths": 20,
+      "runner_elapsed_seconds": 1369.030082,
+      "calls": 136,
+      "successful_calls": 136,
+      "raw_api_duration_measured_calls": 136,
+      "unknown_api_duration_calls": []
+    }
+  },
+  "methodology": {
+    "unit": "seconds unless explicitly named otherwise; counts are actual calls, not ceilings",
+    "reader_path": "Sum planning, Native search, fresh final validation and answering. Excludes controls, Observe, retention, pending readability and setup. Component sums are not whole-run wall time.",
+    "percentile": "Nearest rank ceil(n*p/100), ascending. Same19 p95 is rank19, the maximum; current20 p95 is rank19, the second largest. These order statistics are not stable population-tail estimates.",
+    "precision": "Original finite JSON durations retained without pre-rounding. Floating summation order can leave negligible reconciliation residue. Decimal digits do not imply physical clock precision.",
+    "journal_clock": "UTC journal differences preserve integer microseconds before conversion to seconds.",
+    "api_clock": "Raw CLI totalApiDurationMs was divided by1000 exactly once. This counter is not pure model-compute time and does not isolate provider CPU or network.",
+    "boundary_clock": "Runner elapsed spans model-call orchestration. Bridge duration is a separately instrumented span; neither is Native database execution time.",
+    "residuals": "Runner-minus-bridge and bridge-minus-reported-API are arithmetic residuals, not measured pure CLI overhead. Startup, authentication, scheduling and other contributions are not isolated.",
+    "comparison": "Two stochastic, non-randomized runs with varying plans, tokens, results and stop decisions and uncontrolled host/provider state. Same case or phase labels do not mean identical work."
+  },
+  "common_readers": {
+    "case_ids": ["distractor-01", "distractor-02", "distractor-03", "distractor-04", "distractor-05", "distractor-06", "distractor-07", "distractor-08", "distractor-09", "distractor-10", "distractor-11", "distractor-12", "distractor-13", "distractor-14", "distractor-15", "distractor-16", "distractor-17", "distractor-18", "distractor-20"],
+    "case_count": 19,
+    "excluded_case_ids": ["distractor-19"],
+    "exclusion": "Baseline case19 failed retention before reader execution. Its reader latency is unknown, not zero; current case19 is newly measurable, not a repaired baseline.",
+    "phase_totals": {
+      "planning": {"count_before": 58, "count_after": 54, "count_delta": -4, "seconds_before": 597.5489008599999, "seconds_after": 525.3974820330002, "seconds_delta": -72.1514188269997},
+      "search": {"count_before": 43, "count_after": 38, "count_delta": -5, "seconds_before": 1.62768724600015, "seconds_after": 1.8591244169996912, "seconds_delta": 0.2314371709995413},
+      "final_validation": {"count_before": 19, "count_after": 19, "count_delta": 0, "seconds_before": 0.916555417999831, "seconds_after": 1.0255065849996328, "seconds_delta": 0.10895116699980179},
+      "answer": {"count_before": 19, "count_after": 19, "count_delta": 0, "seconds_before": 164.8013057859997, "seconds_after": 163.54681344899947, "seconds_delta": -1.2544923370002152}
+    },
+    "baseline": {
+      "component_sum_seconds": 764.8944493099996,
+      "model_seconds": 762.3502066459996,
+      "native_seconds": 2.544242663999981,
+      "model_call_count": 77,
+      "native_call_count": 62,
+      "model_share_percent": 99.6673733655284,
+      "native_share_percent": 0.3326266344716067,
+      "reader_distribution_seconds": {"samples": 19, "unknown_samples": 0, "known_sum": 764.8944493099996, "mean": 40.25760259526314, "p50_rank": 10, "p95_rank": 19, "p50": 37.978216600999986, "p95": 59.02472377700019, "minimum": 24.129067219999797, "maximum": 59.02472377700019}
+    },
+    "english": {
+      "component_sum_seconds": 691.8289264839989,
+      "model_seconds": 688.9442954819996,
+      "native_seconds": 2.884631001999324,
+      "model_call_count": 73,
+      "native_call_count": 57,
+      "model_share_percent": 99.58304273042476,
+      "native_share_percent": 0.41695726957523244,
+      "reader_distribution_seconds": {"samples": 19, "unknown_samples": 0, "known_sum": 691.828926483999, "mean": 36.412048762315735, "p50_rank": 10, "p95_rank": 19, "p50": 33.218062889999885, "p95": 61.16664811099997, "minimum": 22.369505635999985, "maximum": 61.16664811099997}
+    },
+    "delta": {
+      "path_seconds": -73.06552282600069,
+      "model_seconds": -73.40591116400003,
+      "native_seconds": 0.3403883379993431,
+      "median_path_delta_seconds": -4.7601537110001,
+      "p95_path_delta_seconds": 2.141924333999782,
+      "faster_cases": 12,
+      "slower_cases": 7,
+      "changed_call_count_group": {"case_ids": ["distractor-01", "distractor-02", "distractor-06", "distractor-13"], "cases": 4, "sum_path_delta_seconds": -65.53558923500009, "sum_model_delta_seconds": -65.36544727899994, "sum_native_delta_seconds": -0.17014195600015114, "sum_plan_call_delta": -4, "sum_search_call_delta": -5},
+      "same_call_count_group": {"case_ids": ["distractor-03", "distractor-04", "distractor-05", "distractor-07", "distractor-08", "distractor-09", "distractor-10", "distractor-11", "distractor-12", "distractor-14", "distractor-15", "distractor-16", "distractor-17", "distractor-18", "distractor-20"], "cases": 15, "sum_path_delta_seconds": -7.529933591000514, "sum_model_delta_seconds": -8.040463885000008, "sum_native_delta_seconds": 0.5105302939994942, "sum_plan_call_delta": 0, "sum_search_call_delta": 0}
+    }
+  },
+  "per_case": [
+    {"case_id":"distractor-01","language":"en","baseline":{"reader_seconds":47.435599272,"planning_calls":4,"search_calls":3},"english":{"reader_seconds":29.230825929999995,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-18.204773342000003,"phase_delta_seconds":{"planning":-20.170956009999998,"search":-0.0696536239999972,"final_validation":-0.013681125000005068,"answer":2.049517416999997}},
+    {"case_id":"distractor-02","language":"en","baseline":{"reader_seconds":43.65780360400002,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":25.307005429,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-18.350798175000023,"phase_delta_seconds":{"planning":-19.498968759999997,"search":-0.027608041000007688,"final_validation":0.016438083999972264,"answer":1.1593405420000096}},
+    {"case_id":"distractor-03","language":"ja","baseline":{"reader_seconds":46.447367813,"planning_calls":4,"search_calls":4},"english":{"reader_seconds":48.20839760499999,"planning_calls":4,"search_calls":4},"reader_delta_seconds":1.761029791999988,"phase_delta_seconds":{"planning":0.3485574579999877,"search":0.06773229200001651,"final_validation":0.007420332999998891,"answer":1.3373197089999849}},
+    {"case_id":"distractor-04","language":"ja","baseline":{"reader_seconds":30.159180221999975,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":26.805906053999962,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-3.353274168000013,"phase_delta_seconds":{"planning":-2.4564788340000234,"search":0.01536916600002769,"final_validation":0.003600624999990032,"answer":-0.9157651250000072}},
+    {"case_id":"distractor-05","language":"en","baseline":{"reader_seconds":47.17319431300007,"planning_calls":4,"search_calls":4},"english":{"reader_seconds":45.08359993799996,"planning_calls":4,"search_calls":4},"reader_delta_seconds":-2.089594375000104,"phase_delta_seconds":{"planning":-1.7702425410000728,"search":0.04030425000001969,"final_validation":0.023563833999958206,"answer":-0.3832199180000089}},
+    {"case_id":"distractor-06","language":"en","baseline":{"reader_seconds":51.46248964800009,"planning_calls":4,"search_calls":4},"english":{"reader_seconds":48.51111031500005,"planning_calls":4,"search_calls":3},"reader_delta_seconds":-2.951379333000034,"phase_delta_seconds":{"planning":-4.934216167999978,"search":-0.004229374000090047,"final_validation":0.009342708000019684,"answer":1.977723501000014}},
+    {"case_id":"distractor-07","language":"ja","baseline":{"reader_seconds":24.893431929000087,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":27.1136241370001,"planning_calls":2,"search_calls":1},"reader_delta_seconds":2.2201922080000145,"phase_delta_seconds":{"planning":1.1104723330000752,"search":0.0071219179999957305,"final_validation":0.039164290999963214,"answer":1.0634336659999803}},
+    {"case_id":"distractor-08","language":"ja","baseline":{"reader_seconds":37.978216600999986,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":33.218062889999885,"planning_calls":3,"search_calls":2},"reader_delta_seconds":-4.7601537110001,"phase_delta_seconds":{"planning":-4.942448170000034,"search":0.025764376000040556,"final_validation":0.007342249999965134,"answer":0.1491878329999281}},
+    {"case_id":"distractor-09","language":"en","baseline":{"reader_seconds":24.129067219999797,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":22.369505635999985,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-1.7595615839998118,"phase_delta_seconds":{"planning":-1.7546120009999413,"search":0.005977749999942716,"final_validation":0.0013245000001234075,"answer":-0.012251832999936596}},
+    {"case_id":"distractor-10","language":"en","baseline":{"reader_seconds":37.92746214200008,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":33.96991284799981,"planning_calls":3,"search_calls":2},"reader_delta_seconds":-3.957549294000273,"phase_delta_seconds":{"planning":-3.736284419999947,"search":0.03720087599992894,"final_validation":0.037943499999869346,"answer":-0.2964092500001243}},
+    {"case_id":"distractor-11","language":"ja","baseline":{"reader_seconds":29.82231992999982,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":28.049625429000002,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-1.772694500999819,"phase_delta_seconds":{"planning":1.1794790420000254,"search":0.011695667000026333,"final_validation":0.011059250000016618,"answer":-2.9749284599998873}},
+    {"case_id":"distractor-12","language":"ja","baseline":{"reader_seconds":25.578567761000045,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":26.73179688799985,"planning_calls":2,"search_calls":1},"reader_delta_seconds":1.153229126999804,"phase_delta_seconds":{"planning":1.1381630849999738,"search":-0.0005787080001482536,"final_validation":0.004778708000003462,"answer":0.010866041999975096}},
+    {"case_id":"distractor-13","language":"en","baseline":{"reader_seconds":53.36249802299983,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":27.333859637999808,"planning_calls":2,"search_calls":1},"reader_delta_seconds":-26.028638385000022,"phase_delta_seconds":{"planning":-26.084772552000004,"search":-0.038838334000047325,"final_validation":-0.041912249999995765,"answer":0.13688475100002506}},
+    {"case_id":"distractor-14","language":"en","baseline":{"reader_seconds":35.17865868299998,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":37.26231210100002,"planning_calls":3,"search_calls":2},"reader_delta_seconds":2.08365341800004,"phase_delta_seconds":{"planning":2.5230222520000325,"search":0.03022595699997055,"final_validation":0.00007737600003565603,"answer":-0.4696721669999988}},
+    {"case_id":"distractor-15","language":"ja","baseline":{"reader_seconds":57.65251094399969,"planning_calls":4,"search_calls":3},"english":{"reader_seconds":61.16664811099997,"planning_calls":4,"search_calls":3},"reader_delta_seconds":3.5141371670002854,"phase_delta_seconds":{"planning":5.256018585000106,"search":0.042893291000041245,"final_validation":0.0050260000001571825,"answer":-1.7898007090000192}},
+    {"case_id":"distractor-16","language":"ja","baseline":{"reader_seconds":51.96234798400042,"planning_calls":4,"search_calls":3},"english":{"reader_seconds":53.474014315999966,"planning_calls":4,"search_calls":3},"reader_delta_seconds":1.5116663319995496,"phase_delta_seconds":{"planning":1.4018761239998412,"search":0.003118249999829459,"final_validation":0.018170583000028273,"answer":0.08850137499985067}},
+    {"case_id":"distractor-17","language":"en","baseline":{"reader_seconds":59.02472377700019,"planning_calls":4,"search_calls":4},"english":{"reader_seconds":57.53779990099997,"planning_calls":4,"search_calls":4},"reader_delta_seconds":-1.486923876000219,"phase_delta_seconds":{"planning":0.39414779100002306,"search":0.06495670899971628,"final_validation":-0.017351917000041794,"answer":-1.9286764589999166}},
+    {"case_id":"distractor-18","language":"en","baseline":{"reader_seconds":36.85862276700004,"planning_calls":3,"search_calls":2},"english":{"reader_seconds":33.769409347999954,"planning_calls":3,"search_calls":2},"reader_delta_seconds":-3.089213419000089,"phase_delta_seconds":{"planning":-2.3289660839998305,"search":0.02758408300019255,"final_validation":-0.0055184580003242445,"answer":-0.7823129600001266}},
+    {"case_id":"distractor-20","language":"ja","baseline":{"reader_seconds":24.190386676999424,"planning_calls":2,"search_calls":1},"english":{"reader_seconds":26.685509969999657,"planning_calls":2,"search_calls":1},"reader_delta_seconds":2.4951232930002334,"phase_delta_seconds":{"planning":2.17479004300003,"search":-0.007599332999916442,"final_validation":0.002162875000067288,"answer":0.32576970800005256}}
+  ],
+  "per_case_count_note": "Every included case has one fresh final validation and one answer in each run. Per-case differences are current minus baseline; no excluded-case value is imputed.",
+  "current_all_complete_reader_distribution_seconds": {"samples": 20, "unknown_samples": 0, "known_sum": 727.6893957509989, "mean": 36.384469787549946, "p50_rank": 10, "p95_rank": 19, "p50": 33.218062889999885, "p95": 57.53779990099997, "minimum": 22.369505635999985, "maximum": 61.16664811099997},
+  "tail": {
+    "old_p95_case": "distractor-17",
+    "new_p95_case": "distractor-15",
+    "old_p95_seconds": 59.02472377700019,
+    "new_p95_seconds": 61.16664811099997,
+    "p95_delta_seconds": 2.141924333999782,
+    "new_tail_case_own_delta_seconds": 3.5141371670002854,
+    "new_tail_case_own_stage_deltas": {
+      "planning": {"count_before": 4, "count_after": 4, "count_delta": 0, "seconds_before": 47.50594768899987, "seconds_after": 52.761966273999974, "seconds_delta": 5.256018585000106},
+      "search": {"count_before": 3, "count_after": 3, "count_delta": 0, "seconds_before": 0.10543504199995368, "seconds_after": 0.14832833299999493, "seconds_delta": 0.042893291000041245},
+      "final_validation": {"count_before": 1, "count_after": 1, "count_delta": 0, "seconds_before": 0.045147791999852416, "seconds_after": 0.0501737920000096, "seconds_delta": 0.0050260000001571825},
+      "answer": {"count_before": 1, "count_after": 1, "count_delta": 0, "seconds_before": 9.995980421000013, "seconds_after": 8.206179711999994, "seconds_delta": -1.7898007090000192}
+    },
+    "previous_tail_case_own_delta_seconds": -1.486923876000219,
+    "prior_rank_gap_new_tail_minus_old_tail_seconds": -1.3722128330005035,
+    "new_tail_case_language": "ja",
+    "unchanged_japanese_profile_and_instruction_contract": true,
+    "new_tail_same_query_sequence": false,
+    "full20_current_p95_case": "distractor-17",
+    "full20_current_p95_seconds": 57.53779990099997,
+    "added_current_case19_rank": 13,
+    "exact_tail_switch_identity": "p95 delta = same new-tail-case paired delta + (baseline new-tail-case time - baseline old-tail-case time)",
+    "denominator_fact": "Adding the mid-ranked newly measured case19 changes p95 from max(rank19/19) to second-largest(rank19/20). It does not make the new largest path faster.",
+    "model_span_delta": {"paired_phases": 5, "runner_elapsed_delta_seconds": 3.466217876000087, "reported_api_delta_seconds": 1.7059999999999982, "bridge_minus_api_delta_seconds": 1.7725487089997625, "runner_minus_bridge_delta_seconds": -0.012330832999673191},
+    "model_phase_deltas": [
+      {"phase": "pg_agmemory", "identical_prompt_sha256": false, "runner_elapsed_delta_seconds": -1.7898007090000192, "reported_api_delta_seconds": -2.0910000000000006, "bridge_minus_api_delta_seconds": 0.2114975409997868, "runner_minus_bridge_delta_seconds": 0.08970175000019509},
+      {"phase": "recall_query_round_1", "identical_prompt_sha256": true, "runner_elapsed_delta_seconds": 0.7660078329998896, "reported_api_delta_seconds": 0.45199999999999996, "bridge_minus_api_delta_seconds": 0.3773782089999873, "runner_minus_bridge_delta_seconds": -0.06337037600009765},
+      {"phase": "recall_query_round_2", "identical_prompt_sha256": false, "runner_elapsed_delta_seconds": -1.6436908759998232, "reported_api_delta_seconds": -1.726, "bridge_minus_api_delta_seconds": 0.1581833750001378, "runner_minus_bridge_delta_seconds": -0.07587425099996103},
+      {"phase": "recall_query_round_3", "identical_prompt_sha256": false, "runner_elapsed_delta_seconds": 0.631558125999959, "reported_api_delta_seconds": 0.2829999999999995, "bridge_minus_api_delta_seconds": 0.20507895799993925, "runner_minus_bridge_delta_seconds": 0.14347916800002025},
+      {"phase": "recall_query_round_4", "identical_prompt_sha256": false, "runner_elapsed_delta_seconds": 5.502143502000081, "reported_api_delta_seconds": 4.787999999999999, "bridge_minus_api_delta_seconds": 0.8204106259999113, "runner_minus_bridge_delta_seconds": -0.10626712399982985}
+    ],
+    "interpretation": "The p95 owner changes from English case17 to Japanese case15. Case15 keeps the same call counts; planning grows while answering gets shorter. Its fourth planning round is the largest positive phase change. The previous tail case17 gets faster. This describes recorded timing and changed tail identity, not an English-matcher or provider regression cause."
+  },
+  "model_timing": {
+    "baseline": {
+      "reader_calls": 77,
+      "runner_elapsed_seconds": {"samples": 77, "unknown_samples": 0, "known_sum": 762.3502066459996, "mean": 9.900652034363631},
+      "bridge_duration_seconds": {"samples": 77, "unknown_samples": 0, "known_sum": 752.032828245999, "mean": 9.766660107090896},
+      "raw_api_duration_seconds": {"samples": 77, "unknown_samples": 0, "known_sum": 378.50299999999993, "mean": 4.915623376623376},
+      "runner_minus_bridge_seconds": {"samples": 77, "unknown_samples": 0, "known_sum": 10.317378400000432, "mean": 0.1339919272727329},
+      "bridge_minus_reported_api_seconds": {"samples": 77, "unknown_samples": 0, "known_sum": 373.52982824599917, "mean": 4.851036730467522}
+    },
+    "english": {
+      "reader_calls": 73,
+      "runner_elapsed_seconds": {"samples": 73, "unknown_samples": 0, "known_sum": 688.9442954819997, "mean": 9.437593088794516},
+      "bridge_duration_seconds": {"samples": 73, "unknown_samples": 0, "known_sum": 678.9214417089997, "mean": 9.300293722041092},
+      "raw_api_duration_seconds": {"samples": 73, "unknown_samples": 0, "known_sum": 319.618, "mean": 4.378328767123287},
+      "runner_minus_bridge_seconds": {"samples": 73, "unknown_samples": 0, "known_sum": 10.02285377299994, "mean": 0.13729936675342383},
+      "bridge_minus_reported_api_seconds": {"samples": 73, "unknown_samples": 0, "known_sum": 359.3034417089997, "mean": 4.9219649549178035}
+    }
+  },
+  "whole_run_accounting": {
+    "baseline": {
+      "journal_wall_seconds": 1516.865215,
+      "known_model_elapsed_seconds_including_failed_attempts": 1443.570587752999,
+      "known_native_elapsed_seconds_all_operations": 45.51127765399702,
+      "native_elapsed_unknown_calls": 0,
+      "residual_wall_minus_known_components_seconds": 27.783349593003997,
+      "caution": "Whole-run wall time includes controls, writes, retention and failure handling. The failed baseline contains a150s retention attempt and no case19 reader; current does not. This is not a like-for-like end-to-end speed comparison. Residual time is not attributed to CPU, database or any individual setup operation."
+    },
+    "english": {
+      "journal_wall_seconds": 1369.030082,
+      "known_model_elapsed_seconds_including_failed_attempts": 1293.6160465099997,
+      "known_native_elapsed_seconds_all_operations": 46.587896059998585,
+      "native_elapsed_unknown_calls": 0,
+      "residual_wall_minus_known_components_seconds": 28.826139430001703,
+      "caution": "Whole-run wall time includes controls, writes, retention and failure handling. The failed baseline contains a150s retention attempt and no case19 reader; current does not. This is not a like-for-like end-to-end speed comparison. Residual time is not attributed to CPU, database or any individual setup operation."
+    }
+  },
+  "retained_limits": {
+    "review_only_forgetting": {
+      "before_valid_proposals": 19,
+      "before_unknown_proposals": 1,
+      "before_pending_readable": null,
+      "before_known_pending_readable_subtotal": 129,
+      "after_valid_proposals": 20,
+      "after_pending_readable": 136,
+      "physical_purges": {"before": 0, "after": 0},
+      "deletion_completed": false,
+      "missing_native_forget_implementation_claimed": false,
+      "statement": "review-v1 intentionally defers proposals and does not authorize purge. Zero observed purges are a workflow/evidence boundary, not proof of absent Forget support or completed erasure. The baseline case19 retention proposal remains unknown."
+    },
+    "provider_timeout": {
+      "baseline_failed_calls": [
+        {"call_id": "000131", "case_id": "distractor-19", "phase": "retention", "error": "llm_bridge_error", "outcome_unknown": true, "reported_duration_seconds": 150.02944250000013, "runner_elapsed_seconds": 150.1932615689998, "usage": null}
+      ],
+      "baseline_reader_case19_imputed": false,
+      "failed_call_usage_unknown": true,
+      "raw_failed_usage_file_present": true,
+      "raw_failed_usage_model_metrics_empty": true,
+      "local_deadline_previously_audited_seconds": 150,
+      "upstream_delay_root_cause": "unknown",
+      "reliability_repair_proven_by_current_completion": false,
+      "statement": "Current case19 completion is a separate observation, not a retry that erases the baseline timeout. A local process deadline does not identify upstream cause or billing."
+    }
+  },
+  "core_bug_assessment": {
+    "reproducible_core_bug_established": false,
+    "evidence": [
+      "Common Native time is a small part of the reader sum; Native per-call latency is somewhat higher in this observation, but fixed query/result/host repeated pairs are absent.",
+      "The common p95 increase is a tail-case/rank observation; most recorded reader time is in planner/answer orchestration, which includes provider and client time.",
+      "No per-query database execution/CPU/I/O/lock/plan trace or repeated controlled sample isolates a core defect. Absence of such proof is not proof that no defect exists."
+    ],
+    "hardware_perf_or_live_collection_performed": false
+  },
+  "publication_scope": "Sanitized projection of a completed private historical audit. No raw prompts, answers, credentials or private host paths. No inference, retries, live measurements, runtime optimization or next-phase work performed for this publication."
+}

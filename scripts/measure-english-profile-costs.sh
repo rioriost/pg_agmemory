@@ -60,7 +60,7 @@ baseline=3bb0ee2cb79aa476208ea6446eaa47345305cd0b
 current=b8d775d2d9bd1e14ebf9cea4b978a11dce06346c
 harness="$(git rev-parse HEAD)"
 run_id="$(openssl rand -hex 6)"
-db="pgag-en-${run_id}-db"
+db=""
 step="pgag-en-${run_id}-step"
 image22="localhost/pgag-en-${run_id}:schema22"
 image23="localhost/pgag-en-${run_id}:schema23"
@@ -93,7 +93,7 @@ trap 'exit 143' TERM
 
 for ref in "$baseline" "$current" "$harness"; do git cat-file -e "${ref}^{commit}"; done
 git cat-file -e "$harness:scripts/english-profile-benchmark.py"
-for name in "$db" "$step"; do
+for name in "$step"; do
     if container inspect "$name" >/dev/null 2>&1; then
         echo "Refusing a pre-existing container identity." >&2
         exit 1
@@ -113,6 +113,7 @@ jq -n --arg baseline "$baseline" --arg current "$current" --arg harness "$harnes
     harness_commit:$harness,run_id:$run_id,profile:$profile,repetitions:$repetitions,
     postgres_image:$db_image,host_architecture:$architecture,
     serial:true,source_overlays:false,model_calls_authorized:false,
+    cluster_lifecycle:"fresh_per_repetition",maximum_concurrent_database_containers:1,
     resources:{database_cpus:2,database_memory_mib:2048,client_cpus:2,client_memory_mib:2048}
 }' >"$directory/build-identity.json"
 container --version >"$directory/container-version.txt"
@@ -174,47 +175,77 @@ build_source 23 "$current" "$image23"
 
 admin_password="$(openssl rand -hex 24)"
 runtime_password="$(openssl rand -hex 24)"
-own_db=true
-container run -d --name "$db" --cpus 2 --memory 2g \
-    -e "POSTGRES_PASSWORD=$admin_password" -e POSTGRES_DB=postgres \
-    "$database_image" postgres \
-    -c shared_buffers=256MB -c work_mem=16MB -c maintenance_work_mem=128MB \
-    -c max_connections=32 -c max_parallel_workers_per_gather=0 -c autovacuum=off \
-    -c timezone=UTC -c fsync=on -c synchronous_commit=on -c full_page_writes=on >/dev/null
-for ((attempt=0; attempt<90; attempt++)); do
-    if container exec "$db" pg_isready -U postgres -d postgres >/dev/null 2>&1; then break; fi
-    sleep 1
-done
-container exec "$db" pg_isready -U postgres -d postgres >/dev/null
-actual_pg="$(container exec "$db" psql -U postgres -d postgres -Atc 'SHOW server_version_num')"
-if [[ "$actual_pg" != 180006 ]]; then
-    echo "The pinned database image must contain PostgreSQL 18.6; refusing a substitute." >&2
-    exit 1
-fi
-db_host="$(container inspect "$db" | jq -er \
-    '(.[0].status.networks[0].ipv4Address // .[0].networks[0].ipv4Address) | split("/")[0]')"
-container inspect "$db" | jq '[.[] | {
-    id:.configuration.id,resources:.configuration.resources,
-    image:.configuration.image.reference,platform:.configuration.platform
-}]' >"$directory/database-container.json"
+
+start_database() {
+    local repetition_label="$1"
+    db="pgag-en-${run_id}-${repetition_label}-db"
+    if container inspect "$db" >/dev/null 2>&1; then
+        echo "Refusing a pre-existing repetition database container." >&2
+        exit 1
+    fi
+    own_db=true
+    container run -d --name "$db" --cpus 2 --memory 2g \
+        -e "POSTGRES_PASSWORD=$admin_password" -e POSTGRES_DB=postgres \
+        "$database_image" postgres \
+        -c shared_buffers=256MB -c work_mem=16MB -c maintenance_work_mem=128MB \
+        -c max_connections=32 -c max_parallel_workers_per_gather=0 -c autovacuum=off \
+        -c timezone=UTC -c fsync=on -c synchronous_commit=on -c full_page_writes=on >/dev/null
+    for ((attempt=0; attempt<90; attempt++)); do
+        if container exec "$db" pg_isready -U postgres -d postgres >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    container exec "$db" pg_isready -U postgres -d postgres >/dev/null
+    actual_pg="$(container exec "$db" psql -U postgres -d postgres -Atc 'SHOW server_version_num')"
+    if [[ "$actual_pg" != 180006 ]]; then
+        echo "The pinned database image must contain PostgreSQL 18.6; refusing a substitute." >&2
+        exit 1
+    fi
+    db_host="$(container inspect "$db" | jq -er \
+        '(.[0].status.networks[0].ipv4Address // .[0].networks[0].ipv4Address) | split("/")[0]')"
+    container inspect "$db" | jq '[.[] | {
+        id:.configuration.id,resources:.configuration.resources,
+        image:.configuration.image.reference,platform:.configuration.platform
+    }]' >"$directory/$repetition_label/database-container.json"
+}
+
+stop_database() {
+    container rm --force "$db" >/dev/null
+    own_db=false
+}
 
 run_phase() {
     local image="$1" command="$2" database="$3" subdirectory="$4" repetition="$5"
+    local environment=(-e "PGAG_BENCHMARK_RUN_ID=$run_id")
+    if [[ "$command" != report ]]; then
+        environment+=(
+            -e "PGAG_BENCHMARK_ADMIN_URL=postgresql://postgres:${admin_password}@${db_host}:5432/${database}"
+            -e "PGAG_BENCHMARK_RUNTIME_PASSWORD=$runtime_password"
+        )
+    fi
+    printf '{"status":"started","phase":"%s","repetition":%d}\n' "$command" "$repetition" \
+        >>"$directory/phases.log"
     own_step=true
-    container run --rm --name "$step" --cpus 2 --memory 2g \
+    if container run --rm --name "$step" --cpus 2 --memory 2g \
         -v "$directory:/artifacts" \
-        -e "PGAG_BENCHMARK_RUN_ID=$run_id" \
-        -e "PGAG_BENCHMARK_ADMIN_URL=postgresql://postgres:${admin_password}@${db_host}:5432/${database}" \
-        -e "PGAG_BENCHMARK_RUNTIME_PASSWORD=$runtime_password" \
+        "${environment[@]}" \
         "$image" python /benchmark/english-profile-benchmark.py "$command" \
         --directory "$subdirectory" --profile "$profile" --repetition "$repetition" \
-        >>"$directory/phases.log" 2>&1
-    own_step=false
+        >>"$directory/phases.log" 2>&1; then
+        own_step=false
+    else
+        local status=$?
+        printf '{"status":"failed","code":"container_phase_failed","phase":"%s","repetition":%d,"exit_status":%d}\n' \
+            "$command" "$repetition" "$status" >>"$directory/phases.log"
+        return "$status"
+    fi
 }
 
 for ((repetition=1; repetition<=repetitions; repetition++)); do
     label="$(printf 'r%02d' "$repetition")"
     mkdir -m 700 "$directory/$label"
+    # Migration 001 creates the cluster-global pgag_runtime role unconditionally.
+    # Fresh clusters preserve that immutable migration and avoid silently reusing roles.
+    start_database "$label"
     seed_db="pgag_en_${run_id}_${label}_seed"
     base_db="pgag_en_${run_id}_${label}_base"
     new_db="pgag_en_${run_id}_${label}_new"
@@ -239,6 +270,7 @@ for ((repetition=1; repetition<=repetitions; repetition++)); do
         container exec "$db" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c "DROP DATABASE \"$database\"" >/dev/null
     done
+    stop_database
 done
 run_phase "$image23" report unused /artifacts 1
 echo "Completed private Native-only cost protocol: $directory/result.json"

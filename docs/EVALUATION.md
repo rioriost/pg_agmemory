@@ -28,6 +28,37 @@ The smoke run validates the measurement path, not performance. Wall-clock
 and SQL counters on a shared host do not establish hardware hotspots,
 exclusive-capacity performance or production migration bounds.
 
+### Historical reader latency is dominated by model-call boundaries
+
+The [paired latency analysis](../examples/copilot-memory-reader-latency-v1-result.json)
+decomposes the nineteen reader paths completed by both archived runs; it
+does not rerun inference or impute the failed v6 case. These are summed
+elapsed times, not a controlled speed experiment:
+
+| Reader phase, same 19 cases | V6, simple English | V6, English Snowball |
+|---|---:|---:|
+| Planning | 58 calls / 597.549 s | 54 calls / 525.397 s |
+| Native search | 43 calls / 1.628 s | 38 calls / 1.859 s |
+| Fresh validation | 19 calls / 0.917 s | 19 calls / 1.026 s |
+| Answering | 19 calls / 164.801 s | 19 calls / 163.547 s |
+| Total reader path | 764.894 s | 691.829 s |
+
+Planning and answering boundaries account for **99.67% / 99.58%** of those
+totals. They include client/provider orchestration, not just model inference;
+the residual outside reported API durations is not proven CLI overhead.
+Retention, setup and the failed call's unknown usage are outside this comparison.
+
+The same-case p95 increase **59.025 → 61.167 s** changes the tail case from
+17 to **15, a Japanese case**. Case 15 retains four plans, three searches,
+one validation and one answer. Its reader path grows **3.514 s**:
+planning adds **5.256 s**, combined Native reads add **0.048 s**, and
+answering falls **1.790 s**. Its fourth planning round adds **5.502 s**,
+including **4.788 s** in reported API duration; that prompt also differs.
+The former tail, case 17, becomes **1.487 s faster**. Nearest-rank p95 with
+nineteen samples selects the maximum, unlike the second-largest of twenty.
+This explains the observed aggregate without establishing a reproducible
+Native-core regression or a causal English-profile latency effect.
+
 ## Explicit English-profile comparison
 
 The schema-23 `en-snowball-v1` profile is a **Native matching change**, not
