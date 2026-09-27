@@ -12,7 +12,8 @@ fileによる意図しない記憶の持越しを防ぐため、各milestoneで�
 改訂2版はAstra/xhighの再レビューで設計上のblockerなしと承認されました。
 第1段階のCIと編集前interface合意に加え、実装したframeworkのローカル結合確認と
 Astra/xhighによる実装レビューも完了しました。
-task pack作成・3 armの実推論はまだ開始しておらず、新たな有用性の結果を主張していません。
+別担当がtask packを作成し、非公開の適格性確認まで完了しました。
+3 armの実推論はまだ開始しておらず、新たな有用性の結果は主張していません。
 
 最初のmodelなしの通し確認では、18 work sessionと8回の独立した記憶更新を、
 44回のscripted呼出し、実際の隔離guestと外部の成果物判定で実行しました。
@@ -24,8 +25,22 @@ Astra/xhighが承認した、server側で決定した時刻境界を明示的に
 最終のローカル確認ではPython 959件、Node 81件がskipなしで通過し、
 18 sessionのmodelなし通し実行も含めて確認しました。
 Astra/xhighはframeworkの指摘5件を解決済みと判断し、固定を承認しました。
-実推論には引き続き、別担当による未見task packの作成・非公開の適格性確認と、
-recipe固定・隔離確認のgateが必要です。
+その後、task内容とは独立した確認で、zombie状態の主threadにworkerが残る場合の
+検出漏れを見つけ、`0f43765`で修正しました。関連するhelper/sandbox確認と
+Node 82件の通し確認を経て、Astra/xhighが修正を承認しました。
+task内容・model prompt・採点・budgetは変更していません。
+実推論には引き続き、対象sourceのCIとrecipe固定・隔離確認のgateが必要です。
+
+[実行前のhash-only manifest](../examples/development-memory-pilot-v1-manifest.json)で、
+2 project・6 milestone、受入72 case（履歴依存15 case）のpackを固定しました。
+最初のmodelなし適格性確認では、reference 72件が成功し、新規実装が必要なcanonical
+40件と指定した欠陥実装27件が不合格になりました。
+汎用的な実行基盤の修正後もpackを一切変更せず、新しいsourceのimageで
+同じ139件のmatrixを再確認しました。初回の証跡も保持しています。
+親agentは非公開のtask内容を読まず、両方のhashと判定matrixを照合しています。
+これはtaskの適格性確認であり、work modelの開発成績ではありません。
+manifestは後続の文書commitで公開しますが、実行には固定した`0f43765`の
+clean checkoutとimageを使います。task呼出し前に対象sourceのCIとcanaryを通過させます。
 
 ## 英語projection追加負荷の対応比較
 

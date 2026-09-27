@@ -1,0 +1,129 @@
+{
+  "format": "pgag-development-preregistration-v1",
+  "status_at_publication": "privately_qualified_before_first_live_dispatch",
+  "evaluation_model_calls_dispatched_at_publication": 0,
+  "framework_source": "0f43765f37b3fe35f2d8f3a32fdd68fe5d364909",
+  "required_source_ci_run": 36304957541,
+  "source_ci_success_required_before_live_dispatch": true,
+  "execution_source_policy": "Use the clean frozen framework checkout, not this manifest's publication commit.",
+  "pack": {
+    "format": "pgag-development-pack-v1",
+    "canonical_sha256": "d70161b83d3790ca3fb779be3503ceb75acaa313638bdb34fa631366b0242540",
+    "file_sha256": "694d6deaebf73f2768ba12f9a35a6340dc7b417fc0da764c16b80622cee18714",
+    "projects": 2,
+    "milestones": 6,
+    "acceptance_cases": 72,
+    "history_sensitive_cases": 15,
+    "negative_controls": 22,
+    "contents_private_until_first_outcomes_frozen": true
+  },
+  "authoring": {
+    "method": "Separate GPT-6 Astra/high author after framework and prompt freeze",
+    "origin": "original_synthetic_development_tasks",
+    "author_was_not_memory_adapter_implementer": true,
+    "parent_received_only_hashes_counts_and_qualification_status": true,
+    "previous_visible_origins_semantically_audited_by_author": true,
+    "visible_packaging_leakage_audited_by_author": true,
+    "training_novelty_guaranteed": false,
+    "pack_retired_if_exposure_drives_framework_or_prompt_tuning": true
+  },
+  "qualification": {
+    "source": "0f43765f37b3fe35f2d8f3a32fdd68fe5d364909",
+    "receipt_file_sha256": "6252e0b98574d25a2a1105ee69865cc5bdbd0634820724b0195f30bc82c56f78",
+    "attempts_across_sources": 2,
+    "attempts_on_final_source": 1,
+    "matrix_rows": 139,
+    "reference_passes": 72,
+    "canonical_new_work_failures": 40,
+    "designated_mutant_failures": 27,
+    "evaluation_model_calls": 0,
+    "remaining_owned_guests": 0,
+    "parent_hash_and_matrix_verification_passed": true,
+    "pack_hashes_unchanged_before_and_after_requalification": true,
+    "previous_qualification": {
+      "source": "e84fe3b4c0234365fa247436bcbe2261cce13db7",
+      "receipt_file_sha256": "66c78e7268fe90aea98ce4a2a4cbbe22f9d57e5d7b180fa7779567b5a4ed921d",
+      "status": "qualified",
+      "matrix_rows": 139,
+      "preserved_not_replaced": true
+    },
+    "requalification_reason": "Reviewed generic thread-group quiescence correction, independently discovered without task exposure; no task, prompt, scoring or budget changes."
+  },
+  "agent": {
+    "implementation": "unmodified_minisweagent.agents.default.DefaultAgent",
+    "version": "2.4.6",
+    "upstream_commit": "a83fcae82d2a08f0ee0c688f9d137b3566c097f8",
+    "installed_module_sha256": "e8ef8aa365942d739c2ec5cb0879f60f377d2dc2de8ec670aaedf3bafb45a4c2"
+  },
+  "inference": {
+    "transport": "existing_tool_free_fresh_call_copilot_cli_bridge",
+    "model": "gpt-6-astra",
+    "reasoning_effort": "high",
+    "cli_version_observed_before_run": "1.0.88",
+    "same_model_for_work_handoff_capture_and_planning": true,
+    "automatic_retry_or_model_fallback": false,
+    "provider_internal_retry_absence_verified": false,
+    "provider_hidden_state_absence_proven": false,
+    "managed_weight_revision_verified": false,
+    "monetary_cost_verified": false,
+    "engineering_and_authoring_usage_excluded_from_evaluation_counters": true
+  },
+  "comparison": {
+    "arms": ["no_memory", "handoff", "pg_agmemory"],
+    "slots_per_arm": 6,
+    "total_slots": 18,
+    "scheduled_acceptance_checks_across_arms": 216,
+    "schedule": "Frozen development-eval-pack.mjs balanced rotation preserving project milestone order",
+    "canonical_restart_at_every_milestone": true,
+    "previous_arm_submission_carried_forward": false,
+    "hidden_grades_enter_work_or_memory_prompts": false,
+    "retention": "reference_scoped_review_only_pending_exclusions",
+    "native_forget_or_physical_purge_authorized": false
+  },
+  "limits": {
+    "work_invocations_per_slot": 16,
+    "work_invocations_total": 288,
+    "handoff_invocations": 4,
+    "memory_decision_invocations": 4,
+    "memory_planning_invocations": 16,
+    "isolation_canary_invocations": 6,
+    "coordinator_dispatched_invocations": 318,
+    "bridge_invocations_per_arm": 160,
+    "provider_api_request_hard_ceiling_claimed": false,
+    "reported_api_requests_required_per_successful_invocation": 1,
+    "memory_delivery_utf8_bytes": 2048,
+    "boundary_transcript_utf8_bytes": 24576,
+    "model_seconds": 150,
+    "response_wait_seconds": 180,
+    "work_seconds": 900,
+    "run_seconds": 10800,
+    "cleanup_grace_seconds": 15,
+    "command_seconds": 30,
+    "candidate_case_seconds": 5,
+    "captured_output_bytes": 16384,
+    "delivered_observation_bytes": 2048,
+    "artifact_files": 32,
+    "artifact_bytes": 262144
+  },
+  "images": {
+    "runtime": "pg-agmemory-development-runtime@sha256:5f0e1a3c0bdee565ecea50c726dae14b5f7b54367f77c4700c7a34c28dd65608",
+    "execution": "pg-agmemory-development-execution@sha256:ce768d5cd0dedc048fae69a73931a87e9b82bddbfb990bbf45f82be86333e47a"
+  },
+  "source_file_sha256": {
+    "uv.lock": "e4ead99829841d1a9fd33d359ac0a7ebb1c197b3ac31b236dadc59f89b9be1fc",
+    "docs/DEVELOPMENT_EVALUATION_PLAN.md": "f7dfe39a8693d674e8b31b78810557630e87c3c2ea1b4591c56939a9ac062898",
+    "src/pg_agmemory/development_agent.py": "15ff33515932a5afb3c23522a268466eeacbbb836edd06f6a207120b4e846e00",
+    "src/pg_agmemory/development_memory.py": "e9c1eaa202acbc353cf4a347f8ff2fadf6b323c62d312cea356119fcd40bab1e",
+    "src/pg_agmemory/bounded_recall.py": "c6ed8cbf0361b3a3a879912d2f1060e7ac1434c42bdb959a3295f12bce9661b4",
+    "scripts/evaluate-development-memory.mjs": "675ccf9221e1a8fa15a0d36cf905b9b4dfcfdc8dee55108f7fa31d45a89a94aa",
+    "scripts/development-eval-guest.py": "87fa5fc8beadc2ba4f7bfd27a12752df1916bfb058293858b7b377722a9f1400"
+  },
+  "interpretation": {
+    "first_failures_timeouts_unknowns_and_unrun_slots_preserved": true,
+    "subsequent_diagnostics_replace_first_outcomes": false,
+    "scope": "small_stage_gated_development_handoff_pilot",
+    "continuous_agent_owned_branch_evaluation": false,
+    "statistical_superiority_or_generalization_claimed": false,
+    "production_qualified": false
+  }
+}

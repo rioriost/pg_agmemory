@@ -13,8 +13,9 @@ not continuous development on an agent-owned branch.
 Revision 2 passed Astra/xhigh re-review with no remaining design blockers.
 The separate phase-one CI and pre-edit interface gates also passed. The
 implemented framework has now passed local integrated validation and
-Astra/xhigh implementation review. Task-pack creation and live three-arm
-calls have not started; no new usefulness result is claimed.
+Astra/xhigh implementation review. A separate author has privately qualified
+the task pack; live three-arm calls have not started, and no new usefulness
+result is claimed.
 
 The first complete no-model protocol exercise passed eighteen work sessions
 and eight separate boundaries with 44 scripted invocations, real isolated
@@ -26,8 +27,25 @@ Astra/xhigh-approved opt-in server-time-bound correction now passes deliberately
 skewed memory cases and the focused compatibility regressions. Final local
 validation passed 959 Python tests and 81 Node tests without skips, including
 the full no-model run. Astra/xhigh closed the five framework findings and
-approved freeze. The live-call gate still requires a separately authored,
-privately qualified task pack and the frozen recipe/isolation checks.
+approved freeze. A later content-independent check exposed a zombie leader
+with live worker threads; `0f43765` fixes that quiescence guard. Its focused
+helper/sandbox checks and the full 82-case Node suite passed, and Astra/xhigh
+approved the correction. No task contents, model prompts, scoring or budgets
+changed. The live-call gate still requires source CI and the frozen
+recipe/isolation checks.
+
+The [pre-execution hash-only manifest](../examples/development-memory-pilot-v1-manifest.json)
+freezes the two-project, six-milestone pack: 72 acceptance cases, including
+15 history-sensitive cases. Its first no-model qualification passed 72
+reference checks and rejected 40 canonical new-work checks and 27 designated
+mutant checks. After the generic execution correction, the unchanged pack
+passed the same 139-row matrix on the new source-bound image; the earlier
+qualification is retained, not replaced. The parent verified both hashes and
+matrices without reading private task contents. These are qualification
+results, not agent work-model results.
+Execution remains bound to the clean `0f43765` checkout and its images even
+though this manifest is published in a later documentation-only commit.
+Source CI and the live canaries must pass before task calls.
 
 ## Paired English projection cost measurement
 
