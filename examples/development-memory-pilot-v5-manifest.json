@@ -1,0 +1,1941 @@
+{
+  "format": "pgag-development-preregistration-v1",
+  "attempt": "development-memory-pilot-v5",
+  "status_at_publication": "privately_qualified_and_independently_audited_before_first_v5_live_dispatch",
+  "evaluation_model_calls_dispatched_at_publication": 0,
+  "framework_source": "ddb154e5051b7e995518050740feb2d04d42b7fd",
+  "required_source_ci_run": 36402718026,
+  "source_ci_successful_jobs": 8,
+  "execution_source_policy": "Use the clean frozen framework checkout, not this manifest's publication commit.",
+  "work_protocol": "development-work-v2",
+  "memory_maintenance_protocol": "development-maintenance-v3",
+  "memory_retrieval_policy": "development-retrieval-v2",
+  "planner_policy": "development-v4",
+  "memory_state_format": "development-memory-state-v2",
+  "question": "Can the unchanged bounded memory pipelines preserve and deliver previously visible operational choices and complete fresh stage-gated development tasks, and at what observed usage and time cost?",
+  "prior_attempts": [
+    {
+      "result": "development-memory-pilot-v1-result.json",
+      "result_sha256": "4129e64c03d32d5f6d476cc33b5eb28824feb311866db542b9b1807c2022c8b5",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    },
+    {
+      "result": "development-memory-pilot-v2-result.json",
+      "result_sha256": "fef84aa65927eb24318f895334d9208bd41f67d6234eb022f827a144e1f985cd",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    },
+    {
+      "result": "development-memory-pilot-v3-result.json",
+      "result_sha256": "9b32c2b5b137ce5aad172c5fb54eb20150b5c24b4fcff38a45e430a3ad3af456",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    },
+    {
+      "result": "development-memory-pilot-v4-result.json",
+      "result_sha256": "21e843ce7a0a6d2b239630928efecf2e8df7865f4a96397e34a029afe274b4c8",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    }
+  ],
+  "pack": {
+    "format": "pgag-development-pack-v1",
+    "study_id": "g-596ab284",
+    "file_sha256": "86472764271505e44cf60366b9fec9d6aa07fd01643534e7d39069fdbc13ebe4",
+    "canonical_sha256": "b589ee0dee10b37bceb06e2503df5b3e78de44e99fdfed19dcee696ab11a7ff4",
+    "projects": 2,
+    "milestones": 6,
+    "acceptance_cases": 48,
+    "certified_history_only_cases": 8,
+    "history_available_cases": 0,
+    "memory_independent_cases": 40,
+    "unclassified_cases": 0,
+    "distinct_primary_history_only_decisions": 2,
+    "all_historical_decisions": 2,
+    "contents_private_until_terminal_outcomes_frozen": true
+  },
+  "authoring": {
+    "method": "Fresh independent GPT-6 Astra/high task author, followed by a different task-aware Astra/high semantic, raw-receipt and retained-provenance auditor.",
+    "author_was_not_memory_adapter_implementer": true,
+    "prior_tasks_outcomes_and_memory_adapter_prompts_not_supplied_to_author": true,
+    "supplied_complete_common_work_tool_contract": true,
+    "parent_dispatch_reviewer_and_implementation_workers_blind_through_terminal_seal": true,
+    "answer_bearing_corrections_routed_directly_between_author_and_task_aware_auditor": true,
+    "opaque_public_project_case_control_witness_and_decision_identifiers": true,
+    "prevalidation_snapshot_required_before_any_materialized_edit": true,
+    "correction_policy": "Only documented schema, semantic-consistency, reference or qualification defects in the same project design, with immutable full before/after snapshots and reasons. No selection among valid packs or anticipated arm-performance tuning; stop rather than silently regenerate.",
+    "complete_hidden_reasoning_or_keystroke_history_claimed": false,
+    "training_novelty_guaranteed": false,
+    "no_unrecorded_prior_tuning_independently_proven": false,
+    "source_or_prompt_change_after_task_exposure_requires_retiring_pack": true,
+    "authoring_policy_frozen_before_generation_sha256": "1cabc86f06789442f7c7b391be14eea40f950edc02e0743845222e42ae1ac455",
+    "common_work_contract_sha256": "c602dc4a8f305bb3a07620bb897c2c3eea64782bbe459b65e6dcdcd4ffe28c5b",
+    "retained_materialized_revision_history_audited": true,
+    "materialized_lineage": {
+      "initial_core_designs_retained": 1,
+      "task_materializations": 2,
+      "task_revision": 4,
+      "latest_revision": 8,
+      "author_revisions": [
+        {
+          "revision": 0,
+          "opaque_id": "e-a0091",
+          "bytes": 851,
+          "sha256": "835cf25fdcb81b69e0814366f8c73594df552a279aaf224e390b826ef3dda65a"
+        },
+        {
+          "revision": 1,
+          "opaque_id": "e-a0095",
+          "bytes": 10599,
+          "sha256": "1ecef4464df81e07ad851435c0ae15d5be721885c1fdc9b0f91418cc65f1218e"
+        },
+        {
+          "revision": 2,
+          "opaque_id": "e-a0162",
+          "bytes": 11174,
+          "sha256": "9bcbd71eed74b520bf8960eef30671fe30fee3f5bf58b21a3b97e65fa3fe1d36"
+        },
+        {
+          "revision": 3,
+          "opaque_id": "e-a0223",
+          "bytes": 379,
+          "sha256": "e085bd8c7b558c6d95e8dab27529d53b38aee8486781afb82694e2e5e13009b3"
+        },
+        {
+          "revision": 4,
+          "opaque_id": "e-a0227",
+          "bytes": 15871,
+          "sha256": "c835ca4cf493df16fb124419bc104002928fa8576253a565051c8048d32d2758"
+        },
+        {
+          "revision": 5,
+          "opaque_id": "e-a0318",
+          "bytes": 1238,
+          "sha256": "f3f1315e2087f87451c9ac7dd4906110b88d6240bb5b3ff0f0fb52420261c13b"
+        },
+        {
+          "revision": 6,
+          "opaque_id": "e-a0328",
+          "bytes": 2219,
+          "sha256": "8af0b4e8a7869ccf62824b17a75c66eef66579de44bb3f3e2c44ed9d7c4885a7"
+        },
+        {
+          "revision": 7,
+          "opaque_id": "e-a0337",
+          "bytes": 424,
+          "sha256": "356daca944720fb082262a9532793327bd29abf87b877c64065dc9f2e0dd7af3"
+        },
+        {
+          "revision": 8,
+          "opaque_id": "e-a0339",
+          "bytes": 406,
+          "sha256": "4ba14e03ccd7b3d7388b683370ac0e9d28c7701a81a00679097c65d65f7b7418"
+        }
+      ],
+      "post_initial_baseline_instruction_only_additions": 3,
+      "initial_author_files_changed": 0,
+      "initial_baseline_file_count": 343,
+      "final_author_file_count": 346,
+      "author_corrections": {
+        "total": 3,
+        "author_tooling": 2,
+        "schema": 1,
+        "semantic": 0,
+        "ids": [
+          "r-b4e701",
+          "r-27c8d0",
+          "r-390bd6"
+        ]
+      },
+      "author_attempts": {
+        "packaging": 3,
+        "packaging_failed": 1,
+        "task_static_validation": 1,
+        "task_static_validation_failed": 0,
+        "original_preflight": 1,
+        "witness_preflight": 1,
+        "preflight_failed": 0,
+        "original_qualification": 1,
+        "witness_qualification": 1,
+        "qualification_failed": 0,
+        "original_reconciliation": 2,
+        "original_reconciliation_failed": 1,
+        "final_reconciliation": 1
+      },
+      "audit_attempts": {
+        "matrix_parses": 4,
+        "matrix_parse_stops": 3,
+        "supplemental_parses": 1,
+        "supplemental_parse_stops": 0,
+        "author_append_scope_adjustments": 1,
+        "auditor_tooling_corrections": 2,
+        "direct_author_routing_failures": 1,
+        "author_task_corrections_requested": 0,
+        "successful_matrix_parse_attempts": 1,
+        "successful_matrix_parse_attempt_ordinal": 4
+      },
+      "audit_attempt_receipts": [
+        {
+          "opaque_id": "e-q0001",
+          "bytes": 239,
+          "sha256": "b91a0dcf37515edb058036ef124ff307e209fb72f18a619043203739a5e92f73"
+        },
+        {
+          "opaque_id": "e-q0005",
+          "bytes": 249,
+          "sha256": "5b1272834c462f10802d9761c8c072582548218e64dee7d43b7915d1bf2f493d"
+        },
+        {
+          "opaque_id": "e-q0009",
+          "bytes": 249,
+          "sha256": "ee6770f7ba89fe1c83a990e419e2c24e1365017a6274f91a71c7c9c6bcd8f9ff"
+        },
+        {
+          "opaque_id": "e-q0013",
+          "bytes": 249,
+          "sha256": "67457e40890cfc2f6858d822a0835f63b2a2184ef3f85e6bee98c041c803112a"
+        },
+        {
+          "opaque_id": "e-q0017",
+          "bytes": 249,
+          "sha256": "64419f8b5eae08d73a8cf7e996e902a2ec5ccf9689ae2e92d766878ed7b3115f"
+        }
+      ]
+    },
+    "private_prelive_tree": {
+      "files": 346,
+      "bytes": 5249112,
+      "tree_sha256": "e526526997914a9c9043d947c973eef51d35dc07f33de556908021baeb541057",
+      "definition": "SHA256(canonicalJson(rows)); rows are sorted by private relative path and have exactly path,bytes,sha256. Each sha256 binds raw file bytes; no terminal LF in canonical hash input.",
+      "scope": "All retained author-root regular files, including the three instruction-only additions; not this audit or supplement root.",
+      "provenance": "Tree digest and byte total newly derived offline from the preexisting sealed final inventory; not claimed as an earlier stored tree digest.",
+      "retained_inventory_raw_binding": {
+        "opaque_id": "e-q0023",
+        "bytes": 60675,
+        "sha256": "cf31b4d40102bbd70f8103c0ba87863a9daa33f8fb9b498c042c3c66847b30d9"
+      },
+      "current_raw_hash_and_membership_recheck": "identical",
+      "author_edits": 0,
+      "contents_disclosed_to_parent": false
+    },
+    "corrections_requested_by_independent_auditor": 0,
+    "all_recorded_failures_preserved": true,
+    "task_semantic_corrections": 0,
+    "partial_host_command_transcript_limitation": {
+      "id": "l-004",
+      "category": "partial_host_command_transcript",
+      "statement": "One ancillary preservation operation has a sealing receipt and full resulting snapshot, but no separately retained complete invoking inline-host script/request/raw-stream set. Required materialized before/after task and support bytes are present; no missing proof was reconstructed."
+    },
+    "partial_host_command_transcript_clarification": {
+      "gap_operation_category": "ancillary_snapshot_preservation_sealing_and_copy",
+      "absent_item": "Separate complete invoking inline-host script/request/raw-stream set for one ancillary operation.",
+      "retained_items": "Successful preservation/sealing receipt and complete affected materialized generator/support/task before-and-after files and snapshot.",
+      "missing_task_generation_command_in_retained_attempts": false,
+      "missing_task_validation_command_in_retained_attempts": false,
+      "missing_materialized_generator_support_or_task_bytes": false,
+      "independent_scope": "Recorded generation/validation invocations and executable sources are retained. This does not prove that no unrecorded actions ever occurred, and missing transcript proof was not reconstructed."
+    },
+    "contents_disclosed_to_parent": false
+  },
+  "qualification": {
+    "source": "ddb154e5051b7e995518050740feb2d04d42b7fd",
+    "execution_image": "pg-agmemory-development-execution@sha256:3ea2539e3ae5c9b0319131573eb2765202f154389d7da026bfa697f133466ec9",
+    "original_qualification_sha256": "239d721b93c905932f8c1f4621a4208bf497ba6fee9c5b681eb279ec0e568d26",
+    "original_events_sha256": "65f74d1be6a15d8f3ce9044162023ab1b127fe9574a7dd5ae91e449ec8e07551",
+    "recorded_attempts": 1,
+    "failed_recorded_attempts": 0,
+    "matrix_rows": 102,
+    "reference_passes": 48,
+    "canonical_new_work_mismatches": 36,
+    "designated_mutant_mismatches": 18,
+    "generic_qualify_success_alone_sufficient": false,
+    "independently_reconciled_raw_negative_reasons": {
+      "canonical_new_work": {
+        "structural_mismatch": 36,
+        "guest_not_started": 0,
+        "candidate_not_started": 0,
+        "nonzero_exit": 0,
+        "timeout": 0,
+        "cancelled": 0,
+        "malformed_json": 0,
+        "overflow": 0,
+        "unexpected_pass": 0,
+        "infrastructure_unknown": 0,
+        "unknown": 0
+      },
+      "designated_mutants": {
+        "structural_mismatch": 18,
+        "guest_not_started": 0,
+        "candidate_not_started": 0,
+        "nonzero_exit": 0,
+        "timeout": 0,
+        "cancelled": 0,
+        "malformed_json": 0,
+        "overflow": 0,
+        "unexpected_pass": 0,
+        "infrastructure_unknown": 0,
+        "unknown": 0
+      }
+    },
+    "all_rows_started_zero_exit_strict_integer_json": true,
+    "candidate_reexecution_for_audit": false,
+    "created_guests": 102,
+    "absence_receipts": 102,
+    "remaining_owned_guests": 0,
+    "evaluation_model_calls": 0,
+    "contemporaneous_preflight": {
+      "attempts": 2,
+      "raw_captures": 8,
+      "source_head_captures": 2,
+      "clean_status_captures": 2,
+      "full_source_tag_inspections": 2,
+      "exact_digest_inspections": 2,
+      "contemporaneous": true,
+      "later_inspection_substitutions": 0,
+      "zero_exit": 8
+    },
+    "attempt_bindings": {
+      "original": {
+        "manifest": {
+          "opaque_id": "e-a0001",
+          "bytes": 3543,
+          "sha256": "234360a64025860e581de82bf599cadd8dad51092dd503666d4a0a7f493cd12c"
+        },
+        "qualification": {
+          "opaque_id": "e-a0021",
+          "bytes": 49163,
+          "sha256": "239d721b93c905932f8c1f4621a4208bf497ba6fee9c5b681eb279ec0e568d26"
+        },
+        "raw_events": {
+          "opaque_id": "e-a0020",
+          "bytes": 304677,
+          "sha256": "65f74d1be6a15d8f3ce9044162023ab1b127fe9574a7dd5ae91e449ec8e07551"
+        }
+      },
+      "witness": {
+        "manifest": {
+          "opaque_id": "e-a0024",
+          "bytes": 5899,
+          "sha256": "86adf16056101e6b4703c2f60a6659e3d23f4471ed5a4ba13b3f103160e0767a"
+        },
+        "qualification": {
+          "opaque_id": "e-a0058",
+          "bytes": 11334,
+          "sha256": "f8ee8e5c5febde0b46b81da53364ecb83facb469c20be82b7fa5427d4f3ac62b"
+        },
+        "raw_events": {
+          "opaque_id": "e-a0052",
+          "bytes": 160768,
+          "sha256": "8d19619395625b2019275cbb22240697fc8077b179fab61db11fa865ac7767a8"
+        },
+        "bindings": {
+          "opaque_id": "e-a0051",
+          "bytes": 38630,
+          "sha256": "b9a20d1fa1d12740da51831e569949a097262e252e045fa8bc04ec257945747b"
+        },
+        "evidence_index": {
+          "opaque_id": "e-a0053",
+          "bytes": 2210,
+          "sha256": "2f3578399007162031b7dbc4d2e0bc5780207ad9af7b3b1106c9f5eb4edefd9f"
+        },
+        "evidence_index_canonical_sha256": "15a5b8a37ebe5d06fdcc027523c6a24e574a11a069938fca9d578abc290fa144",
+        "evidence_index_recorded_tree_sha256": "11bcea761b626cc6eeb9e46d4559d3e3ec37edc859e41f8e6f94c01499b8e69c",
+        "evidence_index_entries": 16,
+        "evidence_index_tree_definition": "SHA256(frozen canonicalJson(recorded entries)), no terminal LF."
+      }
+    },
+    "preflight_index": {
+      "kind": "new-safe-projection-of-retained-captures",
+      "entry_count": 8,
+      "entries_sha256": "042e51ca5c20da75bb2ab56b46d6318ec64d129afafcab61d0651e5b01f11709",
+      "hash_definition": "SHA256(frozen canonicalJson(entries)), no terminal LF.",
+      "entries": [
+        {
+          "attempt_kind": "original",
+          "ordinal": 1,
+          "role": "source_head",
+          "started_at": "2026-09-28T10:29:14.332Z",
+          "completed_at": "2026-09-28T10:29:14.339Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0003",
+              "bytes": 355,
+              "sha256": "be4b583721ec61f7d65f33dd7d3241af13c8a397ef82542b8c44763f2e0cfbdc"
+            },
+            "receipt": {
+              "opaque_id": "e-a0002",
+              "bytes": 437,
+              "sha256": "8100907be367730343766f743a134dc0b5ceae14d4ca47387dc59203d63886ec"
+            },
+            "stdout": {
+              "opaque_id": "e-a0005",
+              "bytes": 41,
+              "sha256": "c3ee49ac085eae04cfba4b2dac552e530c93cb1bddf119ed6b2542300e29dd9a"
+            },
+            "stderr": {
+              "opaque_id": "e-a0004",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "original",
+          "ordinal": 2,
+          "role": "source_clean_status",
+          "started_at": "2026-09-28T10:29:14.340Z",
+          "completed_at": "2026-09-28T10:29:14.408Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0007",
+              "bytes": 391,
+              "sha256": "34f31e1eb9dfa399c912711e785994b203f8be69d7cc1678a35f16b17bb59593"
+            },
+            "receipt": {
+              "opaque_id": "e-a0006",
+              "bytes": 473,
+              "sha256": "24c090dd7532ed7e4f20922f082c3d6490946a3b1bb83b298284769cff0c0f18"
+            },
+            "stdout": {
+              "opaque_id": "e-a0009",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "stderr": {
+              "opaque_id": "e-a0008",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "original",
+          "ordinal": 3,
+          "role": "full_source_tag_image",
+          "started_at": "2026-09-28T10:29:14.408Z",
+          "completed_at": "2026-09-28T10:29:14.430Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0011",
+              "bytes": 340,
+              "sha256": "431ec7a30f1953f1701b6825b73c33c3c0b75f36656659af1e7bdf256c619365"
+            },
+            "receipt": {
+              "opaque_id": "e-a0010",
+              "bytes": 422,
+              "sha256": "4f9aa96acdd6b26ff92cfaedf47b613222505db798ed9333a3d0d860b98ac52a"
+            },
+            "stdout": {
+              "opaque_id": "e-a0013",
+              "bytes": 11407,
+              "sha256": "419b8b32344e4847e96c88b083c24144cbd57303b5c144769eb92695736f8f4c"
+            },
+            "stderr": {
+              "opaque_id": "e-a0012",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "original",
+          "ordinal": 4,
+          "role": "exact_digest_image",
+          "started_at": "2026-09-28T10:29:14.430Z",
+          "completed_at": "2026-09-28T10:29:14.451Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0015",
+              "bytes": 371,
+              "sha256": "107eca3def169716c7b730facb89d78e6c49045e0a4629575669eca559023dd5"
+            },
+            "receipt": {
+              "opaque_id": "e-a0014",
+              "bytes": 453,
+              "sha256": "c1d92e9213085aa89d12c5721eeb8d8e84202e81d0e889ee4e5e5f05849a605a"
+            },
+            "stdout": {
+              "opaque_id": "e-a0017",
+              "bytes": 11456,
+              "sha256": "433ef94b8db019fc5655e9dc3d9a96ff31346693c18613cbffdfb144c486bced"
+            },
+            "stderr": {
+              "opaque_id": "e-a0016",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "witness",
+          "ordinal": 1,
+          "role": "source_head",
+          "started_at": "2026-09-28T10:33:45.423Z",
+          "completed_at": "2026-09-28T10:33:45.431Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0026",
+              "bytes": 354,
+              "sha256": "f64a17d5a5f72df20efa4e53bb6f216f715e5b2cc70c876b778b687eb2375122"
+            },
+            "receipt": {
+              "opaque_id": "e-a0025",
+              "bytes": 437,
+              "sha256": "e48bee574c2bb670b74649ec6b3902a8f13b3651f00af5d78e1301318188bbf1"
+            },
+            "stdout": {
+              "opaque_id": "e-a0028",
+              "bytes": 41,
+              "sha256": "c3ee49ac085eae04cfba4b2dac552e530c93cb1bddf119ed6b2542300e29dd9a"
+            },
+            "stderr": {
+              "opaque_id": "e-a0027",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "witness",
+          "ordinal": 2,
+          "role": "source_clean_status",
+          "started_at": "2026-09-28T10:33:45.431Z",
+          "completed_at": "2026-09-28T10:33:45.500Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0030",
+              "bytes": 390,
+              "sha256": "1d848b43961957c85550f65297e7f6dcb1722bfe3a4febb9e280132bef8027b4"
+            },
+            "receipt": {
+              "opaque_id": "e-a0029",
+              "bytes": 473,
+              "sha256": "77cec937ce30aad73ccc1064189538309dbfd0455ed50927204f6f28a6164509"
+            },
+            "stdout": {
+              "opaque_id": "e-a0032",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "stderr": {
+              "opaque_id": "e-a0031",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "witness",
+          "ordinal": 3,
+          "role": "full_source_tag_image",
+          "started_at": "2026-09-28T10:33:45.500Z",
+          "completed_at": "2026-09-28T10:33:45.521Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0034",
+              "bytes": 339,
+              "sha256": "286e1bcfa2fcd7208d1b49abe643b624af1a561cef484594e2f2946e15748862"
+            },
+            "receipt": {
+              "opaque_id": "e-a0033",
+              "bytes": 422,
+              "sha256": "562efa8fcaa7f4e87f7b9e80d2798abdc3fa04718f47ef211eb8707f22979681"
+            },
+            "stdout": {
+              "opaque_id": "e-a0036",
+              "bytes": 11407,
+              "sha256": "419b8b32344e4847e96c88b083c24144cbd57303b5c144769eb92695736f8f4c"
+            },
+            "stderr": {
+              "opaque_id": "e-a0035",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        {
+          "attempt_kind": "witness",
+          "ordinal": 4,
+          "role": "exact_digest_image",
+          "started_at": "2026-09-28T10:33:45.521Z",
+          "completed_at": "2026-09-28T10:33:45.545Z",
+          "exit_code": 0,
+          "raw_bindings": {
+            "request": {
+              "opaque_id": "e-a0038",
+              "bytes": 370,
+              "sha256": "e58c0a8931141a779af4e5a9628d052f2ad6fe4e25f5a6cb3fc418a4d682ea5c"
+            },
+            "receipt": {
+              "opaque_id": "e-a0037",
+              "bytes": 453,
+              "sha256": "2d9e8d92c44b23cc94d7d5fa05be27f72633bd8b85a51deb5b6a372e3e2886e4"
+            },
+            "stdout": {
+              "opaque_id": "e-a0040",
+              "bytes": 11456,
+              "sha256": "433ef94b8db019fc5655e9dc3d9a96ff31346693c18613cbffdfb144c486bced"
+            },
+            "stderr": {
+              "opaque_id": "e-a0039",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        }
+      ],
+      "covered_by_attempt_manifests": true,
+      "new_preflights_executed": 0,
+      "timestamp_resolution_note": "Final capture receipt and attempt request can share a millisecond; preserved synchronous wrapper ordering and later qualification journal start were independently reconciled."
+    },
+    "preflight_covers": "Both original and witness attempts; source HEAD, clean status, full-source-tag and exact-digest raw image inspections, including stdout, stderr and exit status."
+  },
+  "information_separation_qualification": {
+    "format": "pgag-development-history-witnesses-v1",
+    "witness_file_sha256": "eb6ae080496393c9b308bfed2c301d441bb59e18935cbf81cdddd6b71fdab29e",
+    "witness_canonical_sha256": "88e236f75a10906f29c43a893b12ea971a5506c3cc1894b4b51a844a1382c271",
+    "qualification_sha256": "f8ee8e5c5febde0b46b81da53364ecb83facb469c20be82b7fa5427d4f3ac62b",
+    "events_sha256": "8d19619395625b2019275cbb22240697fc8077b179fab61db11fa865ac7767a8",
+    "bindings_sha256": "b9a20d1fa1d12740da51831e569949a097262e252e045fa8bc04ec257945747b",
+    "evidence_index_sha256": "2f3578399007162031b7dbc4d2e0bc5780207ad9af7b3b1106c9f5eb4edefd9f",
+    "runner_sha256": "4f3928b397b578483f05d9efba442cca125f47171bfbc3d0e7f325a8cce21153",
+    "runner_freeze_sha256": "0aa95bffd5819965cdc7026ca51411f9360c4eac795c8963f96a1cb51c69f53d",
+    "runner_tests_passed": 38,
+    "runner_tests_skipped": 0,
+    "recorded_attempts": 1,
+    "failed_recorded_attempts": 0,
+    "certified_cases": 8,
+    "distinct_primary_decisions": 2,
+    "reused_original_positives": 8,
+    "additional_guest_executions": 24,
+    "alternative_positive_passes": 8,
+    "own_correct_cross_negatives": 16,
+    "raw_categories": {
+      "exact_original_positive_reuses": 8,
+      "invalid_reuses": 0,
+      "fresh_alternative_positives": 8,
+      "fresh_original_cross": 8,
+      "fresh_alternative_cross": 8,
+      "own_correct_clean_strict_json": 24,
+      "own_correct_opposite_mismatches": 16,
+      "wrong_own_values": 0,
+      "invalid_execution_negatives": 0,
+      "duplicate_or_substituted_guests": 0
+    },
+    "created_guests": 24,
+    "absence_receipts": 24,
+    "remaining_owned_guests": 0,
+    "cross_negative_rule": "Both cross-negatives must zero-exit with well-formed own-history expected output, structurally unequal to the opposite expectation. Crash, timeout, malformed output or generic failure does not certify disagreement.",
+    "complete_visibility_rule": "Identical target current brief, source, visible examples, paths, entry point, case input and common work/tool contract. Both consistent prior histories preserve unchanged earlier requirements; expected outputs differ structurally.",
+    "semantic_rule": "Alternative references implement general operational rules rather than case-specific answer substitutions. Complete-information absence and history consistency were independently audited judgments, not hash proofs.",
+    "failed_witness_reclassification_to_evade_gate_forbidden": true,
+    "alternative_histories_per_case_allowed": true,
+    "alternatives_exposed_to_live_agent": false,
+    "no_impossibility_of_guessing_or_provider_hidden_state_claim": true
+  },
+  "independent_audit": {
+    "status": "PASS-with-disclosed-limitations",
+    "blockers": 0,
+    "category_status": {
+      "semantic_information_separation": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "original_raw_qualification": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "witness_raw_qualification": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "current_visibility_bindings": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "source_image_and_preflight": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "cleanup": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "retained_materialization_and_correction_provenance": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      },
+      "blind_safe_registry": {
+        "verdict": "PASS-with-disclosed-limitations",
+        "blocker_count": 0
+      }
+    },
+    "safe_metadata_sha256": "4eef9fe42eb53093f003881e8b31978153415ab9f44659ec4060edf0d9fac27d",
+    "safe_registry_sha256": "9d17b27f1e2f1cb553db96dfc942c74aa52b6a4a103051febf1c9a2cf530153e",
+    "safe_seal_sha256": "339f1c8ac6d51c5d4014970baf3582b516603207fe9ecc2081c4510e4383883f",
+    "safe_binding_supplement_sha256": "bae0c6da47f653e574a22f97e66c60925ca8d7486d8fe254f830829227845d77",
+    "private_evidence": {
+      "evidence_01": {
+        "opaque_id": "e-a0229",
+        "bytes": 163716,
+        "sha256": "86472764271505e44cf60366b9fec9d6aa07fd01643534e7d39069fdbc13ebe4"
+      },
+      "evidence_02": {
+        "opaque_id": "e-a0315",
+        "bytes": 86198,
+        "sha256": "eb6ae080496393c9b308bfed2c301d441bb59e18935cbf81cdddd6b71fdab29e"
+      },
+      "evidence_03": {
+        "opaque_id": "e-a0021",
+        "bytes": 49163,
+        "sha256": "239d721b93c905932f8c1f4621a4208bf497ba6fee9c5b681eb279ec0e568d26"
+      },
+      "evidence_04": {
+        "opaque_id": "e-a0020",
+        "bytes": 304677,
+        "sha256": "65f74d1be6a15d8f3ce9044162023ab1b127fe9574a7dd5ae91e449ec8e07551"
+      },
+      "evidence_05": {
+        "opaque_id": "e-a0052",
+        "bytes": 160768,
+        "sha256": "8d19619395625b2019275cbb22240697fc8077b179fab61db11fa865ac7767a8"
+      },
+      "evidence_06": {
+        "opaque_id": "e-a0051",
+        "bytes": 38630,
+        "sha256": "b9a20d1fa1d12740da51831e569949a097262e252e045fa8bc04ec257945747b"
+      },
+      "evidence_07": {
+        "opaque_id": "e-a0058",
+        "bytes": 11334,
+        "sha256": "f8ee8e5c5febde0b46b81da53364ecb83facb469c20be82b7fa5427d4f3ac62b"
+      },
+      "evidence_08": {
+        "opaque_id": "e-q0040",
+        "bytes": 851442,
+        "sha256": "770615d269040778c3d37b8f3e0f007558e4e0da8df61d10d2599e7c11a13c78"
+      },
+      "evidence_09": {
+        "opaque_id": "e-q0043",
+        "bytes": 35617,
+        "sha256": "8d16615193c85fc5e6169d1f46e91e3577c9e184ef94e1cdf77769baf423977d"
+      },
+      "evidence_10": {
+        "opaque_id": "e-q0041",
+        "bytes": 10434,
+        "sha256": "f4f817e60206c08f58b8acb235af61ae22d413cc83ef4cbae4a9fe7320759cdc"
+      },
+      "evidence_11": {
+        "opaque_id": "e-q0028",
+        "bytes": 8749,
+        "sha256": "cb157f2e6b816a97842b302ce814b5004400333d9664dcb38150263519aaa2a0"
+      },
+      "evidence_12": {
+        "opaque_id": "e-q0022",
+        "bytes": 60199,
+        "sha256": "eb8c114e38984307827e5fa6e4514b7acd532025a77202f058e6af3ee6cfe1aa"
+      },
+      "evidence_13": {
+        "opaque_id": "e-q0023",
+        "bytes": 60675,
+        "sha256": "cf31b4d40102bbd70f8103c0ba87863a9daa33f8fb9b498c042c3c66847b30d9"
+      },
+      "evidence_14": {
+        "opaque_id": "e-q9001",
+        "bytes": 81076,
+        "sha256": "7e9cc3435746e17d80c7f2ccbf8d8da4affbf924d1aa18cce02af203ee3114dc"
+      }
+    },
+    "private_audit_artifact_count": 45,
+    "private_artifact_hash_manifest_sha256": "03c5ce3b3452ea0f15cd4ddf2e37c7a06447064119804662702c9994d77f1fe0",
+    "tooling": {
+      "matrix_parses": 4,
+      "matrix_parse_stops": 3,
+      "supplemental_parses": 1,
+      "supplemental_parse_stops": 0,
+      "author_append_scope_adjustments": 1,
+      "auditor_tooling_corrections": 2,
+      "direct_author_routing_failures": 1,
+      "author_task_corrections_requested": 0,
+      "successful_matrix_parse_attempts": 1,
+      "successful_matrix_parse_attempt_ordinal": 4
+    },
+    "successful_assertion_records": [
+      {
+        "phase": "matrix_receipt_reconciliation",
+        "successful_attempt_ordinal": 4,
+        "recorded_assertions": 7727,
+        "passed": 7727,
+        "failed": 0,
+        "raw_report_binding": {
+          "opaque_id": "e-q0040",
+          "bytes": 851442,
+          "sha256": "770615d269040778c3d37b8f3e0f007558e4e0da8df61d10d2599e7c11a13c78"
+        }
+      },
+      {
+        "phase": "supplemental_provenance_and_reports",
+        "successful_attempt_ordinal": 1,
+        "recorded_assertions": 443,
+        "passed": 443,
+        "failed": 0,
+        "raw_report_binding": {
+          "opaque_id": "e-q0043",
+          "bytes": 35617,
+          "sha256": "8d16615193c85fc5e6169d1f46e91e3577c9e184ef94e1cdf77769baf423977d"
+        }
+      },
+      {
+        "phase": "safe_publication_validation",
+        "successful_attempt_ordinal": 1,
+        "recorded_assertions": 17,
+        "passed": 17,
+        "failed": 0,
+        "raw_report_binding": {
+          "opaque_id": "e-q9002",
+          "bytes": 1929,
+          "sha256": "313d61ee5efcc8cb8508f008950dce14ca3bc8986ce03e9c2285c6ef1eaa1ea1"
+        }
+      }
+    ],
+    "assertion_count_scope": "Only assertions actually present in the sealed successful reports are counted. Repeated checks are not independent tests, decisions, executions or proofs. Publication-report count excludes checks performed after that report was written. Failed partial reports and separately supplied generic-runner tests are excluded.",
+    "superseded_audit_tool_failures_preserved_not_task_corrections": true,
+    "limitations": [
+      {
+        "id": "l-001",
+        "category": "semantic_judgment_not_machine_proof",
+        "statement": "Complete-current equality and receipt bindings are checked; semantic consistency and information absence remain reasoned independent judgments."
+      },
+      {
+        "id": "l-002",
+        "category": "correlated_cases",
+        "statement": "Eight historical cases reuse two decisions. Repeated stages and arms do not add independent primary decisions."
+      },
+      {
+        "id": "l-003",
+        "category": "retained_record_only",
+        "statement": "No proof of unrecorded actions, hidden reasoning, training novelty, or absence of all prior knowledge; no evidence of retained valid-pack selection or live outcome feedback."
+      },
+      {
+        "id": "l-004",
+        "category": "partial_host_command_transcript",
+        "statement": "One ancillary preservation operation has a sealing receipt and full resulting snapshot, but no separately retained complete invoking inline-host script/request/raw-stream set. Required materialized before/after task and support bytes are present; no missing proof was reconstructed."
+      },
+      {
+        "id": "l-005",
+        "category": "timestamp_and_invocation_scope",
+        "statement": "Ordering relies on preserved receipts/control flow and ordinary filesystem timestamps, not trusted timestamping. Millisecond-equal final preflight/request times are disclosed. Invocation/recipe bindings are source reconstruction, not OS syscall capture or reproducible-build attestation."
+      },
+      {
+        "id": "l-006",
+        "category": "supplied_generic_ci_context",
+        "statement": "Supplied frozen CI/runner-approval context was not re-fetched online. Task acceptance was independently assessed rather than inferred from generic test success."
+      },
+      {
+        "id": "l-007",
+        "category": "offline_cleanup_scope",
+        "statement": "All owned absence evidence is contemporaneous retained evidence; this audit did not launch guests or issue new environment/provider probes."
+      },
+      {
+        "id": "l-008",
+        "category": "instruction_only_append",
+        "statement": "A later routing-instruction revision appended three files during the audit. All original baseline bytes remain unchanged; no task, correction or qualification count changed."
+      }
+    ],
+    "no_candidate_reexecution_or_provider_calls": true,
+    "no_author_file_content_modifications": true
+  },
+  "agent": {
+    "implementation": "unmodified_minisweagent.agents.default.DefaultAgent",
+    "version": "2.4.6",
+    "upstream_commit": "a83fcae82d2a08f0ee0c688f9d137b3566c097f8",
+    "installed_module_sha256": "e8ef8aa365942d739c2ec5cb0879f60f377d2dc2de8ec670aaedf3bafb45a4c2",
+    "common_and_maintenance_prompt_bindings": [
+      {
+        "name": "SYSTEM_PROMPT",
+        "utf8_bytes": 1584,
+        "sha256": "41c8c60d2d6bd2407586cd62b061a66353d6c792b8a85a659b392fa0667aedcb"
+      },
+      {
+        "name": "_HANDOFF_PROMPT",
+        "utf8_bytes": 1468,
+        "sha256": "2a7e147333c075e9b0565510922e18f1a84202e7e3ebb1e505ae58b95d8855d2"
+      },
+      {
+        "name": "_DECISION_PROMPT",
+        "utf8_bytes": 1820,
+        "sha256": "1d9114858fd34d5f5f88df6475ad587dbbe6c3bf77f537a4f1297a4be519fc41"
+      }
+    ],
+    "identity_probe_note": "Installed distribution metadata and AST literals; no upstream import or provider call."
+  },
+  "inference": {
+    "transport": "existing_tool_free_fresh_call_copilot_cli_bridge",
+    "model": "gpt-6-astra",
+    "reasoning_effort": "high",
+    "cli_version_observed_before_run": "1.0.88",
+    "same_model_for_work_handoff_capture_and_planning": true,
+    "automatic_retry_or_model_fallback": false,
+    "provider_internal_retry_absence_verified": false,
+    "provider_hidden_state_absence_proven": false,
+    "managed_weight_revision_verified": false,
+    "monetary_cost_verified": false,
+    "engineering_authoring_and_posthoc_analysis_usage_excluded_from_evaluation_counters": true,
+    "additional_model_judge": false,
+    "nano_aiu_contract": "Nullable finite nonnegative integer or fractional number; preserve without rounding, string coercion or substitution."
+  },
+  "comparison": {
+    "arms": [
+      "no_memory",
+      "handoff",
+      "pg_agmemory"
+    ],
+    "slots_per_arm": 6,
+    "total_slots": 18,
+    "canonical_restart_at_every_milestone": true,
+    "previous_arm_submission_carried_forward": false,
+    "hidden_grades_enter_work_or_memory_prompts": false,
+    "retention": "reference_scoped_review_only_pending_exclusions",
+    "native_forget_or_physical_purge_authorized": false,
+    "scheduled_acceptance_checks_across_arms": 144,
+    "analysis_units": "Six matched stages within two project histories; eight history-only cases repeat two primary decisions. Cases, stages and repeated decisions are not independent experimental samples.",
+    "schedule": [
+      {
+        "slot_id": "p-a6f9c2-1-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-a6f9c2",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-a6f9c2-1-handoff",
+        "arm": "handoff",
+        "project_id": "p-a6f9c2",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-a6f9c2-1-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-a6f9c2",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-d14b87-1-handoff",
+        "arm": "handoff",
+        "project_id": "p-d14b87",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-d14b87-1-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-d14b87",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-d14b87-1-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-d14b87",
+        "milestone": 1
+      },
+      {
+        "slot_id": "p-a6f9c2-2-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-a6f9c2",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-a6f9c2-2-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-a6f9c2",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-a6f9c2-2-handoff",
+        "arm": "handoff",
+        "project_id": "p-a6f9c2",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-d14b87-2-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-d14b87",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-d14b87-2-handoff",
+        "arm": "handoff",
+        "project_id": "p-d14b87",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-d14b87-2-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-d14b87",
+        "milestone": 2
+      },
+      {
+        "slot_id": "p-a6f9c2-3-handoff",
+        "arm": "handoff",
+        "project_id": "p-a6f9c2",
+        "milestone": 3
+      },
+      {
+        "slot_id": "p-a6f9c2-3-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-a6f9c2",
+        "milestone": 3
+      },
+      {
+        "slot_id": "p-a6f9c2-3-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-a6f9c2",
+        "milestone": 3
+      },
+      {
+        "slot_id": "p-d14b87-3-pg_agmemory",
+        "arm": "pg_agmemory",
+        "project_id": "p-d14b87",
+        "milestone": 3
+      },
+      {
+        "slot_id": "p-d14b87-3-no_memory",
+        "arm": "no_memory",
+        "project_id": "p-d14b87",
+        "milestone": 3
+      },
+      {
+        "slot_id": "p-d14b87-3-handoff",
+        "arm": "handoff",
+        "project_id": "p-d14b87",
+        "milestone": 3
+      }
+    ]
+  },
+  "analysis": {
+    "primary": "Valid submission passing every frozen acceptance check; six planned slots per arm.",
+    "milestone_groups": "Report M1 separately from memory-eligible M2-M3, including four planned M2-M3 slots per arm.",
+    "history_only_selector": "history_origin != null AND history-only tag AND successful frozen witness certification",
+    "history_available_selector": "history_origin != null AND history-available tag AND not history-only",
+    "evaluation_control_selector": "history_origin == null AND memory-independent tag",
+    "unclassified_selector": "history_origin == null AND none of the three classification tags",
+    "evaluation_strata_pairwise_disjoint": true,
+    "other_tags_may_overlap": true,
+    "incomplete_outcomes": "Show all planned slots and scheduled/evaluated check denominators; separate submitted success, candidate failure, infrastructure unknown, dependent unrun and other unrun. Do not score unknown/unrun checks as incorrect candidate answers.",
+    "history_only_outcomes": "Report scheduled/evaluated/passed/failed/unknown/unrun checks and matched-arm contrasts without removing maintenance failures or valid-empty memory.",
+    "empty_valid_memory": "Retain as assigned-arm outcome, without exclusion or no-memory substitution.",
+    "historical_requirement_violation": "Failed frozen history check is a violation of an earlier visible requirement, not automatically an observed repeated agent mistake.",
+    "observed_error_recurrence": "No actual repeated-mistake claim without identifiable earlier session-visible evidence that the same agent mistake was observed. Hidden grades and origin quotes alone are insufficient.",
+    "decision_evidence_chain": "Distinguish earlier exposure, presence in actual maintenance input, retention, retrieval/packing selection, actual work-prompt delivery, and artifact outcome for each relevant decision. Record shared obligations rather than treating every check as independent.",
+    "memory_validity": "Existing provenance/reference/scope/revision/pending-exclusion and actual UTF-8 byte checks; not an assumption of semantic truth.",
+    "maintenance_contracts": "Report raw response and proposed/delivered byte counts, item indices and omissions; original/effective provenance spans; successful Native writes separately from validation; include failed/empty boundaries. Zero forgetting proposals means forgetting quality remains untested.",
+    "observed_contrasts": "A memory-arm pass paired with no-memory failure is descriptive contrast. Relevant delivered text does not independently prove causal use; PG versus handoff compares entire configured pipelines, not storage technology alone.",
+    "semantic_explanations": "Post-hoc descriptive analysis, not an extra model judge or revised acceptance score.",
+    "usage": "Report admitted invocations, reported API requests and financial metrics separately by arm and phase, including failed/uncertain admissions and maintenance. Separate canaries and shared startup; preserve unknown usage.",
+    "timing": "Use observable work/retrieval/capture/maintenance/grading intervals; disclose overlap, unobserved intervals and shared-host limitations.",
+    "financial_audit": "Retain original aggregate plus separately labeled exact decimal sums of raw model-level and top-level nano-AIU JSON lexemes; do not sum overlapping token categories or invent dollar prices.",
+    "strata_naming": "The registry's derived-unclassified is the unclassified stratum, not a task tag.",
+    "common_tool_warning": "Supplied directly to all arms by the current work prompt; avoiding that failure is not historical-memory transfer.",
+    "prompt_preparation": "Report original/effective brief bytes, hashes and omitted ranges each round; distinguish prompt evidence omissions from zero eligible retrieval results and delivery packing omissions.",
+    "per_milestone": [
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "cases": 8,
+        "strata": {
+          "history-only": [],
+          "history-available": [],
+          "memory-independent": [
+            "c-57c3ab1a1e0f",
+            "c-2197ee84bb76",
+            "c-f1900605d633",
+            "c-2dfaca2829de",
+            "c-45a06b802091",
+            "c-884ebdfc15c1",
+            "c-ed0bd47ab1b3",
+            "c-6d84fbeec65f"
+          ],
+          "derived-unclassified": []
+        }
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "cases": 8,
+        "strata": {
+          "history-only": [
+            "c-48f4d0dc0911",
+            "c-92e4c90eb2d3"
+          ],
+          "history-available": [],
+          "memory-independent": [
+            "c-c9782af7d680",
+            "c-0623b9a41c9a",
+            "c-e65b50a9b6d7",
+            "c-cc45fb9be95f",
+            "c-e7d1247af397",
+            "c-325891c3dce2"
+          ],
+          "derived-unclassified": []
+        }
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "cases": 8,
+        "strata": {
+          "history-only": [
+            "c-a7f72a5ec1f5",
+            "c-f0d8cb7fbc5c"
+          ],
+          "history-available": [],
+          "memory-independent": [
+            "c-613673d91bd5",
+            "c-242aaea2fb9a",
+            "c-2113a01731be",
+            "c-9b3c5b6b6fef",
+            "c-a6ac204c3925",
+            "c-1d90a381a3f2"
+          ],
+          "derived-unclassified": []
+        }
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "cases": 8,
+        "strata": {
+          "history-only": [],
+          "history-available": [],
+          "memory-independent": [
+            "c-fea1d7ff7365",
+            "c-8389f9cb8c5a",
+            "c-2f1ff8c3e53c",
+            "c-2013732fdc2f",
+            "c-41cc6acc9740",
+            "c-92c4ce6b1d11",
+            "c-4574dbb080fa",
+            "c-e2cbd0ddb950"
+          ],
+          "derived-unclassified": []
+        }
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "cases": 8,
+        "strata": {
+          "history-only": [
+            "c-afe33a9e346d",
+            "c-fb98ba765d5f"
+          ],
+          "history-available": [],
+          "memory-independent": [
+            "c-51e5cbe75485",
+            "c-9de93caf7d8d",
+            "c-e6aa57e69665",
+            "c-9dfd72862dfa",
+            "c-fb1142f34b09",
+            "c-d2887e6ad00f"
+          ],
+          "derived-unclassified": []
+        }
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "cases": 8,
+        "strata": {
+          "history-only": [
+            "c-c0e364e71ae5",
+            "c-44cddff095c7"
+          ],
+          "history-available": [],
+          "memory-independent": [
+            "c-0e950ce878b3",
+            "c-989d5ad2e1e9",
+            "c-cc72b5d6826e",
+            "c-e8101c9ccb36",
+            "c-2a60b5054773",
+            "c-6a9864fd1f67"
+          ],
+          "derived-unclassified": []
+        }
+      }
+    ],
+    "exact_case_registry": [
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-57c3ab1a1e0f",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": [
+          "d-81b4e7"
+        ]
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-2197ee84bb76",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": [
+          "d-81b4e7"
+        ]
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-f1900605d633",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-2dfaca2829de",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-45a06b802091",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-884ebdfc15c1",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-ed0bd47ab1b3",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 1,
+        "case_id": "c-6d84fbeec65f",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-48f4d0dc0911",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-81b4e7"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-92e4c90eb2d3",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-81b4e7"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-c9782af7d680",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-0623b9a41c9a",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-e65b50a9b6d7",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-cc45fb9be95f",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-e7d1247af397",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 2,
+        "case_id": "c-325891c3dce2",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-a7f72a5ec1f5",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-81b4e7"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-f0d8cb7fbc5c",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-81b4e7"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-613673d91bd5",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-242aaea2fb9a",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-2113a01731be",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-9b3c5b6b6fef",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-a6ac204c3925",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-a6f9c2",
+        "milestone": 3,
+        "case_id": "c-1d90a381a3f2",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-fea1d7ff7365",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": [
+          "d-c39a62"
+        ]
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-8389f9cb8c5a",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": [
+          "d-c39a62"
+        ]
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-2f1ff8c3e53c",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-2013732fdc2f",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-41cc6acc9740",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-92c4ce6b1d11",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-4574dbb080fa",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 1,
+        "case_id": "c-e2cbd0ddb950",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-afe33a9e346d",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-c39a62"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-fb98ba765d5f",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-c39a62"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-51e5cbe75485",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-9de93caf7d8d",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-e6aa57e69665",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-9dfd72862dfa",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-fb1142f34b09",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 2,
+        "case_id": "c-d2887e6ad00f",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-c0e364e71ae5",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-c39a62"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-44cddff095c7",
+        "stratum": "history-only",
+        "historical_decision_ids": [
+          "d-c39a62"
+        ],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-0e950ce878b3",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-989d5ad2e1e9",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-cc72b5d6826e",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-e8101c9ccb36",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-2a60b5054773",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      },
+      {
+        "project_id": "p-d14b87",
+        "milestone": 3,
+        "case_id": "c-6a9864fd1f67",
+        "stratum": "memory-independent",
+        "historical_decision_ids": [],
+        "current_decision_ids": []
+      }
+    ],
+    "decision_links": [
+      {
+        "decision_id": "d-81b4e7",
+        "project_id": "p-a6f9c2",
+        "introduced_milestone": 1,
+        "history_cases": [
+          {
+            "project_id": "p-a6f9c2",
+            "milestone": 2,
+            "case_id": "c-48f4d0dc0911"
+          },
+          {
+            "project_id": "p-a6f9c2",
+            "milestone": 2,
+            "case_id": "c-92e4c90eb2d3"
+          },
+          {
+            "project_id": "p-a6f9c2",
+            "milestone": 3,
+            "case_id": "c-a7f72a5ec1f5"
+          },
+          {
+            "project_id": "p-a6f9c2",
+            "milestone": 3,
+            "case_id": "c-f0d8cb7fbc5c"
+          }
+        ],
+        "current_case_ids": [
+          "c-57c3ab1a1e0f",
+          "c-2197ee84bb76"
+        ],
+        "history_case_count": 4,
+        "correlated": true
+      },
+      {
+        "decision_id": "d-c39a62",
+        "project_id": "p-d14b87",
+        "introduced_milestone": 1,
+        "history_cases": [
+          {
+            "project_id": "p-d14b87",
+            "milestone": 2,
+            "case_id": "c-afe33a9e346d"
+          },
+          {
+            "project_id": "p-d14b87",
+            "milestone": 2,
+            "case_id": "c-fb98ba765d5f"
+          },
+          {
+            "project_id": "p-d14b87",
+            "milestone": 3,
+            "case_id": "c-c0e364e71ae5"
+          },
+          {
+            "project_id": "p-d14b87",
+            "milestone": 3,
+            "case_id": "c-44cddff095c7"
+          }
+        ],
+        "current_case_ids": [
+          "c-fea1d7ff7365",
+          "c-8389f9cb8c5a"
+        ],
+        "history_case_count": 4,
+        "correlated": true
+      }
+    ],
+    "case_registry_canonical_sha256": "3e6580e4583bc128e2c913508198b78f5c98c321a28803353d829b8abe8d5de0",
+    "decision_links_canonical_sha256": "4feabd8baae4587d8c84380f430079b5bf39c132f386e7ed0c0e72818380c825",
+    "denominators": {
+      "per_arm": {
+        "no_memory": {
+          "slots": 6,
+          "cases": 48,
+          "strata": {
+            "history-only": 8,
+            "history-available": 0,
+            "memory-independent": 40,
+            "derived-unclassified": 0
+          },
+          "unique_primary_decisions": 2,
+          "history_case_obligations": 8
+        },
+        "handoff": {
+          "slots": 6,
+          "cases": 48,
+          "strata": {
+            "history-only": 8,
+            "history-available": 0,
+            "memory-independent": 40,
+            "derived-unclassified": 0
+          },
+          "unique_primary_decisions": 2,
+          "history_case_obligations": 8
+        },
+        "pg_agmemory": {
+          "slots": 6,
+          "cases": 48,
+          "strata": {
+            "history-only": 8,
+            "history-available": 0,
+            "memory-independent": 40,
+            "derived-unclassified": 0
+          },
+          "unique_primary_decisions": 2,
+          "history_case_obligations": 8
+        }
+      },
+      "all_arms_scheduled": {
+        "slots": 18,
+        "case_arm_obligations": 144,
+        "strata": {
+          "history-only": 24,
+          "history-available": 0,
+          "memory-independent": 120,
+          "derived-unclassified": 0
+        },
+        "unique_primary_decisions": 2,
+        "decision_arm_units": 6,
+        "history_case_arm_obligations": 24
+      },
+      "per_stage": [
+        {
+          "project_id": "p-a6f9c2",
+          "milestone": 1,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 0,
+            "history-available": 0,
+            "memory-independent": 8,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 0,
+            "history-available": 0,
+            "memory-independent": 24,
+            "derived-unclassified": 0
+          }
+        },
+        {
+          "project_id": "p-a6f9c2",
+          "milestone": 2,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 2,
+            "history-available": 0,
+            "memory-independent": 6,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 6,
+            "history-available": 0,
+            "memory-independent": 18,
+            "derived-unclassified": 0
+          }
+        },
+        {
+          "project_id": "p-a6f9c2",
+          "milestone": 3,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 2,
+            "history-available": 0,
+            "memory-independent": 6,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 6,
+            "history-available": 0,
+            "memory-independent": 18,
+            "derived-unclassified": 0
+          }
+        },
+        {
+          "project_id": "p-d14b87",
+          "milestone": 1,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 0,
+            "history-available": 0,
+            "memory-independent": 8,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 0,
+            "history-available": 0,
+            "memory-independent": 24,
+            "derived-unclassified": 0
+          }
+        },
+        {
+          "project_id": "p-d14b87",
+          "milestone": 2,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 2,
+            "history-available": 0,
+            "memory-independent": 6,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 6,
+            "history-available": 0,
+            "memory-independent": 18,
+            "derived-unclassified": 0
+          }
+        },
+        {
+          "project_id": "p-d14b87",
+          "milestone": 3,
+          "per_arm_cases": 8,
+          "per_arm_strata": {
+            "history-only": 2,
+            "history-available": 0,
+            "memory-independent": 6,
+            "derived-unclassified": 0
+          },
+          "all_arm_scheduled_cases": 24,
+          "all_arm_scheduled_strata": {
+            "history-only": 6,
+            "history-available": 0,
+            "memory-independent": 18,
+            "derived-unclassified": 0
+          }
+        }
+      ]
+    },
+    "unique_primary_decision_count": 2,
+    "primary_decision_case_multiplicity": [
+      4,
+      4
+    ],
+    "decision_link_semantics": "Historical decision IDs define history obligations; current decision IDs identify contemporaneous M1 controls, not additional history-only cases."
+  },
+  "limits": {
+    "work_invocations_per_slot": 16,
+    "work_invocations_total": 288,
+    "handoff_invocations": 4,
+    "memory_decision_invocations": 4,
+    "memory_planning_invocations": 16,
+    "isolation_canary_invocations": 6,
+    "coordinator_dispatched_invocations": 318,
+    "bridge_invocations_per_arm": 160,
+    "provider_api_request_hard_ceiling_claimed": false,
+    "reported_api_requests_required_per_successful_invocation": 1,
+    "memory_delivery_utf8_bytes": 2048,
+    "boundary_transcript_utf8_bytes": 24576,
+    "model_seconds": 150,
+    "response_wait_seconds": 180,
+    "work_seconds": 900,
+    "run_seconds": 10800,
+    "cleanup_grace_seconds": 15,
+    "command_seconds": 30,
+    "candidate_case_seconds": 5,
+    "captured_output_bytes": 16384,
+    "delivered_observation_bytes": 2048,
+    "artifact_files": 32,
+    "artifact_bytes": 262144,
+    "decoded_command_utf8_bytes": 8192,
+    "planner_prompt_utf8_bytes": 8000,
+    "model_prompt_or_response_utf8_bytes": 65536,
+    "ipc_envelope_bytes": 70000,
+    "current_brief_utf8_bytes": 4096,
+    "system_prompt_utf8_bytes": 4096,
+    "term_to_kill_seconds": 2,
+    "close_acknowledgement_seconds_after_kill": 2
+  },
+  "diagnostics": {
+    "process_receipt": "pgag-copilot-process-v1",
+    "safe_host_bridge_error_with_originating_receipt": true,
+    "model_deadline_seconds": 150,
+    "term_to_kill_seconds": 2,
+    "close_acknowledgement_seconds_after_kill": 2,
+    "nominal_timeout_lifecycle_cutoff_seconds": 154,
+    "response_wait_seconds": 180,
+    "work_seconds": 900,
+    "run_seconds": 10800,
+    "termination_or_provider_completion_guaranteed": false,
+    "process_receipt_alone_establishes_validated_success_or_accounting": false,
+    "stderr_policy": "Existing unbounded private file; not copied into process receipt.",
+    "retries_fallbacks_extra_health_probes_or_warmups": false
+  },
+  "isolation": {
+    "fresh_owned_database_and_native_scopes": true,
+    "fresh_per_arm_bridges_and_ipc": true,
+    "fresh_controller_agent_work_home_and_config_per_session": true,
+    "networkless_unprivileged_execution_and_grading_guests": true,
+    "host_authentication_home_recreated_per_call": false,
+    "canaries_support_but_do_not_prove_absence_of_provider_hidden_state": true
+  },
+  "images": {
+    "runtime": "pg-agmemory-development-runtime@sha256:acc33d25f188a18262a99d14b243f26f63de9a14276a0a7a769a5edd224b5aad",
+    "execution": "pg-agmemory-development-execution@sha256:3ea2539e3ae5c9b0319131573eb2765202f154389d7da026bfa697f133466ec9"
+  },
+  "tools": {
+    "copilot": "1.0.88",
+    "container": "1.4.1",
+    "node": "26.10.0",
+    "image_python": "3.12.14"
+  },
+  "source_file_sha256": {
+    "Dockerfile": "2f0e877587f122dde61d48e58ccbb920063b960143dcaf3ee49088a210612836",
+    "uv.lock": "e4ead99829841d1a9fd33d359ac0a7ebb1c197b3ac31b236dadc59f89b9be1fc",
+    "pyproject.toml": "21820176027dca587cd3a6ed3544d5b699842fef56f239057257b6b82dbf9811",
+    "docs/DEVELOPMENT_EVALUATION_PLAN.md": "81f38ed4c561985cc7d476e91485a889915b6037f837e634843a1232164a5a24",
+    "src/pg_agmemory/development_agent.py": "7ccb4071fa5a843f752dbd129ebfc746eb0b35f43c3e315bf73fc6f241bf9567",
+    "src/pg_agmemory/development_memory.py": "fcb15521e09767ffae639ed7752e4caf985c25c155e9452f5e9603987021cf19",
+    "src/pg_agmemory/development_evaluation.py": "becbfc2972ab900f22cfbab9f2032809909d4d15854270c774533947426580de",
+    "src/pg_agmemory/bounded_recall.py": "2b61a8118e4c07a64d7b554337c428281afd92c516798a27f174266a054c1460",
+    "scripts/evaluate-development-session.py": "9c9fb112d5cc243ec67bc47faf5e1cee344c2f64e23c2f61cf1f73cd5beb3cf6",
+    "scripts/evaluate-development-memory.mjs": "325081124d3a164627537f52eb0bdf5cc22b839a7bf62bde567f7488bb4deecb",
+    "scripts/development-eval-controller.mjs": "01fbf573dd151a3e54b2437a76c64d6c6403bed3832465e24b399848ad1f7095",
+    "scripts/development-eval-protocol.mjs": "ec0b95f71071e3d4f8bdeb033536751d4f7f910641969526b2b56da0e0f48cad",
+    "scripts/development-eval-transport.mjs": "286c869044712a6f1045c2d538005605046d5c2d9cc4cab10aecd5fcd1e00bd3",
+    "scripts/development-eval-pack.mjs": "acd5a2b76e28031b280d591f19b045ff2c9cfe36b2b797b7dc0d11f909c4c290",
+    "scripts/development-eval-sandbox.mjs": "0761c100931e7922a5fc41a806ced2d9a294eca1ac9e51c04516aca54f3053fb",
+    "scripts/development-eval-infrastructure.mjs": "3d938825f77d7b095821b2b9c1f56102698cb0b532e66738b257daa6527f21df",
+    "scripts/development-eval-guest.py": "87fa5fc8beadc2ba4f7bfd27a12752df1916bfb058293858b7b377722a9f1400",
+    "scripts/copilot-eval-bridge.mjs": "578f3922414592213e0074af533c2d950219bc722fe2a4d87fea76709508e6e7"
+  },
+  "dispatch_gates": {
+    "publicly_publish_and_remotely_verify_exact_preregistration_before_first_call": true,
+    "final_content_free_astra_xhigh_dispatch_review_required": true,
+    "frozen_source_and_images_and_private_artifact_hashes_rechecked_at_start": true,
+    "zero_prior_v5_live_dispatches_required": true,
+    "single_attempt_no_automatic_retry_or_replacement": true,
+    "no_off_ledger_provider_health_probes_warmups_or_failed_canary_replacements": true,
+    "terminal_evidence_sealed_before_parent_unblinding": true,
+    "method_preparation_or_tool_approval_alone_authorizes_live_dispatch": false,
+    "another_interruption_requires_new_go_no_go": true
+  },
+  "interpretation": {
+    "first_failures_timeouts_unknowns_and_unrun_slots_preserved": true,
+    "subsequent_diagnostics_replace_first_outcomes": false,
+    "scope": "information_restricted_stage_gated_memory_mechanism_probe",
+    "equal_information_reasoning_comparison": false,
+    "continuous_agent_owned_branch_evaluation": false,
+    "general_real_work_usefulness_established": false,
+    "statistical_superiority_or_generalization_claimed": false,
+    "production_qualified": false,
+    "cross_study_attribution": "Tasks and host transport diagnostics differ from v4; work, maintenance, retrieval, model, budgets and retry policy are unchanged. Do not pool studies or attribute contrasts to diagnostics.",
+    "post_terminal_release": "Release the byte-identical pack and witness material/relationships after terminal freeze with hashes and explicit disclosure of any necessary redactions or transformations. No unreported changed bytes.",
+    "single_attempt_no_replacement_for_adverse_outcomes": true,
+    "common_tool_warning_avoidance_demonstrates_memory_transfer": false,
+    "two_primary_decisions_not_eight_independent_obligations": true,
+    "diagnostic_observability_is_not_provider_readiness_or_timeout_remedy": true,
+    "process_signal_request_or_stdout_exit_zero_establishes_success_or_complete_accounting": false,
+    "automatic_new_studies_until_success_authorized": false
+  }
+}

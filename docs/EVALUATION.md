@@ -2,6 +2,29 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Fifth study: independently qualified, no live results yet
+
+The [v5 preregistration](../examples/development-memory-pilot-v5-manifest.json)
+freezes a fresh, independently authored and audited two-project comparison
+on source `ddb154e`: eighteen slots and 144 scheduled case observations.
+Its 48 cases include eight history-only cases repeating **two primary
+decisions**, plus forty memory-independent cases. The independent audit
+passed with disclosed limitations and zero blockers; all 102 original
+and 24 fresh witness executions have retained guest-absence evidence.
+
+Two tooling corrections, one schema correction, failed packaging and
+reconciliation attempts, and auditor tooling stops remain recorded.
+The audit covers retained materialized evidence, not every host command
+or unrecorded action; semantic information absence remains a judgment.
+See the [plan](DEVELOPMENT_EVALUATION_PLAN.md#fifth-study-preregistration-under-the-unchanged-bounded-policy)
+and manifest for the exact qualifications and limitations.
+No v5 evaluation model calls have been dispatched. Public byte verification
+and separate final approval are still required. The existing deadlines,
+budgets and no-retry policy remain unchanged; diagnostics do not establish
+provider readiness. Another interruption requires a new go/no-go decision,
+not automatic task generation until success. No prior result is replaced
+or pooled, and no memory benefit is established by offline qualification.
+
 ## Fourth study: interrupted before historical-memory evaluation
 
 The [v4 preregistration](../examples/development-memory-pilot-v4-manifest.json)

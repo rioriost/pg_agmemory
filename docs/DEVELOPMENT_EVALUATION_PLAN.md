@@ -1,8 +1,10 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **the single v4 attempt and its post-terminal audits are published;
-the historical-memory comparison remains incomplete**. The separate offline
-transport-diagnostics follow-up below does not resume that attempt.
+Status: **v5 is privately qualified and independently audited; no v5 live
+calls have been dispatched**. Its content-free preregistration does not itself
+authorize dispatch. The single v4 attempt and its post-terminal audits are
+published, but its historical-memory comparison remains incomplete. The
+separate offline transport-diagnostics follow-up does not resume that attempt.
 
 The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
@@ -22,6 +24,93 @@ The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
 separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
+
+## Fifth study: preregistration under the unchanged bounded policy
+
+The [v5 preregistration](../examples/development-memory-pilot-v5-manifest.json)
+binds the actual independently audited registry: 48 cases, eight at each
+stage, with eight history-only and forty memory-independent cases; there
+are no history-available or unclassified cases. Across three arms this
+means 144 scheduled case observations. The eight history-only cases repeat
+**two primary decisions, four cases each**, not eight independent decisions.
+
+The independent audit passed with disclosed limitations and no blockers.
+It reconciled 48 original reference positives, 36 canonical-new-work
+negatives and eighteen mutant negatives. Every negative started, exited
+zero and emitted strict JSON structurally unequal to the expected value.
+Eight exactly bound original positives were reused; 24 fresh witness
+executions included eight alternative positives and sixteen own-correct
+cross-negatives. All 126 created guests have retained absence receipts.
+Both qualification attempts have contemporaneous source HEAD, clean status,
+full-source-tag and exact-digest image inspection receipts.
+
+The retained history contains one core design, two task materializations
+and three corrections: two author-tooling fixes and one schema fix, with
+no semantic task correction. One packaging failure, one failed original
+reconciliation and three auditor matrix-parse stops remain preserved;
+none is relabelled as a failed or repeated candidate qualification.
+The auditor requested no task correction or candidate reexecution.
+An instruction-only append added three files while leaving all 343
+initial author files byte-identical; the final inventory has 346 files.
+
+Semantic consistency and information absence remain independent judgments,
+not machine proofs. One ancillary preservation operation lacks a separately
+retained complete invoking host-command transcript, although its sealing
+receipt and full resulting snapshot remain. This gap concerns ancillary
+sealing/copying, not the recorded task-generation or validation commands.
+The materialized before/after task and support bytes were audited; missing
+evidence was not reconstructed.
+Ordering uses ordinary timestamps and retained control flow, not trusted
+timestamping; reconstructed invocation bindings are not syscall captures
+or reproducible-build attestations. These limitations, the failed tooling
+attempts and the distinction between observed evidence and author
+attestations are bound in the preregistration.
+
+Freeze executable source `ddb154e5051b7e995518050740feb2d04d42b7fd`, separate
+from any later preregistration-publication commit. Source CI
+`36402718026` passed its eight Native, AGE, HA and PITR amd64/arm64 jobs.
+The source-labelled runtime and execution images, installed upstream agent,
+common work prompt and tool versions are independently bound before private
+task generation. CI and synthetic checks establish neither provider readiness
+nor resolution of the v4 delay.
+
+The method review permits **one** separately preregistered fresh study:
+two projects, three canonical milestones, three arms and eighteen scheduled
+slots. Preserve GPT-6 Astra/high, 318 total admissions including the existing
+canaries, 150-second model / 180-second response / 900-second work /
+10,800-second run limits, and the current work, maintenance, retrieval and
+state protocols. No retries, fallback, off-ledger health probes, warm-ups or
+failed-canary replacement are authorized.
+
+The diagnostic source has a two-second TERM-to-KILL escalation followed by
+at most two seconds for close acknowledgement: nominally 154 seconds after a
+model timeout, not extra model allowance or an OS-termination guarantee.
+Preserve the primary failure, allowlisted `bridge_error` and originating
+receipt. Missing receipts or observations remain unknown; stdout exit zero,
+signal requests or receipt `first_failure: null` do not establish validated
+model success, complete accounting or provider termination. Stderr retains
+the existing unbounded private-file policy. None of these new observations
+may retrospectively resolve v4's unknown outcomes.
+
+Use a fresh independent author and a different task-aware auditor, neither
+a prior pack author nor an adapter implementer. Freeze instructions and the
+authoring policy before generation; preserve every materialized revision,
+correction and failed qualification attempt. Retain v4's complete-current-
+information certification, matrix-wide zero-exit strict-JSON negative audit,
+general-rule counterfactual witnesses and exact positive-reuse bindings.
+The parent, dispatch reviewer and implementation workers remain blind to new
+task contents through terminal sealing.
+
+Re-establish the actual case counts, strata, unique decisions, correlations and
+balanced schedule from the new pack; v4's counts are not v5 defaults. Do not
+reuse exposed tasks or select among valid packs for expected arm performance.
+Live dispatch still requires source/image qualification, independent audit,
+published and remotely verified content-free preregistration, and separate
+final one-attempt approval. Preserve and publish an interrupted attempt
+without rescoring or replacement. Another interruption requires a new
+go/no-go decision, not automatic generation until a study completes.
+Studies remain separate, descriptive evidence; cross-study differences
+cannot be attributed to diagnostics.
 
 ## Offline transport diagnostics after the fourth study
 
