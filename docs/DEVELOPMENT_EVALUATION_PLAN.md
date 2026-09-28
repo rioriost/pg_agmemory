@@ -144,6 +144,81 @@ first retained generated snapshot. Semantic consistency and absence of
 prior arm-specific tuning remain
 auditable attestations, not guarantees proved by the execution matrix.
 
+## Post-v3 retrieval revision: offline implementation
+
+**Implemented and validated offline, not a new live evaluation.** The v3 evidence
+identified retained-but-unretrieved rules. The old development planner also
+received only the first 512 code points, capped at 1,024 UTF-8 bytes, of the
+current brief. That is verified information loss, but its contribution to
+individual misses is not an established sole cause or a demonstrated storage
+defect. Preserve all published v3 outcomes and reproduce them with their pinned
+source.
+
+The reviewed revision introduces the explicit
+`memory_retrieval_policy="development-retrieval-v2"` identity and opt-in
+`development-v4` planner guidance for `en-snowball-v1`. It prioritizes the
+currently requested operation and constraints over scaffolding or future-only
+handoff notes. Filenames and API identifiers remain optional, verbatim cues,
+not required anchors or prohibited terms. Conventional lexical alternatives
+are unverified search hypotheses, not facts or a validator-proven relationship.
+After zero or incomplete results, the guidance asks for another justified,
+unused task cue rather than treating absence or a broad topic match as
+sufficient. Empty follow-up plans remain valid: no forced search, host query
+rewrite, browse fallback, retry or additional judge is introduced.
+
+Each planning round begins with the original full current brief. The new
+preparation helper measures the actual serialized prompt, including JSON
+escaping, required history/feedback and preparation metadata, within the
+unchanged 8,000-byte ceiling. Only when mandatory content is otherwise too
+large may it take the longest fitting nonempty code-point prefix. It records
+original/effective counts and hashes, omitted range and truncation status.
+If mandatory content plus any valid nonempty question cannot fit, it fails
+before model dispatch; it never discards required feedback or returns empty
+memory as a substitute for an error.
+
+Whole planning items are then packed using the existing behavior: skip an
+oversized item and try later items. Full-brief priority can reduce the evidence
+shown to the planner. Omitted evidence is unknown, not proof that no matching
+facts exist. Each round's external audit records included/omitted item indices
+and the final prompt's actual bytes/hash; the prompt hash is not included in
+its own hashed payload. Legacy planner policies retain their original
+rendering and validation behavior.
+
+The retrieval identity is required in the constructor, recipe, work/boundary
+configurations, controller startup/results and summary, including M1 and
+no-memory. Missing or mismatched values are integrity failures before
+model/Native operations, not ordinary candidate failures. Maintenance remains
+`development-maintenance-v2`; retention state remains
+`development-memory-state-v2` without a retrieval field or migration.
+At most four sequential search rounds, one fresh final validation, current
+assertion-only scope and pending exclusions, and 2,048-byte work delivery
+remain unchanged.
+
+Final baked Linux validation passed Ruff, mypy for all 66 source files and the
+session script, and **931 Python tests without skips**. The unchanged final
+runtime/host inputs passed **68 Node tests without skips**, including real
+Native/controller IPC and the full eighteen-slot fake-model flow. Twenty
+pre-edit legacy prompt byte/hash fixtures remain unchanged, and all six
+published v3 briefs remain unshortened in rounds 1–4 under the test's explicit
+ordinary-history fixture. This is not a promise that every possible history
+and evidence combination fits unshortened.
+
+Initial validation failures were retained and corrected before the final
+run. A separate SDK receipt fixture assumed client and database clocks agreed;
+it now uses database-derived historical event time and checks resolved bounds,
+without weakening ID or receipt assertions. A controlled future-event test
+demonstrates exclusion at database-default `as_of` and retrieval when only
+`as_of` advances with `known_at` pinned. This establishes the visibility
+mechanism, **not the unmeasured clock offset in the earlier failed run**.
+Storage behavior was not changed.
+
+Offline regressions must distinguish prompt/contract correctness and direct
+query feasibility from actual model query-selection quality. Published v3
+briefs are now exposed regression material, never held-out evaluation.
+Tool availability, work-command limits and handoff replacement behavior are
+outside this revision. A new live comparison requires separately frozen
+conditions, independent tasks and preregistration.
+
 ## Post-pilot maintenance protocol: offline revision
 
 Current development-evaluation code uses **`development-maintenance-v2`**,

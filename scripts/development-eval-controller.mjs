@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
-  canonicalJson, EvaluationError, exactKeys, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL,
+  canonicalJson, EvaluationError, exactKeys, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL, RETRIEVAL_POLICY,
   remainingMilliseconds, requireCondition, sha256, validateRequest, validateUsage,
 } from "./development-eval-protocol.mjs";
 import { runProcess } from "./development-eval-sandbox.mjs";
@@ -34,13 +34,15 @@ const MEMORY_FAILURES = new Set([
   "memory_prompt_budget_exhausted", "memory_inventory_too_large",
 ]);
 const TIMEOUT_REASONS = new Set(["response_timeout", "late_ipc_reply", "session_deadline"]);
-const MAINTENANCE_INTEGRITY_FAILURES = new Set([
-  "invalid_memory_maintenance_protocol", "invalid_memory_state",
+const MEMORY_INTEGRITY_FAILURES = new Set([
+  "invalid_memory_maintenance_protocol", "invalid_memory_retrieval_policy", "invalid_memory_state",
 ]);
 
-function validateMaintenanceIdentity(value) {
+function validateMemoryIdentity(value) {
   requireCondition(value?.memory_maintenance_protocol === MAINTENANCE_PROTOCOL,
     "invalid_memory_maintenance_protocol");
+  requireCondition(value?.memory_retrieval_policy === RETRIEVAL_POLICY,
+    "invalid_memory_retrieval_policy");
   requireCondition(value.memory_state === null || value.memory_state !== undefined
     && typeof value.memory_state === "object" && !Array.isArray(value.memory_state)
     && value.memory_state.format === "development-memory-state-v2", "invalid_memory_state");
@@ -97,6 +99,7 @@ class EventTail {
     this.file = file;
     this.sessionId = config.session_id;
     this.maintenanceProtocol = config.memory_maintenance_protocol;
+    this.retrievalPolicy = config.memory_retrieval_policy;
     this.started = false;
     this.record = record;
     this.offset = 0;
@@ -135,9 +138,15 @@ class EventTail {
             requireCondition(!this.started && this.sequence === 1
               && event.data.memory_maintenance_protocol === this.maintenanceProtocol,
             "controller_maintenance_protocol");
+            requireCondition(event.data.memory_retrieval_policy === this.retrievalPolicy,
+              "controller_retrieval_policy");
             this.started = true;
           }
           requireCondition(this.started, "controller_maintenance_protocol");
+          if (event.kind === "memory_event") {
+            requireCondition(event.data.data?.memory_retrieval_policy === this.retrievalPolicy,
+              "controller_retrieval_policy");
+          }
           if (event.kind === "work_started") {
             requireCondition(this.workStarted === null && !this.finished
               && event.data.work_limit_seconds === 900, "work_deadline_reset");
@@ -171,7 +180,7 @@ class EventTail {
 export class ControllerSession {
   constructor({ infrastructure, transport, config, guest, record, runDeadline, runner = runProcess,
     signal }) {
-    try { validateMaintenanceIdentity(config); }
+    try { validateMemoryIdentity(config); }
     catch (error) {
       transport.ledger?.stop();
       throw error;
@@ -211,7 +220,7 @@ export class ControllerSession {
 
   assertActive() {
     if (this.fatalFailure !== null) throw this.fatalFailure;
-    try { validateMaintenanceIdentity(this.config); }
+    try { validateMemoryIdentity(this.config); }
     catch (error) { throw this.latchFatal(error); }
     requireCondition(!this.abort.signal.aborted, "operation_cancelled");
     requireCondition(!this.transport.ledger?.stopped, "admission_stopped");
@@ -441,7 +450,8 @@ export class ControllerSession {
       }).then((result) => { processResult = result; }, (error) => { processFailure = error; })
         .finally(() => { exited = true; });
       this.record({ kind: "controller_launched", session_id: config.session_id, mode: config.mode,
-        memory_maintenance_protocol: config.memory_maintenance_protocol });
+        memory_maintenance_protocol: config.memory_maintenance_protocol,
+        memory_retrieval_policy: config.memory_retrieval_policy });
       while (!exited) {
         this.assertActive();
         await events.drain();
@@ -469,7 +479,7 @@ export class ControllerSession {
       });
       const resultBytes = await readPrivate(path.join(this.root, "output", "result.json"), 1048576);
       const result = parseJson(resultBytes);
-      validateMaintenanceIdentity(result);
+      validateMemoryIdentity(result);
       requireCondition(result.boundary_result == null
         || result.boundary_result.state?.format === "development-memory-state-v2",
       "invalid_memory_state");
@@ -522,7 +532,7 @@ export class ControllerSession {
         const retrievalBudget = retrievalFailure && result.reason === "search_prompt_too_large"
           && this.operations.every((operation) => operation.request.operation === "invoke_model"
             && operation.request.body.phase === "memory_plan");
-        if (MAINTENANCE_INTEGRITY_FAILURES.has(result.reason)
+        if (MEMORY_INTEGRITY_FAILURES.has(result.reason)
           || !(hostFailure || localFailure || memoryFailure || plannerFailure || retrievalBudget)) {
           const error = new EvaluationError("controller_failure_requires_abort");
           error.controller_reason = result.reason;
@@ -531,6 +541,7 @@ export class ControllerSession {
       }
       this.record({ kind: "controller_result", session_id: config.session_id,
         memory_maintenance_protocol: result.memory_maintenance_protocol,
+        memory_retrieval_policy: result.memory_retrieval_policy,
         status: result.status, result_sha256: sha256(resultBytes) });
       return { ...result, host_accounting: accounting };
     } catch (error) {

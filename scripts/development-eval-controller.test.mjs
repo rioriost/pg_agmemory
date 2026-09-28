@@ -8,7 +8,7 @@ import { ControllerSession, verifyControllerAccounting } from "./development-eva
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles } from "./development-eval-pack.mjs";
 import {
-  EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, PROTOCOL, sha256,
+  EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, PROTOCOL, RETRIEVAL_POLICY, sha256,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
 
@@ -49,6 +49,7 @@ function controllerResult(operations, overrides = {}) {
   return {
     protocol: PROTOCOL, session_id: "unit-session", mode: "work",
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: null,
+    memory_retrieval_policy: RETRIEVAL_POLICY,
     slot: { project_id: "toy-a", milestone: 1, arm: "no_memory" },
     status: "submitted", reason: null, outcome_unknown: false, upstream_exit_status: "Submitted",
     query_attempts: models.filter((row) => row.request.body.phase === "work").length,
@@ -76,6 +77,7 @@ test("unit: maintenance protocol preflight is required for every mode and initia
         protocol: PROTOCOL, mode, session_id: "unit-session",
         slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: null,
         maintenance_protocol: MAINTENANCE_PROTOCOL,
+        memory_retrieval_policy: RETRIEVAL_POLICY,
       };
       if (invalid !== undefined) config.memory_maintenance_protocol = invalid;
       assert.throws(() => new ControllerSession({
@@ -99,11 +101,36 @@ test("unit: old or missing state versions cannot enter a v2 host controller", ()
       });
       assert.throws(() => new ControllerSession({
         config: { protocol: PROTOCOL, memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+          memory_retrieval_policy: RETRIEVAL_POLICY,
           mode, slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: state },
         transport: { ledger }, infrastructure: {}, guest: null,
         record: () => assert.fail("no event"), runner: () => assert.fail("no controller operation"),
         runDeadline: Date.now() + 60000,
       }), { code: "invalid_memory_state" });
+      assert.equal(ledger.ordinal, 0);
+      assert.equal(ledger.stopped, true);
+    }
+  }
+});
+
+test("unit: retrieval policy is explicit before any callback in every initial arm and mode", () => {
+  assert.equal(RETRIEVAL_POLICY, "development-retrieval-v2");
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const invalid of [undefined, null, false, 2, "", "development-retrieval-v1"]) {
+      const forbidden = () => assert.fail("invalid identity must precede every callback");
+      const ledger = new InvocationLedger({
+        record: forbidden, runId: "test-run", model: "gpt-6-astra", effort: "high",
+      });
+      const config = {
+        protocol: PROTOCOL, mode, session_id: "unit-session",
+        slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: null,
+        memory_maintenance_protocol: MAINTENANCE_PROTOCOL, retrieval_policy: RETRIEVAL_POLICY,
+      };
+      if (invalid !== undefined) config.memory_retrieval_policy = invalid;
+      assert.throws(() => new ControllerSession({
+        config, transport: { ledger, invoke: forbidden }, infrastructure: { bearer: forbidden },
+        guest: null, record: forbidden, runner: forbidden, runDeadline: Date.now() + 60000,
+      }), { code: "invalid_memory_retrieval_policy" });
       assert.equal(ledger.ordinal, 0);
       assert.equal(ledger.stopped, true);
     }
@@ -330,6 +357,7 @@ async function unitSession(t, options = {}) {
   const config = {
     protocol: PROTOCOL, run_id: "test-run", session_id: "unit-session", mode: "work",
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: state, memory_binding: binding,
+    memory_retrieval_policy: RETRIEVAL_POLICY,
     slot,
     model: { model: "gpt-6-astra", reasoning_effort: "high" },
     ...options.config,
@@ -389,8 +417,11 @@ async function unitSession(t, options = {}) {
     await fs.mkdir(path.join(session.root, "ipc", "replies"), { mode: 0o700 });
     if (!options.omitStarted) await event("controller_started", {
       memory_maintenance_protocol: config.memory_maintenance_protocol,
+      memory_retrieval_policy: config.memory_retrieval_policy,
       ...options.started,
     });
+    if (options.memoryEvent) await event("memory_event", options.memoryEvent);
+    options.afterStarted?.(config);
     if (!options.retrieval) await event("work_started", { work_limit_seconds: 900 });
     if (options.noRequests) await finish();
     else await requestFile(options.requests?.[0] ?? request(1));
@@ -438,6 +469,41 @@ test("unit: changed configuration is fatal before any controller or model launch
   }
 });
 
+test("unit: mutated retrieval config is fatal before launch or active model dispatch", async (t) => {
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const policy of [undefined, "development-retrieval-v1"]) for (const active of [false, true]) {
+      const mutate = (config) => {
+        if (policy === undefined) delete config.memory_retrieval_policy;
+        else config.memory_retrieval_policy = policy;
+      };
+      const fixture = await unitSession(t, {
+        config: { mode, slot: { project_id: "toy-a", milestone: 1, arm } },
+        afterStarted: active ? mutate : undefined,
+      });
+      if (!active) mutate(fixture.config);
+      await assert.rejects(fixture.session.run(), { code: "invalid_memory_retrieval_policy" });
+      assert.equal(fixture.launches(), active ? 1 : 0);
+      assert.equal(fixture.calls(), 0);
+      assert.equal(fixture.transport.ledger.stopped, true);
+    }
+  }
+});
+
+test("unit: startup and memory audits cannot drop or change retrieval identity", async (t) => {
+  for (const policy of [undefined, "development-retrieval-v1"]) {
+    for (const options of [
+      { started: { memory_retrieval_policy: policy } },
+      { memoryEvent: { kind: "memory_search_preparation", phase: "deliver", status: "completed",
+        data: { memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_retrieval_policy: policy } } },
+    ]) {
+      const fixture = await unitSession(t, options);
+      await assert.rejects(fixture.session.run(), { code: "controller_retrieval_policy" });
+      assert.equal(fixture.calls(), 0);
+      assert.equal(fixture.transport.ledger.stopped, true);
+    }
+  }
+});
+
 test("unit: controller startup must bind the maintenance identity before dispatch", async (t) => {
   for (const options of [
     { omitStarted: true },
@@ -456,13 +522,16 @@ test("unit: result identity cannot drop the version or reintroduce v1 state", as
   for (const change of [
     { memory_maintenance_protocol: undefined },
     { memory_maintenance_protocol: "development-maintenance-v1" },
+    { memory_retrieval_policy: undefined },
+    { memory_retrieval_policy: "development-retrieval-v1" },
     { memory_state: { format: "development-memory-state-v1" } },
     { boundary_result: { state: { format: "development-memory-state-v1" } } },
   ]) {
     const fixture = await unitSession(t, { result: (value) => ({ ...value, ...change }) });
     await assert.rejects(fixture.session.run(), {
       code: change.memory_state || change.boundary_result
-        ? "invalid_memory_state" : "invalid_memory_maintenance_protocol",
+        ? "invalid_memory_state" : Object.hasOwn(change, "memory_retrieval_policy")
+          ? "invalid_memory_retrieval_policy" : "invalid_memory_maintenance_protocol",
     });
     assert.equal(fixture.calls(), 1);
     assert.equal(fixture.transport.ledger.stopped, true);
@@ -471,18 +540,22 @@ test("unit: result identity cannot drop the version or reintroduce v1 state", as
   }
 });
 
-test("unit: maintenance and state integrity errors never become ordinary boundary failures", async (t) => {
-  for (const reason of ["invalid_memory_maintenance_protocol", "invalid_memory_state"]) {
-    const fixture = await unitSession(t, {
-      retrieval: true, noRequests: true,
-      config: { mode: "boundary", slot: { project_id: "toy-a", milestone: 1, arm: "handoff" } },
-      result: (value) => ({ ...value, status: "failed", reason }),
-    });
-    await assert.rejects(fixture.session.run(), {
-      code: "controller_failure_requires_abort", controller_reason: reason,
-    });
-    assert.equal(fixture.transport.ledger.stopped, true);
-    assert.equal(fixture.calls(), 0);
+test("unit: memory identity and state integrity errors are fatal in every mode and arm", async (t) => {
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const reason of [
+      "invalid_memory_maintenance_protocol", "invalid_memory_retrieval_policy", "invalid_memory_state",
+    ]) {
+      const fixture = await unitSession(t, {
+        retrieval: true, noRequests: true,
+        config: { mode, slot: { project_id: "toy-a", milestone: 1, arm } },
+        result: (value) => ({ ...value, status: "failed", reason }),
+      });
+      await assert.rejects(fixture.session.run(), {
+        code: "controller_failure_requires_abort", controller_reason: reason,
+      });
+      assert.equal(fixture.transport.ledger.stopped, true);
+      assert.equal(fixture.calls(), 0);
+    }
   }
 });
 
@@ -884,6 +957,7 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       const common = {
         protocol: PROTOCOL, run_id: runId,
         memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+        memory_retrieval_policy: RETRIEVAL_POLICY,
         slot: { project_id: "toy-a", milestone: 1, arm }, recipe_sha256: "a".repeat(64),
         model, memory_binding: binding, memory_state: null,
       };
@@ -905,9 +979,13 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       assert.equal(work.status, "submitted", JSON.stringify({ arm, work,
         recent_events: records.slice(-5) }));
       assert.equal(work.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(work.memory_retrieval_policy, RETRIEVAL_POLICY);
       assert.equal(records.find((row) => row.kind === "controller_event"
         && row.event.session_id === sessionId && row.event.kind === "controller_started")
         .event.data.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(records.find((row) => row.kind === "controller_event"
+        && row.event.session_id === sessionId && row.event.kind === "controller_started")
+        .event.data.memory_retrieval_policy, RETRIEVAL_POLICY);
       assert.equal(work.query_attempts, 1);
       assert.equal(work.admitted_invocations, 1);
       assert.equal(work.provider_api_requests, 1);

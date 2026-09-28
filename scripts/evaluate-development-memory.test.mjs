@@ -8,7 +8,8 @@ import { ControllerSession, verifyControllerAccounting } from "./development-eva
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule } from "./development-eval-pack.mjs";
 import {
-  ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, RunBudget, sha256,
+  ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, RETRIEVAL_POLICY,
+  RunBudget, sha256,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
 import {
@@ -92,6 +93,7 @@ test("host verifies controller counts and exact receipts instead of trusting Sub
   ];
   const result = {
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+    memory_retrieval_policy: RETRIEVAL_POLICY,
     mode: "work", status: "submitted", reason: null, outcome_unknown: false,
     upstream_exit_status: "Submitted", query_attempts: 1, admitted_invocations: 1,
     execute_attempts: 0, provider_api_requests: 1, invocation_receipts: [receipt],
@@ -159,12 +161,17 @@ test("pre-start cancellation preserves all eighteen unrun slots without starting
     assert.ok(result.outcomes.every((slot) => slot.status === "unrun"));
     assert.equal(result.usage.real_model_invocations, 0);
     assert.equal(result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    assert.equal(result.memory_retrieval_policy, RETRIEVAL_POLICY);
     const recipe = JSON.parse(await fs.readFile(path.join(root, "recipe.json")));
     assert.equal(recipe.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    assert.equal(recipe.memory_retrieval_policy, RETRIEVAL_POLICY);
     assert.equal(sha256(canonicalJson(recipe)), result.recipe_sha256);
     const legacy = { ...recipe };
     delete legacy.memory_maintenance_protocol;
     assert.notEqual(sha256(canonicalJson(legacy)), result.recipe_sha256);
+    const previousRetrieval = { ...recipe };
+    delete previousRetrieval.memory_retrieval_policy;
+    assert.notEqual(sha256(canonicalJson(previousRetrieval)), result.recipe_sha256);
   } finally { await fs.rm(root, { recursive: true }); }
 });
 
@@ -265,6 +272,7 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
   });
   assert.equal(summary.status, "completed", JSON.stringify({ root, summary }));
   assert.equal(summary.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+  assert.equal(summary.memory_retrieval_policy, RETRIEVAL_POLICY);
   assert.equal(summary.real_models, false);
   assert.equal(summary.usage.real_model_invocations, 0);
   assert.equal(summary.usage.provider_usage, null);
@@ -276,6 +284,7 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
   }
   for (const outcome of summary.outcomes) {
     assert.equal(outcome.work_result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    assert.equal(outcome.work_result.memory_retrieval_policy, RETRIEVAL_POLICY);
     assert.equal(outcome.work_result.host_accounting.complete, true);
     assert.notEqual(outcome.artifact_sha256, outcome.starting_tree_sha256);
     if (outcome.arm === "handoff" && outcome.milestone > 1) {
@@ -283,12 +292,15 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
     }
     if (outcome.boundary_result) {
       assert.equal(outcome.boundary_result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(outcome.boundary_result.memory_retrieval_policy, RETRIEVAL_POLICY);
       assert.equal(outcome.boundary_result.memory_state.format, "development-memory-state-v2");
+      assert.equal(Object.hasOwn(outcome.boundary_result.memory_state, "memory_retrieval_policy"), false);
     }
     if (outcome.arm === "no_memory") assert.equal(outcome.work_result.memory_delivery.byte_count, 0);
   }
   const recipe = JSON.parse(await fs.readFile(path.join(root, "recipe.json")));
   assert.equal(recipe.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+  assert.equal(recipe.memory_retrieval_policy, RETRIEVAL_POLICY);
   assert.equal(sha256(canonicalJson(recipe)), summary.recipe_sha256);
   assert.equal(JSON.parse(await fs.readFile(path.join(root, "summary.json"))).status, "completed");
   await fs.rm(root, { recursive: true });

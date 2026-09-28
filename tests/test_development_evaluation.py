@@ -28,13 +28,14 @@ from pg_agmemory.development_evaluation import (
     publish,
     sha256,
 )
-from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, RETRIEVAL_POLICY
 
 
-def config_value(arm="no_memory", milestone=1):
-    return {
+def config_value(arm="no_memory", milestone=1, *, mode="work"):
+    value = {
         "protocol": "pgag-development-controller-v1", "mode": "work",
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+        "memory_retrieval_policy": RETRIEVAL_POLICY,
         "run_id": "test-run", "session_id": "test-session",
         "slot": {"project_id": "project-a", "milestone": milestone, "arm": arm},
         "recipe_sha256": "a" * 64,
@@ -47,6 +48,18 @@ def config_value(arm="no_memory", milestone=1):
         "starting_tree_sha256": "b" * 64,
         "allowed_output_paths": ["solution.py"], "entry_point": "solution.py",
     }
+    if mode == "boundary":
+        for field in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
+            value.pop(field)
+        value.update(
+            mode=mode, boundary_id="boundary-a",
+            transcript=boundary_transcript("Visible task.", []).model_dump(mode="json"),
+            keys=None if arm == "handoff" else {
+                "observe": "observe-a", "create": [f"create-{i}" for i in range(6)],
+                "revise": [f"revise-{i}" for i in range(4)],
+            },
+        )
+    return value
 
 
 def model_result(call=1):
@@ -102,12 +115,12 @@ def test_financial_fraction_does_not_relax_api_or_token_integer_types(field, val
         ModelUsage.model_validate(FRACTIONAL_NANO_USAGE | {field: value})
 
 
-def make_ipc(tmp_path, responder, *, work=True, arm="no_memory"):
+def make_ipc(tmp_path, responder, *, work=True, arm="no_memory", mode="work"):
     tmp_path.chmod(0o700)
     ipc_path, output = tmp_path / "ipc", tmp_path / "output"
     ipc_path.mkdir(mode=0o700)
     output.mkdir(mode=0o700)
-    config = parse_config(json_bytes(config_value(arm)))
+    config = parse_config(json_bytes(config_value(arm, mode=mode)))
     sink = EventSink(output, config.session_id)
     now = [0.0]
     ipc = None
@@ -190,11 +203,18 @@ def test_no_memory_state_is_null_at_every_milestone():
         parse_config(json_bytes(value))
 
 
+@pytest.mark.parametrize(("field", "identity", "old", "alias"), [
+    ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL,
+     "development-maintenance-v1", "maintenance_protocol"),
+    ("memory_retrieval_policy", RETRIEVAL_POLICY, "development-retrieval-v1", "retrieval_policy"),
+])
 @pytest.mark.parametrize(("mode", "arm"), [
     ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
     ("boundary", "handoff"), ("boundary", "pg_agmemory"),
 ])
-def test_maintenance_protocol_is_required_even_with_initial_null_state(mode, arm):
+def test_memory_identity_is_required_even_with_initial_null_state(
+    mode, arm, field, identity, old, alias,
+):
     value = config_value(arm)
     if mode == "boundary":
         for key in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
@@ -209,17 +229,15 @@ def test_maintenance_protocol_is_required_even_with_initial_null_state(mode, arm
         )
     config = parse_config(json_bytes(value))
     assert config.memory_state is None
-    assert config.memory_maintenance_protocol == "development-maintenance-v2"
-    assert type(config).model_fields["memory_maintenance_protocol"].is_required()
-    for protocol in (
-        None, False, 2, "", "development-maintenance-v1", "development-maintenance-v3",
-    ):
+    assert getattr(config, field) == identity
+    assert type(config).model_fields[field].is_required()
+    for protocol in (None, False, 2, "", old, identity + " "):
         with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
-            parse_config(json_bytes(value | {"memory_maintenance_protocol": protocol}))
-    value.pop("memory_maintenance_protocol")
+            parse_config(json_bytes(value | {field: protocol}))
+    value.pop(field)
     with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
         parse_config(json_bytes(value))
-    value["maintenance_protocol"] = MAINTENANCE_PROTOCOL
+    value[alias] = identity
     with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
         parse_config(json_bytes(value))
 
@@ -248,10 +266,15 @@ def test_maintenance_v2_never_loads_a_v1_continuity_state(mode, arm):
         parse_config(json_bytes(value))
 
 
-def test_controller_result_requires_the_same_fixed_maintenance_protocol():
+@pytest.mark.parametrize(("field", "identity", "old"), [
+    ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL, "development-maintenance-v1"),
+    ("memory_retrieval_policy", RETRIEVAL_POLICY, "development-retrieval-v1"),
+])
+def test_controller_result_requires_the_same_fixed_memory_identity(field, identity, old):
     value = {
         "protocol": "pgag-development-controller-v1",
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+        "memory_retrieval_policy": RETRIEVAL_POLICY,
         "session_id": "test-session", "slot": config_value()["slot"], "mode": "work",
         "status": "failed", "reason": "prompt_budget_exhausted", "outcome_unknown": False,
         "upstream_exit_status": "EvaluationFailure", "submission": None,
@@ -260,16 +283,14 @@ def test_controller_result_requires_the_same_fixed_maintenance_protocol():
         "memory_delivery": None, "boundary_result": None, "transcript": None,
         "monetary_cost_status": "disabled_unverified", "elapsed_ns": 1,
     }
-    assert ControllerResult.model_validate_json(json_bytes(value)).memory_maintenance_protocol == (
-        MAINTENANCE_PROTOCOL
-    )
-    assert ControllerResult.model_fields["memory_maintenance_protocol"].is_required()
-    for protocol in (None, "development-maintenance-v1"):
+    assert getattr(ControllerResult.model_validate_json(json_bytes(value)), field) == identity
+    assert ControllerResult.model_fields[field].is_required()
+    for protocol in (None, old):
         with pytest.raises(ValidationError):
             ControllerResult.model_validate_json(
-                json_bytes(value | {"memory_maintenance_protocol": protocol}),
+                json_bytes(value | {field: protocol}),
             )
-    value.pop("memory_maintenance_protocol")
+    value.pop(field)
     with pytest.raises(ValidationError):
         ControllerResult.model_validate_json(json_bytes(value))
 
@@ -354,7 +375,7 @@ def test_memory_events_preserve_typed_host_receipts_without_custom_object_serial
     )
     event = MemoryAuditEvent.model_validate(audit_json({
         "kind": "memory_model_receipt", "phase": "maintain", "status": "completed",
-        "data": {"receipt_ref": ref},
+        "data": {"receipt_ref": ref, "memory_retrieval_policy": RETRIEVAL_POLICY},
     }))
     assert event.data["receipt_ref"] == ref.model_dump(mode="json")
     with pytest.raises(EvaluationFailure, match="unsupported_audit_value"):
@@ -364,12 +385,70 @@ def test_memory_events_preserve_typed_host_receipts_without_custom_object_serial
 def test_native_memory_intent_is_started_not_completed():
     event = MemoryAuditEvent.model_validate({
         "kind": "memory_native_intent", "phase": "maintain", "status": "started",
-        "data": {"operation": "inventory_read", "request": {"query": ""}},
+        "data": {"operation": "inventory_read", "request": {"query": ""},
+                 "memory_retrieval_policy": RETRIEVAL_POLICY},
     })
     assert event.status == "started"
     with pytest.raises(ValidationError):
         MemoryAuditEvent.model_validate(event.model_dump() | {"status": "unknown"})
 
+
+@pytest.mark.parametrize("policy", [None, "", "development-retrieval-v1"])
+def test_memory_audit_rejects_missing_or_wrong_retrieval_identity(policy):
+    data = {} if policy is None else {"memory_retrieval_policy": policy}
+    with pytest.raises(EvaluationFailure, match="invalid_memory_retrieval_policy"):
+        MemoryAuditEvent.model_validate({
+            "kind": "memory_search_preparation", "phase": "deliver", "status": "completed",
+            "data": data,
+        })
+
+
+@pytest.mark.parametrize(("mode", "arm"), [
+    ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
+    ("boundary", "handoff"), ("boundary", "pg_agmemory"),
+])
+@pytest.mark.parametrize("policy", [None, "", "development-retrieval-v1"])
+def test_mutated_retrieval_config_poisoned_before_ipc_or_native(
+    tmp_path, monkeypatch, mode, arm, policy,
+):
+    import asyncio
+
+    import pg_agmemory.sdk as sdk
+    from pg_agmemory.development_evaluation import InstrumentedNativeFactory
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Changed identity must not invoke a model or open a Native client")
+
+    ipc, events, _ = make_ipc(tmp_path, forbidden, work=False, arm=arm, mode=mode)
+    factory = InstrumentedNativeFactory(
+        "http://127.0.0.1:8123", "synthetic.identity.signature", events, ipc.check,
+    )
+    monkeypatch.setattr(sdk, "AsyncMemoryClient", forbidden)
+    if policy is None:
+        object.__delattr__(ipc.config, "memory_retrieval_policy")
+    else:
+        object.__setattr__(ipc.config, "memory_retrieval_policy", policy)
+
+    async def open_native():
+        async with factory():
+            pytest.fail("Native entry must be unreachable")
+
+    try:
+        for operation in (
+            ipc.start_work, lambda: ipc.invoke("work", "prompt", None),
+            lambda: ipc.execute("synthetic"),
+            lambda: asyncio.run(open_native()),
+        ):
+            with pytest.raises(EvaluationFailure, match="invalid_memory_retrieval_policy"):
+                operation()
+        assert ipc.sequence == 0 and ipc.poisoned
+        assert ipc.execute_attempts == 0 and ipc._phase_attempts == {}
+        assert not list(ipc.requests.iterdir())
+        object.__setattr__(ipc.config, "memory_retrieval_policy", RETRIEVAL_POLICY)
+        with pytest.raises(EvaluationFailure, match="ipc_closed"):
+            ipc.check()
+    finally:
+        events.close()
 
 def test_ipc_host_receipts_are_passed_through_and_no_commands_execute_locally(tmp_path):
     ipc, events, _ = make_ipc(tmp_path, lambda *_: None)

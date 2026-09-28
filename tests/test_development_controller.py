@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -22,7 +21,7 @@ from pg_agmemory.development_evaluation import (
     publish,
     sha256,
 )
-from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, RETRIEVAL_POLICY
 from pg_agmemory.models import Observe, Recall
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "evaluate-development-session.py"
@@ -32,6 +31,7 @@ def config_value(*, arm="no_memory", milestone=1, session="work-a", state=None):
     return {
         "protocol": "pgag-development-controller-v1", "mode": "work",
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+        "memory_retrieval_policy": RETRIEVAL_POLICY,
         "run_id": "test-run", "session_id": session,
         "slot": {"project_id": "project-a", "milestone": milestone, "arm": arm},
         "recipe_sha256": "a" * 64,
@@ -125,8 +125,12 @@ def test_two_actual_fresh_controllers_do_not_carry_history_or_ids(tmp_path):
         assert code == 0, stderr.decode()
         assert result.status == "submitted" and result.memory_state is None
         assert result.memory_maintenance_protocol == MAINTENANCE_PROTOCOL
+        assert result.memory_retrieval_policy == RETRIEVAL_POLICY
         assert events[0]["kind"] == "controller_started"
         assert events[0]["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
+        assert events[0]["data"]["memory_retrieval_policy"] == RETRIEVAL_POLICY
+        assert all(event["data"]["data"]["memory_retrieval_policy"] == RETRIEVAL_POLICY
+                   for event in events if event["kind"] == "memory_event")
         assert result.query_attempts == result.admitted_invocations == 1
         assert result.provider_api_requests == 1
         kinds = [event["kind"] for event in events]
@@ -254,7 +258,9 @@ def test_fresh_handoff_boundary_directly_maintains_without_deliver(tmp_path):
     ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
     ("boundary", "no_memory"), ("boundary", "handoff"), ("boundary", "pg_agmemory"),
 ])
-@pytest.mark.parametrize("fault", ["missing", "wrong", "v1_state"])
+@pytest.mark.parametrize("fault", [
+    "missing", "wrong", "v1_state", "missing_retrieval", "wrong_retrieval",
+])
 def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
     tmp_path, monkeypatch, mode, arm, fault,
 ):
@@ -276,6 +282,10 @@ def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
         config.pop("memory_maintenance_protocol")
     elif fault == "wrong":
         config["memory_maintenance_protocol"] = "development-maintenance-v1"
+    elif fault == "missing_retrieval":
+        config.pop("memory_retrieval_policy")
+    elif fault == "wrong_retrieval":
+        config["memory_retrieval_policy"] = "development-retrieval-v1"
     else:
         config["memory_state"] = {
             "format": "development-memory-state-v1", "binding": config["memory_binding"],
@@ -455,7 +465,11 @@ def test_unknown_native_outcome_is_not_downgraded_to_known_controller_failure(
 def test_typed_retrieval_failure_preserves_code_origin_and_existing_model_accounting(
     tmp_path, monkeypatch, failure,
 ):
-    from pg_agmemory.bounded_recall import BoundedRecallError, parse_search_plan, search_prompt
+    from pg_agmemory.bounded_recall import (
+        BoundedRecallError,
+        parse_search_plan,
+        prepare_development_search_prompt,
+    )
     from pg_agmemory.development_memory import DevelopmentMemory
 
     root = tmp_path / "retrieval-failure"
@@ -503,7 +517,8 @@ def test_typed_retrieval_failure_preserves_code_origin_and_existing_model_accoun
             reply = callbacks["invoke"]("memory_plan", "Synthetic planner input.", 1)
             parse_search_plan(reply.text)
         elif failure == "search_prompt_too_large":
-            search_prompt("\x01" * 4096, "en-snowball-v1", planner_policy="sequential-v3")
+            # Every fitting prefix is whitespace-only, not metadata-overhead exhaustion.
+            prepare_development_search_prompt("\n" * 3000 + "x", "en-snowball-v1")
         elif failure == "untyped":
             raise UntypedPlannerError("not a typed helper error")
         else:
@@ -543,6 +558,13 @@ def test_typed_retrieval_failure_preserves_code_origin_and_existing_model_accoun
 
 @pytest.mark.integration
 def test_instrumented_factory_uses_real_sdk_http_and_native_receipts(env, api_process, tmp_path):
+    import psycopg
+
+    # Test and database containers have independent clocks; use database-derived history.
+    with psycopg.connect(env.settings.database_url) as connection:
+        occurred_at = connection.execute(
+            "SELECT statement_timestamp() - INTERVAL '1 day'",
+        ).fetchone()[0]
     output = tmp_path / "native-events"
     output.mkdir(mode=0o700)
     events = EventSink(output, "native-test")
@@ -554,13 +576,16 @@ def test_instrumented_factory_uses_real_sdk_http_and_native_receipts(env, api_pr
             async with factory() as native:
                 observed = await native.observe(Observe(
                     scope_id=env.scopes[0], source_namespace="development-instrumentation",
-                    source_event_id="synthetic-observation", occurred_at=datetime.now(UTC),
+                    source_event_id="synthetic-observation", occurred_at=occurred_at,
                     content="Synthetic controller evidence.", consent_reference="test",
                 ), idempotency_key="development-observe-key")
                 result = await native.recall(Recall(
                     scope_ids=[env.scopes[0]], purpose="test", query="evidence",
                     search_profile="en-snowball-v1",
+                    include_temporal_bounds=True,
                 ))
+                assert result.temporal_bounds is not None
+                assert occurred_at <= result.temporal_bounds.as_of
                 assert observed.memory_id in {item.memory_id for item in result.items}
                 assert result.search_profile == "en-snowball-v1"
                 assert not hasattr(native, "forget")
@@ -582,3 +607,53 @@ def test_instrumented_factory_uses_real_sdk_http_and_native_receipts(env, api_pr
     assert intents[1]["idempotency_key"] == "development-observe-key"
     assert intents[1]["request"].get("auto_extract", False) is False
     assert intents[1]["request"].get("auto_embed", False) is False
+
+
+@pytest.mark.integration
+def test_instrumented_recall_excludes_future_episode_until_explicit_valid_time(
+    env, api_process, tmp_path,
+):
+    import psycopg
+
+    with psycopg.connect(env.settings.database_url) as connection:
+        future = connection.execute(
+            "SELECT statement_timestamp() + INTERVAL '1 day'",
+        ).fetchone()[0]
+    output = tmp_path / "future-native-events"
+    output.mkdir(mode=0o700)
+    events = EventSink(output, "future-native-test")
+    with api_process("development-future-native-api.log") as (http, _):
+        factory = InstrumentedNativeFactory(str(http.base_url), env.token(), events, lambda: None)
+
+        async def scenario():
+            async with factory() as native:
+                observed = await native.observe(Observe(
+                    scope_id=env.scopes[0], source_namespace="development-instrumentation",
+                    source_event_id="synthetic-future-observation", occurred_at=future,
+                    content="Synthetic controller evidence.", consent_reference="test",
+                ), idempotency_key="development-future-observe-key")
+                current = await native.recall(Recall(
+                    scope_ids=[env.scopes[0]], purpose="test", query="evidence",
+                    search_profile="en-snowball-v1", include_temporal_bounds=True,
+                ))
+                assert current.temporal_bounds is not None
+                assert current.temporal_bounds.as_of < future
+                assert current.items == []
+                visible = await native.recall(Recall(
+                    scope_ids=[env.scopes[0]], purpose="test", query="evidence",
+                    search_profile="en-snowball-v1", include_temporal_bounds=True,
+                    as_of=future, known_at=current.temporal_bounds.known_at,
+                ))
+                assert visible.temporal_bounds is not None
+                assert visible.temporal_bounds.as_of == future
+                assert visible.temporal_bounds.known_at == current.temporal_bounds.known_at
+                assert observed.memory_id in {item.memory_id for item in visible.items}
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            events.close()
+    records = [json.loads(line) for line in (output / "events.jsonl").read_text().splitlines()]
+    results = [record["data"]["operation"] for record in records
+               if record["kind"] == "native_result"]
+    assert results == ["sdk_capability_setup", "observe", "recall", "recall"]

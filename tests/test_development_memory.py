@@ -15,6 +15,7 @@ from pg_agmemory.bounded_recall import BoundedRecallError
 from pg_agmemory.development_memory import (
     FACT_PREFIX,
     MAINTENANCE_PROTOCOL,
+    RETRIEVAL_POLICY,
     AssertionRecord,
     BoundaryKeys,
     CurrentReference,
@@ -246,6 +247,7 @@ def workflow(bound, *, native=None, model=None, saved=None, session=1, emit=None
         native_factory=native.factory if native is not None else None,
         invoke=model or ScriptedModel([]), emit=emit or (lambda event: None),
         now=clock or (lambda: NOW), maintenance_protocol=MAINTENANCE_PROTOCOL,
+        retrieval_policy=RETRIEVAL_POLICY,
     )
 
 
@@ -264,6 +266,7 @@ def test_maintenance_protocol_rejects_before_callbacks_or_native(protocol, arm):
         DevelopmentMemory(
             binding(arm), session_number=1, state=None, native_factory=forbidden,
             invoke=forbidden, emit=forbidden, now=forbidden, maintenance_protocol=protocol,
+            retrieval_policy=RETRIEVAL_POLICY,
         )
     assert failure.value.code == "invalid_memory_maintenance_protocol"
     assert failure.value.phase == "initialization"
@@ -278,10 +281,63 @@ def test_maintenance_protocol_has_no_constructor_default():
     arguments = {
         "session_number": 1, "state": None, "native_factory": forbidden,
         "invoke": forbidden, "emit": forbidden, "now": forbidden,
+        "retrieval_policy": RETRIEVAL_POLICY,
     }
     with pytest.raises(TypeError, match="maintenance_protocol"):
         DevelopmentMemory(binding(), **arguments)
     assert MAINTENANCE_PROTOCOL == "development-maintenance-v2"
+
+
+@pytest.mark.parametrize("policy", [
+    None, True, 2, "", "development-retrieval-v1", "development-retrieval-v2 ",
+])
+@pytest.mark.parametrize("arm", ["no_memory", "handoff", "pg_agmemory"])
+def test_retrieval_policy_rejects_before_callbacks_or_native(policy, arm):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Invalid retrieval identity must precede every callback")
+
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_retrieval_policy"):
+        DevelopmentMemory(
+            binding(arm), session_number=1, state=None, native_factory=forbidden,
+            invoke=forbidden, emit=forbidden, now=forbidden,
+            maintenance_protocol=MAINTENANCE_PROTOCOL, retrieval_policy=policy,
+        )
+
+
+def test_retrieval_policy_has_no_constructor_default():
+    def forbidden(*args, **kwargs):
+        pytest.fail("Missing retrieval identity must fail at the signature")
+
+    with pytest.raises(TypeError, match="retrieval_policy"):
+        DevelopmentMemory(
+            binding(), session_number=1, state=None, native_factory=forbidden,
+            invoke=forbidden, emit=forbidden, now=forbidden,
+            maintenance_protocol=MAINTENANCE_PROTOCOL,
+        )
+    assert RETRIEVAL_POLICY == "development-retrieval-v2"
+
+
+@pytest.mark.parametrize("arm", ["no_memory", "handoff", "pg_agmemory"])
+@pytest.mark.parametrize("method", ["deliver", "maintain"])
+def test_changed_retrieval_identity_closes_memory_before_callbacks(arm, method):
+    events = []
+    native = FakeNative() if arm == "pg_agmemory" else None
+    model = ScriptedModel([])
+    component = workflow(binding(arm), native=native, model=model, emit=events.append)
+    component._retrieval_policy = "development-retrieval-v1"
+    operation = (
+        component.deliver("Visible current brief") if method == "deliver"
+        else component.maintain(transcript("Visible history"), boundary_id="changed-policy",
+                                keys=keys("changed-policy") if native is not None else None)
+    )
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_retrieval_policy"):
+        asyncio.run(operation)
+    assert model.calls == [] and events == []
+    if native is not None:
+        assert native.opens == native.closes == 0
+    component._retrieval_policy = RETRIEVAL_POLICY
+    with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
+        asyncio.run(component.deliver("Visible current brief"))
 
 
 @pytest.mark.parametrize("arm", ["handoff", "pg_agmemory"])
@@ -438,6 +494,7 @@ def test_handoff_packs_ordered_whole_prefix_and_audits_distinct_byte_domains(
     assert all(
         event["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL for event in events
     )
+    assert all(event["data"]["memory_retrieval_policy"] == RETRIEVAL_POLICY for event in events)
     packing_events = [event for event in events if event["kind"] == "memory_handoff_packing"]
     assert len(packing_events) == 1
     packing = packing_events[0]
@@ -945,6 +1002,31 @@ def test_zero_matches_empty_stop_has_no_validation_and_no_fallback():
     assert not result.revalidated and len(model.calls) == 2 and len(native.reads) == 1
 
 
+def test_retrieval_policy_does_not_change_retained_state_or_write_assertions():
+    assert set(MemoryState.model_fields) == {
+        "format", "binding", "completed_boundaries", "last_boundary_id", "note", "assertions",
+    }
+    item = fact("A recorded operational constraint.")
+    bound = binding()
+    saved = state(bound, [item])
+    original_state = saved.model_dump_json()
+    native = FakeNative([item])
+    model = ScriptedModel([plan("operational", "constraint"), plan()])
+    events = []
+    component = workflow(
+        bound, native=native, model=model, session=2, saved=saved, emit=events.append,
+    )
+    result = asyncio.run(component.deliver("Apply the operational constraint."))
+    assert result.revalidated and result.final_validations == 1 and result.text
+    assert native.writes == [] and len(native.reads) == 2
+    assert saved.model_dump_json() == component._state.model_dump_json() == original_state
+    preparations = [event["data"] for event in events
+                    if event["kind"] == "memory_search_preparation"]
+    assert preparations[0]["included_item_indices"] == ()
+    assert preparations[1]["included_item_indices"] == (0,)
+    assert preparations[1]["omitted_item_indices"] == ()
+
+
 def test_four_round_budget_and_delivery_crop_whole_current_items_only():
     items = [fact("Anchor " + str(i) + "x" * 240) for i in range(8)]
     bound = binding()
@@ -967,7 +1049,11 @@ def test_four_round_budget_and_delivery_crop_whole_current_items_only():
             assert str(item.memory_id) not in result.text
 
 
-def test_question_prefix_is_utf8_and_codepoint_bounded_with_reported_omissions():
+@pytest.mark.parametrize("brief", [
+    "界" * 700 + " Apply the current operational constraint.",
+    "\x01" * 4000 + " Apply the current operational constraint.",
+])
+def test_every_planning_round_prepares_the_original_full_brief_and_exact_audit(brief):
     item = fact()
     bound = binding()
     model = ScriptedModel([plan("absent"), plan()])
@@ -975,12 +1061,36 @@ def test_question_prefix_is_utf8_and_codepoint_bounded_with_reported_omissions()
     asyncio.run(workflow(
         bound, native=FakeNative([item]), model=model, session=2,
         saved=state(bound, [item]), emit=events.append,
-    ).deliver("界" * 700))
-    prompt = model.calls[0][1]
-    data = json.loads(prompt.split("INPUT=", 1)[1])
-    assert data["question"] == "界" * 341
-    event = next(event for event in events if event["kind"] == "memory_question")
-    assert event["data"]["omitted_code_points"] == 359
+    ).deliver(brief))
+    preparations = [event["data"] for event in events
+                    if event["kind"] == "memory_search_preparation"]
+    assert len(preparations) == len(model.calls) == 2
+    assert not any(event["kind"] == "memory_question" for event in events)
+    for round_number, (audit, (_, prompt, recorded_round)) in enumerate(
+        zip(preparations, model.calls, strict=True), 1,
+    ):
+        assert audit["planner_policy"] == "development-v4"
+        assert audit["memory_retrieval_policy"] == RETRIEVAL_POLICY
+        assert audit["round_number"] == recorded_round == round_number
+        assert audit["prompt_utf8_bytes"] == len(prompt.encode()) <= 8000
+        assert audit["prompt_sha256"] == hashlib.sha256(prompt.encode()).hexdigest()
+        question = json.loads(prompt.split("INPUT=", 1)[1])["question"]
+        preparation = audit["question_preparation"]
+        assert preparation["original_code_points"] == len(brief)
+        assert preparation["original_utf8_bytes"] == len(brief.encode())
+        assert preparation["original_sha256"] == hashlib.sha256(brief.encode()).hexdigest()
+        assert preparation["effective_code_points"] == len(question)
+        assert preparation["effective_utf8_bytes"] == len(question.encode())
+        assert preparation["effective_sha256"] == hashlib.sha256(question.encode()).hexdigest()
+        assert brief.startswith(question) and question
+        assert preparation["omitted_code_points"] == len(brief) - len(question)
+        assert preparation["omitted_utf8_bytes"] == len(brief.encode()) - len(question.encode())
+        if brief.startswith("界"):
+            assert question == brief and not preparation["truncated"]
+            assert preparation["omitted_range"] is None
+        else:
+            assert question != brief and preparation["truncated"]
+            assert preparation["omitted_range"] == (len(question), len(brief))
 
 
 @pytest.mark.parametrize(
@@ -1282,12 +1392,15 @@ def guarded(name, *args, **kwargs):
         raise ImportError('optional SDK intentionally unavailable')
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded
-from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, DevelopmentMemory, MemoryBinding
+from pg_agmemory.development_memory import (
+    MAINTENANCE_PROTOCOL, RETRIEVAL_POLICY, DevelopmentMemory, MemoryBinding,
+)
 DevelopmentMemory(
     MemoryBinding(run_id='r', project_id='p', arm='no_memory', scope_id=uuid4()),
     session_number=3, state=None, native_factory=None,
     invoke=lambda *args: None, emit=lambda event: None, now=lambda: datetime.now(UTC),
     maintenance_protocol=MAINTENANCE_PROTOCOL,
+    retrieval_policy=RETRIEVAL_POLICY,
 )
 """
     completed = subprocess.run(
@@ -1378,6 +1491,7 @@ def test_real_sdk_boundary_revision_pending_and_sequential_delivery(env, api_pro
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) - timedelta(days=1),
                 maintenance_protocol=MAINTENANCE_PROTOCOL,
+                retrieval_policy=RETRIEVAL_POLICY,
             )
 
         first = asyncio.run(component(1, None, first_model).maintain(
@@ -1446,6 +1560,7 @@ def test_real_sdk_foreign_scope_and_stale_registry_refs_fail_inventory(env, api_
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) + timedelta(days=1),
                 maintenance_protocol=MAINTENANCE_PROTOCOL,
+                retrieval_policy=RETRIEVAL_POLICY,
             )
 
         first = asyncio.run(component(
@@ -1502,6 +1617,7 @@ def test_real_sdk_epoch_change_between_search_and_validation_aborts(env, api_pro
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) - timedelta(hours=6),
                 maintenance_protocol=MAINTENANCE_PROTOCOL,
+                retrieval_policy=RETRIEVAL_POLICY,
             )
 
         captured = asyncio.run(component(None, 1, ScriptedModel([

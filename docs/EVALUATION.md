@@ -98,6 +98,26 @@ complete pre-correction snapshot; unrecorded drafts and independent proof of
 no prior tuning are unavailable. No candidate replay, repair or replacement
 run was performed. Earlier results below remain unchanged.
 
+### Offline retrieval follow-up, separate from the measured study
+
+The subsequent `development-retrieval-v2` revision uses the original full
+current brief in each planning round instead of pre-clipping it to 512 code
+points / 1,024 bytes. Under the unchanged 8,000-byte serialized prompt ceiling,
+it retains the full brief when possible, otherwise the longest fitting valid
+prefix, and audits the exact preparation and whole-item evidence omissions.
+Full-brief priority can leave less room for planning evidence; omitted evidence
+is not a negative search result. New `development-v4` guidance treats filenames
+as optional cues and encourages justified operation/constraint queries after
+zero or incomplete matches. Empty follow-up plans remain valid.
+
+This is an offline implementation change, **not a rerun or revised score**.
+The old clipping was information loss, but its causal contribution to the
+observed misses is unproven. Scripted regressions and direct Native query
+fixtures cannot establish live model query-selection quality; published v3
+tasks are exposed regression material. Tool availability, command-size recovery
+and handoff replacement of operational warnings are unchanged. See the
+[revision contract](DEVELOPMENT_EVALUATION_PLAN.md#post-v3-retrieval-revision-offline-implementation).
+
 ## Second study: no added memory benefit established
 
 The [second-attempt result](../examples/development-memory-pilot-v2-result.json)

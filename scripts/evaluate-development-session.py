@@ -116,9 +116,11 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
         events.emit("visible_message", message.model_dump(mode="json"))
 
     try:
+        ipc.check()
         events.emit("controller_started", {
             "mode": config.mode, "run_id": config.run_id,
             "memory_maintenance_protocol": config.memory_maintenance_protocol,
+            "memory_retrieval_policy": config.memory_retrieval_policy,
             "slot": config.slot.model_dump(mode="json"), "recipe_sha256": config.recipe_sha256,
             "model": config.model.model_dump(mode="json"),
             "memory_binding": config.memory_binding.model_dump(mode="json"),
@@ -139,6 +141,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
         memory = DevelopmentMemory(
             config.memory_binding, session_number=config.slot.milestone, state=state,
             maintenance_protocol=config.memory_maintenance_protocol,
+            retrieval_policy=config.memory_retrieval_policy,
             native_factory=native_factory, invoke=ipc.invoke, emit=emit_memory,
             now=lambda: datetime.now(UTC),
         )
@@ -209,6 +212,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
         result = ControllerResult(
             protocol=PROTOCOL, session_id=config.session_id, slot=config.slot, mode=config.mode,
             memory_maintenance_protocol=config.memory_maintenance_protocol,
+            memory_retrieval_policy=config.memory_retrieval_policy,
             status=status, reason=reason, outcome_unknown=unknown,
             upstream_exit_status=upstream_exit, submission=submission,
             query_attempts=query_attempts,

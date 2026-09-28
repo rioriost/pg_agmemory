@@ -7,6 +7,7 @@ import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule, validatePack } from "./development-eval-pack.mjs";
 import {
   ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL,
+  RETRIEVAL_POLICY,
   requireCondition, RunBudget, sha256,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest, runProcess } from "./development-eval-sandbox.mjs";
@@ -132,6 +133,7 @@ export async function runEvaluation({
   const recipe = {
     format: "pgag-development-recipe-v1", run_id: runId, source_revision: sourceRevision,
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+    memory_retrieval_policy: RETRIEVAL_POLICY,
     pack_sha256: sha256(canonicalJson(pack)), runtime_image: runtimeImage,
     execution_image: executionImage, model, reasoning_effort: effort,
     real_models: realModels, coordinator_invocation_limit: 318, work_steps: 16,
@@ -212,6 +214,7 @@ export async function runEvaluation({
       const common = {
         protocol: PROTOCOL, run_id: runId,
         memory_maintenance_protocol: recipe.memory_maintenance_protocol,
+        memory_retrieval_policy: recipe.memory_retrieval_policy,
         slot: { project_id: slot.project_id, milestone: slot.milestone, arm: slot.arm },
         recipe_sha256: recipeHash, model: { model, reasoning_effort: effort },
         memory_binding: binding, memory_state: memory.get(key) ?? null,
@@ -349,6 +352,7 @@ export async function runEvaluation({
   const summary = {
     format: "pgag-development-evaluation-v1", run_id: runId,
     memory_maintenance_protocol: recipe.memory_maintenance_protocol,
+    memory_retrieval_policy: recipe.memory_retrieval_policy,
     status: failure === null ? "completed" : "failed", failure, real_models: realModels,
     cleanup_failures: cleanupFailures, termination_reason: signal.reason?.code ?? null,
     evidence_kind: realModels ? "synthetic_development_pilot" : "no_model_protocol_dry_run",

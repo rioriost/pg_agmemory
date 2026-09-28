@@ -8,13 +8,18 @@ import hashlib
 import json
 from collections.abc import Callable, Iterator
 from contextlib import AbstractAsyncContextManager, contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, Never, Protocol, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from pg_agmemory.bounded_recall import BoundedRecall, parse_search_plan, search_prompt
+from pg_agmemory.bounded_recall import (
+    BoundedRecall,
+    parse_search_plan,
+    prepare_development_search_prompt,
+)
 from pg_agmemory.models import (
     Consistency,
     Evidence,
@@ -38,6 +43,8 @@ from pg_agmemory.service import build_context
 MemoryArm = Literal["no_memory", "handoff", "pg_agmemory"]
 MaintenanceProtocol = Literal["development-maintenance-v2"]
 MAINTENANCE_PROTOCOL: MaintenanceProtocol = "development-maintenance-v2"
+RetrievalPolicy = Literal["development-retrieval-v2"]
+RETRIEVAL_POLICY: RetrievalPolicy = "development-retrieval-v2"
 ModelPhase = Literal["work", "handoff", "memory_decision", "memory_plan"]
 Identity = Annotated[str, Field(min_length=1, max_length=256)]
 Revision = Annotated[int, Field(ge=1, le=1000)]
@@ -400,11 +407,14 @@ class DevelopmentMemory:
         self, binding: MemoryBinding, *, session_number: int, state: MemoryState | None,
         native_factory: NativeFactory | None, invoke: ModelInvoke, emit: EventSink,
         now: Callable[[], datetime], maintenance_protocol: MaintenanceProtocol,
+        retrieval_policy: RetrievalPolicy,
     ) -> None:
         if type(maintenance_protocol) is not str or maintenance_protocol != MAINTENANCE_PROTOCOL:
             raise DevelopmentMemoryError(
                 "invalid_memory_maintenance_protocol", "initialization",
             )
+        if type(retrieval_policy) is not str or retrieval_policy != RETRIEVAL_POLICY:
+            raise DevelopmentMemoryError("invalid_memory_retrieval_policy", "initialization")
         try:
             if not isinstance(binding, MemoryBinding) or type(session_number) is not int:
                 raise ValueError
@@ -434,6 +444,7 @@ class DevelopmentMemory:
         except (ValueError, TypeError, AttributeError):
             raise DevelopmentMemoryError("invalid_memory_state", "initialization") from None
         self._session = session_number
+        self._retrieval_policy = retrieval_policy
         self._factory = native_factory
         self._invoke_callback = invoke
         self._emit_callback = emit
@@ -455,6 +466,7 @@ class DevelopmentMemory:
 
     @contextmanager
     def _method(self, name: str) -> Iterator[None]:
+        self._validate_retrieval_policy()
         if self._failed or self._busy or name in self._used:
             raise DevelopmentMemoryError("memory_workflow_closed", name)
         self._used.add(name)
@@ -479,11 +491,21 @@ class DevelopmentMemory:
         raise error
 
     def _emit(self, kind: str, **data: Any) -> None:
+        self._validate_retrieval_policy()
         self._emit_callback({
             "kind": kind, "phase": self._phase,
             "status": "started" if kind == "memory_native_intent" else "completed",
-            "data": {**data, "memory_maintenance_protocol": MAINTENANCE_PROTOCOL},
+            "data": {
+                **data, "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+                "memory_retrieval_policy": self._retrieval_policy,
+            },
         })
+
+    def _validate_retrieval_policy(self) -> None:
+        value = getattr(self, "_retrieval_policy", None)
+        if type(value) is not str or value != RETRIEVAL_POLICY:
+            self._failed = True
+            raise DevelopmentMemoryError("invalid_memory_retrieval_policy", self._phase)
 
     def _clock(self) -> datetime:
         value = self._now()
@@ -494,6 +516,7 @@ class DevelopmentMemory:
     def _invoke(
         self, phase: ModelPhase, prompt: str, planning_round: int | None = None,
     ) -> tuple[str, object]:
+        self._validate_retrieval_policy()
         if _bytes(prompt) > (8000 if phase == "memory_plan" else MAX_MODEL_BYTES):
             self._fail("memory_prompt_budget_exhausted")
         reply = self._invoke_callback(phase, prompt, planning_round)
@@ -660,13 +683,6 @@ class DevelopmentMemory:
                 return self._delivery(MemoryDelivery(
                     text="", byte_count=0, empty_reason="no_eligible_assertions",
                 ))
-            question = public_brief[:512]
-            while _bytes(question) > 1024:
-                question = question[:-1]
-            self._emit(
-                "memory_question", byte_count=_bytes(question),
-                omitted_code_points=len(public_brief) - len(question),
-            )
             assert self._factory is not None
             self._epoch = None
             async with self._factory() as native:
@@ -679,12 +695,13 @@ class DevelopmentMemory:
                 )
                 plans = 0
                 for round_number in range(1, 5):
-                    prompt = search_prompt(
-                        question, "en-snowball-v1", items=bounded.planning_items,
+                    prepared = prepare_development_search_prompt(
+                        public_brief, "en-snowball-v1", items=bounded.planning_items,
                         previous_queries=bounded.queries, round_number=round_number,
-                        planner_policy="sequential-v3", search_feedback=bounded.planning_feedback,
+                        search_feedback=bounded.planning_feedback,
                     )
-                    raw, _ = self._invoke("memory_plan", prompt, round_number)
+                    self._emit("memory_search_preparation", **asdict(prepared.audit))
+                    raw, _ = self._invoke("memory_plan", prepared.prompt, round_number)
                     plans += 1
                     plan = parse_search_plan(raw, allow_empty=round_number > 1)
                     requests = bounded.requests(plan)

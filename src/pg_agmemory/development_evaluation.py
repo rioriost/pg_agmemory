@@ -30,12 +30,14 @@ from pydantic import (
 
 from pg_agmemory.development_memory import (
     MAINTENANCE_PROTOCOL,
+    RETRIEVAL_POLICY,
     BoundaryKeys,
     MaintenanceProtocol,
     MemoryBinding,
     MemoryBoundaryResult,
     MemoryDelivery,
     MemoryState,
+    RetrievalPolicy,
 )
 from pg_agmemory.models import (
     Observe,
@@ -281,6 +283,7 @@ def boundary_transcript(brief: str, messages: list[VisibleMessage]) -> BoundaryT
 class ControllerInput(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
     memory_maintenance_protocol: MaintenanceProtocol
+    memory_retrieval_policy: RetrievalPolicy
     run_id: Identifier
     session_id: Identifier
     slot: SlotKey
@@ -293,6 +296,8 @@ class ControllerInput(StrictModel):
     def validate_binding(self) -> Self:
         require(self.memory_maintenance_protocol == MAINTENANCE_PROTOCOL,
                 "invalid_memory_maintenance_protocol")
+        require(self.memory_retrieval_policy == RETRIEVAL_POLICY,
+                "invalid_memory_retrieval_policy")
         binding = self.memory_binding
         require(binding.run_id == self.run_id and binding.project_id == self.slot.project_id
                 and binding.arm == self.slot.arm, "controller_binding_mismatch")
@@ -536,6 +541,12 @@ class MemoryAuditEvent(StrictModel):
     status: Literal["started", "completed", "failed"]
     data: dict[str, JsonValue]
 
+    @model_validator(mode="after")
+    def valid_retrieval_identity(self) -> Self:
+        require(self.data.get("memory_retrieval_policy") == RETRIEVAL_POLICY,
+                "invalid_memory_retrieval_policy")
+        return self
+
 
 def audit_json(value: object) -> JsonValue:
     if isinstance(value, BaseModel):
@@ -554,6 +565,7 @@ def audit_json(value: object) -> JsonValue:
 class ControllerResult(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
     memory_maintenance_protocol: MaintenanceProtocol
+    memory_retrieval_policy: RetrievalPolicy
     session_id: Identifier
     slot: SlotKey
     mode: Literal["work", "boundary"]
@@ -773,11 +785,24 @@ class FileIPC:
         self._reply_hashes: dict[str, str] = {}
 
     def start_work(self) -> None:
+        self.check()
         require(self.config.mode == "work" and self.work_deadline is None, "work_already_started")
         self.events.emit("work_started", {"work_limit_seconds": WORK_SECONDS})
         self.work_deadline = self.clock() + WORK_SECONDS
 
+    def _check_memory_identity(self) -> None:
+        for field, expected_policy, code in (
+            ("memory_retrieval_policy", RETRIEVAL_POLICY, "invalid_memory_retrieval_policy"),
+            ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL,
+             "invalid_memory_maintenance_protocol"),
+        ):
+            value = getattr(self.config, field, None)
+            if type(value) is not str or value != expected_policy:
+                self.poisoned = True
+                raise EvaluationFailure(code)
+
     def check(self) -> None:
+        self._check_memory_identity()
         require(not self.poisoned and not self.inflight, "ipc_closed")
         if self.work_deadline is not None:
             require(self.clock() < self.work_deadline, "session_deadline")
@@ -928,6 +953,7 @@ class FileIPC:
             self.inflight = False
 
     def invoke(self, phase: ModelPhase, prompt: str, planning_round: int | None) -> ModelReply:
+        self._check_memory_identity()
         allowed = (
             {"handoff"} if self.config.slot.arm == "handoff"
             else {"memory_decision"} if self.config.slot.arm == "pg_agmemory" else set()
@@ -954,6 +980,7 @@ class FileIPC:
         return value
 
     def execute(self, command: str) -> ExecuteReply:
+        self._check_memory_identity()
         require(self.config.mode == "work" and self.work_deadline is not None,
                 "execute_outside_work")
         require(self.execute_attempts < 16, "execute_budget_exhausted")
