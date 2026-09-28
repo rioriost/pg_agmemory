@@ -1,6 +1,15 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **the separately preregistered v2 run and post-terminal audits are complete**.
+Status: **the separately preregistered v3 run and post-terminal audits are complete**.
+The [v3 result](../examples/development-memory-pilot-v3-result.json) records
+3/6 successful slots for no-memory and 5/6 for each memory pipeline, with
+history-only checks of 8/16, 12/16 and 14/16 respectively. PG delivered only
+five of eight retained primary decisions and passed one task with empty memory;
+handoff had one work-protocol failure after correct task-memory delivery.
+All eight maintenance boundaries completed. This information-restricted probe
+does not establish general usefulness or PG superiority over handoff.
+
+The earlier v2 run and its post-terminal audits remain complete and unchanged.
 The [v2 result](../examples/development-memory-pilot-v2-result.json) records
 fourteen successful submissions and four dependent-unrun slots caused by
 memory-boundary contract failures. No-memory passed all six planned slots;
@@ -12,8 +21,10 @@ below authorizes retry or retrospective scoring changes.
 
 ## Third study: information-restricted memory mechanism
 
-**Privately qualified; live dispatch still requires final review and publication
-of the [v3 preregistration](../examples/development-memory-pilot-v3-manifest.json).**
+**Completed once after Astra/xhigh approval and publication of the
+[v3 preregistration](../examples/development-memory-pilot-v3-manifest.json) in
+`2f005ed`.** The [audited report](EVALUATION.md) preserves all first outcomes,
+including one invalid-action work failure and four submitted-code failures.
 This is a separate study, not a retry or replacement of either published pilot.
 The v2 no-memory ceiling showed that historical origin alone does not establish
 that a requirement is missing from the current source and brief. The new

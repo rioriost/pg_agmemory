@@ -2,7 +2,103 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Development-work evaluation: no added memory benefit established
+## Third study: a bounded memory-mechanism contrast, not general usefulness
+
+The separately [preregistered v3 study](../examples/development-memory-pilot-v3-manifest.json)
+ran once on frozen source `8e15286`, using `development-maintenance-v2`.
+Its [audited result](../examples/development-memory-pilot-v3-result.json)
+contains all eighteen executed slots and all 207 scheduled checks:
+**13 successful slots, four submitted-code failures and one work-protocol
+failure**. There were no infrastructure-unknown or unrun slots.
+All six M1 slots succeeded; subsequent outcomes are shown separately below.
+
+| Arm | Successful / planned slots | M2-M3 successes / planned | Checks passed / evaluated | History-only passed / evaluated | Memory-independent passed / evaluated |
+|---|---:|---:|---:|---:|---:|
+| No memory | 3/6 | 1/4 | 61/69 | 8/16 | 49/49 |
+| Fixed handoff | 5/6 | 3/4 | 61/69 | 12/16 | 45/49 |
+| pg_agmemory | 5/6 | 3/4 | 67/69 | 14/16 | 49/49 |
+
+All arms passed the four history-available checks. The history-only checks
+cover eight primary decisions: private counterfactual qualification established
+different correct outputs under consistent earlier histories with identical
+current visible information. This deliberately information-restricted design
+is **not equal-information reasoning or representative development work**.
+Semantic consistency remains an audited attestation, not a machine-proven fact.
+Checks and slots are correlated within only two project histories.
+
+**Successful delivery was not equivalent to successful work.** Handoff
+delivered all eight explicit history-only decisions. Its receipt-M3 agent
+attempted an unavailable `apply_patch` tool, then returned a valid-JSON recovery
+command of 8,457 bytes, exceeding the frozen 8,192-byte Command limit.
+The command was rejected as `invalid_action` before execution. The captured
+artifact remained the canonical starting tree: five of its thirteen checks
+passed and eight mismatched. Those checks remain in the table, but the failed
+session is not a valid submission or a maintenance failure. An earlier note
+had recorded the unavailable tool; that observation disappeared during note
+replacement, not during byte-cap packing. Retaining it is not proven to have
+prevented the failure.
+
+PG retained all eight primary decisions but delivered only **five**.
+Receipt-M2 failed two midpoint checks after searches missed the already-stored
+half-even rounding rule. This was a retrieval miss, not a capture failure or
+delivery-cap omission. Scan-M3 retained the corrected smoothing rule, but
+queries `"main.py smooth"` and `"main.py"` returned no rows; planning stopped
+early and delivered empty memory. That artifact nevertheless passed while
+describing its policies as assumptions. Its success does not demonstrate
+transfer of the retained correction. Native-current assertions also included
+outdated milestone-scope statements; revision currentness is not semantic
+freshness.
+
+All **eight maintenance boundaries completed**. Handoff deliveries were
+1,863/1,763 bytes for receipts M2/M3 and 1,818/2,036 bytes for scans; one whole
+tail item was omitted. PG deliveries were 796/1,571 and 697/0 bytes respectively,
+and actual work prompts contained those exact memories. PG created 14 facts
+and revised three. All 17 provenance spans were exact without endpoint
+adjustment, so the new whitespace-adjustment branch was not exercised live.
+There were no forgetting proposals, pending exclusions or destructive calls;
+forgetting quality remains untested.
+
+There were **107 admitted calls and 107 reported API requests**: 78 work,
+15 planning, eight maintenance and six canaries. No usage was unknown.
+The failed work session's four calls and costs remain included.
+
+| Arm | Work calls | Memory calls | Input tokens, excluding canaries | Output tokens, excluding canaries |
+|---|---:|---:|---:|---:|
+| No memory | 28 | 0 | 142,787 | 27,782 |
+| Fixed handoff | 24 | 4 | 157,119 | 29,647 |
+| pg_agmemory | 26 | 19 | 225,425 | 42,744 |
+
+Including canaries, usage was 543,248 input / 100,368 output tokens over
+2,599.850 seconds. Equal budgets did not produce equal actual work or costs.
+PG retrieval and boundaries consumed 174.322 and 239.264 seconds respectively;
+these overlap other reported envelopes and must not be added to full-slot
+time. The exact raw model-level nano-AIU sum is `1180819749999.9999925`;
+the preserved JavaScript aggregate and raw top-level sum are `1180819750000`.
+Neither is an invoice-verified price. Cache/reasoning categories and sixteen
+1-ms differences between separately named API/dispatch timing metrics remain
+separate. All 228 created containers have absence receipts, all three bridges
+exited, and no run-owned resources remained in the independent snapshot.
+
+**The observed contrast favors both memory pipelines over no-memory on
+successful slots, but does not establish PG superiority over handoff or
+general usefulness.** PG and handoff both achieved 5/6; their failure mechanisms
+differed. Relevant delivered text plus a pass is not proof of causal use,
+and PG also passed with empty memory. The configured pipelines differ in more
+than storage. Both tasks and maintenance protocol differ from v2, so no
+cross-study improvement is attributed solely to the protocol correction.
+
+The [task pack](../examples/development-memory-pilot-v3-pack.json) and
+[counterfactual witnesses](../examples/development-memory-pilot-v3-history-witnesses.json)
+are byte-identical releases with no redactions or transformations. They do not
+include live prompts, credentials or controller state. The 995-file private
+tree was sealed before unblinding and remained unchanged through audit.
+The disclosed authoring limit is retained: one recorded pre-generation
+alternative-history prose correction has exact replacement fragments, but no
+complete pre-correction snapshot; unrecorded drafts and independent proof of
+no prior tuning are unavailable. No candidate replay, repair or replacement
+run was performed. Earlier results below remain unchanged.
+
+## Second study: no added memory benefit established
 
 The [second-attempt result](../examples/development-memory-pilot-v2-result.json)
 completed the preregistered run on `0c0f172`, with **14 successful submissions

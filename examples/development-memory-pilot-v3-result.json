@@ -1,0 +1,5844 @@
+{
+  "format": "pgag-development-published-result-v1",
+  "attempt": "development-memory-pilot-v3",
+  "run_id": "pgag-dev-7a8a27aabbcaac37f2184195",
+  "status": "completed_with_candidate_and_work_protocol_failures",
+  "coordinator_status": "completed",
+  "framework_source": "8e15286d2f310720788bc3cf76be2faac01121b8",
+  "preregistration_commit": "2f005ed4e42de6c1ca6f2a7e5ee4082c7fc9d01a",
+  "preregistration_file": "development-memory-pilot-v3-manifest.json",
+  "preregistration_sha256": "1c2857f5e87202f88213ff8d69d54f76bc0e0a287c188c286b0670bb2383021f",
+  "recipe_sha256": "b28a622fc2cfc20a3287934fb4bdbe0334d3cc6115477ad539e94d7a8172e406",
+  "memory_maintenance_protocol": "development-maintenance-v2",
+  "first_outcomes_preserved": true,
+  "retry_or_replacement_attempts": 0,
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "agent": {
+    "implementation": "unmodified_minisweagent.agents.default.DefaultAgent",
+    "version": "2.4.6",
+    "upstream_commit": "a83fcae82d2a08f0ee0c688f9d137b3566c097f8",
+    "installed_module_sha256": "e8ef8aa365942d739c2ec5cb0879f60f377d2dc2de8ec670aaedf3bafb45a4c2"
+  },
+  "images": {
+    "runtime": "pg-agmemory-development-runtime@sha256:4083db41985beec397f86a6da0d99d5f24e1402e4d9b4f12c34cc225c003134f",
+    "execution": "pg-agmemory-development-execution@sha256:917e92ba6478c8b34a99a0b660951ca200ab24ab53fb7f151f8a4745b4b3c42a"
+  },
+  "scope": "information_restricted_stage_gated_memory_mechanism_probe",
+  "primary": "Valid submitted artifact passing every check; grades of failed-work captured artifacts remain visible but are not valid submissions.",
+  "totals": {
+    "planned_slots": 18,
+    "executed_slots": 18,
+    "successful_slots": 13,
+    "submitted_candidate_failure_slots": 4,
+    "work_protocol_failure_slots": 1,
+    "infrastructure_unknown_slots": 0,
+    "dependent_unrun_slots": 0,
+    "other_unrun_slots": 0,
+    "scheduled_checks": 207,
+    "evaluated_checks": 207,
+    "passed_checks": 189,
+    "mismatched_checks": 18,
+    "unknown_checks": 0,
+    "unrun_checks": 0,
+    "evaluated_failed_work_artifact_checks": 13,
+    "passed_failed_work_artifact_checks": 5,
+    "mismatched_failed_work_artifact_checks": 8
+  },
+  "arms": {
+    "no_memory": {
+      "planned_slots": 6,
+      "executed_slots": 6,
+      "successful_slots": 3,
+      "submitted_candidate_failure_slots": 3,
+      "work_protocol_failure_slots": 0,
+      "unknown_slots": 0,
+      "unrun_slots": 0,
+      "m1_successful_slots": 2,
+      "m1_planned_slots": 2,
+      "m2_m3_successful_slots": 1,
+      "m2_m3_planned_slots": 4,
+      "checks": {
+        "scheduled": 69,
+        "evaluated": 69,
+        "passed": 61,
+        "failed": 8,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 16,
+          "evaluated": 16,
+          "passed": 8,
+          "failed": 8,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 49,
+          "evaluated": 49,
+          "passed": 49,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    "handoff": {
+      "planned_slots": 6,
+      "executed_slots": 6,
+      "successful_slots": 5,
+      "submitted_candidate_failure_slots": 0,
+      "work_protocol_failure_slots": 1,
+      "unknown_slots": 0,
+      "unrun_slots": 0,
+      "m1_successful_slots": 2,
+      "m1_planned_slots": 2,
+      "m2_m3_successful_slots": 3,
+      "m2_m3_planned_slots": 4,
+      "checks": {
+        "scheduled": 69,
+        "evaluated": 69,
+        "passed": 61,
+        "failed": 8,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 16,
+          "evaluated": 16,
+          "passed": 12,
+          "failed": 4,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 49,
+          "evaluated": 49,
+          "passed": 45,
+          "failed": 4,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    "pg_agmemory": {
+      "planned_slots": 6,
+      "executed_slots": 6,
+      "successful_slots": 5,
+      "submitted_candidate_failure_slots": 1,
+      "work_protocol_failure_slots": 0,
+      "unknown_slots": 0,
+      "unrun_slots": 0,
+      "m1_successful_slots": 2,
+      "m1_planned_slots": 2,
+      "m2_m3_successful_slots": 3,
+      "m2_m3_planned_slots": 4,
+      "checks": {
+        "scheduled": 69,
+        "evaluated": 69,
+        "passed": 67,
+        "failed": 2,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 16,
+          "evaluated": 16,
+          "passed": 14,
+          "failed": 2,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 49,
+          "evaluated": 49,
+          "passed": 49,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    }
+  },
+  "slots": [
+    {
+      "slot_id": "counter-receipts-1-no_memory",
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "49ee8b3db2a46080f8076de386a720d3fffb1f9a30166301eb451392b9e4ebcc",
+      "artifact_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-1-handoff",
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "49ee8b3db2a46080f8076de386a720d3fffb1f9a30166301eb451392b9e4ebcc",
+      "artifact_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-1-pg_agmemory",
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "49ee8b3db2a46080f8076de386a720d3fffb1f9a30166301eb451392b9e4ebcc",
+      "artifact_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-1-handoff",
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "9155f5eac4c0dd416229e5b778c928d90392ee6f343fea3210fe4f7e6c57e28f",
+      "artifact_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-1-pg_agmemory",
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "9155f5eac4c0dd416229e5b778c928d90392ee6f343fea3210fe4f7e6c57e28f",
+      "artifact_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-1-no_memory",
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "9155f5eac4c0dd416229e5b778c928d90392ee6f343fea3210fe4f7e6c57e28f",
+      "artifact_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "checks": {
+        "scheduled": 10,
+        "evaluated": 10,
+        "passed": 10,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 10,
+          "evaluated": 10,
+          "passed": 10,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-2-pg_agmemory",
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": false,
+      "starting_tree_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 10,
+        "failed": 2,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 2,
+          "failed": 2,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-2-no_memory",
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": false,
+      "starting_tree_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 10,
+        "failed": 2,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 2,
+          "failed": 2,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-2-handoff",
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "f990283fb1717f8111f3688a2f410820fad86eb11fc94985cef865b4198cb776",
+      "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-2-no_memory",
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": false,
+      "starting_tree_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 10,
+        "failed": 2,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 2,
+          "failed": 2,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-2-handoff",
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-2-pg_agmemory",
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "baea336e86b84b8dfb65105addf4cdbd9613d3677ac10f141e584eeb08cbef72",
+      "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-3-handoff",
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "arm": "handoff",
+      "status": "failed",
+      "reason": "invalid_action",
+      "task_success": false,
+      "starting_tree_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+      "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+      "checks": {
+        "scheduled": 13,
+        "evaluated": 13,
+        "passed": 5,
+        "failed": 8,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 0,
+          "failed": 4,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 8,
+          "evaluated": 8,
+          "passed": 4,
+          "failed": 4,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-3-pg_agmemory",
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+      "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+      "checks": {
+        "scheduled": 13,
+        "evaluated": 13,
+        "passed": 13,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 8,
+          "evaluated": 8,
+          "passed": 8,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "counter-receipts-3-no_memory",
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+      "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+      "checks": {
+        "scheduled": 13,
+        "evaluated": 13,
+        "passed": 13,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 8,
+          "evaluated": 8,
+          "passed": 8,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-3-pg_agmemory",
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "arm": "pg_agmemory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "a4acc95df2a6ab778f3b5fc82b1461f874c7250a33c58dc3c230259d8f80d99b",
+      "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-3-no_memory",
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "arm": "no_memory",
+      "status": "submitted",
+      "reason": null,
+      "task_success": false,
+      "starting_tree_sha256": "a4acc95df2a6ab778f3b5fc82b1461f874c7250a33c58dc3c230259d8f80d99b",
+      "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 8,
+        "failed": 4,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 0,
+          "failed": 4,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    },
+    {
+      "slot_id": "scan-cleanup-3-handoff",
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "arm": "handoff",
+      "status": "submitted",
+      "reason": null,
+      "task_success": true,
+      "starting_tree_sha256": "a4acc95df2a6ab778f3b5fc82b1461f874c7250a33c58dc3c230259d8f80d99b",
+      "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+      "checks": {
+        "scheduled": 12,
+        "evaluated": 12,
+        "passed": 12,
+        "failed": 0,
+        "unknown": 0,
+        "unrun": 0
+      },
+      "strata": {
+        "history_only": {
+          "scheduled": 4,
+          "evaluated": 4,
+          "passed": 4,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "history_available": {
+          "scheduled": 1,
+          "evaluated": 1,
+          "passed": 1,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "memory_independent": {
+          "scheduled": 7,
+          "evaluated": 7,
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        },
+        "unclassified": {
+          "scheduled": 0,
+          "evaluated": 0,
+          "passed": 0,
+          "failed": 0,
+          "unknown": 0,
+          "unrun": 0
+        }
+      }
+    }
+  ],
+  "frozen_case_metadata_hashes": {
+    "case_metadata_canonical_sha256": "8532bcf71dce09ee5b1260ca1fd63d451d66034e505dc6677253b97cfc83a44f",
+    "decision_links_canonical_sha256": "1bba3d6d5178e31827fa1635bbcb5cf2e377d5a1c9267d044fda0e736eddb453",
+    "history_only_decision_catalog_canonical_sha256": "82c3c687361bcba0131949cb922519cf656ff5e59afef255ba22788a8dcd77f1",
+    "certified_case_strata_canonical_sha256": "191ce0027e8e3e6b079edd7bd5ba064bd4dd99bdc375da5c3c85c0a9af58f4ca",
+    "certified_decision_groups_canonical_sha256": "c2bd2165ce896b517e48c022e457d8356fda8dc1734cce34ec4ba8fd96f91f94",
+    "selector_definitions_raw_sha256": "564d00017f57cebfa79e5487399c4bc25c539f8136ad72e4fdff1b0a3ef48226",
+    "case_sets_raw_sha256": "92ac7174329778d1d7ea65e1435252080fac09bbabcadd505dc117c043f46f47",
+    "decision_metadata_raw_sha256": "1c051324cb2d52115c59afa91777464eb615e4c7cb29da1545f5ece05f8ffadb",
+    "metadata_freeze_raw_sha256": "0047a29168c4954127c10b8e352547efe068ee2c639efab27b5093f13ab39597"
+  },
+  "paired_case_outcomes": [
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-line-order",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-zero-priced-line",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-large-extension",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-empty",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-bool-units",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-duplicate-code",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-negative-price",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-extra-field",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 1,
+      "case_id": "receipt-upper-code",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-midpoint-low",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-midpoint-high",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-rounding-scope-up",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-rounding-scope-down",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-visible-bool-guard",
+      "stratum": "history_available",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-zero-rate",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-empty",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-integral-lines",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-invalid-rate",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-bool-rate",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 2,
+      "case_id": "charge-extra-option",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-full-single",
+      "stratum": "history_only",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-full-multiple",
+      "stratum": "history_only",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-handling-pair",
+      "stratum": "history_only",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-handling-reordered",
+      "stratum": "history_only",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-visible-fee-midpoint",
+      "stratum": "history_available",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-empty",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-zero-fee-multiple",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-unknown-code",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-too-many-units",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-duplicate-return",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-bool-handling",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "counter-receipts",
+      "milestone": 3,
+      "case_id": "credit-handling-cap",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "failed",
+          "work_status": "failed"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-all-bins",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-zero-only",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-single",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-tall",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-ragged",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-boolean",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-empty",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-high-value",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 1,
+      "case_id": "pixels-extra-field",
+      "stratum": "memory_independent",
+      "arms": {
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-cutoff-mixed",
+      "stratum": "history_only",
+      "arms": {
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-cutoff-flat",
+      "stratum": "history_only",
+      "arms": {
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-corner-pair",
+      "stratum": "history_only",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-corner-fan",
+      "stratum": "history_only",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-visible-pixel-guard",
+      "stratum": "history_available",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-distinct-sizes",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-empty-foreground",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-count-once",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-bool-cutoff",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-outside-cutoff",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 2,
+      "case_id": "regions-extra-option",
+      "stratum": "memory_independent",
+      "arms": {
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-public",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-even-pair",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-even-square",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-horizontal-border",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-vertical-border",
+      "stratum": "history_only",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "failed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-visible-threshold",
+      "stratum": "history_available",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-single",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-constant-row",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-constant-column",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-ragged",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-boolean",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    },
+    {
+      "project_id": "scan-cleanup",
+      "milestone": 3,
+      "case_id": "smoothing-extra-option",
+      "stratum": "memory_independent",
+      "arms": {
+        "pg_agmemory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "no_memory": {
+          "status": "passed",
+          "work_status": "submitted"
+        },
+        "handoff": {
+          "status": "passed",
+          "work_status": "submitted"
+        }
+      }
+    }
+  ],
+  "contrasts_with_no_memory": {
+    "handoff": {
+      "history_only": {
+        "both_pass": 4,
+        "memory_pass_no_memory_fail": 8,
+        "memory_fail_no_memory_pass": 4,
+        "both_fail": 0
+      },
+      "history_available": {
+        "both_pass": 4,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 0
+      },
+      "memory_independent": {
+        "both_pass": 45,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 4,
+        "both_fail": 0
+      },
+      "unclassified": {
+        "both_pass": 0,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 0
+      }
+    },
+    "pg_agmemory": {
+      "history_only": {
+        "both_pass": 8,
+        "memory_pass_no_memory_fail": 6,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 2
+      },
+      "history_available": {
+        "both_pass": 4,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 0
+      },
+      "memory_independent": {
+        "both_pass": 49,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 0
+      },
+      "unclassified": {
+        "both_pass": 0,
+        "memory_pass_no_memory_fail": 0,
+        "memory_fail_no_memory_pass": 0,
+        "both_fail": 0
+      }
+    }
+  },
+  "grade_audit": {
+    "checked_receipts": 207,
+    "clean_zero_exit_well_formed": 207,
+    "raw_outputs_compared_with_frozen_expectations": true,
+    "input_artifact_canonical_start_and_grade_receipts_reconciled": true,
+    "candidate_reexecutions": 0,
+    "replaced_scores": false
+  },
+  "failure_classification": [
+    {
+      "slot_id": "counter-receipts-2-no_memory",
+      "category": "submitted_candidate_failure",
+      "mismatches": 2
+    },
+    {
+      "slot_id": "scan-cleanup-2-no_memory",
+      "category": "submitted_candidate_failure",
+      "mismatches": 2
+    },
+    {
+      "slot_id": "scan-cleanup-3-no_memory",
+      "category": "submitted_candidate_failure",
+      "mismatches": 4
+    },
+    {
+      "slot_id": "counter-receipts-2-pg_agmemory",
+      "category": "submitted_candidate_failure",
+      "mismatches": 2,
+      "finding": "Retained midpoint rule not retrieved; not a failed capture or delivery-cap omission."
+    },
+    {
+      "slot_id": "counter-receipts-3-handoff",
+      "category": "work_protocol_failure",
+      "reason": "invalid_action",
+      "captured_artifact_matches_canonical_start": true,
+      "finding": "Correct task decisions delivered. apply_patch was unavailable; subsequent valid-JSON command was 8457 bytes, exceeding the 8192-byte Command limit and rejected before execution.",
+      "captured_artifact_checks": {
+        "evaluated": 13,
+        "passed": 5,
+        "failed": 8
+      },
+      "valid_submission": false,
+      "maintenance_failure": false
+    }
+  ],
+  "memory": {
+    "boundaries": [
+      {
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "after_milestone": 2,
+        "transcript_bytes": 17333,
+        "omitted_messages": 0,
+        "proposed_items": 5,
+        "included_items": 5,
+        "omitted_items": 0,
+        "delivered_bytes": 2036
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "after_milestone": 1,
+        "transcript_bytes": 14731,
+        "omitted_messages": 0,
+        "proposed_items": 5,
+        "included_items": 5,
+        "omitted_items": 0,
+        "delivered_bytes": 1863
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "after_milestone": 2,
+        "transcript_bytes": 16155,
+        "omitted_messages": 0,
+        "creates": 2,
+        "revisions": 1,
+        "pending": 0,
+        "active_after": 7,
+        "observe": 1,
+        "inventory_reads": 5,
+        "verification_reads": 7
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "after_milestone": 1,
+        "transcript_bytes": 13317,
+        "omitted_messages": 0,
+        "creates": 4,
+        "revisions": 0,
+        "pending": 0,
+        "active_after": 4,
+        "observe": 1,
+        "inventory_reads": 0,
+        "verification_reads": 4
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "after_milestone": 1,
+        "transcript_bytes": 9599,
+        "omitted_messages": 0,
+        "proposed_items": 5,
+        "included_items": 5,
+        "omitted_items": 0,
+        "delivered_bytes": 1818
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "after_milestone": 1,
+        "transcript_bytes": 9638,
+        "omitted_messages": 0,
+        "creates": 5,
+        "revisions": 0,
+        "pending": 0,
+        "active_after": 5,
+        "observe": 1,
+        "inventory_reads": 0,
+        "verification_reads": 5
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "after_milestone": 2,
+        "transcript_bytes": 20147,
+        "omitted_messages": 0,
+        "creates": 3,
+        "revisions": 2,
+        "pending": 0,
+        "active_after": 7,
+        "observe": 1,
+        "inventory_reads": 4,
+        "verification_reads": 7
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "after_milestone": 2,
+        "transcript_bytes": 17577,
+        "omitted_messages": 0,
+        "proposed_items": 6,
+        "included_items": 5,
+        "omitted_items": 1,
+        "delivered_bytes": 1763
+      }
+    ],
+    "successful_handoff_boundaries": 4,
+    "successful_pg_boundaries": 4,
+    "failed_maintenance_boundaries": 0,
+    "native_boundary_totals": {
+      "observe": 4,
+      "creates": 14,
+      "revisions": 3,
+      "inventory_reads": 9,
+      "verification_reads": 23,
+      "proposed_forget": 0,
+      "pending_exclusions": 0,
+      "destructive_calls": 0,
+      "final_active_assertions_across_two_projects": 14,
+      "span_pairs_verified": 17,
+      "adjusted_spans": 0
+    },
+    "deliveries": [
+      {
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "milestone": 2,
+        "utf8_bytes": 0,
+        "nonempty": false,
+        "empty_reason": "no_memory",
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "milestone": 2,
+        "utf8_bytes": 1818,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "milestone": 2,
+        "utf8_bytes": 697,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 2,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "milestone": 3,
+        "utf8_bytes": 1763,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "milestone": 3,
+        "utf8_bytes": 1571,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 4,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 6,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "milestone": 3,
+        "utf8_bytes": 0,
+        "nonempty": false,
+        "empty_reason": "no_memory",
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 6,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "milestone": 3,
+        "utf8_bytes": 0,
+        "nonempty": false,
+        "empty_reason": "zero_matches",
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 5,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "milestone": 3,
+        "utf8_bytes": 0,
+        "nonempty": false,
+        "empty_reason": "no_memory",
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 6,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "milestone": 3,
+        "utf8_bytes": 2036,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 5,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "milestone": 2,
+        "utf8_bytes": 796,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 2,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "milestone": 2,
+        "utf8_bytes": 0,
+        "nonempty": false,
+        "empty_reason": "no_memory",
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      },
+      {
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "milestone": 2,
+        "utf8_bytes": 1863,
+        "nonempty": true,
+        "empty_reason": null,
+        "delivered_refs": 0,
+        "omitted_refs": 0,
+        "actual_work_prompt_count": 4,
+        "actual_prompt_memory_identical": true
+      }
+    ],
+    "decision_chain_totals": [
+      {
+        "arm": "no_memory",
+        "all_history_decision_targets": {
+          "decision_target_rows": 12,
+          "earlier_brief_exposure_verified": 12,
+          "retained": 0,
+          "explicit_current_rule_delivered": 0,
+          "retained_but_not_delivered": 0,
+          "delivered_and_all_linked_checks_passed": 0,
+          "delivered_with_linked_failure": 0,
+          "not_delivered_but_all_linked_checks_passed": 8
+        },
+        "primary_history_only_targets": {
+          "decision_target_rows": 8,
+          "earlier_brief_exposure_verified": 8,
+          "retained": 0,
+          "explicit_current_rule_delivered": 0,
+          "retained_but_not_delivered": 0,
+          "delivered_and_all_linked_checks_passed": 0,
+          "delivered_with_linked_failure": 0,
+          "not_delivered_but_all_linked_checks_passed": 4
+        }
+      },
+      {
+        "arm": "handoff",
+        "all_history_decision_targets": {
+          "decision_target_rows": 12,
+          "earlier_brief_exposure_verified": 12,
+          "retained": 12,
+          "explicit_current_rule_delivered": 12,
+          "retained_but_not_delivered": 0,
+          "delivered_and_all_linked_checks_passed": 10,
+          "delivered_with_linked_failure": 2,
+          "not_delivered_but_all_linked_checks_passed": 0
+        },
+        "primary_history_only_targets": {
+          "decision_target_rows": 8,
+          "earlier_brief_exposure_verified": 8,
+          "retained": 8,
+          "explicit_current_rule_delivered": 8,
+          "retained_but_not_delivered": 0,
+          "delivered_and_all_linked_checks_passed": 6,
+          "delivered_with_linked_failure": 2,
+          "not_delivered_but_all_linked_checks_passed": 0
+        }
+      },
+      {
+        "arm": "pg_agmemory",
+        "all_history_decision_targets": {
+          "decision_target_rows": 12,
+          "earlier_brief_exposure_verified": 12,
+          "retained": 11,
+          "explicit_current_rule_delivered": 5,
+          "retained_but_not_delivered": 6,
+          "delivered_and_all_linked_checks_passed": 5,
+          "delivered_with_linked_failure": 0,
+          "not_delivered_but_all_linked_checks_passed": 6
+        },
+        "primary_history_only_targets": {
+          "decision_target_rows": 8,
+          "earlier_brief_exposure_verified": 8,
+          "retained": 8,
+          "explicit_current_rule_delivered": 5,
+          "retained_but_not_delivered": 3,
+          "delivered_and_all_linked_checks_passed": 5,
+          "delivered_with_linked_failure": 0,
+          "not_delivered_but_all_linked_checks_passed": 2
+        }
+      }
+    ],
+    "decision_chains": [
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-midpoint-low",
+          "charge-midpoint-high"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-midpoint-low",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+            "grade_row_sha256": "fcc276c3be322bab80a080bb150708705a82b62196184958c20b8aa5de959c41"
+          },
+          {
+            "case_id": "charge-midpoint-high",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+            "grade_row_sha256": "5ad81312822fcbaf21e788ed9014ec8e414df2d48965bad8ceec54235d004b29"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-midpoint-low",
+          "charge-midpoint-high"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "charge-midpoint-low",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+            "grade_row_sha256": "5879f73f49baf3de95bbe07dcd2943e3ff657d5512ea76b201387d7ae9eb9930"
+          },
+          {
+            "case_id": "charge-midpoint-high",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+            "grade_row_sha256": "558f5e0e08814c0bf3b3ec8a220e4d925fe9125f604073155dfd6f3fb89be616"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-midpoint-low",
+          "charge-midpoint-high"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-midpoint-low",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+            "grade_row_sha256": "f50cb6ade95f8bad3cd159ab0035e22fd6d58044580501c62dbe20428ce48e7e"
+          },
+          {
+            "case_id": "charge-midpoint-high",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+            "grade_row_sha256": "365a425857297a4d1553943666ec3dd2354eb9affe5daf4f806a2576dc888d0c"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      },
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "credit-visible-fee-midpoint"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-visible-fee-midpoint",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+            "grade_row_sha256": "8c6eeb78a0076a7e6aaa5dce6facac113ac20d6f34fd3d0952cd3983cbd65af0"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "credit-visible-fee-midpoint"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          },
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": true,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "work_protocol_failure",
+        "work_status": "failed",
+        "work_reason": "invalid_action",
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "credit-visible-fee-midpoint",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+            "grade_row_sha256": "5c8ffe44cb885839cc1a28a1ea6d355f2badedd91d6d9fb5282ccbfde0c45c35"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-midpoint",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "credit-visible-fee-midpoint"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          },
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": false,
+            "rule_in_previous_note_or_inventory": true,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-visible-fee-midpoint",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+            "grade_row_sha256": "38909e2a1c532aab0f23a6e424e8b32ee56b6acb8364830353b3df8b6e3cdbe9"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      },
+      {
+        "decision_id": "receipt-charge-scope",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-rounding-scope-up",
+          "charge-rounding-scope-down"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-rounding-scope-up",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+            "grade_row_sha256": "ad5a609e6c5578f0d450c93c4ef5587b4cf8d2e79d643165e814804c61436a4f"
+          },
+          {
+            "case_id": "charge-rounding-scope-down",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+            "grade_row_sha256": "cb4e9acd66eb5fcdbc1db9d4b67ddd5731e3f1edb012e3bc6335ff2155fdb87d"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-scope",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-rounding-scope-up",
+          "charge-rounding-scope-down"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "charge-rounding-scope-up",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+            "grade_row_sha256": "57fc93c3efedd4cdd694ca962a1baf12b48b9c4a677c39df338aa7bbd856e102"
+          },
+          {
+            "case_id": "charge-rounding-scope-down",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+            "grade_row_sha256": "3d23131e6dfc79c9a39a98fa43d6b7ba7632911efb7ae8df84a53ed9e0f52361"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-charge-scope",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "charge-rounding-scope-up",
+          "charge-rounding-scope-down"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "retrieved_relevant_assertion",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-rounding-scope-up",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+            "grade_row_sha256": "4b9cbcea845665ddab162f0aab1130fd0a63fd6fed4cee7e36969a3491e8b36e"
+          },
+          {
+            "case_id": "charge-rounding-scope-down",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+            "grade_row_sha256": "5fbf8e274af6316ee5ebc0bc87cfb5ab4aadf3aa254bcb974f858aba301aea1a"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-integer-types",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "charge-visible-bool-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-visible-bool-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "0909728af5aeae6a844628acbf60f711388337df65e9d06509c3b5a5c87bf4b0",
+            "grade_row_sha256": "92002403772878a5e8dc999c13261cedb244011cb89f088722ee607aaa7a877a"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-integer-types",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "charge-visible-bool-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "charge-visible-bool-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "537a2c11939051f22f7fc317ac24bf1f02c887d1018274ea71f10529d3bc949f",
+            "grade_row_sha256": "7e4d613078641f7f18df50e3cd1595cb0d115c252639cdbc224f0fdecabd5e16"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-integer-types",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "charge-visible-bool-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "no_explicit_current_rule_retained"
+          }
+        ],
+        "final_retention_status": "not_explicitly_retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "charge-visible-bool-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "02b66231d209551ec848216d8b49c1ce22825d4a1f0a2526431bbae28957cd2e",
+            "grade_row_sha256": "4d209b346ac693fd36e8ac065b9d5ae12f16f837e92a9ed8dcb01544203fc43e"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-service-credit-correction",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-full-single",
+          "credit-full-multiple"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-full-single",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+            "grade_row_sha256": "d6263f4ab3e1d18e4e5cb8b17c488f63ddb5b796d85febe8725cc60e387df1b6"
+          },
+          {
+            "case_id": "credit-full-multiple",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+            "grade_row_sha256": "77435945b77d6af612a248af05ffaad917d55769695907c985c9b977fa8ea2f8"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-service-credit-correction",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-full-single",
+          "credit-full-multiple"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "work_protocol_failure",
+        "work_status": "failed",
+        "work_reason": "invalid_action",
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "credit-full-single",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+            "grade_row_sha256": "8db656d4a40da40426648b02e1eb8c0896d99ae32478e227502ffaaa5df3ab67"
+          },
+          {
+            "case_id": "credit-full-multiple",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+            "grade_row_sha256": "bdf7988da6fcbc9476646dc3a2066dd13117e981800623fde8c9e95cbf46f2c5"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "work_execution_submission_protocol_after_successful_delivery"
+      },
+      {
+        "decision_id": "receipt-service-credit-correction",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-full-single",
+          "credit-full-multiple"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "retrieved_relevant_assertion",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-full-single",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+            "grade_row_sha256": "33f9ff961a617ea70a7c821966523b354e7b734c758917936de5e1d2e76b0178"
+          },
+          {
+            "case_id": "credit-full-multiple",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+            "grade_row_sha256": "10a9fc3bb991b01b1dfd0a8ea2c7a527bd34a3f458e1c73c1d22c4f45381a793"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-handling-scope",
+        "project_id": "counter-receipts",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-handling-pair",
+          "credit-handling-reordered"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-handling-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+            "grade_row_sha256": "599e85c078ea13e4e87801ecb374423fb6cba05c017e7a235dc8f184088a18f1"
+          },
+          {
+            "case_id": "credit-handling-reordered",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "4f8fad7d4c3021de36263e483cc1917fdf29ffad062ea27399ba32831f1720dd",
+            "grade_row_sha256": "49867881f69fd7f79918cb26b8ff6c5276313e2e963092d5efb74c0cc745a6e4"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "receipt-handling-scope",
+        "project_id": "counter-receipts",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-handling-pair",
+          "credit-handling-reordered"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "work_protocol_failure",
+        "work_status": "failed",
+        "work_reason": "invalid_action",
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "credit-handling-pair",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+            "grade_row_sha256": "b80e72f90118ebc6449339016f1e4bb5633e46d34a1eb8119f560e20ed7d2bfa"
+          },
+          {
+            "case_id": "credit-handling-reordered",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "3a8f563e038507ff913b24f8fc56b792e70d1667f1e5b568170ef2ac28bfc227",
+            "grade_row_sha256": "e0ca058200d3850fe1858fd9aed5f1d761f14931df30a423fef7cb73fb3c41ea"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "work_execution_submission_protocol_after_successful_delivery"
+      },
+      {
+        "decision_id": "receipt-handling-scope",
+        "project_id": "counter-receipts",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "credit-handling-pair",
+          "credit-handling-reordered"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "retrieved_relevant_assertion",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "credit-handling-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+            "grade_row_sha256": "8f15ce5ff6da291d30524e2a725d1af168be5a9088e6d9582df28c8be82fadda"
+          },
+          {
+            "case_id": "credit-handling-reordered",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "931585e3e9d7e5ba0f1ae6cabfe0e88c4a457c5252f1610fadacc3d7a193be0d",
+            "grade_row_sha256": "3005790c230fcf31457a9b7e6f0ddace645fa816eb414a93c3705a3532379730"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-cutoff-mixed",
+          "regions-cutoff-flat"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "regions-cutoff-mixed",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+            "grade_row_sha256": "c710c3528e3bbee9b256527f7b15338149c859785dabc62f6a41a5c912084933"
+          },
+          {
+            "case_id": "regions-cutoff-flat",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+            "grade_row_sha256": "5e28d663615685ed64a85678dbacba8b81e0b3d8aca4d6084ba8cc4a2af0eb83"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-cutoff-mixed",
+          "regions-cutoff-flat"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-cutoff-mixed",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+            "grade_row_sha256": "2fc06dcf09368a9bd6b6887cb829639b0619d014705b6ab5248fde18b0e0054d"
+          },
+          {
+            "case_id": "regions-cutoff-flat",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+            "grade_row_sha256": "b606043175d93a686d26d88470db80884b95e75667bff628a726209f89df10e5"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-cutoff-mixed",
+          "regions-cutoff-flat"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "retrieved_relevant_assertion",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-cutoff-mixed",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+            "grade_row_sha256": "2277e2c8ee2988f48c9b1c2dbd5be2f79c424a3ce3cb98135b2511af3ab8b939"
+          },
+          {
+            "case_id": "regions-cutoff-flat",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+            "grade_row_sha256": "d4914321aa14f1273679178caff82998572792578560bc24d3923622e5e62594"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "smoothing-visible-threshold"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "smoothing-visible-threshold",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+            "grade_row_sha256": "86d712187bba17c763b552f6cb79f927056981984035cfd8a46a275355c0d6c9"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "smoothing-visible-threshold"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          },
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": true,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-visible-threshold",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+            "grade_row_sha256": "3a01a99a68c1ba2b82656afdbe1cbe6dd5272a16e3e12c63da03a06fff87f077"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-threshold-equality",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "smoothing-visible-threshold"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          },
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": true,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-visible-threshold",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+            "grade_row_sha256": "8e59d2b65c22402cb42f326c0b8b1cd1aa63ea644b587bc45fd47ba29947e125"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      },
+      {
+        "decision_id": "pixels-connectivity",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-corner-pair",
+          "regions-corner-fan"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "regions-corner-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+            "grade_row_sha256": "fda7a9596ecfa8ea7aa9b6771433aead2bbbe79cece5a84b22046b2426c95f29"
+          },
+          {
+            "case_id": "regions-corner-fan",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+            "grade_row_sha256": "28426da620b638a2851cfc9e9945687e80219eda877237a52fb02112c3bc7be2"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-connectivity",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-corner-pair",
+          "regions-corner-fan"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-corner-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+            "grade_row_sha256": "aa0e8a51834251ae0649e567462a92a4c65623e40420138d033e901733cc5d5a"
+          },
+          {
+            "case_id": "regions-corner-fan",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+            "grade_row_sha256": "228689a3812311f38936a4eb1c5bd8ff180621c81c5418f6f721aa8cb0aebc4e"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-connectivity",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "regions-corner-pair",
+          "regions-corner-fan"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "retrieved_relevant_assertion",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-corner-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+            "grade_row_sha256": "60adad2d0f0ec6f1212c59870b404d56a60aa1c69e709a0f5e31f24891f0c78d"
+          },
+          {
+            "case_id": "regions-corner-fan",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+            "grade_row_sha256": "07d05e29e50f19951fcbdd38d3cdd3f2b95adc66a614f3f61fcbf0a161500eb6"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-integer-types",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "regions-visible-pixel-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "regions-visible-pixel-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "5cf9fe05775fa0aa1f0a5a18e6dd4d276b4a2bacc3bf2b83369c612b579f39f0",
+            "grade_row_sha256": "4c6239e96bba1b4c5f8d75b90a0394bac08ed188c6e5c2dfa5d059811984ed27"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-integer-types",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "regions-visible-pixel-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-visible-pixel-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "3e94c267b419a303b2b1b157cdd1ea49f053116a9db88675ac97bc6776e86d03",
+            "grade_row_sha256": "8b5bbb1e3c7afc8971bec11078451029fdc64d275b5b2e0b4403f2f2e9a30fca"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-integer-types",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 2,
+        "primary_history_only_obligation": false,
+        "case_ids": [
+          "regions-visible-pixel-guard"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 1,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": true,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "regions-visible-pixel-guard",
+            "stratum": "history-available",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "754c63e24205cbe4ae4b358da1adc5babba512cf5a418dc7a2516c345f560c23",
+            "grade_row_sha256": "04385392110c500fdb8a8ede84460a927ce944c05a099c16eb89228c61d3244f"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      },
+      {
+        "decision_id": "pixels-median-correction",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-even-pair",
+          "smoothing-even-square"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "smoothing-even-pair",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+            "grade_row_sha256": "362ec1e16650e5713b8c682e4993f4faeec64143087de631f717438e9116ef59"
+          },
+          {
+            "case_id": "smoothing-even-square",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+            "grade_row_sha256": "a9ff9e9f949647155464b5ebde3a2328057e0b2a4ffabd02543c697948e05915"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-median-correction",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-even-pair",
+          "smoothing-even-square"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-even-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+            "grade_row_sha256": "143335178deaaf22de8d6fa05967dbc409189452ea522a9270f19d0557602a19"
+          },
+          {
+            "case_id": "smoothing-even-square",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+            "grade_row_sha256": "9f46f10d1ca428ff1d1cd9cf61c4a095b4267ac46cb64e93ea55df05ac25c70e"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-median-correction",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-even-pair",
+          "smoothing-even-square"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-even-pair",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+            "grade_row_sha256": "603281d0fdb4d9bff0f73cb3f7736d4983e3d888ee674101854257ea4dd23077"
+          },
+          {
+            "case_id": "smoothing-even-square",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+            "grade_row_sha256": "692883e8846cbc1d2425b01e5c9f98ebd30112bd19fbe561e9c58fe67cbad720"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      },
+      {
+        "decision_id": "pixels-border-sampling",
+        "project_id": "scan-cleanup",
+        "arm": "no_memory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-horizontal-border",
+          "smoothing-vertical-border"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [],
+        "final_retention_status": "not_applicable_no_memory",
+        "retrieval_status": "not_applicable_no_memory",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_candidate_failure",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": false,
+        "cases": [
+          {
+            "case_id": "smoothing-horizontal-border",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+            "grade_row_sha256": "08f47c5fdcc84f4e39053c1f1875744d10fae1b3ab81809e6407ca864eadf787"
+          },
+          {
+            "case_id": "smoothing-vertical-border",
+            "stratum": "history-only",
+            "status": "failed",
+            "reason": "mismatch",
+            "artifact_sha256": "f86f279c54fa5b5456c1f9a114677ff4682588a93a0550a99e7ced33610028fa",
+            "grade_row_sha256": "f8d32fbfd050338c8b1a31c5e38dab753013f85a2a3c31cc8974f619f2721ec6"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-border-sampling",
+        "project_id": "scan-cleanup",
+        "arm": "handoff",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-horizontal-border",
+          "smoothing-vertical-border"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "direct_note_delivery",
+        "actual_work_delivery_status": "current_rule_present",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-horizontal-border",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+            "grade_row_sha256": "57bf8a98618acc8e3d74a8ae730cc110224aee8ebe6a15ae249a9e6624f22c09"
+          },
+          {
+            "case_id": "smoothing-vertical-border",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "c9e40b88a9d98f98aac3b7ff480f4b47b9e48271da3226fa4b6ace6c516e8e61",
+            "grade_row_sha256": "e3f2a9877382264c2b2a0e5b3fc049ecb290e04bd3560710c86fb3adeb71f72f"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades"
+      },
+      {
+        "decision_id": "pixels-border-sampling",
+        "project_id": "scan-cleanup",
+        "arm": "pg_agmemory",
+        "target_milestone": 3,
+        "primary_history_only_obligation": true,
+        "case_ids": [
+          "smoothing-horizontal-border",
+          "smoothing-vertical-border"
+        ],
+        "earlier_exposure_verified": true,
+        "maintenance_chain": [
+          {
+            "after_milestone": 2,
+            "rule_in_actual_decoded_brief_or_messages": true,
+            "rule_in_previous_note_or_inventory": false,
+            "omitted_messages": 0,
+            "retention_status": "current_rule_retained"
+          }
+        ],
+        "final_retention_status": "retained",
+        "retrieval_status": "relevant_assertion_not_retrieved",
+        "actual_work_delivery_status": "no_explicit_current_rule_in_memory",
+        "current_authoritative_code_carries_rule": false,
+        "work_outcome_category": "submitted_success",
+        "work_status": "submitted",
+        "work_reason": null,
+        "task_success": true,
+        "cases": [
+          {
+            "case_id": "smoothing-horizontal-border",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+            "grade_row_sha256": "a472ffac8bd4fefc59d7d57cabf32d5a43464f5651ef327278c41b6e8847c818"
+          },
+          {
+            "case_id": "smoothing-vertical-border",
+            "stratum": "history-only",
+            "status": "passed",
+            "reason": null,
+            "artifact_sha256": "b362a88934905ae42a89211ba22113b533977ffb181a22da52ff3f69dd8ac6c5",
+            "grade_row_sha256": "9ab916e084c4b13b9ecd69da344c813f223f3b48dbf7acc2625a627bf1a5f6a3"
+          }
+        ],
+        "causal_use": "not_established_by_retention_delivery_or_passing_grades",
+        "failure_location": "retrieval_not_capture_or_delivery_byte_packing"
+      }
+    ],
+    "findings": [
+      {
+        "id": "retained-rounding-rule-not-retrieved",
+        "severity": "high_confidence_observed_failure",
+        "explanation": "Receipt M2 PG had already persisted the half-even rule, but none of its four searches returned that assertion. The delivered 796-byte context contained aggregate scope and an old subtotal-only scope statement, not midpoint handling. The submitted artifact explicitly used half-up rounding and the two linked midpoint grades were mismatches. This is a retrieval-stage miss, not a failed capture, unconfirmed write, or 2048-byte packing omission."
+      },
+      {
+        "id": "retained-correction-zero-match-success",
+        "severity": "high_confidence_observed_miss",
+        "explanation": "Scan M3 PG retained the corrected smaller-middle median and omitted-border rule in a Native revision-2 assertion. Its actual queries were 'main.py smooth' and 'main.py'; both returned zero rows, and round 3 stopped with an empty array despite two searches remaining. Actual work memory was empty. The work agent explicitly described its policies as assumptions; the existing grades pass. These passes do not demonstrate transfer or causal use of the retained correction. No alternate query was executed."
+      },
+      {
+        "id": "correct-note-delivered-work-action-failed",
+        "severity": "high_confidence_observed_failure",
+        "explanation": "Receipt M3 handoff delivered the corrected refund and once-per-request handling policies in every actual work prompt. The attempted patch command failed because apply_patch was unavailable. Its recovery command was valid JSON but 8457 UTF-8 bytes, beyond the frozen 8192-byte Command limit, and was rejected before execution as invalid_action. The captured artifact equals the canonical starting tree; all four primary history-only credit checks fail. This is a work/tool/action-bound failure after successful delivery, not missing decision memory."
+      },
+      {
+        "id": "current-native-reference-not-current-task-scope",
+        "severity": "interpretation_warning",
+        "explanation": "PG receipt deliveries include statements phrased as current scope that describe earlier milestones: subtotal-only at M2 and charge-only at M3. They are genuine current Native revisions, but not authoritative current task scope. The frozen work system prompt explicitly ranks the current brief and source above historical memory; the observed tasks did not treat these statements as prohibitions on new features. Native revision freshness is not semantic freshness."
+      },
+      {
+        "id": "tool-availability-note-lost-during-replacement",
+        "severity": "bounded_process_observation",
+        "explanation": "The first receipt handoff retained that apply_patch was unavailable. The second handoff proposal no longer included that observation, so the tool-availability loss happened during note replacement, not when its sixth item was omitted by the byte cap. M3 later attempted that unavailable tool. This sequence does not establish that retaining the observation would have prevented the failure."
+      }
+    ],
+    "limitations": [
+      "Audit is read-only over sealed evidence. No model calls, candidate execution, new query experiments, regrading, task edits, or Native writes were performed.",
+      "Semantic rule relevance and evidence support were manually reviewed and indexed with bounded matchers; presence is not a proof of comprehension, use, or causal effect.",
+      "Ten global primary decision identities yield twelve distinct project/target decision appearances and thirty-six arm/target rows; eight history-only identities yield twenty-four primary arm/target rows. Cases sharing a decision, including the jointly dependent smoothing checks, are correlated.",
+      "All eight boundary transcripts fit without message omission. This run does not exercise the 24-KiB suffix-omission branch. Original and effective coordinates match for all seventeen facts/revisions, so whitespace adjustment is not exercised.",
+      "Exactly one handoff whole-item omission is exercised. No PG 2048-byte packing omission occurs. Three Native final validation responses report truncated=true, but all selected required references are returned; that flag is not evidence of an observed delivery-packing loss.",
+      "Zero forget proposals and zero pending exclusions mean nonempty pending-review/forget behavior is untested here; review did not apply any forget or purge. Only observe, remember, revise_assertion and recall appear as Native task operations.",
+      "Current Native revision and temporal revalidation do not establish semantic currentness when upstream agreements or task scope change.",
+      "History-only qualification is an information-restriction mechanism probe, not general real-world usefulness, equal-information reasoning, impossibility of guessing, or proof of absent provider hidden state.",
+      "The frozen pack and witness remain byte-identical for later release. These audit outputs omit authentication/configuration and host HOME metadata; raw runtime/auth artifacts are not authorized for publication."
+    ]
+  },
+  "accounting": {
+    "status": "reconciled_with_limits",
+    "unresolved_mismatches": 0,
+    "reconciliation": {
+      "host_events": 2948,
+      "nested_controller_events": 949,
+      "coordinator_admissions": 107,
+      "coordinator_responses": 107,
+      "raw_cli_model_starts": 107,
+      "raw_cli_model_finishes": 107,
+      "raw_usage_files": 107,
+      "unique_cli_sessions": 107,
+      "bridge_requests": 107,
+      "bridge_responses": 107,
+      "canary_invocations": 6,
+      "canary_pairs": 3,
+      "controllers": 26,
+      "controller_model_ipc_pairs": 101,
+      "controller_execute_ipc_pairs": 60,
+      "work_model_receipts": 78,
+      "memory_model_receipts": 23,
+      "native_intent_result_pairs": 78,
+      "coordinator_model_failure_events": 0,
+      "controller_operation_failure_events": 0,
+      "nonzero_command_exit_receipts": 17,
+      "provider_requests_unknown": 0,
+      "local_unpublished_queries": 0,
+      "local_unpublished_executes": 0,
+      "failed_work_sessions": 1,
+      "failed_maintenance_sessions": 0,
+      "diagnostic_log_files": 110,
+      "nonempty_diagnostic_logs": 0
+    },
+    "whole_run": {
+      "calls": 107,
+      "input_tokens": "543248",
+      "output_tokens": "100368",
+      "cache_read_tokens": "0",
+      "cache_write_tokens": "542927",
+      "reasoning_tokens": "51238",
+      "api_requests": "107",
+      "premium_requests": "107",
+      "nano_aiu": "1180819749999.9999925",
+      "api_duration_ms": "1571801",
+      "raw_top_level_nano_aiu": "1180819750000",
+      "bridge_wall_duration_seconds": 1999.3704467510017,
+      "raw_dispatch_duration_ms_decimal": "1571817"
+    },
+    "per_arm_including_canaries": [
+      {
+        "arm": "no_memory",
+        "calls": 30,
+        "input_tokens": "148758",
+        "output_tokens": "27842",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "148668",
+        "reasoning_tokens": "12586",
+        "api_requests": "30",
+        "premium_requests": "30",
+        "nano_aiu": "325134999999.9999975",
+        "api_duration_ms": "436947",
+        "raw_top_level_nano_aiu": "325135000000",
+        "bridge_wall_duration_seconds": 559.5529500419995,
+        "raw_dispatch_duration_ms_decimal": "436950"
+      },
+      {
+        "arm": "handoff",
+        "calls": 30,
+        "input_tokens": "163091",
+        "output_tokens": "29713",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "163001",
+        "reasoning_tokens": "11064",
+        "api_requests": "30",
+        "premium_requests": "30",
+        "nano_aiu": "352406249999.999995",
+        "api_duration_ms": "450537",
+        "raw_top_level_nano_aiu": "352406250000",
+        "bridge_wall_duration_seconds": 568.942754501001,
+        "raw_dispatch_duration_ms_decimal": "450541"
+      },
+      {
+        "arm": "pg_agmemory",
+        "calls": 47,
+        "input_tokens": "231399",
+        "output_tokens": "42813",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "231258",
+        "reasoning_tokens": "27588",
+        "api_requests": "47",
+        "premium_requests": "47",
+        "nano_aiu": "503278500000",
+        "api_duration_ms": "684317",
+        "raw_top_level_nano_aiu": "503278500000",
+        "bridge_wall_duration_seconds": 870.8747422080021,
+        "raw_dispatch_duration_ms_decimal": "684326"
+      }
+    ],
+    "per_phase": [
+      {
+        "phase": "canary",
+        "calls": 6,
+        "input_tokens": "17917",
+        "output_tokens": "195",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "17899",
+        "reasoning_tokens": "64",
+        "api_requests": "6",
+        "premium_requests": "6",
+        "nano_aiu": "23366749999.9999985",
+        "api_duration_ms": "14331",
+        "raw_top_level_nano_aiu": "23366750000",
+        "bridge_wall_duration_seconds": 40.197315708,
+        "raw_dispatch_duration_ms_decimal": "14333"
+      },
+      {
+        "phase": "work",
+        "calls": 78,
+        "input_tokens": "404035",
+        "output_tokens": "77800",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "403801",
+        "reasoning_tokens": "31851",
+        "api_requests": "78",
+        "premium_requests": "78",
+        "nano_aiu": "893985249999.99999",
+        "api_duration_ms": "1184672",
+        "raw_top_level_nano_aiu": "893985250000",
+        "bridge_wall_duration_seconds": 1494.2205646260018,
+        "raw_dispatch_duration_ms_decimal": "1184683"
+      },
+      {
+        "phase": "handoff",
+        "calls": 4,
+        "input_tokens": "31441",
+        "output_tokens": "3154",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "31429",
+        "reasoning_tokens": "1416",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "55068250000",
+        "api_duration_ms": "54517",
+        "raw_top_level_nano_aiu": "55068250000",
+        "bridge_wall_duration_seconds": 70.53425325100022,
+        "raw_dispatch_duration_ms_decimal": "54517"
+      },
+      {
+        "phase": "memory_decision",
+        "calls": 4,
+        "input_tokens": "32528",
+        "output_tokens": "16290",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "32516",
+        "reasoning_tokens": "15234",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "122107000000.000004",
+        "api_duration_ms": "218047",
+        "raw_top_level_nano_aiu": "122107000000",
+        "bridge_wall_duration_seconds": 232.53842449999996,
+        "raw_dispatch_duration_ms_decimal": "218047"
+      },
+      {
+        "phase": "memory_plan",
+        "calls": 15,
+        "input_tokens": "57327",
+        "output_tokens": "2929",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "57282",
+        "reasoning_tokens": "2673",
+        "api_requests": "15",
+        "premium_requests": "15",
+        "nano_aiu": "86292500000",
+        "api_duration_ms": "100234",
+        "raw_top_level_nano_aiu": "86292500000",
+        "bridge_wall_duration_seconds": 161.87988866600034,
+        "raw_dispatch_duration_ms_decimal": "100237"
+      }
+    ],
+    "per_arm_phase": [
+      {
+        "arm": "no_memory",
+        "phase": "canary",
+        "calls": 2,
+        "input_tokens": "5971",
+        "output_tokens": "60",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5965",
+        "reasoning_tokens": "17",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7762249999.9999995",
+        "api_duration_ms": "5080",
+        "raw_top_level_nano_aiu": "7762250000",
+        "bridge_wall_duration_seconds": 15.804391082999999,
+        "raw_dispatch_duration_ms_decimal": "5080"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "work",
+        "calls": 28,
+        "input_tokens": "142787",
+        "output_tokens": "27782",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "142703",
+        "reasoning_tokens": "12569",
+        "api_requests": "28",
+        "premium_requests": "28",
+        "nano_aiu": "317372749999.999998",
+        "api_duration_ms": "431867",
+        "raw_top_level_nano_aiu": "317372750000",
+        "bridge_wall_duration_seconds": 543.7485589589994,
+        "raw_dispatch_duration_ms_decimal": "431870"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "handoff",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "memory_decision",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "no_memory",
+        "phase": "memory_plan",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "handoff",
+        "phase": "canary",
+        "calls": 2,
+        "input_tokens": "5972",
+        "output_tokens": "66",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5966",
+        "reasoning_tokens": "23",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7793500000",
+        "api_duration_ms": "4652",
+        "raw_top_level_nano_aiu": "7793500000",
+        "bridge_wall_duration_seconds": 12.348569165999999,
+        "raw_dispatch_duration_ms_decimal": "4653"
+      },
+      {
+        "arm": "handoff",
+        "phase": "work",
+        "calls": 24,
+        "input_tokens": "125678",
+        "output_tokens": "26493",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "125606",
+        "reasoning_tokens": "9625",
+        "api_requests": "24",
+        "premium_requests": "24",
+        "nano_aiu": "289544499999.999995",
+        "api_duration_ms": "391368",
+        "raw_top_level_nano_aiu": "289544500000",
+        "bridge_wall_duration_seconds": 486.05993208400076,
+        "raw_dispatch_duration_ms_decimal": "391371"
+      },
+      {
+        "arm": "handoff",
+        "phase": "handoff",
+        "calls": 4,
+        "input_tokens": "31441",
+        "output_tokens": "3154",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "31429",
+        "reasoning_tokens": "1416",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "55068250000",
+        "api_duration_ms": "54517",
+        "raw_top_level_nano_aiu": "55068250000",
+        "bridge_wall_duration_seconds": 70.53425325100022,
+        "raw_dispatch_duration_ms_decimal": "54517"
+      },
+      {
+        "arm": "handoff",
+        "phase": "memory_decision",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "handoff",
+        "phase": "memory_plan",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "canary",
+        "calls": 2,
+        "input_tokens": "5974",
+        "output_tokens": "69",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "5968",
+        "reasoning_tokens": "24",
+        "api_requests": "2",
+        "premium_requests": "2",
+        "nano_aiu": "7810999999.999999",
+        "api_duration_ms": "4599",
+        "raw_top_level_nano_aiu": "7811000000",
+        "bridge_wall_duration_seconds": 12.044355459000002,
+        "raw_dispatch_duration_ms_decimal": "4600"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "work",
+        "calls": 26,
+        "input_tokens": "135570",
+        "output_tokens": "23525",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "135492",
+        "reasoning_tokens": "9657",
+        "api_requests": "26",
+        "premium_requests": "26",
+        "nano_aiu": "287067999999.999997",
+        "api_duration_ms": "361437",
+        "raw_top_level_nano_aiu": "287068000000",
+        "bridge_wall_duration_seconds": 464.41207358300153,
+        "raw_dispatch_duration_ms_decimal": "361442"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "handoff",
+        "calls": 0,
+        "input_tokens": "0",
+        "output_tokens": "0",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "0",
+        "reasoning_tokens": "0",
+        "api_requests": "0",
+        "premium_requests": "0",
+        "nano_aiu": "0",
+        "api_duration_ms": "0",
+        "raw_top_level_nano_aiu": "0",
+        "bridge_wall_duration_seconds": 0,
+        "raw_dispatch_duration_ms_decimal": "0"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "memory_decision",
+        "calls": 4,
+        "input_tokens": "32528",
+        "output_tokens": "16290",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "32516",
+        "reasoning_tokens": "15234",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "122107000000.000004",
+        "api_duration_ms": "218047",
+        "raw_top_level_nano_aiu": "122107000000",
+        "bridge_wall_duration_seconds": 232.53842449999996,
+        "raw_dispatch_duration_ms_decimal": "218047"
+      },
+      {
+        "arm": "pg_agmemory",
+        "phase": "memory_plan",
+        "calls": 15,
+        "input_tokens": "57327",
+        "output_tokens": "2929",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "57282",
+        "reasoning_tokens": "2673",
+        "api_requests": "15",
+        "premium_requests": "15",
+        "nano_aiu": "86292500000",
+        "api_duration_ms": "100234",
+        "raw_top_level_nano_aiu": "86292500000",
+        "bridge_wall_duration_seconds": 161.87988866600034,
+        "raw_dispatch_duration_ms_decimal": "100237"
+      }
+    ],
+    "work_and_memory_excluding_canaries": [
+      {
+        "arm": "no_memory",
+        "work_calls": 28,
+        "memory_calls": 0,
+        "input_tokens": "142787",
+        "output_tokens": "27782"
+      },
+      {
+        "arm": "handoff",
+        "work_calls": 24,
+        "memory_calls": 4,
+        "input_tokens": "157119",
+        "output_tokens": "29647"
+      },
+      {
+        "arm": "pg_agmemory",
+        "work_calls": 26,
+        "memory_calls": 19,
+        "input_tokens": "225425",
+        "output_tokens": "42744"
+      }
+    ],
+    "failed_work_costs": [
+      {
+        "slot_id": "counter-receipts-3-handoff",
+        "reason": "invalid_action",
+        "calls": 4,
+        "input_tokens": "21876",
+        "output_tokens": "7271",
+        "cache_read_tokens": "0",
+        "cache_write_tokens": "21864",
+        "reasoning_tokens": "1904",
+        "api_requests": "4",
+        "premium_requests": "4",
+        "nano_aiu": "63696999999.999995",
+        "api_duration_ms": "97465",
+        "raw_top_level_nano_aiu": "63697000000",
+        "bridge_wall_duration_seconds": 112.42073520800005,
+        "raw_dispatch_duration_ms_decimal": "97465"
+      }
+    ],
+    "aggregate_reconciliation": [
+      {
+        "field": "input_tokens",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "543248",
+          "total_decimal": "543248"
+        },
+        "frozen_summary_numeric_lexeme": "543248",
+        "original_binary_js_recomputed": 543248,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "output_tokens",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "100368",
+          "total_decimal": "100368"
+        },
+        "frozen_summary_numeric_lexeme": "100368",
+        "original_binary_js_recomputed": 100368,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "cache_read_tokens",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "0",
+          "total_decimal": "0"
+        },
+        "frozen_summary_numeric_lexeme": "0",
+        "original_binary_js_recomputed": 0,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "cache_write_tokens",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "542927",
+          "total_decimal": "542927"
+        },
+        "frozen_summary_numeric_lexeme": "542927",
+        "original_binary_js_recomputed": 542927,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "reasoning_tokens",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "51238",
+          "total_decimal": "51238"
+        },
+        "frozen_summary_numeric_lexeme": "51238",
+        "original_binary_js_recomputed": 51238,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "api_requests",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "107",
+          "total_decimal": "107"
+        },
+        "frozen_summary_numeric_lexeme": "107",
+        "original_binary_js_recomputed": 107,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "premium_requests",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "107",
+          "total_decimal": "107"
+        },
+        "frozen_summary_numeric_lexeme": "107",
+        "original_binary_js_recomputed": 107,
+        "frozen_minus_exact_decimal": "0"
+      },
+      {
+        "field": "nano_aiu",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "1180819749999.9999925",
+          "total_decimal": "1180819749999.9999925"
+        },
+        "frozen_summary_numeric_lexeme": "1180819750000",
+        "original_binary_js_recomputed": 1180819750000,
+        "frozen_minus_exact_decimal": "0.0000075"
+      },
+      {
+        "field": "api_duration_ms",
+        "raw_lexeme_sum": {
+          "observations": 107,
+          "known": 107,
+          "missing": 0,
+          "null": 0,
+          "invalid": 0,
+          "known_subtotal_decimal": "1571801",
+          "total_decimal": "1571801"
+        },
+        "frozen_summary_numeric_lexeme": "1571801",
+        "original_binary_js_recomputed": 1571801,
+        "frozen_minus_exact_decimal": "0"
+      }
+    ],
+    "raw_top_minus_model_nano_aiu_decimal": "0.0000075",
+    "fractional_model_nano_lexemes": 9,
+    "timing": {
+      "reported_elapsed_seconds": 2599.85,
+      "observed_journal_span_seconds": 2599.81,
+      "per_arm": [
+        {
+          "arm": "no_memory",
+          "controller_work_result_seconds": 586.009387811,
+          "work_only_seconds": 585.996413228,
+          "retrieval_seconds": 0.007243126000000001,
+          "boundary_seconds": 0,
+          "full_slot_wall_seconds": 727.597,
+          "grade_case_full_envelope_seconds": 124.61100000000002,
+          "grade_candidate_process_seconds": 11.968341500000898
+        },
+        {
+          "arm": "handoff",
+          "controller_work_result_seconds": 526.306532619,
+          "work_only_seconds": 526.296220618,
+          "retrieval_seconds": 0.008016001,
+          "boundary_seconds": 73.297928408,
+          "full_slot_wall_seconds": 748.076,
+          "grade_case_full_envelope_seconds": 131.97200000000004,
+          "grade_candidate_process_seconds": 12.068742205000047
+        },
+        {
+          "arm": "pg_agmemory",
+          "controller_work_result_seconds": 680.605646063,
+          "work_only_seconds": 506.281882899,
+          "retrieval_seconds": 174.321510789,
+          "boundary_seconds": 239.26419385800003,
+          "full_slot_wall_seconds": 1068.691,
+          "grade_case_full_envelope_seconds": 129.01399999999998,
+          "grade_candidate_process_seconds": 11.933428628002236
+        }
+      ],
+      "families": [
+        {
+          "family": "model_admission_to_response",
+          "observations": 107,
+          "sum_wall_seconds": 2009.3209999999992,
+          "union_seconds": 2009.321,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 5.724,
+          "maximum_seconds": 72.955
+        },
+        {
+          "family": "raw_model_dispatch",
+          "observations": 107,
+          "sum_wall_seconds": 1572.2980000000002,
+          "union_seconds": 1572.298,
+          "within_family_overlap_seconds": 2.2737367544323206e-13,
+          "minimum_seconds": 1.861,
+          "maximum_seconds": 69.462
+        },
+        {
+          "family": "controller_host_envelope",
+          "observations": 26,
+          "sum_wall_seconds": 2121.697,
+          "union_seconds": 2121.697,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 16.992,
+          "maximum_seconds": 156.092
+        },
+        {
+          "family": "boundary",
+          "observations": 8,
+          "sum_wall_seconds": 312.566,
+          "union_seconds": 312.566,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 16.402,
+          "maximum_seconds": 74.496
+        },
+        {
+          "family": "retrieval",
+          "observations": 18,
+          "sum_wall_seconds": 174.33400000000003,
+          "union_seconds": 174.334,
+          "within_family_overlap_seconds": 2.842170943040401e-14,
+          "minimum_seconds": 0.001,
+          "maximum_seconds": 49.294
+        },
+        {
+          "family": "work_only",
+          "observations": 18,
+          "sum_wall_seconds": 1618.587,
+          "union_seconds": 1618.587,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 52.402,
+          "maximum_seconds": 148.09
+        },
+        {
+          "family": "full_slot_including_grades_boundary_setup",
+          "observations": 18,
+          "sum_wall_seconds": 2544.3639999999996,
+          "union_seconds": 2544.364,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 81.615,
+          "maximum_seconds": 236.722
+        },
+        {
+          "family": "grade_case_full_envelope",
+          "observations": 207,
+          "sum_wall_seconds": 385.59699999999987,
+          "union_seconds": 385.597,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 1.271,
+          "maximum_seconds": 4.819
+        },
+        {
+          "family": "shared_startup_observed",
+          "observations": 1,
+          "sum_wall_seconds": 54.084,
+          "union_seconds": 54.084,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 54.084,
+          "maximum_seconds": 54.084
+        },
+        {
+          "family": "shared_native_startup_observed",
+          "observations": 1,
+          "sum_wall_seconds": 11.765,
+          "union_seconds": 11.765,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 11.765,
+          "maximum_seconds": 11.765
+        },
+        {
+          "family": "shared_canary_and_bridge_startup",
+          "observations": 1,
+          "sum_wall_seconds": 42.167,
+          "union_seconds": 42.167,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 42.167,
+          "maximum_seconds": 42.167
+        },
+        {
+          "family": "final_cleanup_recorded",
+          "observations": 1,
+          "sum_wall_seconds": 0.717,
+          "union_seconds": 0.717,
+          "within_family_overlap_seconds": 0,
+          "minimum_seconds": 0.717,
+          "maximum_seconds": 0.717
+        }
+      ],
+      "overlap_seconds": [
+        {
+          "left": "model_admission_to_response",
+          "right": "raw_model_dispatch",
+          "seconds": 1572.298
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "controller_host_envelope",
+          "seconds": 1968.457
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "boundary",
+          "seconds": 303.845
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "retrieval",
+          "seconds": 163.365
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "work_only",
+          "seconds": 1501.247
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 1968.457
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "shared_startup_observed",
+          "seconds": 40.864
+        },
+        {
+          "left": "model_admission_to_response",
+          "right": "shared_canary_and_bridge_startup",
+          "seconds": 40.864
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "controller_host_envelope",
+          "seconds": 1557.944
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "boundary",
+          "seconds": 272.622
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "retrieval",
+          "seconds": 100.294
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "work_only",
+          "seconds": 1185.028
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 1557.944
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "shared_startup_observed",
+          "seconds": 14.354
+        },
+        {
+          "left": "raw_model_dispatch",
+          "right": "shared_canary_and_bridge_startup",
+          "seconds": 14.354
+        },
+        {
+          "left": "controller_host_envelope",
+          "right": "boundary",
+          "seconds": 312.566
+        },
+        {
+          "left": "controller_host_envelope",
+          "right": "retrieval",
+          "seconds": 174.334
+        },
+        {
+          "left": "controller_host_envelope",
+          "right": "work_only",
+          "seconds": 1618.587
+        },
+        {
+          "left": "controller_host_envelope",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 2121.697
+        },
+        {
+          "left": "boundary",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 312.566
+        },
+        {
+          "left": "retrieval",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 174.334
+        },
+        {
+          "left": "work_only",
+          "right": "full_slot_including_grades_boundary_setup",
+          "seconds": 1618.587
+        },
+        {
+          "left": "full_slot_including_grades_boundary_setup",
+          "right": "grade_case_full_envelope",
+          "seconds": 385.597
+        },
+        {
+          "left": "shared_startup_observed",
+          "right": "shared_native_startup_observed",
+          "seconds": 11.765
+        },
+        {
+          "left": "shared_startup_observed",
+          "right": "shared_canary_and_bridge_startup",
+          "seconds": 42.167
+        }
+      ],
+      "unattributed_observed_gap_seconds": 53.924999999999905,
+      "raw_dispatch_duration_ms_decimal": "1571817",
+      "reported_api_duration_ms_decimal": "1571801",
+      "one_millisecond_metric_differences": 16,
+      "additive_phase_claim": false
+    },
+    "limitations": [
+      "Provider-reported usage is not a verified invoice. nano-AIU is not converted to money.",
+      "Input, output, cache-read, cache-write and reasoning categories are reported separately, never summed into a purported disjoint token total.",
+      "The frozen Number aggregate is reproduced, not replaced. Exact totals use original JSON numeric lexemes and BigInt decimal scales; model-level and top-level amounts remain separate.",
+      "Coordinator/CLI evidence reports one API request per call. Provider-internal retries, hidden state and managed model weight revision are not independently observable.",
+      "Canary success supports but does not prove isolation. Host authentication home was not recreated per call.",
+      "CLI events advertise inherited skill metadata, but no tool execution is present; disabled custom instructions does not mean the CLI contributes no system prompt.",
+      "Runtime/execution digest attestations, source hashes and receipts agree. Infrastructure create-intent events do not independently repeat runtime image digests; source plus recipe bind those launches. No new image execution/inspection was performed.",
+      "Guest isolation probes run as UID 0; the pinned sandbox source launches task/grader commands as UID 10001 with empty environment. Probe UID is not the candidate UID and does not independently prove candidate credentials.",
+      "Controller elapsed_ns includes retrieval/startup and work; work-only time is the work_started/work_finished monotonic difference. Full-slot envelopes additionally include boundary, grading and setup/cleanup.",
+      "Wall-clock intervals have timestamp precision and cross-clock uncertainty. Monotonic durations and host wall envelopes are distinct; nested phase totals must not be added. Unattributed gaps are not proof of idle time.",
+      "Sixteen CLI model.call_finished dispatchDurationMs values exceed usage/result totalApiDurationMs by 1 ms each. These differently named timing metrics are retained separately, with exact per-call differences; their measurement-boundary implementation is not independently inspected.",
+      "The reported run elapsed time starts before the first journal event and ends at summary construction; exact start/end timestamps are not separately recorded.",
+      "Equal configured work budgets do not imply equal actual workload, tokens, tool attempts, latency or historical information. No normalization or success-only accounting is applied.",
+      "The latest container snapshot reports IDs/status only; unrelated containers were neither inspected beyond those fields nor changed. Absence is point-in-time, not a provider-wide resource claim.",
+      "Posthoc auditing/authoring engineering usage is excluded from the 107 evaluation calls. This script makes no model calls and imports no evaluation executables."
+    ]
+  },
+  "storage": {
+    "before": {
+      "database_bytes": 11941567,
+      "relations": [
+        {
+          "relation": "assertion",
+          "bytes": 40960
+        },
+        {
+          "relation": "assertion_derivation",
+          "bytes": 16384
+        },
+        {
+          "relation": "assertion_embedding",
+          "bytes": 16384
+        },
+        {
+          "relation": "assertion_lexical",
+          "bytes": 32768
+        },
+        {
+          "relation": "assertion_revision",
+          "bytes": 57344
+        },
+        {
+          "relation": "checkpoint",
+          "bytes": 49152
+        },
+        {
+          "relation": "checkpoint_branch",
+          "bytes": 16384
+        },
+        {
+          "relation": "checkpoint_reference",
+          "bytes": 24576
+        },
+        {
+          "relation": "checkpoint_run",
+          "bytes": 16384
+        },
+        {
+          "relation": "entity",
+          "bytes": 24576
+        },
+        {
+          "relation": "entity_evidence",
+          "bytes": 24576
+        },
+        {
+          "relation": "episode",
+          "bytes": 40960
+        },
+        {
+          "relation": "episode_embedding",
+          "bytes": 16384
+        },
+        {
+          "relation": "episode_lexical",
+          "bytes": 32768
+        },
+        {
+          "relation": "object",
+          "bytes": 40960
+        },
+        {
+          "relation": "principal",
+          "bytes": 49152
+        },
+        {
+          "relation": "provenance_edge",
+          "bytes": 24576
+        },
+        {
+          "relation": "relation",
+          "bytes": 24576
+        },
+        {
+          "relation": "relation_revision",
+          "bytes": 16384
+        },
+        {
+          "relation": "scope",
+          "bytes": 24576
+        },
+        {
+          "relation": "scope_capture_policy",
+          "bytes": 16384
+        },
+        {
+          "relation": "scope_member",
+          "bytes": 32768
+        },
+        {
+          "relation": "scope_synthesis_policy",
+          "bytes": 16384
+        },
+        {
+          "relation": "tenant",
+          "bytes": 32768
+        },
+        {
+          "relation": "tool_effect",
+          "bytes": 32768
+        },
+        {
+          "relation": "tool_effect_reference",
+          "bytes": 24576
+        },
+        {
+          "relation": "tool_effect_revision",
+          "bytes": 16384
+        },
+        {
+          "relation": "working_event",
+          "bytes": 24576
+        },
+        {
+          "relation": "working_snapshot",
+          "bytes": 16384
+        }
+      ]
+    },
+    "after": {
+      "database_bytes": 12834495,
+      "relations": [
+        {
+          "relation": "assertion",
+          "bytes": 73728
+        },
+        {
+          "relation": "assertion_derivation",
+          "bytes": 16384
+        },
+        {
+          "relation": "assertion_embedding",
+          "bytes": 16384
+        },
+        {
+          "relation": "assertion_lexical",
+          "bytes": 114688
+        },
+        {
+          "relation": "assertion_revision",
+          "bytes": 131072
+        },
+        {
+          "relation": "checkpoint",
+          "bytes": 49152
+        },
+        {
+          "relation": "checkpoint_branch",
+          "bytes": 16384
+        },
+        {
+          "relation": "checkpoint_reference",
+          "bytes": 24576
+        },
+        {
+          "relation": "checkpoint_run",
+          "bytes": 16384
+        },
+        {
+          "relation": "entity",
+          "bytes": 24576
+        },
+        {
+          "relation": "entity_evidence",
+          "bytes": 24576
+        },
+        {
+          "relation": "episode",
+          "bytes": 237568
+        },
+        {
+          "relation": "episode_embedding",
+          "bytes": 16384
+        },
+        {
+          "relation": "episode_lexical",
+          "bytes": 270336
+        },
+        {
+          "relation": "object",
+          "bytes": 81920
+        },
+        {
+          "relation": "principal",
+          "bytes": 49152
+        },
+        {
+          "relation": "provenance_edge",
+          "bytes": 81920
+        },
+        {
+          "relation": "relation",
+          "bytes": 24576
+        },
+        {
+          "relation": "relation_revision",
+          "bytes": 16384
+        },
+        {
+          "relation": "scope",
+          "bytes": 24576
+        },
+        {
+          "relation": "scope_capture_policy",
+          "bytes": 16384
+        },
+        {
+          "relation": "scope_member",
+          "bytes": 32768
+        },
+        {
+          "relation": "scope_synthesis_policy",
+          "bytes": 16384
+        },
+        {
+          "relation": "tenant",
+          "bytes": 32768
+        },
+        {
+          "relation": "tool_effect",
+          "bytes": 32768
+        },
+        {
+          "relation": "tool_effect_reference",
+          "bytes": 24576
+        },
+        {
+          "relation": "tool_effect_revision",
+          "bytes": 16384
+        },
+        {
+          "relation": "working_event",
+          "bytes": 24576
+        },
+        {
+          "relation": "working_snapshot",
+          "bytes": 16384
+        }
+      ]
+    },
+    "measurement": "owned_database_and_allocated_memory_relations",
+    "per_fact_cost_claimed": false
+  },
+  "cleanup": {
+    "containers_created": 228,
+    "containers_with_absence_receipts": 228,
+    "work_guests": 18,
+    "grade_guests": 207,
+    "infrastructure_containers": 3,
+    "bridges_exited": 3,
+    "remaining_run_owned_containers": 0,
+    "final_cleanup_ms": 717,
+    "point_in_time_not_provider_wide": true
+  },
+  "evidence": {
+    "sealed_before_unblinding": true,
+    "files": 995,
+    "bytes": 22230265,
+    "tree_sha256": "129ce5ec4f30807763af48c31ed14bf201f3e9a9f477dd38ef1a7a7102b76500",
+    "private_artifacts": [
+      {
+        "file": "development-v3-grading-audit.json",
+        "sha256": "44eff41666db162dd5e83219bb8fd865be981682a9a6abec670f429fc361a9cc"
+      },
+      {
+        "file": "development-v3-accounting-reviewed-summary.json",
+        "sha256": "f595b333bb58a14759c5c6f2f9cea7826cb104a5645fab8dd3030ad93c1bda6b"
+      },
+      {
+        "file": "development-v3-memory-audit-compact-summary.json",
+        "sha256": "2516b4476bfe44715ac4d1643420926e19f6b360887a63ca79265940553b4fdc"
+      },
+      {
+        "file": "development-v3-memory-audit.json",
+        "sha256": "f7fd2d5d6c5e11f107b97fe72efe471c66bd5eae6a954bade3e9708aed7fa58b"
+      },
+      {
+        "file": "development-v3-memory-grading-link.json",
+        "sha256": "7c46e9a50d9ecfb47cbd3e8566d8a9f2389ddb481e76f6f2a1f6790f25b186a2"
+      },
+      {
+        "file": "development-live-v3-evidence-index.json",
+        "sha256": "cb5d1bf3392ad5c7611fc448b4ff6d38d89344cd76ec4b8b3e3edcb0aa4dee91"
+      },
+      {
+        "file": "development-live-v3/summary.json",
+        "sha256": "4fe52ac5f82fba86dbac304f7dff04a86bf69a869af61d35fd3c017ed0ff1614"
+      }
+    ],
+    "released_files": [
+      {
+        "file": "development-memory-pilot-v3-pack.json",
+        "bytes": 160849,
+        "sha256": "0cd6f031ad77c481edef73a45e28c2ef08d267462e869225e9477244a07a2804",
+        "byte_identical": true,
+        "redactions": 0,
+        "transformations": 0
+      },
+      {
+        "file": "development-memory-pilot-v3-history-witnesses.json",
+        "bytes": 153242,
+        "sha256": "1c4b29ea1dccc163455acddc57c524188737b841e37abd789906942983481368",
+        "byte_identical": true,
+        "redactions": 0,
+        "transformations": 0
+      }
+    ],
+    "raw_auth_controller_prompts_or_home_configuration_released": false
+  },
+  "interpretation": {
+    "observed_slot_contrast_with_no_memory": "Both memory pipelines completed two more all-checks-successful slots; neither exceeded the other on the primary measure.",
+    "observed_check_contrast": "PG passed 67 checks versus 61 for each other arm; history-only checks were 14/16 PG, 12/16 handoff, 8/16 no-memory.",
+    "actual_primary_decision_delivery": "Handoff delivered 8/8 explicit history-only decisions; PG delivered 5/8, retaining but missing three. PG passed the smoothing task with empty memory, so that success does not establish information transfer.",
+    "general_real_work_usefulness_established": false,
+    "pg_superiority_over_handoff_established": false,
+    "causal_use_of_delivered_text_proven": false,
+    "statistically_independent_sample_count_not_18_or_207": true,
+    "project_histories": 2,
+    "forgetting_quality_tested": false,
+    "whitespace_canonicalization_exercised": false,
+    "authoring_provenance_limit": "Exact before/after replacement fragments and replacement instruction preserved, but no complete pre-correction snapshot or full-file diff. Qualified pack/witness bytes match the first retained generated snapshot; no recorded post-generation correction or qualification retry.",
+    "unrecorded_draft_edits_count": null,
+    "semantic_certification_is_attestation_not_machine_proof": true,
+    "no_prior_arm_specific_tuning": "preserved_author_attestation; no contrary evidence in audited records; not independently proven",
+    "cross_study_attribution": "Both tasks and maintenance protocol differ from v2. Do not pool studies or attribute between-study differences solely to the protocol correction.",
+    "production_qualified": false
+  }
+}
