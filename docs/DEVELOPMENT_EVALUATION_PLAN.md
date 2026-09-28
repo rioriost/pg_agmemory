@@ -19,6 +19,135 @@ separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
 
+## Fourth study: fresh tasks on the fixed revised pipelines
+
+**Qualified and independently audited; no live calls dispatched or authorized yet.**
+The [v4 preregistration](../examples/development-memory-pilot-v4-manifest.json)
+freezes the content-free conditions and exact opaque case/decision registry
+before any live dispatch.
+Freeze source `67b6d5cd3bd9841820b469ae020ba6499b68261a`, whose
+[CI run 36387012529](https://github.com/rioriost/pg_agmemory/actions/runs/36387012529)
+passed all eight jobs. Use source-labelled runtime/execution images, not the
+`unfrozen` images used for implementation tests. The fixed identities are
+`development-work-v2`, `development-maintenance-v3`,
+`development-retrieval-v2`, planner `development-v4` and state
+`development-memory-state-v2`.
+
+The question is whether the revised, bounded pipelines preserve and deliver
+earlier operational choices and complete new development tasks, and what
+calls, tokens and time they consume. This remains a small, intentionally
+information-restricted **stage-gated mechanism probe**, not representative
+real-work qualification or equal-information reasoning. Each milestone starts
+from its own frozen canonical source; previous agent submissions are not
+carried forward. Source, tasks and multiple prompts differ from the third
+study, so cross-study differences cannot isolate any individual fix.
+
+Preserve two projects, three milestones per project, three arms and eighteen
+assigned slots. The unmodified mini-swe-agent 2.4.6 uses GPT-6 Astra/high
+through the existing fresh-call Copilot bridge for all work and memory model
+roles. Preserve the balanced schedule, sixteen work steps including final
+submission, 2,048-byte memory delivery, 8,000-byte planner prompt, 8,192-byte
+decoded command and all existing timing/cleanup limits. The 318 coordinator
+invocations are not a proven provider-internal request ceiling.
+
+**Independent authoring and retained revisions.** A fresh Astra/high author,
+not an adapter implementer, receives only generic schemas, budgets and the
+complete common work/tool contract. It must not inspect prior task contents,
+outcomes or memory-adapter prompts. Create original, coherent Python
+standard-library development projects outside previous domains, not renamed
+tasks, arbitrary secret values or forced tool mistakes. Every milestone must
+require implementation work and include at least one memory-independent
+control. Every M2/M3 must include at least two certified history-only cases:
+at least eight cases overall, **not eight independent decisions**. Actual
+case sets, correlated decision links and all denominators will be frozen
+after qualification, before exposure.
+
+The authoring/correction policy is frozen before generation. Preserve the
+instructions and every materialized generator, pack, witness and metadata
+revision before validation or editing, with complete predecessor/successor
+bytes, hashes, reasons and diffs. Preserve all failed qualification attempts.
+Repairs may address documented schema, semantic or reference defects in the
+same project design, not select among already-valid packs or tune anticipated
+arm performance. Stop rather than silently regenerate if that process cannot
+qualify the pack. This records retained materialized revisions, not hidden
+reasoning, every keystroke, training novelty or all prior knowledge.
+
+The parent, dispatch reviewer and implementation workers remain blind to
+new task contents **through terminal sealing**, not merely qualification.
+A separate task-aware auditor checks semantics and raw receipts. Answer-bearing
+corrections pass directly between that auditor and author. Parent-facing
+reports and public preregistration identifiers must be opaque, containing
+hashes, counts and status rather than domains, requirements or expected values.
+
+**Mandatory qualification gates.** Use the same reference, canonical-new-work,
+mutant and counterfactual-witness contracts as the third study. Every
+history-only witness certifies non-identifiability against the complete current
+authoritative brief, source, visible examples and common work/tool contract.
+Both earlier histories must remain consistent with unchanged requirements;
+alternative references implement general rules, not per-case answer tables.
+A failed witness cannot simply be relabelled history-available to pass a gate.
+Semantic justification remains an independent audited attestation, not a
+consequence of matching hashes.
+
+The frozen `qualifyPack` accepts generic negative `failed` statuses. Its success
+is therefore **insufficient**: the task-aware auditor must reconcile the
+original raw receipts and confirm every designated negative exited zero,
+emitted well-formed strict JSON and structurally mismatched its expectation.
+Do not rerun candidates merely to obtain that audit. Witness qualification
+reuses only exactly bound original positives and adds an alternative positive
+plus both own-correct/opposite-incorrect cross-comparisons in isolated guests.
+Crashes, timeouts and malformed output do not certify disagreement. The
+generic witness runner is separately rebound to the frozen source/image and
+checked with unrelated synthetic cases. All owned guests need absence receipts.
+
+**Analysis and dispatch.** Primary success requires a valid submission passing
+all checks, with six scheduled slots per arm and M1 separated from M2/M3.
+Freeze disjoint history-only, history-available, memory-independent and
+unclassified strata, keeping failures, unknowns, unsuccessful maintenance,
+valid-empty memory and dependent-unrun slots in their assigned denominators.
+Distinguish invalid-submission artifact scores from successful work. Audit
+each decision's earlier exposure, actual maintenance input, retention,
+selection/packing, work-prompt delivery and artifact result; delivery plus
+success does not establish causal use.
+
+The common work prompt directly supplies the tool warning to all arms, so
+avoiding that failure cannot count as historical-memory transfer. Compare
+whole configured pipelines with descriptive costs; do not pool studies or
+infer statistical superiority from two correlated project histories.
+Qualification, independent audit, public preregistration, remote hash
+verification and final Astra/xhigh dispatch approval must precede one live
+attempt. Preserve its first failures and seal terminal evidence before
+unblinding or release. This preparation section is not itself preregistration
+or permission to dispatch.
+
+The qualified pack contains **40 cases**: eight history-only cases, four
+history-available cases, 28 memory-independent controls and zero unclassified
+cases. The eight history-only cases repeat **two unique primary decisions**,
+four cases each across later stages; neither the cases nor the two decisions
+are asserted statistically independent. Eighteen planned slots imply 120
+scheduled arm-case observations.
+
+The independent task-aware audit found no blocking defects. It reconciled
+40 original reference passes, six canonical-new-work mismatches and fourteen
+designated-mutant mismatches, all with zero exit and well-formed strict JSON.
+Eight exactly bound original positives were reused; 24 fresh witness
+executions established eight alternative positives and sixteen own-correct,
+opposite-incorrect cross-comparisons. All 84 created guests have absence
+receipts. One materialized task revision and one original/witness qualification
+attempt each were retained, with no task corrections or candidate reexecution
+for audit.
+
+Audit-tool corrections are separate: two receipt-decoder versions/runs, 26
+superseded auditor assertions and two failed finalizer versions remain in the
+record. The final audit reports 4,575 receipt checks and 124 supplemental
+checks without failures. Semantic consistency remains the independent
+auditor's judgment, not a hash proof. The original qualification's raw image
+inspection was not retained; a later same-digest inspection does not recreate
+it. Invocation details are reconstructed from frozen code rather than a
+syscall trace, and image/source labels do not attest reproducible builds.
+The 109-file private pre-live tree was hash-sealed without exposing its task
+contents to the parent; those limitations remain part of the preregistration.
+
 ## Third study: information-restricted memory mechanism
 
 **Completed once after Astra/xhigh approval and publication of the
