@@ -9,9 +9,10 @@ import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule } from "./development-eval-pack.mjs";
 import {
   ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, RETRIEVAL_POLICY,
-  RunBudget, sha256, WORK_PROTOCOL,
+  PROTOCOL, RunBudget, sha256, WORK_PROTOCOL,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
+import { CopilotTransport, waitPrivate, writeNew } from "./development-eval-transport.mjs";
 import {
   frozenImage, gradeCase, parseArguments, runEvaluation, ScriptedTransport, validateQualification,
 } from "./evaluate-development-memory.mjs";
@@ -225,7 +226,10 @@ test("grader infrastructure failure preserves submitted work and every case in t
     return { status: "submitted", reason: null, transcript: null };
   });
   t.mock.method(ExecutionGuest.prototype, "start", async function () {
-    if (this.name.includes("-grade-")) throw new EvaluationError("guest_start_failed");
+    if (this.name.includes("-grade-")) throw Object.assign(
+      new EvaluationError("guest_start_failed"),
+      { bridge_error: { message: "UNTRUSTED_COORDINATOR_SECRET" } },
+    );
   });
   t.mock.method(ExecutionGuest.prototype, "export", async function () {
     this.closed = true;
@@ -240,17 +244,214 @@ test("grader infrastructure failure preserves submitted work and every case in t
     });
     assert.equal(result.status, "failed");
     assert.equal(result.failure, "guest_start_failed");
+    assert.equal(result.bridge_error, null);
+    assert.equal(result.failure_receipt_ref, null);
     assert.equal(controllers, 1);
     const first = result.outcomes[0];
     assert.equal(first.work_result.status, "submitted");
     assert.equal(first.status, "submitted");
     assert.equal(first.outcome_unknown, true);
     assert.equal(first.task_success, null);
+    assert.equal(first.bridge_error, null);
+    assert.equal(first.failure_receipt_ref, null);
     assert.deepEqual(first.checks.map((check) => check.status),
       ["infrastructure_unknown", "unavailable"]);
     assert.ok(result.outcomes.slice(1).every((slot) => slot.status === "unrun"));
+    const events = await fs.readFile(path.join(root, "events.jsonl"), "utf8");
+    const failed = events.trim().split("\n").map(JSON.parse)
+      .find((row) => row.kind === "evaluation_failed");
+    assert.equal(failed.bridge_error, null);
+    assert.equal(failed.receipt_ref, null);
+    assert.ok(!events.includes("UNTRUSTED_COORDINATOR_SECRET"));
+    assert.ok(!JSON.stringify(result).includes("UNTRUSTED_COORDINATOR_SECRET"));
   } finally { await fs.rm(root, { recursive: true }); }
 });
+
+const diagnosticUsage = {
+  input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0,
+  reasoning_tokens: null, api_requests: 1, premium_requests: 0, nano_aiu: null,
+  api_duration_ms: 1, monetary_cost_verified: false,
+};
+
+async function diagnosticEvaluation(t, { at, cause, usage, cleanupFault = false }) {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "pgag-dev-diagnostic-")));
+  t.after(() => fs.rm(root, { recursive: true }));
+  const providers = [], cleanup = [], sessions = [], transports = [];
+  t.mock.method(NativeInfrastructure.prototype, "start", async function () {
+    await fs.mkdir(this.directory, { mode: 0o700 });
+    await fs.mkdir(path.join(this.directory, "controllers"), { mode: 0o700 });
+    this.api = "synthetic-api";
+    this.owned.add(this.api);
+  });
+  t.mock.method(NativeInfrastructure.prototype, "storageStatus", async () => ({
+    database_bytes: 0, relations: [],
+  }));
+  t.mock.method(NativeInfrastructure.prototype, "binding", () => ({
+    scope_id: "00000000-0000-4000-8000-000000000001",
+  }));
+  t.mock.method(NativeInfrastructure.prototype, "remove", async function (name, options) {
+    cleanup.push({ operation: "native-remove", ...options });
+    if (cleanupFault) throw Object.assign(new EvaluationError("infrastructure_inventory_failed"), {
+      bridge_error: "copilot_output_limit",
+    });
+    this.owned.delete(name);
+  });
+  t.mock.method(NativeInfrastructure.prototype, "close", async function (options) {
+    cleanup.push({ operation: "native-close", ...options });
+    this.owned.clear();
+  });
+  t.mock.method(ExecutionGuest.prototype, "start", async function () { this.started = true; });
+  t.mock.method(ExecutionGuest.prototype, "execute", async () => assert.fail("No candidate command"));
+  t.mock.method(ExecutionGuest.prototype, "grade", async () => assert.fail("No candidate grading"));
+  t.mock.method(ExecutionGuest.prototype, "close", async function (options) {
+    cleanup.push({ operation: "guest-close", ...options });
+    this.closed = true;
+  });
+  t.mock.method(CopilotTransport.prototype, "bridge", async function (arm) {
+    if (!transports.includes(this)) transports.push(this);
+    let bridge = this.bridges.get(arm);
+    if (!bridge) {
+      const directory = path.join(this.directory, arm);
+      await fs.mkdir(directory, { mode: 0o700 });
+      await fs.mkdir(path.join(directory, "queue"), { mode: 0o700 });
+      bridge = { directory, exited: false, stopped: false };
+      this.bridges.set(arm, bridge);
+    }
+    const callId = String(this.ledger.arms[arm] + 1).padStart(6, "0");
+    const queue = path.join(bridge.directory, "queue");
+    const provider = (async () => {
+      const request = JSON.parse(await waitPrivate(path.join(queue, `${callId}.request.json`), {
+        deadline: Date.now() + 5000,
+      }));
+      const fail = at === "canary" || callId === "000003";
+      const nonce = request.prompt.startsWith("Return exactly this nonce,")
+        ? request.prompt.split(": ").at(-1) : "UNKNOWN";
+      await writeNew(path.join(queue, `${callId}.response.json`), {
+        format: "pgag-copilot-response-v1", call_id: callId, status: fail ? "error" : "ok",
+        content: fail ? "" : nonce, error: fail ? cause : null,
+        duration_seconds: 0.001, model: this.model, reasoning_effort: this.effort,
+        usage: fail ? usage : diagnosticUsage,
+      });
+    })();
+    providers.push(Promise.allSettled([provider]));
+    return bridge;
+  });
+  t.mock.method(CopilotTransport.prototype, "stop", async function (arm, options) {
+    cleanup.push({ operation: "bridge-stop", ...options });
+    const bridge = this.bridges.get(arm);
+    if (bridge) { bridge.exited = true; bridge.stopped = true; }
+  });
+  const runController = ControllerSession.prototype.run;
+  t.mock.method(ControllerSession.prototype, "run", async function () {
+    sessions.push(this);
+    this.runner = async (_executable, _args, { signal }) => {
+      const completion = new Promise((resolve) => signal.addEventListener("abort", () => resolve({
+        exitCode: 1, durationSeconds: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0),
+        timedOut: false, overflow: false, cancelled: true,
+      }), { once: true }));
+      await fs.mkdir(path.join(this.root, "ipc", "requests"), { mode: 0o700 });
+      await fs.mkdir(path.join(this.root, "ipc", "replies"), { mode: 0o700 });
+      const envelope = { protocol: PROTOCOL, session_id: this.config.session_id,
+        at: new Date().toISOString(), elapsed_ns: 1 };
+      await fs.writeFile(path.join(this.root, "output", "events.jsonl"), [
+        { ...envelope, sequence: 1, kind: "controller_started", data: {
+          work_protocol: WORK_PROTOCOL, memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+          memory_retrieval_policy: RETRIEVAL_POLICY,
+        } },
+        { ...envelope, sequence: 2, kind: "work_started", data: { work_limit_seconds: 900 } },
+      ].map((event) => JSON.stringify(event) + "\n").join(""), { mode: 0o600, flag: "wx" });
+      const staging = path.join(this.root, "staging", "000001.json");
+      await writeNew(staging, {
+        protocol: PROTOCOL, session_id: this.config.session_id, sequence: 1,
+        operation: "invoke_model", body: {
+          phase: "work", prompt: "Synthetic diagnostic work call.", planning_round: null,
+        },
+      });
+      await fs.rename(staging, path.join(this.root, "ipc", "requests", "000001.json"));
+      return completion;
+    };
+    return runController.call(this);
+  });
+  const summary = await runEvaluation({
+    pack: protocolPack(), directory: root, runId: `pgag-dev-${randomBytes(12).toString("hex")}`,
+    runtimeImage: "unused-synthetic", executionImage: "unused-synthetic", model: "gpt-6-astra",
+    effort: "high", sourceRevision: "diagnostic-fixture", allowCopilot: true,
+  });
+  assert.deepEqual((await Promise.all(providers)).flat()
+    .filter((outcome) => outcome.status === "rejected"), []);
+  const rawEvents = await fs.readFile(path.join(root, "events.jsonl"), "utf8");
+  const events = rawEvents.trim().split("\n").map(JSON.parse);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, "summary.json"))), summary);
+  return { summary, events, rawEvents, cleanup, sessions, transports };
+}
+
+for (const [name, options, expectedCause, primary] of [
+  ["slot unmetered timeout and secondary cleanup",
+    { at: "slot", cause: "copilot_timeout", usage: null, cleanupFault: true },
+    "copilot_timeout", "failed_transport_accounting"],
+  ["canary unmetered timeout", { at: "canary", cause: "copilot_timeout", usage: null },
+    "copilot_timeout", "failed_transport_accounting"],
+  ["slot metered failure", { at: "slot", cause: "copilot_response_invalid", usage: diagnosticUsage },
+    "copilot_response_invalid", "model_response_failed"],
+  ["slot untrusted cause", { at: "slot", cause: { message: "UNTRUSTED_PROVIDER_SECRET" }, usage: null },
+    null, "failed_transport_accounting"],
+]) {
+  test(`integrated diagnostics: ${name} preserves primary failure and originating receipt`, async (t) => {
+    const result = await diagnosticEvaluation(t, options);
+    const { summary, events, rawEvents, cleanup, sessions, transports } = result;
+    const admissions = options.at === "canary" ? 1 : 7;
+    assert.equal(summary.status, "failed");
+    assert.equal(summary.failure, primary);
+    assert.equal(summary.bridge_error, expectedCause);
+    assert.equal(summary.coordinator_invocations, admissions);
+    const admitted = events.filter((event) => event.kind === "model_admitted");
+    assert.equal(admitted.length, admissions);
+    const receipt = admitted.at(-1).receipt;
+    assert.deepEqual(summary.failure_receipt_ref, receipt);
+    const invocation = events.find((event) => event.kind === "model_invocation_failed");
+    assert.equal(invocation.bridge_error, expectedCause);
+    assert.deepEqual(invocation.receipt, receipt);
+    assert.equal(invocation.usage_unknown, options.usage === null);
+    const evaluation = events.find((event) => event.kind === "evaluation_failed");
+    assert.equal(evaluation.code, primary);
+    assert.equal(evaluation.bridge_error, expectedCause);
+    assert.deepEqual(evaluation.receipt_ref, receipt);
+    assert.equal(transports.length, 1);
+    assert.equal(transports[0].ledger.stopped, true);
+    assert.equal(transports[0].ledger.ordinal, admissions);
+    assert.equal(summary.usage.calls_with_unknown_provider_requests, options.usage === null ? 1 : 0);
+    assert.equal(summary.usage.calls_with_reported_usage,
+      admissions - (options.usage === null ? 1 : 0));
+    assert.equal(summary.outcomes.length, 18);
+    const affected = summary.outcomes.filter((row) => Object.hasOwn(row, "bridge_error"));
+    assert.equal(affected.length, options.at === "canary" ? 0 : 1);
+    if (options.at === "slot") {
+      assert.equal(sessions.length, 1);
+      assert.equal(sessions[0].fatalFailure.code, primary);
+      assert.equal(sessions[0].fatalFailure.bridge_error, expectedCause);
+      assert.equal(affected[0].bridge_error, expectedCause);
+      assert.deepEqual(affected[0].failure_receipt_ref, receipt);
+      assert.equal(affected[0].run_failure, primary);
+      for (const kind of ["controller_operation_failed", "controller_aborted"]) {
+        const event = events.find((row) => row.kind === kind);
+        assert.equal(event.bridge_error, expectedCause);
+        assert.deepEqual(event.receipt_ref, receipt);
+      }
+      assert.equal(sessions[0].operations.length, 0);
+      assert.ok(cleanup.every((row) => row.deadline === sessions[0].cleanupDeadline));
+      if (options.cleanupFault) assert.ok(sessions[0].fatalFailure.cleanup_failures.some(
+        (row) => row.code === "infrastructure_inventory_failed"));
+    } else {
+      assert.equal(sessions.length, 0);
+      assert.ok(summary.outcomes.every((row) => row.status === "unrun"));
+      assert.equal(events.some((row) => row.kind === "controller_aborted"), false);
+    }
+    assert.ok(summary.outcomes.filter((row) => row.status === "unrun")
+      .every((row) => !Object.hasOwn(row, "failure_receipt_ref") && !Object.hasOwn(row, "bridge_error")));
+    assert.ok(!rawEvents.includes("UNTRUSTED_PROVIDER_SECRET"));
+    assert.ok(!JSON.stringify(summary).includes("UNTRUSTED_PROVIDER_SECRET"));
+  });
+}
 
 test("no-model full run executes eighteen isolated sessions and separate memory boundaries", {
   skip: !process.env.PGAG_DEVELOPMENT_RUNTIME_IMAGE || !process.env.PGAG_DEVELOPMENT_GUEST_IMAGE,
@@ -277,6 +478,8 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
     scriptedResponses: responses,
   });
   assert.equal(summary.status, "completed", JSON.stringify({ root, summary }));
+  assert.equal(summary.bridge_error, null);
+  assert.equal(summary.failure_receipt_ref, null);
   assert.equal(summary.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
   assert.equal(summary.memory_retrieval_policy, RETRIEVAL_POLICY);
   assert.equal(summary.work_protocol, WORK_PROTOCOL);

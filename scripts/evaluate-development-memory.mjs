@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { safeCopilotErrorCode } from "./copilot-eval-bridge.mjs";
 import { ControllerSession } from "./development-eval-controller.mjs";
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule, validatePack } from "./development-eval-pack.mjs";
@@ -161,6 +162,8 @@ export async function runEvaluation({
   const guests = [];
   let operation = 0;
   let failure = null;
+  let bridgeError = null;
+  let failureReceipt = null;
   let activeOutcome = null;
   let storageBefore = null;
   let storageAfter = null;
@@ -313,17 +316,23 @@ export async function runEvaluation({
     budget.assertActive();
   } catch (error) {
     failure = error.code ?? signal.reason?.code ?? "coordinator_failed";
+    error.bridge_error = safeCopilotErrorCode(error.bridge_error);
+    bridgeError = error.bridge_error;
+    failureReceipt = error.receipt_ref ?? null;
     cleanupDeadline = Math.min(error.cleanupDeadline ?? Infinity,
       signal.reason?.cleanupDeadline ?? Infinity);
     if (activeOutcome) {
       activeOutcome.run_failure = failure;
+      activeOutcome.bridge_error = safeCopilotErrorCode(bridgeError);
+      activeOutcome.failure_receipt_ref = failureReceipt;
       activeOutcome.outcome_unknown = true;
       activeOutcome.task_success = activeOutcome.status === "failed"
         || activeOutcome.checks.some((check) => check.status === "failed") ? false : null;
       if (activeOutcome.status === "started") activeOutcome.status = "infrastructure_unknown";
     }
     ledger.stop();
-    record({ kind: "evaluation_failed", code: failure });
+    record({ kind: "evaluation_failed", code: failure,
+      bridge_error: safeCopilotErrorCode(bridgeError), receipt_ref: failureReceipt });
   } finally {
     budget.close();
     signal.removeEventListener("abort", stopAdmission);
@@ -357,6 +366,7 @@ export async function runEvaluation({
     work_protocol: recipe.work_protocol,
     memory_retrieval_policy: recipe.memory_retrieval_policy,
     status: failure === null ? "completed" : "failed", failure, real_models: realModels,
+    bridge_error: safeCopilotErrorCode(bridgeError), failure_receipt_ref: failureReceipt,
     cleanup_failures: cleanupFailures, termination_reason: signal.reason?.code ?? null,
     evidence_kind: realModels ? "synthetic_development_pilot" : "no_model_protocol_dry_run",
     recipe_sha256: recipeHash, source_revision: sourceRevision,

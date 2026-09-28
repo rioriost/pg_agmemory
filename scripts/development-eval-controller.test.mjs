@@ -649,6 +649,61 @@ test("unit: memory identity and state integrity errors are fatal in every mode a
   }
 });
 
+test("unit: bridge cause is sanitized independently at operation and abort boundaries", async (t) => {
+  const secret = "EXTERNAL_CONTROLLER_DIAGNOSTIC_SECRET";
+  for (const [cause, expected] of [
+    ["copilot_timeout", "copilot_timeout"], [secret, null], [{ message: secret }, null],
+    [null, null], [undefined, null],
+  ]) {
+    const original = Object.assign(new EvaluationError("failed_transport_accounting"), {
+      bridge_error: cause,
+    });
+    const secondary = Object.assign(new EvaluationError("infrastructure_inventory_failed"), {
+      bridge_error: "copilot_output_limit",
+    });
+    const fixture = await unitSession(t, { modelError: original, removeError: secondary });
+    await assert.rejects(fixture.session.run(), (error) => {
+      assert.equal(error, original);
+      assert.equal(error.code, "failed_transport_accounting");
+      assert.equal(error.bridge_error, expected);
+      assert.equal(error.receipt_ref.global_ordinal, 1);
+      assert.ok(error.cleanup_failures.some((row) => row.code === secondary.code));
+      return true;
+    });
+    const diagnostic = fixture.records.filter((row) =>
+      ["controller_operation_failed", "controller_aborted"].includes(row.kind));
+    assert.equal(diagnostic.length, 2);
+    for (const event of diagnostic) {
+      assert.equal(event.bridge_error, expected);
+      assert.deepEqual(event.receipt_ref, original.receipt_ref);
+    }
+    assert.ok(!JSON.stringify(fixture.records).includes(secret));
+    assert.equal(fixture.calls(), 1);
+    assert.equal(fixture.published.length, 0);
+    assert.equal(fixture.transport.ledger.ordinal, 1);
+    assert.equal(fixture.transport.ledger.stopped, true);
+    assert.ok(fixture.cleanup.every((row) => row.deadline === original.cleanupDeadline));
+  }
+});
+
+test("unit: ordinary metered error keeps bridge cause host-only, not in Python IPC", async (t) => {
+  const error = Object.assign(new EvaluationError("model_response_failed"), {
+    bridge_error: "copilot_response_invalid",
+  });
+  const fixture = await unitSession(t, { modelError: error });
+  const result = await fixture.session.run();
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "model_response_invalid");
+  assert.equal(result.host_accounting.complete, true);
+  assert.equal(result.admitted_invocations, 1);
+  assert.equal(fixture.transport.ledger.stopped, false);
+  const event = fixture.records.find((row) => row.kind === "controller_operation_failed");
+  assert.equal(event.bridge_error, "copilot_response_invalid");
+  assert.equal(event.fatal, false);
+  assert.equal(fixture.records.some((row) => row.kind === "controller_aborted"), false);
+  assert.equal(Object.hasOwn(fixture.published[0].result, "bridge_error"), false);
+});
+
 test("unit: cleanup failure is latched before IPC and blocks a later boundary", async (t) => {
   const original = new EvaluationError("owned_cleanup_failed");
   original.cleanupDeadline = Date.now() + 5000;

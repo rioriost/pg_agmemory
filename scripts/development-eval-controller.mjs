@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { safeCopilotErrorCode } from "./copilot-eval-bridge.mjs";
 import {
   canonicalJson, EvaluationError, exactKeys, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL, RETRIEVAL_POLICY,
   remainingMilliseconds, requireCondition, sha256, validateRequest, validateUsage, WORK_PROTOCOL,
@@ -215,6 +216,7 @@ export class ControllerSession {
   }
 
   latchFatal(error) {
+    error.bridge_error = safeCopilotErrorCode(error.bridge_error);
     if (this.fatalFailure === null) this.fatalFailure = error;
     this.cleanupDeadline ??= Date.now() + 15000;
     if (Number.isFinite(error?.cleanupDeadline)) {
@@ -346,12 +348,14 @@ export class ControllerSession {
     let originalCode = null;
     try { result = await this.dispatch(request, events); }
     catch (error) {
+      error.bridge_error = safeCopilotErrorCode(error.bridge_error);
       originalCode = errorCode(error);
       const ordinary = this.ordinaryDispatchFailure(error, request, admissionBefore);
       if (!ordinary) this.latchFatal(error);
       this.record({ kind: "controller_operation_failed", session_id: this.config.session_id,
         sequence: request.sequence, operation: request.operation, original_code: originalCode,
         fatal: !ordinary, receipt_ref: error.receipt_ref ?? null, usage: error.usage ?? null,
+        bridge_error: safeCopilotErrorCode(error.bridge_error),
         admission_before: admissionBefore ?? null,
         admission_after: this.transport.ledger?.ordinal ?? null });
       if (!ordinary) throw this.fatalFailure;
@@ -599,6 +603,7 @@ export class ControllerSession {
           code: errorCode(original), outcome_unknown: true,
           controller_reason: original.controller_reason ?? null,
           receipt_ref: original.receipt_ref ?? null, usage: original.usage ?? null,
+          bridge_error: safeCopilotErrorCode(original.bridge_error),
           host_invocation_receipts: this.operations
             .filter((operation) => operation.request.operation === "invoke_model")
             .map((operation) => operation.result.receipt_ref).filter((receipt) => receipt !== null),

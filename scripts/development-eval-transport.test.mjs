@@ -60,7 +60,8 @@ test("waiters bind cancellation and process death rather than silently waiting f
 
 test("secondary bridge cleanup failure preserves the original admitted error and receipt", async () => {
   const directory = await temporary();
-  const record = () => {};
+  const events = [];
+  const record = (event) => events.push(event);
   const ledger = new InvocationLedger({ record, runId: "unit", model: "gpt-6-astra", effort: "high" });
   const transport = new CopilotTransport({
     directory, runId: "unit", model: "gpt-6-astra", effort: "high", ledger, record,
@@ -72,7 +73,7 @@ test("secondary bridge cleanup failure preserves the original admitted error and
     await privateDirectory(path.join(directory, "queue"), { create: true });
     await writeNew(path.join(directory, "queue", "000001.response.json"), {
       format: "pgag-copilot-response-v1", call_id: "000001", status: "error", content: "",
-      error: "synthetic_provider_failure", duration_seconds: 1,
+      error: "copilot_timeout", duration_seconds: 1,
       model: "gpt-6-astra", reasoning_effort: "high", usage,
     });
     transport.bridge = async () => ({ directory, exited: false });
@@ -85,6 +86,7 @@ test("secondary bridge cleanup failure preserves the original admitted error and
       arm: "no_memory", sessionId: "unit", slotId: "unit", phase: "work", prompt: "unit", sequence: 1,
     }), (error) => {
       assert.equal(error.code, "model_response_failed");
+      assert.equal(error.bridge_error, "copilot_timeout");
       assert.equal(error.receipt_ref.global_ordinal, 1);
       assert.deepEqual({ ...error.usage }, usage);
       assert.equal(error.cleanup_failed, true);
@@ -94,8 +96,106 @@ test("secondary bridge cleanup failure preserves the original admitted error and
     });
     assert.equal(ledger.stopped, true);
     assert.equal(ledger.ordinal, 1);
+    assert.equal(events.find((row) => row.kind === "model_response_received").error, "copilot_timeout");
+    assert.equal(events.find((row) => row.kind === "model_invocation_failed").bridge_error,
+      "copilot_timeout");
   } finally { await fs.rm(directory, { recursive: true }); }
 });
+
+const meteredUsage = {
+  input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0,
+  reasoning_tokens: null, api_requests: 1, premium_requests: 0, nano_aiu: null,
+  api_duration_ms: 1, monetary_cost_verified: false,
+};
+const unsafeDiagnostic = "UNTRUSTED_DIAGNOSTIC_SECRET_MUST_NOT_ESCAPE";
+
+for (const [name, change, primary, bridgeError, received] of [
+  ["unmetered timeout", { error: "copilot_timeout", usage: null },
+    "failed_transport_accounting", "copilot_timeout", true],
+  ["metered timeout", { error: "copilot_timeout" }, "model_response_failed", "copilot_timeout", true],
+  ["generic bridge failure", { error: "copilot_transport_failed" },
+    "model_response_failed", "copilot_transport_failed", true],
+  ["unknown string", { error: unsafeDiagnostic }, "model_response_failed", null, true],
+  ["unknown object", { error: { message: unsafeDiagnostic } }, "model_response_failed", null, true],
+  ["unknown number", { error: 42 }, "model_response_failed", null, true],
+  ["null error", { error: null }, "model_response_failed", null, true],
+  ["wrong identity", { call_id: "000099", error: "copilot_timeout" },
+    "model_response_identity_mismatch", null, false],
+  ["wrong model", { model: "other", error: "copilot_timeout" },
+    "model_response_identity_mismatch", null, false],
+  ["wrong format", { format: "unknown", error: "copilot_timeout" },
+    "model_response_identity_mismatch", null, false],
+  ["wrong effort", { reasoning_effort: "low", error: "copilot_timeout" },
+    "model_response_identity_mismatch", null, false],
+  ["missing field", { content: undefined, error: "copilot_timeout" },
+    "unexpected_fields", null, false],
+  ["extra field", { extra: unsafeDiagnostic, error: "copilot_timeout" },
+    "unexpected_fields", null, false],
+  ["forged ok error", { status: "ok", error: "copilot_timeout" },
+    "model_response_failed", null, true],
+  ["invalid status", { status: "unknown", error: "copilot_timeout" },
+    "model_response_failed", null, true],
+  ["successful response", { status: "ok", error: null }, null, null, true],
+]) {
+  test(`bridge diagnostic: ${name} preserves admission and primary failure`, async () => {
+    const directory = await temporary();
+    const events = [], stops = [];
+    const record = (event) => events.push(event);
+    const ledger = new InvocationLedger({
+      record, runId: "unit", model: "gpt-6-astra", effort: "high",
+    });
+    const transport = new CopilotTransport({
+      directory, runId: "unit", model: "gpt-6-astra", effort: "high", ledger, record,
+    });
+    const response = {
+      format: "pgag-copilot-response-v1", call_id: "000001", status: "error",
+      content: '{"final":"done"}', error: null, duration_seconds: 1,
+      model: "gpt-6-astra", reasoning_effort: "high", usage: meteredUsage, ...change,
+    };
+    try {
+      await privateDirectory(path.join(directory, "queue"), { create: true });
+      await writeNew(path.join(directory, "queue", "000001.response.json"), response);
+      transport.bridge = async () => ({ directory, exited: false });
+      transport.stop = async (_arm, options) => { stops.push(options); };
+      const invocation = transport.invoke({
+        arm: "no_memory", sessionId: "unit", slotId: "unit", phase: "work",
+        prompt: "synthetic diagnostic", sequence: 1,
+      });
+      const receipt = { global_ordinal: 1, bridge_id: "unit-no_memory", bridge_call_id: "000001" };
+      if (primary === null) {
+        const result = await invocation;
+        assert.deepEqual(result.receipt_ref, receipt);
+        assert.equal(result.text, response.content);
+        assert.deepEqual({ ...result.usage }, meteredUsage);
+        assert.equal(ledger.stopped, false);
+        assert.equal(stops.length, 0);
+      } else {
+        await assert.rejects(invocation, (error) => {
+          assert.equal(error.code, primary);
+          assert.equal(error.bridge_error, bridgeError);
+          assert.deepEqual(error.receipt_ref, receipt);
+          assert.deepEqual(error.usage === null ? null : { ...error.usage },
+            received ? response.usage : null);
+          return true;
+        });
+        const failed = events.find((event) => event.kind === "model_invocation_failed");
+        assert.equal(failed.code, primary);
+        assert.equal(failed.bridge_error, bridgeError);
+        assert.deepEqual(failed.receipt, receipt);
+        assert.equal(failed.usage_unknown, !received || response.usage === null);
+        assert.equal(ledger.stopped, true);
+        assert.equal(stops.length, 1);
+        assert.equal(stops[0].cancel, true);
+      }
+      const returned = events.filter((event) => event.kind === "model_response_received");
+      assert.equal(returned.length, received ? 1 : 0);
+      if (received) assert.equal(returned[0].error, bridgeError);
+      assert.equal(ledger.ordinal, 1);
+      assert.equal(events.filter((event) => event.kind === "model_admitted").length, 1);
+      assert.ok(!JSON.stringify(events).includes(unsafeDiagnostic));
+    } finally { await fs.rm(directory, { recursive: true }); }
+  });
+}
 
 test("real bridge wiring uses fake Copilot, preserves IDs and stops on multi-request usage", {
   timeout: 30000,

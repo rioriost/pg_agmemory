@@ -64,9 +64,39 @@ repair, artifact rescoring or deadline relaxation. The
 [counterfactual witnesses](../examples/development-memory-pilot-v4-history-witnesses.json)
 are released byte-identically to their preregistered originals and are no longer
 unseen tasks. Earlier results remain unchanged and are not pooled with this
-attempt. Preserving the underlying bridge error and adding explicit CLI process
-termination receipts are proposed diagnostic follow-ups, not changes to this
-attempt.
+attempt. The result publication proposed preserving the underlying bridge error
+and adding explicit CLI process termination receipts. The separate offline
+follow-up below does not change that attempt.
+
+### Offline transport diagnostics after the fourth study
+
+A separate offline follow-up preserves an allowlisted `bridge_error` alongside
+the existing host failure classification and its originating admission receipt.
+The transport, controller and coordinator report the diagnostic without changing
+`failed_transport_accounting`, unknown usage, admission stopping or cleanup
+precedence. Unavailable or untrusted error text is not promoted to a cause;
+host diagnostic fields use `null`. Only the affected active slot receives the
+diagnostic, not the globally unrun slots. Canary failures have no active slot
+but retain their originating receipt.
+
+Each CLI invocation also has a private `call-*/process.json` receipt separating
+spawn/close observations, actual process exit code and signal, and locally
+requested termination. A request to send a signal is not proof of termination;
+stdout's result `exitCode` is not an OS process receipt. Missing or unacknowledged
+observations remain unknown. The receipt excludes prompts, command arguments,
+environment values and raw exception messages. Receipt-publication failure
+cannot turn into a successful response; it must preserve any earlier primary
+failure and report a safe secondary diagnostic explicitly.
+
+These are diagnostics, not a timeout remedy or a new evaluation: the 150-second
+deadline, two-second TERM-to-KILL escalation, bounded cleanup, no-retry policy,
+usage rules and work/memory protocols remain unchanged. Two seconds is not a
+guarantee of acknowledged process termination. After KILL, the bridge waits at
+most two further seconds for stdio close, within the existing response/cleanup
+bounds. If close remains unacknowledged, it records unknown observations and
+does not dispatch another queued call. The sealed v4 evidence and its published
+results are unchanged; this follow-up provides no new evidence of memory
+usefulness and does not authorize another live attempt.
 
 ## Third study: a bounded memory-mechanism contrast, not general usefulness
 

@@ -8,6 +8,31 @@ import { setTimeout as sleep } from "node:timers/promises";
 const MAX_PROMPT_BYTES = 65536;
 const MAX_EVENT_BYTES = 8 * 1024 * 1024;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
+const MODEL_TIMEOUT_MS = 150000;
+const KILL_GRACE_MS = 2000;
+const CLOSE_ACK_GRACE_MS = 2000;
+const PROCESS_ERRNOS = new Set([
+  "EACCES", "EAGAIN", "EBADF", "ECHILD", "EINTR", "EINVAL", "EIO", "EMFILE", "ENFILE",
+  "ENOENT", "ENOMEM", "ENOSPC", "ENOSYS", "ENOTDIR", "EPERM", "EPIPE", "ESRCH",
+]);
+const PROCESS_SIGNALS = new Set([
+  "SIGABRT", "SIGALRM", "SIGBUS", "SIGCHLD", "SIGCONT", "SIGEMT", "SIGFPE", "SIGHUP",
+  "SIGILL", "SIGINFO", "SIGINT", "SIGIO", "SIGIOT", "SIGKILL", "SIGPIPE", "SIGPOLL",
+  "SIGPROF", "SIGPWR", "SIGQUIT", "SIGSEGV", "SIGSTOP", "SIGSYS", "SIGTERM", "SIGTRAP",
+  "SIGTSTP", "SIGTTIN", "SIGTTOU", "SIGURG", "SIGUSR1", "SIGUSR2", "SIGVTALRM",
+  "SIGWINCH", "SIGXCPU", "SIGXFSZ",
+]);
+const COPILOT_ERROR_CODES = new Set([
+  "invalid_bridge_request", "invalid_private_bridge_file", "bridge_file_too_large",
+  "copilot_unsuccessful", "copilot_tool_use_forbidden", "copilot_model_or_tool_audit_failed",
+  "copilot_response_invalid", "copilot_usage_invalid", "copilot_timeout",
+  "copilot_output_limit", "copilot_interrupted", "copilot_transport_failed",
+  "copilot_process_receipt_failed", "copilot_process_io_failed", "copilot_close_unacknowledged",
+]);
+
+export function safeCopilotErrorCode(value) {
+  return typeof value === "string" && COPILOT_ERROR_CODES.has(value) ? value : null;
+}
 
 export function parseArguments(argv) {
   const fields = new Map();
@@ -125,18 +150,25 @@ async function readPrivate(file, maximum) {
   }
 }
 
-async function writeNew(file, value) {
+export async function writeNew(file, value) {
   const temporary = `${file}.writing`;
   const handle = await fs.open(temporary, "wx", 0o600);
+  let failure;
   try {
     await handle.writeFile(JSON.stringify(value) + "\n");
     await handle.sync();
-  } finally {
-    await handle.close();
+  } catch (error) {
+    failure = error;
   }
+  try { await handle.close(); }
+  catch (error) { failure ??= error; }
+  if (failure) throw failure;
   // link, unlike rename, never overwrites an existing response or prior run.
   await fs.link(temporary, file);
   await fs.unlink(temporary);
+  const directory = await fs.open(path.dirname(file), constants.O_RDONLY);
+  try { await directory.sync(); }
+  finally { await directory.close(); }
 }
 
 async function present(file) {
@@ -149,14 +181,154 @@ async function present(file) {
   }
 }
 
-let activeChild;
 let interrupted = false;
-async function invokeCopilot(config, callId, prompt) {
+const bridgeCancellation = new AbortController();
+
+function processObservation() {
+  return {
+    spawn_attempted: false, spawn_observed: false, pid: null,
+    process_error: null, process_error_after_spawn: null, process_error_count: 0,
+    exit_observed: false, exit_code: null, exit_signal: null,
+    close_observed: false, close_code: null, close_signal: null,
+    termination_requests: [], close_wait_expired: false,
+    stdout_bytes_observed: 0, stdout_bytes_retained: 0, elapsed_ms: 0,
+  };
+}
+
+const safeErrno = value => typeof value === "string" && PROCESS_ERRNOS.has(value) ? value : "process_error";
+const exitCode = value => Number.isSafeInteger(value) ? value : null;
+const exitSignal = value => value === null ? null : PROCESS_SIGNALS.has(value) ? value : "unknown_signal";
+
+// Injection is for offline tests only; production callers cannot change deadlines via CLI or environment.
+export function observeCopilotProcess(args, options, {
+  spawnProcess = spawn, timers = globalThis, now = () => performance.now(),
+  signal, failure = { code: null },
+} = {}) {
+  const observed = processObservation();
+  const started = now();
+  return new Promise((resolve) => {
+    let child;
+    let output = "";
+    let settled = false;
+    let stopping = false;
+    let overflow = false;
+    let modelTimer;
+    let killTimer;
+    let closeTimer;
+    const elapsed = () => Math.max(0, now() - started);
+    const latch = code => { failure.code ??= code; };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      for (const timer of [modelTimer, killTimer, closeTimer]) timers.clearTimeout(timer);
+      signal?.removeEventListener("abort", interrupt);
+      observed.elapsed_ms = elapsed();
+      resolve({ observed, output });
+    };
+    const requestSignal = requestedSignal => {
+      if (settled || !child || observed.exit_observed || observed.pid === null) return;
+      const request = { signal: requestedSignal, elapsed_ms: elapsed(), kill_return: null, error: null };
+      observed.termination_requests.push(request);
+      try {
+        const result = child.kill(requestedSignal);
+        request.kill_return = typeof result === "boolean" ? result : null;
+      } catch (error) {
+        request.error = safeErrno(error?.code);
+      }
+    };
+    const stop = code => {
+      if (settled) return;
+      latch(code);
+      if (stopping) return;
+      stopping = true;
+      // A successful kill() is only a delivery attempt, never an exit/close acknowledgement.
+      killTimer = timers.setTimeout(() => requestSignal("SIGKILL"), KILL_GRACE_MS);
+      closeTimer = timers.setTimeout(() => {
+        if (settled) return;
+        observed.close_wait_expired = true;
+        finish();
+        child?.stdout?.destroy();
+        child?.unref();
+      }, KILL_GRACE_MS + CLOSE_ACK_GRACE_MS);
+      requestSignal("SIGTERM");
+    };
+    const interrupt = () => stop("copilot_interrupted");
+    if (signal?.aborted) {
+      latch("copilot_interrupted");
+      finish();
+      return;
+    }
+    signal?.addEventListener("abort", interrupt, { once: true });
+    observed.spawn_attempted = true;
+    try {
+      child = spawnProcess("copilot", args, options);
+    } catch (error) {
+      observed.process_error = safeErrno(error?.code);
+      observed.process_error_after_spawn = false;
+      observed.process_error_count = 1;
+      latch("copilot_transport_failed");
+      finish();
+      return;
+    }
+    observed.pid = Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null;
+    modelTimer = timers.setTimeout(() => stop("copilot_timeout"), MODEL_TIMEOUT_MS);
+    child.on("spawn", () => {
+      if (settled) return;
+      observed.spawn_observed = true;
+      observed.pid = Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null;
+    });
+    child.on("error", error => {
+      if (settled) return;
+      observed.process_error_count += 1;
+      if (observed.process_error === null) {
+        observed.process_error = safeErrno(error?.code);
+        observed.process_error_after_spawn = observed.spawn_observed;
+      }
+      stop("copilot_transport_failed");
+    });
+    child.on("exit", (code, exit) => {
+      if (settled || observed.exit_observed) return;
+      observed.exit_observed = true;
+      observed.exit_code = exitCode(code);
+      observed.exit_signal = exitSignal(exit);
+      if (observed.exit_code !== 0 || observed.exit_signal !== null) stop("copilot_unsuccessful");
+    });
+    child.on("close", (code, closeSignal) => {
+      if (settled) return;
+      observed.close_observed = true;
+      observed.close_code = exitCode(code);
+      observed.close_signal = exitSignal(closeSignal);
+      if (!observed.spawn_observed || !observed.exit_observed || observed.exit_code !== 0
+        || observed.exit_signal !== null || observed.close_code !== 0 || observed.close_signal !== null) {
+        latch("copilot_unsuccessful");
+      }
+      finish();
+    });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("error", () => stop("copilot_process_io_failed"));
+    child.stdout.on("data", chunk => {
+      if (settled) return;
+      observed.stdout_bytes_observed += Buffer.byteLength(chunk);
+      if (overflow) return;
+      if (observed.stdout_bytes_observed > MAX_EVENT_BYTES) {
+        overflow = true;
+        stop("copilot_output_limit");
+      } else {
+        output += chunk;
+        observed.stdout_bytes_retained += Buffer.byteLength(chunk);
+      }
+    });
+  });
+}
+
+export async function invokeCopilot(config, callId, prompt, {
+  spawnProcess = spawn, timers = globalThis, now = () => performance.now(),
+  signal = bridgeCancellation.signal, fileSystem = fs, publishReceipt = writeNew,
+  diagnostic = code => console.error(code),
+} = {}) {
   const callDirectory = path.join(config.directory, `call-${callId}`);
-  await fs.mkdir(callDirectory, { mode: 0o700 });
+  await fileSystem.mkdir(callDirectory, { mode: 0o700 });
   const usageFile = path.join(callDirectory, "usage.json");
-  const stdoutFile = await fs.open(path.join(callDirectory, "events.jsonl"), "wx", 0o600);
-  const stderrFile = await fs.open(path.join(callDirectory, "stderr.log"), "wx", 0o600);
   const args = [
     "-C", callDirectory, "--model", config.model, "--reasoning-effort", config.reasoning_effort,
     "--no-custom-instructions", "--disable-builtin-mcps",
@@ -164,63 +336,99 @@ async function invokeCopilot(config, callId, prompt) {
     "--no-remote", "--no-remote-export", "--output-format", "json",
     "--usage-output-file", usageFile, "-p", prompt,
   ];
-  let output = "";
-  let bytes = 0;
-  let failed;
+  const failure = { code: null };
+  const interrupt = () => { failure.code ??= "copilot_interrupted"; };
+  signal?.addEventListener("abort", interrupt, { once: true });
+  if (signal?.aborted) interrupt();
+  const started = now();
+  let stdoutFile;
+  let stderrFile;
+  let result = { observed: processObservation(), output: "" };
+  const io = { stdout_flushed: false, stderr_flushed: false, stdout_closed: null, stderr_closed: null };
+  const secondary = [];
+  let reusable = true;
+  const recordFailure = code => {
+    if (failure.code !== null) {
+      secondary.push(code);
+      diagnostic(JSON.stringify({ format: "pgag-copilot-diagnostic-v1", call_id: callId,
+        primary_code: failure.code, secondary_code: code }));
+    } else {
+      failure.code = code;
+    }
+  };
   try {
-    const result = await new Promise((resolve, reject) => {
-      const child = spawn("copilot", args, {
+    try {
+      stdoutFile = await fileSystem.open(path.join(callDirectory, "events.jsonl"), "wx", 0o600);
+      stderrFile = await fileSystem.open(path.join(callDirectory, "stderr.log"), "wx", 0o600);
+      result = await observeCopilotProcess(args, {
         cwd: callDirectory, stdio: ["ignore", "pipe", stderrFile.fd],
         env: { ...process.env, COPILOT_ALLOW_ALL: "false" },
-      });
-      activeChild = child;
-      let killTimer;
-      const terminate = (reason) => {
-        failed ??= reason;
-        child.kill("SIGTERM");
-        killTimer ??= setTimeout(() => child.kill("SIGKILL"), 2000);
-      };
-      const timer = setTimeout(() => terminate("copilot_timeout"), 150000);
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        bytes += Buffer.byteLength(chunk);
-        if (bytes > MAX_EVENT_BYTES) {
-          terminate("copilot_output_limit");
-        } else {
-          output += chunk;
-        }
-      });
-      child.once("error", (error) => {
-        clearTimeout(timer);
-        clearTimeout(killTimer);
-        reject(error);
-      });
-      child.once("close", (code) => {
-        clearTimeout(timer);
-        clearTimeout(killTimer);
-        activeChild = undefined;
-        resolve(code);
-      });
-    });
-    await stdoutFile.writeFile(output);
-    await stdoutFile.sync();
-    if (interrupted) throw new Error("copilot_interrupted");
-    if (failed || result !== 0) throw new Error(failed ?? "copilot_unsuccessful");
-    const content = auditEvents(output, config.model, config.reasoning_effort);
+      }, { spawnProcess, timers, now, signal, failure });
+      if (result.observed.close_wait_expired) {
+        reusable = false;
+        recordFailure("copilot_close_unacknowledged");
+      }
+    } catch {
+      reusable = false;
+      recordFailure("copilot_process_io_failed");
+    }
+    for (const [name, handle] of [["stdout", stdoutFile], ["stderr", stderrFile]]) {
+      if (!handle) continue;
+      try {
+        if (name === "stdout") await handle.writeFile(result.output);
+        await handle.sync();
+        io[`${name}_flushed`] = true;
+      } catch {
+        reusable = false;
+        recordFailure("copilot_process_io_failed");
+      }
+      try {
+        await handle.close();
+        io[`${name}_closed`] = true;
+      } catch {
+        io[`${name}_closed`] = false;
+        reusable = false;
+        recordFailure("copilot_process_io_failed");
+      }
+    }
+    const receipt = {
+      format: "pgag-copilot-process-v1", call_id: callId,
+      observation_scope: "subprocess_and_output_cleanup_before_event_usage_validation",
+      ...result.observed, first_failure: failure.code, secondary_failures: secondary,
+      io, invocation_elapsed_ms: Math.max(0, now() - started),
+    };
+    try { await publishReceipt(path.join(callDirectory, "process.json"), receipt); }
+    catch {
+      reusable = false;
+      recordFailure("copilot_process_receipt_failed");
+    }
+    if (failure.code !== null) {
+      const error = new Error(failure.code);
+      error.bridge_reusable = reusable;
+      throw error;
+    }
+    const content = auditEvents(result.output, config.model, config.reasoning_effort);
     const usage = usageSummary(JSON.parse(await readPrivate(usageFile, MAX_EVENT_BYTES)), config.model);
+    if (failure.code !== null) throw new Error(failure.code);
     return { content, usage };
+  } catch (error) {
+    if (failure.code !== null) {
+      const primary = new Error(failure.code);
+      primary.bridge_reusable = reusable;
+      throw primary;
+    }
+    throw error;
   } finally {
-    await stdoutFile.close();
-    await stderrFile.close();
+    signal?.removeEventListener("abort", interrupt);
   }
 }
 
-export async function main(argv) {
+export async function main(argv, { invoke = invokeCopilot, versionProbe = spawnSync } = {}) {
   process.umask(0o077);
   const config = parseArguments(argv);
   await privateDirectory(config.directory);
   if ((await fs.readdir(config.directory)).length) throw new Error("new_bridge_directory_required");
-  const version = spawnSync("copilot", ["--version"], { encoding: "utf8", timeout: 10000 });
+  const version = versionProbe("copilot", ["--version"], { encoding: "utf8", timeout: 10000 });
   if (version.status !== 0) throw new Error("copilot_unavailable");
   const versionMatch = version.stdout.match(/GitHub Copilot CLI ([0-9]+\.[0-9]+\.[0-9]+)/);
   if (!versionMatch) throw new Error("copilot_version_unavailable");
@@ -233,7 +441,8 @@ export async function main(argv) {
   });
   let completed = 0;
   let errors = 0;
-  while (!interrupted && completed < config.max_calls) {
+  let reusable = true;
+  while (!interrupted && reusable && completed < config.max_calls) {
     if (await present(path.join(config.directory, "stop.json"))) break;
     const callId = String(completed + 1).padStart(6, "0");
     const requestFile = path.join(config.directory, "queue", `${callId}.request.json`);
@@ -247,15 +456,10 @@ export async function main(argv) {
     let error = null;
     try {
       const request = validateRequest(JSON.parse(await readPrivate(requestFile, 70000)), callId);
-      ({ content, usage } = await invokeCopilot(config, callId, request.prompt));
+      ({ content, usage } = await invoke(config, callId, request.prompt));
     } catch (failure) {
-      const safe = new Set([
-        "invalid_bridge_request", "invalid_private_bridge_file", "bridge_file_too_large",
-        "copilot_unsuccessful", "copilot_tool_use_forbidden", "copilot_model_or_tool_audit_failed",
-        "copilot_response_invalid", "copilot_usage_invalid", "copilot_timeout",
-        "copilot_output_limit", "copilot_interrupted",
-      ]);
-      error = safe.has(failure.message) ? failure.message : "copilot_transport_failed";
+      error = safeCopilotErrorCode(failure.message) ?? "copilot_transport_failed";
+      if (failure.bridge_reusable === false) reusable = false;
       errors += 1;
     }
     await writeNew(path.join(config.directory, "queue", `${callId}.response.json`), {
@@ -270,17 +474,14 @@ export async function main(argv) {
     automatic_retry: false, model_weights_revision_verified: false,
   });
   if (interrupted) process.exitCode = 130;
+  else if (!reusable) process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => {
       interrupted = true;
-      const child = activeChild;
-      if (child) {
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 2000).unref();
-      }
+      bridgeCancellation.abort();
     });
   }
   main(process.argv.slice(2)).catch(() => {

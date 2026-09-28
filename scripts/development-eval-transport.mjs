@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { safeCopilotErrorCode } from "./copilot-eval-bridge.mjs";
 import {
   ARMS, cleanupFailure, EvaluationError, exactKeys, parseJson, remainingMilliseconds, requireCondition, sha256,
   validateUsage,
@@ -163,6 +164,7 @@ export class CopilotTransport {
     let bridge;
     let admitted;
     let reportedUsage = null;
+    let bridgeError = null;
     try {
       bridge = await this.bridge(context.arm, { deadline, signal });
       requireCondition(!signal?.aborted && Date.now() < deadline, "model_admission_deadline");
@@ -182,10 +184,12 @@ export class CopilotTransport {
       requireCondition(response.format === "pgag-copilot-response-v1" && response.call_id === callId
         && response.model === this.model && response.reasoning_effort === this.effort,
       "model_response_identity_mismatch");
+      bridgeError = response.status === "error" ? safeCopilotErrorCode(response.error) : null;
       requireCondition(!signal?.aborted && Date.now() < deadline, "late_model_response");
       reportedUsage = response.usage;
       this.record({ kind: "model_response_received", receipt: admitted.receipt,
-        response_sha256: sha256(raw), status: response.status, error: response.error,
+        response_sha256: sha256(raw), status: response.status,
+        error: safeCopilotErrorCode(bridgeError),
         usage: response.usage, duration_seconds: response.duration_seconds });
       try { validateUsage(response.usage); }
       catch (error) {
@@ -202,8 +206,10 @@ export class CopilotTransport {
     } catch (error) {
       error.receipt_ref = admitted?.receipt ?? null;
       error.usage = reportedUsage;
+      error.bridge_error = safeCopilotErrorCode(bridgeError);
       this.record({ kind: "model_invocation_failed",
         receipt: admitted?.receipt ?? null, code: error.code ?? "model_transport_failed",
+        bridge_error: safeCopilotErrorCode(error.bridge_error),
         usage_unknown: admitted !== undefined && reportedUsage === null });
       if (admitted) this.ledger.stop();
       if (bridge || this.bridges.has(context.arm)) {

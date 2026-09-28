@@ -56,8 +56,34 @@ handoffの2境界とPGの1境界は完了し、もう1つのPG境界が中断し
 [課題pack](../examples/development-memory-pilot-v4-pack.json)と
 [反実仮想witness](../examples/development-memory-pilot-v4-history-witnesses.json)は、
 事前登録した原本とbyte単位で同じ内容を公開し、以後は未見課題として扱いません。
-過去の結果は変更・統合していません。元のbridgeエラーの保持とCLI processの終了証跡追加は、
-今後の診断改善案であり、今回の試行を変更するものではありません。
+過去の結果は変更・統合していません。結果公開時には、元のbridgeエラーの保持と
+CLI processの終了証跡追加を診断改善案としました。以下の別のオフライン変更も、
+今回の試行を変更するものではありません。
+
+### 第4回の後に行う、実評価とは別のtransport診断改善
+
+別のオフライン変更では、許可リストにある`bridge_error`を、元のhost側の失敗分類と
+原因となった呼び出しreceiptに併記します。transport・controller・coordinatorで
+診断情報を保持しますが、`failed_transport_accounting`、使用量不明、呼び出し停止、
+cleanup時の元の失敗の優先順位は変更しません。不明・未検証のエラー文字列を原因として
+採用せず、hostの診断fieldは`null`とします。slotへの付与は影響を受けた実行中slotだけで、
+一括中止による未実行slotには付与しません。実行中slotのないcanary失敗でも、
+原因となった呼び出しreceiptは保持します。
+
+CLI呼び出しごとの非公開`call-*/process.json`には、spawn・closeの観測、
+実processの終了code・signal、ローカルから要求した終了操作を区別して記録します。
+signal送信の要求は終了確認ではなく、stdoutの`exitCode`もOSの終了証跡ではありません。
+未観測・終了未確認は不明のままにします。prompt、command引数、環境変数の値、
+例外の生メッセージは含めません。receiptの保存失敗を応答成功にしてはならず、
+先に起きた失敗がある場合はそれを保持し、安全な二次診断を明示します。
+
+これは診断改善であり、timeoutの解消や新しい実評価ではありません。
+150秒制限、TERMからKILLへの2秒の猶予、上限付きcleanup、再試行なしの方針、
+使用量の扱い、work・memoryのprotocolは変更しません。2秒はprocess終了確認の
+保証ではありません。KILL後のstdio closeの待機も追加で最大2秒とし、
+既存の応答・cleanup上限内に収めます。closeが未確認なら観測結果を不明として記録し、
+次の待機中の呼び出しは実行しません。封印済みの第4回の証跡・公開結果は変更せず、
+記憶の有用性に関する新しい根拠や、別の実評価の実行許可にはなりません。
 
 ## 第3回: 限定条件で差を観測、一般的な有用性の証明ではない
 

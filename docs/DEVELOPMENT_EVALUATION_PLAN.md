@@ -1,6 +1,10 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **the separately preregistered v3 run and post-terminal audits are complete**.
+Status: **the single v4 attempt and its post-terminal audits are published;
+the historical-memory comparison remains incomplete**. The separate offline
+transport-diagnostics follow-up below does not resume that attempt.
+
+The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
 3/6 successful slots for no-memory and 5/6 for each memory pipeline, with
 history-only checks of 8/16, 12/16 and 14/16 respectively. PG delivered only
@@ -18,6 +22,38 @@ The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
 separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
+
+## Offline transport diagnostics after the fourth study
+
+The v4 audit identified an observed bridge timeout hidden behind the downstream
+accounting failure, and a missing CLI child-process termination receipt. The
+reviewed follow-up addresses those two diagnostic gaps only:
+
+- Preserve a strictly allowlisted, nullable `bridge_error` with its originating
+  receipt at host transport/controller/coordinator boundaries and terminal
+  summary. Re-sanitize at serialization boundaries; do not forward arbitrary
+  provider text or override the existing failure classification or unknown
+  usage. An active-slot diagnostic is not copied to globally unrun slots.
+- Persist a private, non-overwriting `pgag-copilot-process-v1` receipt in
+  `call-*/process.json`, with file and parent-directory synchronization.
+  Separate observed spawn/close/exit/signal state from requested TERM/KILL
+  actions. Neither stdout's exit field nor successful signal delivery proves
+  acknowledged termination; missing observations remain unknown.
+- Share one first-failure latch and termination/escalation path across timeout,
+  output overflow and outer interruption. Preserve the 150-second deadline,
+  two-second escalation and existing response/cleanup bounds. Wait at most two
+  further seconds for close acknowledgement after KILL; an unacknowledged close
+  remains unknown and prevents another queued dispatch. Diagnostic-write
+  failures are explicit and cannot yield success or silently mask an earlier
+  failure.
+
+Verification uses synthetic fake providers and local fake child processes,
+including an integrated host failure path and the existing baked-runtime IPC
+and fake-flow fixtures. No real provider call, task reexecution, dependency,
+retry, deadline extension or work/memory/IPC protocol change is part of this
+follow-up. Historical public artifacts and sealed private evidence remain
+immutable. Implementation and final-review approval do not authorize a new
+live comparison.
 
 ## Fourth study: fresh tasks on the fixed revised pipelines
 
