@@ -1,10 +1,10 @@
 # Mini-swe-agent development-memory evaluation
 
-Status: **v5 is privately qualified and independently audited; no v5 live
-calls have been dispatched**. Its content-free preregistration does not itself
-authorize dispatch. The single v4 attempt and its post-terminal audits are
-published, but its historical-memory comparison remains incomplete. The
-separate offline transport-diagnostics follow-up does not resume that attempt.
+Status: **the single v5 attempt and both post-terminal audits are complete;
+the historical-memory comparison remains incomplete**. The
+[v5 result](../examples/development-memory-pilot-v5-result.json) preserves the
+interruption without retry or rescoring. Neither v4 nor v5 reached later
+memory-eligible work; no sixth study is automatically authorized.
 
 The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
@@ -25,7 +25,62 @@ separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
 
+## Fifth study: interrupted before historical-memory evaluation
+
+The preregistration was published in `5ca0965` before the single authorized
+attempt on frozen source `ddb154e`. Supervisor versions 001 and 002 were
+rejected before dispatch; version 003 was accepted after correcting cleanup
+and recipe-publication races and removing the earlier external run cutoff.
+These were offline wrapper corrections, not live retries. The frozen
+evaluator's internal run clock remained authoritative.
+
+The attempt ended at invocation 27, a PG `memory_decision` after the second
+project's M1 submission. The bridge's 150-second deadline interrupted an
+incomplete stream with 179 reasoning-delta events and no completed answer
+or model usage. `copilot_timeout` propagated alongside the fail-closed
+`failed_transport_accounting`. The process receipt records one TERM request,
+actual CLI exit zero and acknowledged close, with no KILL. Process exit zero
+does not establish model success or complete accounting; provider-side cause
+and interrupted-call usage remain unknown.
+
+Four M1 slots passed all 32 graded checks. A fifth valid submission was
+captured but remains ungraded: its eight checks are unknown, not failures.
+Thirteen slots and 104 checks were globally unrun. All M2/M3 work and all
+24 scheduled history-only arm checks were unrun. The two unique historical
+decisions remain correlated across cases; no memory-transfer or superiority
+comparison was completed.
+
+Two handoffs retained 2,017 and 1,813 UTF-8 bytes. The first PG boundary
+committed and read back six assertions; the interrupted boundary recorded
+its source observation but no validated decision or retained assertion state.
+Neither retained handoff nor the assertions reached later work.
+There were 27 admissions, 26 reported API requests and one unknown call.
+The exact known model-level nano-AIU subtotal is
+`248534250000.0000035`; the raw top-level sum and original JS subtotal are
+`248534250000`. Full-attempt usage is unknown, and raw top-level zero on the
+cancelled call does not resolve it.
+
+All 308 terminal files were sealed before unblinding. Separate outcome/memory
+and accounting/process audits found no unresolved reconciliation defects.
+Five outcome-auditor tooling failures remain disclosed and preserved.
+All forty owned containers have absence receipts and three bridges have
+acknowledged exits. Exact supervisor-start, preflight-duration, final-inventory
+and seal timestamps were not retained; the result does not invent them.
+The byte-identical [pack](../examples/development-memory-pilot-v5-pack.json)
+and [witnesses](../examples/development-memory-pilot-v5-history-witnesses.json)
+are released with the audited result.
+
+The repeated interruption is a reliability limitation of this configured
+whole pipeline under the fixed budgets, not evidence of PostgreSQL storage
+failure or a completed memory comparison. Diagnostics improved what could
+be observed, not completion reliability. Any further live study requires
+a new explicit method go/no-go; there is no automatic retry, sixth pack,
+deadline relaxation, retrospective grade or pooled result.
+
 ## Fifth study: preregistration under the unchanged bounded policy
+
+The following records the pre-live preparation and gates; the single
+attempt's outcome is reported above, not substituted into the preregistration.
 
 The [v5 preregistration](../examples/development-memory-pilot-v5-manifest.json)
 binds the actual independently audited registry: 48 cases, eight at each

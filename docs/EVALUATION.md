@@ -2,28 +2,76 @@
 
 [日本語](EVALUATION-jp.md)
 
-## Fifth study: independently qualified, no live results yet
+## Fifth study: another interruption before historical-memory evaluation
 
 The [v5 preregistration](../examples/development-memory-pilot-v5-manifest.json)
-freezes a fresh, independently authored and audited two-project comparison
-on source `ddb154e`: eighteen slots and 144 scheduled case observations.
-Its 48 cases include eight history-only cases repeating **two primary
-decisions**, plus forty memory-independent cases. The independent audit
-passed with disclosed limitations and zero blockers; all 102 original
-and 24 fresh witness executions have retained guest-absence evidence.
+was published in `5ca0965` before one separately authorized attempt on frozen
+source `ddb154e`, with GPT-6 Astra/high and unchanged budgets. The
+[audited result](../examples/development-memory-pilot-v5-result.json)
+preserves **four graded M1 successes, one valid captured-but-ungraded
+submission, and thirteen globally unrun slots**.
 
-Two tooling corrections, one schema correction, failed packaging and
-reconciliation attempts, and auditor tooling stops remain recorded.
-The audit covers retained materialized evidence, not every host command
-or unrecorded action; semantic information absence remains a judgment.
-See the [plan](DEVELOPMENT_EVALUATION_PLAN.md#fifth-study-preregistration-under-the-unchanged-bounded-policy)
-and manifest for the exact qualifications and limitations.
-No v5 evaluation model calls have been dispatched. Public byte verification
-and separate final approval are still required. The existing deadlines,
-budgets and no-retry policy remain unchanged; diagnostics do not establish
-provider readiness. Another interruption requires a new go/no-go decision,
-not automatic task generation until success. No prior result is replaced
-or pooled, and no memory benefit is established by offline qualification.
+| Arm | Successful slots / 6 | Captured, ungraded unknown | Unrun slots |
+|---|---:|---:|---:|
+| No memory | 1 | 0 | 5 |
+| Fixed handoff | 2 | 0 | 4 |
+| pg_agmemory | 1 | 1 | 4 |
+
+Of 144 scheduled checks, **32 passed, eight are ungraded unknown and 104
+were unrun**. There were no graded candidate failures. All M2/M3 work and
+all 24 scheduled history-only arm checks were unrun. The eight underlying
+history-only cases repeat **two primary decisions**, four cases each.
+This is not a completed memory-transfer, usefulness or superiority comparison.
+
+Invocation **27**, PG `memory_decision` after the second project's M1
+submission, reached the **150-second bridge deadline mid-stream**.
+There were 179 reasoning-delta events but no completed assistant answer or
+model usage. The original `copilot_timeout` propagated with its receipt
+alongside `failed_transport_accounting`. The new process receipt records
+one local TERM request, actual CLI exit **0**, and acknowledged close;
+no KILL or close-wait expiry occurred. Neither actual exit zero nor CLI
+stdout's exit-zero field establishes successful model completion or
+complete billing. Provider-side cause and interrupted-call usage are unknown.
+The CLI's `user_initiated` cancellation label is not evidence of human rescue.
+
+Two handoffs retained **2,017 / 1,813 UTF-8 bytes**, respectively four of
+four and four of five proposed items. The omitted item was a current tool
+reminder, not a historical decision. The first PG boundary committed and
+read back six assertions: one decision-bearing, three other current task
+requirements and two scoped current tool reminders. The interrupted PG
+boundary recorded its source observation but no validated proposal or
+retained assertion state. Nothing reached later work. Native verification
+reads are not later retrieval; their serialized context-pack byte counts
+are distinct from plain work/handoff text bytes.
+
+There were **27 admissions: six canary, seventeen work, two handoff and two
+memory-decision; zero planning**. Twenty-six calls reported API usage; one
+remains unknown. The exact known model-level nano-AIU subtotal is
+`248534250000.0000035`; the exact raw top-level sum and original JS subtotal
+are `248534250000`, a difference of `-0.0000035` for original minus model.
+The interrupted call's raw top-level zero is not accounted usage.
+Full-attempt totals remain unknown; no dollar conversion is claimed.
+The evaluator reports 723.05 seconds, not a separately measured total
+supervisor duration.
+
+All 308 terminal files were sealed before unblinding. The outcome/memory
+audit reconciled 2,748 successful matrix/supplement assertions; the separate
+accounting/process audit reconciled 4,592 checks, with no unresolved defects.
+These are not independent experimental observations. Five outcome-auditor
+tooling failures and the pre-live author/audit corrections remain disclosed.
+All forty owned containers have absence receipts and all three bridges
+acknowledged exit. Supervisor-start, individual preflight-duration,
+final-inventory and seal timestamps were not retained; no exact values
+are reconstructed for them.
+
+The [pack](../examples/development-memory-pilot-v5-pack.json) and
+[witnesses](../examples/development-memory-pilot-v5-history-witnesses.json)
+are byte-identical to the qualified originals. Earlier results and the
+preregistration remain unchanged. This repeated interruption limits the
+configured whole pipeline's reliability; it does not establish a PostgreSQL
+storage failure or a memory-quality result. Diagnostics improved
+observability, not completion. **No retry or sixth study is authorized
+automatically**; another live attempt requires a new method go/no-go.
 
 ## Fourth study: interrupted before historical-memory evaluation
 
