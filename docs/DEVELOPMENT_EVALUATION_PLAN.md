@@ -10,6 +10,129 @@ separately. The protocol revision below is a distinct offline follow-up; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
 
+## Third study: information-restricted memory mechanism
+
+**Privately qualified; live dispatch still requires final review and publication
+of the [v3 preregistration](../examples/development-memory-pilot-v3-manifest.json).**
+This is a separate study, not a retry or replacement of either published pilot.
+The v2 no-memory ceiling showed that historical origin alone does not establish
+that a requirement is missing from the current source and brief. The new
+question is whether a bounded memory pipeline transfers an earlier operational
+decision when later visible information does not determine that decision.
+This deliberately information-restricted task design is not a comparison of
+reasoning ability with equal information, nor representative evidence of
+general development-work usefulness.
+
+Freeze framework and prompts at
+`8e15286d2f310720788bc3cf76be2faac01121b8`, with the separately versioned
+`development-maintenance-v2` behavior below. Source
+[CI run 36361362855](https://github.com/rioriost/pg_agmemory/actions/runs/36361362855)
+passed all eight jobs. An independent Astra/high author creates two new
+Python/standard-library projects with three milestones each, after method
+approval by Astra/xhigh. Preserve the existing eighteen-slot schedule,
+GPT-6 Astra/high across all model roles, isolation, scoring, deadlines,
+318-invocation coordinator budget including six canaries, and 2,048-byte
+memory-delivery cap. Use clean source-bound runtime and execution images.
+There are no runtime, prompt, API, dependency or budget changes for this study.
+
+Tasks must require actual development work and include ordinary functional
+and validation controls at every milestone. Earlier visible agreements must
+be motivated operational choices, not arbitrary hidden tokens. Later source
+and instructions must neither encode nor contradict the historical choice.
+In particular, memory cannot override an authoritative implemented rule.
+At least two checks in each M2 and M3 must qualify as history-only before
+exposure. Record shared decision/correction identities: eight checks do not
+necessarily represent eight distinct memory obligations.
+
+**Pre-exposure qualification.** Retain the existing original-reference,
+canonical-new-work and designated-defective-implementation qualification.
+Additionally, every history-only check requires a private, hash-bound
+counterfactual witness:
+
+1. Two semantically consistent earlier histories specify different
+   operational rules. The target's current brief, canonical files, paths,
+   entry point, no-memory prompt projection and acceptance input are
+   identical, but the required outputs differ structurally.
+2. Bind both histories, their exact earlier-visible quotes, both references,
+   both expected values, the frozen source/image and shared decision identity.
+   The alternative reference must implement its operational rule generally,
+   not substitute an answer for one test. Explain why both histories remain
+   consistent with current information and unchanged earlier requirements.
+   This semantic certification is an auditable author attestation, not a
+   fact proved by matching hashes or searching source text.
+3. The original reference passes its original expected value. Reuse that
+   positive receipt only with identical reference, input, invocation contract
+   and execution-image bindings. Execute the alternative positive and both
+   cross-negatives in fresh isolated guests. Each cross-negative must exit
+   successfully and emit a well-formed value equal to its own history's
+   expectation and unequal to the other's. A crash, timeout, malformed output
+   or generic failed status does not certify ambiguity.
+
+Separate alternative histories per witness are allowed; they are not another
+live arm. Witnesses and semantic audits remain outside live-visible packaging.
+They establish non-identifiability across the certified histories, not an
+inability to guess, absence of model prior knowledge, or absence of provider
+hidden state. Preserve all authoring corrections and qualification attempts;
+never select or revise tasks against evaluation-model responses.
+
+**Frozen analysis.** Define four disjoint case strata before exposure:
+certified `history-only` with an earlier-visible origin; `history-available`
+with an origin but no history-only classification; `memory-independent`
+controls without a historical origin; and all remaining unclassified checks.
+Other tags, including `milestone-work`, may overlap these strata. Uncertified
+checks remain in overall scoring but cannot satisfy the history-only gate.
+Bind exact selectors, case sets, decision links and per-milestone denominators
+in the preregistration; never reclassify after exposure.
+
+Keep all-checks submission success as the primary measure, with six planned
+slots per arm and M1 separate from M2-M3. Report history-only scheduled,
+evaluated, passed, failed, unknown and unrun checks, including matched-arm
+contrasts. Retain failed maintenance and valid-empty memory as assigned-arm
+outcomes. For each relevant decision, distinguish earlier exposure, presence
+in the actual maintenance input, retention, selection/packing, work-prompt
+delivery and artifact outcome. Contract compliance alone is not successful
+information transfer; relevant delivered text plus a correct answer does not
+independently prove causal use. A PG-versus-handoff contrast concerns the
+complete configured pipelines, not storage technology alone. An observed
+earlier agent mistake is required for any repeated-mistake claim; hidden
+grades and a historical requirement alone are insufficient.
+
+The coordinator remains blind to task contents until terminal results are
+sealed. Source/image identities, qualification and witness receipts, exact
+strata, schedule and analysis conditions must be preregistered and receive
+Astra/xhigh dispatch approval before one live attempt. Preserve every first
+failure and all usage, including unsuccessful maintenance. Release the task
+pack and witness relationships after terminal freeze. Do not pool the three
+studies, infer statistical superiority from two project histories, or
+attribute differences from v2 solely to the changed maintenance protocol:
+both the tasks and protocol differ.
+
+The qualified pack has **69 checks**: 16 certified history-only checks covering
+eight primary decisions, four history-available checks, 49 memory-independent
+controls, and no unclassified checks. Each M2/M3 has four certified checks.
+The original qualification contains 136 zero-exit, well-formed results:
+69 reference passes, 41 canonical-new-work mismatches and 26 designated-mutant
+mismatches. Sixteen witnesses add 48 executions and reuse 16 original positive
+receipts; all 32 cross-comparisons establish own-value correctness and opposite
+expectation disagreement. All 184 created guests have removal receipts.
+These are no-model qualification results, not evidence of useful live memory.
+
+A user-requested pause cancelled the original author after qualification but
+before its final handoff. An independent Astra/high auditor reconciled the
+preserved receipts and semantic attestations without modifying the 48 sealed
+files or rerunning candidates. The retained authoring record contains one
+pre-execution correction and its excerpt, but not a complete pre-correction
+generator/pack snapshot; unrecorded draft edits are unknown. The preregistration
+discloses this provenance limit rather than claiming a complete drafting
+history. The correction changed generated alternative-history brief prose for
+semantic consistency before the first retained generation; it was not merely
+an annotation. No executable implementation, inputs, expected outputs,
+classification or original requirements changed. Exact replacement fragments
+and the instruction are preserved; qualified pack/witness bytes match the
+first retained generated snapshot. Semantic consistency and absence of
+prior arm-specific tuning remain
+auditable attestations, not guarantees proved by the execution matrix.
+
 ## Post-pilot maintenance protocol: offline revision
 
 Current development-evaluation code uses **`development-maintenance-v2`**,

@@ -1,0 +1,491 @@
+{
+  "format": "pgag-development-preregistration-v1",
+  "attempt": "development-memory-pilot-v3",
+  "status_at_publication": "privately_qualified_before_first_v3_live_dispatch",
+  "evaluation_model_calls_dispatched_at_publication": 0,
+  "framework_source": "8e15286d2f310720788bc3cf76be2faac01121b8",
+  "required_source_ci_run": 36361362855,
+  "source_ci_successful_jobs": 8,
+  "execution_source_policy": "Use the clean frozen framework checkout, not this manifest's publication commit.",
+  "memory_maintenance_protocol": "development-maintenance-v2",
+  "memory_state_format": "development-memory-state-v2",
+  "question": "Can a bounded external-memory pipeline transfer previously visible operational decisions not determined by current visible code and instructions?",
+  "prior_attempts": [
+    {
+      "result": "development-memory-pilot-v1-result.json",
+      "result_sha256": "4129e64c03d32d5f6d476cc33b5eb28824feb311866db542b9b1807c2022c8b5",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    },
+    {
+      "result": "development-memory-pilot-v2-result.json",
+      "result_sha256": "fef84aa65927eb24318f895334d9208bd41f67d6234eb022f827a144e1f985cd",
+      "preserved_not_resumed_or_replaced": true,
+      "results_pooled_with_this_attempt": false,
+      "previous_pack_reused": false
+    }
+  ],
+  "pack": {
+    "format": "pgag-development-pack-v1",
+    "canonical_sha256": "d1589bab889d661f2684834bd24e33d7d8cc471229bab6a5011d7eb40468d1e7",
+    "file_sha256": "0cd6f031ad77c481edef73a45e28c2ef08d267462e869225e9477244a07a2804",
+    "projects": 2,
+    "milestones": 6,
+    "acceptance_cases": 69,
+    "certified_history_only_cases": 16,
+    "history_available_cases": 4,
+    "memory_independent_cases": 49,
+    "unclassified_cases": 0,
+    "new_work_cases": 41,
+    "contents_private_until_terminal_outcomes_frozen": true
+  },
+  "authoring": {
+    "method": "Separate GPT-6 Astra/high author after framework and prompt freeze; independent Astra/high metadata/semantic handoff after original author cancellation at user-requested pause.",
+    "origin": "new_original_synthetic_development_tasks",
+    "author_was_not_memory_adapter_implementer": true,
+    "parent_received_only_hashes_counts_and_qualification_status": true,
+    "semantic_audit_status": "affirmed_with_attestation_limits",
+    "semantic_certification_is_author_attestation_not_machine_proof": true,
+    "historical_origin_and_current_information_absence_audited": true,
+    "semantic_separation_from_prior_packs_audited": true,
+    "training_novelty_guaranteed": false,
+    "recorded_authoring_attempts": 1,
+    "recorded_preexecution_corrections": 1,
+    "correction_characterization": "Before first retained generation, a generator substitution changed alternative-history brief prose for semantic consistency; not annotation-only. No executable implementation, inputs, expected outputs, classification or original requirements changed.",
+    "correction_evidence": "Exact before/after replacement fragments and replacement instruction preserved, but no complete pre-correction snapshot or full-file diff. Qualified pack/witness bytes match the first retained generated snapshot; no recorded post-generation correction or qualification retry.",
+    "unrecorded_draft_edits_count": null,
+    "pre_correction_complete_snapshot_preserved": false,
+    "pre_correction_excerpt_preserved": true,
+    "complete_drafting_history_claimed": false,
+    "no_prior_arm_specific_tuning": "preserved_author_attestation; no contrary evidence in audited records; not independently proven",
+    "authoring_history_limits": "Counts describe retained records, not a claim that every drafting keystroke or unrecorded historical action is known. One preexecution correction record is not a second generated pack or a qualification retry.",
+    "authoring_evidence": [
+      {
+        "file": "authoring-attempts.json",
+        "sha256": "94e8de4a2e94461e784678eab721fbe3dc42f869b0f0d17986bd433e4bb5cd4d"
+      },
+      {
+        "file": "preexecution-correction-001.json",
+        "sha256": "ac03fe760491400f15b299ea92eb3f3c625707d82a07c008e9a0c6cbbff2c628"
+      },
+      {
+        "file": "qualification-attempts.json",
+        "sha256": "a7256bec5b64966ffe53cbbf7268bb492931068f875041e2cce02a3b3c945a06"
+      },
+      {
+        "file": "witness-attempts.json",
+        "sha256": "296d7029c5bdb0090a67275ade7d95e602a515aa2519b691c275d6f4c8c2c0e9"
+      },
+      {
+        "file": "reproducibility-001.json",
+        "sha256": "b4f8a536931cce35610369c37f3b88e46644a70ce9675d48a8821b9dc6952af6"
+      },
+      {
+        "file": "semantic-separation.json",
+        "sha256": "0e73b1fc161a86313cf4bb90dd1300080af8104e0d8dfc73ad50aaa8f66c0709"
+      }
+    ],
+    "resumed_handoff_report_sha256": "bc859ed4c26eec43edfefdad933b0bf7f89af14de547ca0e09c6f792c92b56ea",
+    "semantic_audit_sha256": "fcff29681bec60f11c41867bd8ea9a9a9fa86d9c32ea21cfa58eef49823f25cd",
+    "receipt_audit_sha256": "b11b771d6561df93944200144026a1fe0fb8cd6f4fe96ff645756e2ff96281e5",
+    "pause_preserved_files": 48,
+    "pause_evidence_index_sha256": "a2f4f5c12939aa41062a11eeadbe5c66c926bffbd5cf01ed5fbec763a63378ae",
+    "pack_retired_if_exposure_drives_framework_or_prompt_tuning": true
+  },
+  "qualification": {
+    "source": "8e15286d2f310720788bc3cf76be2faac01121b8",
+    "receipt_file_sha256": "1480ab484e4563a7e0bd7d7f1ef9c9dd4a57b59764b7d4fde6a8b4ea04ad3f88",
+    "recorded_attempts": 1,
+    "failed_recorded_attempts": 0,
+    "matrix_rows": 136,
+    "reference_passes": 69,
+    "canonical_new_work_failures": 41,
+    "designated_defective_implementations": 16,
+    "designated_defective_failures": 26,
+    "all_rows_zero_exit_well_formed": true,
+    "mismatches_not_crashes_or_unknowns": true,
+    "evaluation_model_calls": 0,
+    "guests_created": 136,
+    "guests_removed": 136,
+    "remaining_owned_guests": 0,
+    "parent_hash_matrix_category_and_schedule_verification_passed": true
+  },
+  "information_separation_qualification": {
+    "format": "pgag-development-history-witnesses-v1",
+    "witness_file_sha256": "1c4b29ea1dccc163455acddc57c524188737b841e37abd789906942983481368",
+    "witness_canonical_sha256": "73a807b0085b310b1d5548b9f3a9224be4b8bf1405378f8219a36886a1a4b9ba",
+    "receipt_file_sha256": "eb4899795e6a241461a0810aa0250c94081a2e70e66b441f8e34177d4859e3d2",
+    "runner_sha256": "b56201bbe552e92092e2be5c0f01da617c812341f82de9a83306a17e2849f9e1",
+    "recorded_attempts": 1,
+    "failed_recorded_attempts": 0,
+    "certified_cases": 16,
+    "distinct_primary_history_only_decisions": 8,
+    "all_history_decisions": 10,
+    "reused_original_positives": 16,
+    "additional_guest_executions": 48,
+    "alternative_positive_passes": 16,
+    "own_value_cross_validations": 32,
+    "total_positive_receipts_including_reuse": 64,
+    "guests_created": 48,
+    "guests_removed": 48,
+    "remaining_owned_guests": 0,
+    "cross_negative_rule": "Both cross-negatives must zero-exit with well-formed own-history expected output, structurally unequal to the opposite expectation. Crash, timeout, malformed output or generic failure does not certify disagreement.",
+    "identity_rule": "Bind source, image, input, references, exact earlier-origin quotes and both histories to identical target-current source/brief/paths/entry point/no-memory projection; different expected values.",
+    "semantic_rule": "Alternative references implement general operational rules. Both histories must remain consistent with current authoritative information and unchanged earlier requirements; private semantic certification is author-attested.",
+    "alternative_histories_per_case_allowed": true,
+    "alternatives_exposed_to_live_agent": false,
+    "no_impossibility_of_guessing_or_provider_hidden_state_claim": true
+  },
+  "agent": {
+    "implementation": "unmodified_minisweagent.agents.default.DefaultAgent",
+    "version": "2.4.6",
+    "upstream_commit": "a83fcae82d2a08f0ee0c688f9d137b3566c097f8",
+    "installed_module_sha256": "e8ef8aa365942d739c2ec5cb0879f60f377d2dc2de8ec670aaedf3bafb45a4c2"
+  },
+  "inference": {
+    "transport": "existing_tool_free_fresh_call_copilot_cli_bridge",
+    "model": "gpt-6-astra",
+    "reasoning_effort": "high",
+    "cli_version_observed_before_run": "1.0.88",
+    "same_model_for_work_handoff_capture_and_planning": true,
+    "automatic_retry_or_model_fallback": false,
+    "provider_internal_retry_absence_verified": false,
+    "provider_hidden_state_absence_proven": false,
+    "managed_weight_revision_verified": false,
+    "monetary_cost_verified": false,
+    "engineering_authoring_and_posthoc_analysis_usage_excluded_from_evaluation_counters": true,
+    "additional_model_judge": false,
+    "nano_aiu_contract": "Nullable finite nonnegative integer or fractional number; preserve without rounding, string coercion or substitution."
+  },
+  "comparison": {
+    "arms": [
+      "no_memory",
+      "handoff",
+      "pg_agmemory"
+    ],
+    "slots_per_arm": 6,
+    "total_slots": 18,
+    "scheduled_acceptance_checks_across_arms": 207,
+    "analysis_units": "Six matched milestones nested within two project histories; slots and acceptance checks are not independent experimental samples.",
+    "project_index": "One-based project order in the frozen pack",
+    "canonical_restart_at_every_milestone": true,
+    "previous_arm_submission_carried_forward": false,
+    "hidden_grades_enter_work_or_memory_prompts": false,
+    "retention": "reference_scoped_review_only_pending_exclusions",
+    "native_forget_or_physical_purge_authorized": false,
+    "schedule": [
+      {
+        "ordinal": 1,
+        "project_index": 1,
+        "milestone": 1,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 2,
+        "project_index": 1,
+        "milestone": 1,
+        "arm": "handoff"
+      },
+      {
+        "ordinal": 3,
+        "project_index": 1,
+        "milestone": 1,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 4,
+        "project_index": 2,
+        "milestone": 1,
+        "arm": "handoff"
+      },
+      {
+        "ordinal": 5,
+        "project_index": 2,
+        "milestone": 1,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 6,
+        "project_index": 2,
+        "milestone": 1,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 7,
+        "project_index": 1,
+        "milestone": 2,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 8,
+        "project_index": 1,
+        "milestone": 2,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 9,
+        "project_index": 1,
+        "milestone": 2,
+        "arm": "handoff"
+      },
+      {
+        "ordinal": 10,
+        "project_index": 2,
+        "milestone": 2,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 11,
+        "project_index": 2,
+        "milestone": 2,
+        "arm": "handoff"
+      },
+      {
+        "ordinal": 12,
+        "project_index": 2,
+        "milestone": 2,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 13,
+        "project_index": 1,
+        "milestone": 3,
+        "arm": "handoff"
+      },
+      {
+        "ordinal": 14,
+        "project_index": 1,
+        "milestone": 3,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 15,
+        "project_index": 1,
+        "milestone": 3,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 16,
+        "project_index": 2,
+        "milestone": 3,
+        "arm": "pg_agmemory"
+      },
+      {
+        "ordinal": 17,
+        "project_index": 2,
+        "milestone": 3,
+        "arm": "no_memory"
+      },
+      {
+        "ordinal": 18,
+        "project_index": 2,
+        "milestone": 3,
+        "arm": "handoff"
+      }
+    ],
+    "scheduled_history_only_checks_across_arms": 48,
+    "scheduled_history_available_checks_across_arms": 12,
+    "scheduled_memory_independent_checks_across_arms": 147,
+    "distinct_history_only_decision_arm_pairs": 24,
+    "distinct_all_history_decision_arm_pairs": 30,
+    "per_milestone_history_decision_arm_appearances": 36
+  },
+  "analysis": {
+    "primary": "Valid submission passing every frozen acceptance check; six planned slots per arm.",
+    "milestone_groups": "Report M1 separately from memory-eligible M2-M3, including four planned M2-M3 slots per arm.",
+    "history_only_selector": "history_origin != null AND history-only tag AND successful frozen witness certification",
+    "history_available_selector": "history_origin != null AND history-available tag AND not history-only",
+    "evaluation_control_selector": "history_origin == null AND memory-independent tag",
+    "unclassified_selector": "history_origin == null AND none of the three classification tags",
+    "evaluation_strata_pairwise_disjoint": true,
+    "other_tags_may_overlap": true,
+    "frozen_case_and_decision_hashes": {
+      "case_metadata_canonical_sha256": "8532bcf71dce09ee5b1260ca1fd63d451d66034e505dc6677253b97cfc83a44f",
+      "decision_links_canonical_sha256": "1bba3d6d5178e31827fa1635bbcb5cf2e377d5a1c9267d044fda0e736eddb453",
+      "history_only_decision_catalog_canonical_sha256": "82c3c687361bcba0131949cb922519cf656ff5e59afef255ba22788a8dcd77f1",
+      "certified_case_strata_canonical_sha256": "191ce0027e8e3e6b079edd7bd5ba064bd4dd99bdc375da5c3c85c0a9af58f4ca",
+      "certified_decision_groups_canonical_sha256": "c2bd2165ce896b517e48c022e457d8356fda8dc1734cce34ec4ba8fd96f91f94",
+      "selector_definitions_raw_sha256": "564d00017f57cebfa79e5487399c4bc25c539f8136ad72e4fdff1b0a3ef48226",
+      "case_sets_raw_sha256": "92ac7174329778d1d7ea65e1435252080fac09bbabcadd505dc117c043f46f47",
+      "decision_metadata_raw_sha256": "1c051324cb2d52115c59afa91777464eb615e4c7cb29da1545f5ece05f8ffadb",
+      "metadata_freeze_raw_sha256": "0047a29168c4954127c10b8e352547efe068ee2c639efab27b5093f13ab39597"
+    },
+    "per_milestone": [
+      {
+        "project_index": 1,
+        "milestone": 1,
+        "cases": 10,
+        "history_only": 0,
+        "history_available": 0,
+        "memory_independent": 10,
+        "unclassified": 0,
+        "milestone_work": 4,
+        "history_only_milestone_work": 0,
+        "memory_independent_milestone_work": 4,
+        "history_only_decisions": 0,
+        "all_history_decisions": 0,
+        "designated_mutants": 2,
+        "designated_mutant_checks": 3
+      },
+      {
+        "project_index": 1,
+        "milestone": 2,
+        "cases": 12,
+        "history_only": 4,
+        "history_available": 1,
+        "memory_independent": 7,
+        "unclassified": 0,
+        "milestone_work": 8,
+        "history_only_milestone_work": 4,
+        "memory_independent_milestone_work": 4,
+        "history_only_decisions": 2,
+        "all_history_decisions": 3,
+        "designated_mutants": 3,
+        "designated_mutant_checks": 5
+      },
+      {
+        "project_index": 1,
+        "milestone": 3,
+        "cases": 13,
+        "history_only": 4,
+        "history_available": 1,
+        "memory_independent": 8,
+        "unclassified": 0,
+        "milestone_work": 8,
+        "history_only_milestone_work": 4,
+        "memory_independent_milestone_work": 4,
+        "history_only_decisions": 2,
+        "all_history_decisions": 3,
+        "designated_mutants": 3,
+        "designated_mutant_checks": 5
+      },
+      {
+        "project_index": 2,
+        "milestone": 1,
+        "cases": 10,
+        "history_only": 0,
+        "history_available": 0,
+        "memory_independent": 10,
+        "unclassified": 0,
+        "milestone_work": 5,
+        "history_only_milestone_work": 0,
+        "memory_independent_milestone_work": 5,
+        "history_only_decisions": 0,
+        "all_history_decisions": 0,
+        "designated_mutants": 2,
+        "designated_mutant_checks": 3
+      },
+      {
+        "project_index": 2,
+        "milestone": 2,
+        "cases": 12,
+        "history_only": 4,
+        "history_available": 1,
+        "memory_independent": 7,
+        "unclassified": 0,
+        "milestone_work": 8,
+        "history_only_milestone_work": 4,
+        "memory_independent_milestone_work": 4,
+        "history_only_decisions": 2,
+        "all_history_decisions": 3,
+        "designated_mutants": 3,
+        "designated_mutant_checks": 5
+      },
+      {
+        "project_index": 2,
+        "milestone": 3,
+        "cases": 12,
+        "history_only": 4,
+        "history_available": 1,
+        "memory_independent": 7,
+        "unclassified": 0,
+        "milestone_work": 8,
+        "history_only_milestone_work": 4,
+        "memory_independent_milestone_work": 4,
+        "history_only_decisions": 2,
+        "all_history_decisions": 3,
+        "designated_mutants": 3,
+        "designated_mutant_checks": 5
+      }
+    ],
+    "incomplete_outcomes": "Show all planned slots and scheduled/evaluated check denominators; separate submitted success, candidate failure, infrastructure unknown, dependent unrun and other unrun. Do not score unknown/unrun checks as incorrect candidate answers.",
+    "history_only_outcomes": "Report scheduled/evaluated/passed/failed/unknown/unrun checks and matched-arm contrasts without removing maintenance failures or valid-empty memory.",
+    "empty_valid_memory": "Retain as assigned-arm outcome, without exclusion or no-memory substitution.",
+    "historical_requirement_violation": "Failed frozen history check is a violation of an earlier visible requirement, not automatically an observed repeated agent mistake.",
+    "observed_error_recurrence": "No actual repeated-mistake claim without identifiable earlier session-visible evidence that the same agent mistake was observed. Hidden grades and origin quotes alone are insufficient.",
+    "decision_evidence_chain": "Distinguish earlier exposure, presence in actual maintenance input, retention, retrieval/packing selection, actual work-prompt delivery, and artifact outcome for each relevant decision. Record shared obligations rather than treating every check as independent.",
+    "memory_validity": "Existing provenance/reference/scope/revision/pending-exclusion and actual UTF-8 byte checks; not an assumption of semantic truth.",
+    "maintenance_contracts": "Report raw response and proposed/delivered byte counts, item indices and omissions; original/effective provenance spans; successful Native writes separately from validation; include failed/empty boundaries. Zero forgetting proposals means forgetting quality remains untested.",
+    "observed_contrasts": "A memory-arm pass paired with no-memory failure is descriptive contrast. Relevant delivered text does not independently prove causal use; PG versus handoff compares entire configured pipelines, not storage technology alone.",
+    "semantic_explanations": "Post-hoc descriptive analysis, not an extra model judge or revised acceptance score.",
+    "usage": "Report admitted invocations, reported API requests and financial metrics separately by arm and phase, including failed/uncertain admissions and maintenance. Separate canaries and shared startup; preserve unknown usage.",
+    "timing": "Use observable work/retrieval/capture/maintenance/grading intervals; disclose overlap, unobserved intervals and shared-host limitations.",
+    "financial_audit": "Retain original aggregate plus separately labeled exact decimal sums of raw model-level and top-level nano-AIU JSON lexemes; do not sum overlapping token categories or invent dollar prices."
+  },
+  "limits": {
+    "work_invocations_per_slot": 16,
+    "work_invocations_total": 288,
+    "handoff_invocations": 4,
+    "memory_decision_invocations": 4,
+    "memory_planning_invocations": 16,
+    "isolation_canary_invocations": 6,
+    "coordinator_dispatched_invocations": 318,
+    "bridge_invocations_per_arm": 160,
+    "provider_api_request_hard_ceiling_claimed": false,
+    "reported_api_requests_required_per_successful_invocation": 1,
+    "memory_delivery_utf8_bytes": 2048,
+    "boundary_transcript_utf8_bytes": 24576,
+    "model_seconds": 150,
+    "response_wait_seconds": 180,
+    "work_seconds": 900,
+    "run_seconds": 10800,
+    "cleanup_grace_seconds": 15,
+    "command_seconds": 30,
+    "candidate_case_seconds": 5,
+    "captured_output_bytes": 16384,
+    "delivered_observation_bytes": 2048,
+    "artifact_files": 32,
+    "artifact_bytes": 262144
+  },
+  "isolation": {
+    "fresh_owned_database_and_native_scopes": true,
+    "fresh_per_arm_bridges_and_ipc": true,
+    "fresh_controller_agent_work_home_and_config_per_session": true,
+    "networkless_unprivileged_execution_and_grading_guests": true,
+    "host_authentication_home_recreated_per_call": false,
+    "canaries_support_but_do_not_prove_absence_of_provider_hidden_state": true
+  },
+  "images": {
+    "runtime": "pg-agmemory-development-runtime@sha256:4083db41985beec397f86a6da0d99d5f24e1402e4d9b4f12c34cc225c003134f",
+    "execution": "pg-agmemory-development-execution@sha256:917e92ba6478c8b34a99a0b660951ca200ab24ab53fb7f151f8a4745b4b3c42a"
+  },
+  "source_file_sha256": {
+    "uv.lock": "e4ead99829841d1a9fd33d359ac0a7ebb1c197b3ac31b236dadc59f89b9be1fc",
+    "docs/DEVELOPMENT_EVALUATION_PLAN.md": "00ac74b656f5808947a4518b0a5c7abf196f574fea335d39908c0d800945f2c0",
+    "src/pg_agmemory/development_agent.py": "15ff33515932a5afb3c23522a268466eeacbbb836edd06f6a207120b4e846e00",
+    "src/pg_agmemory/development_memory.py": "8e02c6fc6f9e43e0c1f694e722408d2e73c9c1ed278ab34837ab61ec5e1bf810",
+    "src/pg_agmemory/development_evaluation.py": "c0eeabc8687da74bfd16b7c31cbe6975ec16d52fb184eca15d2ac97b3e57b173",
+    "src/pg_agmemory/bounded_recall.py": "c6ed8cbf0361b3a3a879912d2f1060e7ac1434c42bdb959a3295f12bce9661b4",
+    "scripts/evaluate-development-memory.mjs": "150e7573a28e89b53d6b52547332c05f09cdb0f507253e194c9056c4162ba99b",
+    "scripts/development-eval-controller.mjs": "76a7ac48f48fb2c62e8996a951c608a08a197c880d25a9366c681b75f038d077",
+    "scripts/development-eval-protocol.mjs": "dfb6684a9d98ecdf8d5b6eff90df67178dfac6442164f626ebe7c38258867638",
+    "scripts/development-eval-transport.mjs": "ad8c7c45c5bbeb67e3035051481bc4fb0250dfd6baf072c45c20eee92d73d19b",
+    "scripts/development-eval-pack.mjs": "acd5a2b76e28031b280d591f19b045ff2c9cfe36b2b797b7dc0d11f909c4c290",
+    "scripts/development-eval-guest.py": "87fa5fc8beadc2ba4f7bfd27a12752df1916bfb058293858b7b377722a9f1400",
+    "scripts/copilot-eval-bridge.mjs": "8d45c82cbbd5cb0333f9cbfc4c25efbfc0a8d22c07cd448eb2a061de30b44cb5"
+  },
+  "interpretation": {
+    "first_failures_timeouts_unknowns_and_unrun_slots_preserved": true,
+    "subsequent_diagnostics_replace_first_outcomes": false,
+    "scope": "information_restricted_stage_gated_memory_mechanism_probe",
+    "equal_information_reasoning_comparison": false,
+    "continuous_agent_owned_branch_evaluation": false,
+    "general_real_work_usefulness_established": false,
+    "statistical_superiority_or_generalization_claimed": false,
+    "production_qualified": false,
+    "cross_study_attribution": "Both tasks and maintenance protocol differ from v2. Do not pool studies or attribute between-study differences solely to the protocol correction.",
+    "post_terminal_release": "Release the byte-identical pack and witness material/relationships after terminal freeze with hashes and explicit disclosure of any necessary redactions or transformations. No unreported changed bytes.",
+    "single_attempt_no_replacement_for_adverse_outcomes": true
+  }
+}
