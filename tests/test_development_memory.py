@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from pg_agmemory import development_memory
 from pg_agmemory.bounded_recall import BoundedRecallError
 from pg_agmemory.development_memory import (
     FACT_PREFIX,
@@ -252,7 +253,8 @@ def workflow(bound, *, native=None, model=None, saved=None, session=1, emit=None
 
 
 @pytest.mark.parametrize("protocol", [
-    None, True, 2, "", "development-maintenance-v1", "development-maintenance-v2 ",
+    None, True, 2, "", "development-maintenance-v1", "development-maintenance-v2",
+    "development-maintenance-v2 ", "development-maintenance-v3 ",
 ])
 @pytest.mark.parametrize("arm", ["no_memory", "handoff", "pg_agmemory"])
 def test_maintenance_protocol_rejects_before_callbacks_or_native(protocol, arm):
@@ -285,7 +287,7 @@ def test_maintenance_protocol_has_no_constructor_default():
     }
     with pytest.raises(TypeError, match="maintenance_protocol"):
         DevelopmentMemory(binding(), **arguments)
-    assert MAINTENANCE_PROTOCOL == "development-maintenance-v2"
+    assert MAINTENANCE_PROTOCOL == "development-maintenance-v3"
 
 
 @pytest.mark.parametrize("policy", [
@@ -465,6 +467,83 @@ def test_handoff_boundary_is_fresh_direct_single_use_and_preserves_receipt(items
         asyncio.run(value.maintain(transcript(), boundary_id="b2", keys=None))
 
 
+def test_maintenance_v3_prompts_distinguish_operational_observations_from_assumptions():
+    handoff = " ".join(development_memory._HANDOFF_PROMPT.split())
+    pg = " ".join(development_memory._DECISION_PROMPT.split())
+    for prompt in (handoff, pg):
+        for rule in (
+            "task constraints/corrections", "scoped observed operational failures",
+            "limitations and actually verified workarounds",
+            "Distinguish observations from untested proposals and assumptions",
+            "do not upgrade a proposed workaround to a verified one",
+            "not a universal tool guarantee",
+        ):
+            assert rule in prompt
+    for rule in (
+        "Reconsider the previous note at every boundary",
+        "Carry forward still-relevant observed warnings",
+        "even if they are not repeated in the current transcript",
+        "Drop obsolete, contradicted or lower-priority items",
+        "same fixed budget", "No category is reserved", "no minimum item count",
+        "host does not automatically pin warnings",
+        "longest ordered whole-item prefix", "All proposed items must be valid",
+        "Only the packed prefix survives",
+    ):
+        assert rule in handoff
+    for rule in (
+        "without duplicating them", "unmentioned facts remain retained",
+        "inventory for comparison, not as provenance for any new or revised fact",
+        "Cite only CURRENT transcript evidence, never inventory text",
+        "Total current assertions including pending <=12",
+        "Omitted facts remain retained",
+    ):
+        assert rule in pg
+    assert set(MemoryState.model_fields) == {
+        "format", "binding", "completed_boundaries", "last_boundary_id", "note", "assertions",
+    }
+
+
+def test_scripted_two_boundary_handoff_carries_warning_and_drops_contradicted_warning():
+    warning = "In the observed guest, apply_patch failed with exit 127: command not found."
+    obsolete = "The workspace currently rejects writes with PermissionError."
+    constraint = "Preserve the existing JSON output keys."
+    verified = "In this session, python with pathlib completed the edit and read-back check."
+    first_source = transcript("\n".join((warning, obsolete, constraint)))
+    second_source = transcript(
+        "Correction: the workspace write restriction was removed.\n" + verified,
+    )
+    bound = binding("handoff")
+    first_model = ScriptedModel([json.dumps({"items": [warning, obsolete, constraint]})])
+    first = asyncio.run(workflow(bound, model=first_model).maintain(
+        first_source, boundary_id="operations-1", keys=None,
+    ))
+    first_snapshot = first.state.model_dump_json()
+
+    def next_note(phase, prompt, planning_round):
+        data = json.loads(prompt[len(development_memory._HANDOFF_PROMPT):])
+        assert data == {"previous_note": first.state.note, "transcript": second_source.text}
+        assert warning in data["previous_note"] and warning not in data["transcript"]
+        assert obsolete in data["previous_note"]
+        return json.dumps({"items": [warning, verified, constraint]})
+
+    # Scripted choices prove carriage and replacement, not model quality or guaranteed retention.
+    second_model = ScriptedModel([next_note])
+    events = []
+    second = asyncio.run(workflow(
+        bound, model=second_model, saved=first.state, session=2, emit=events.append,
+    ).maintain(second_source, boundary_id="operations-2", keys=None))
+    assert first.state.model_dump_json() == first_snapshot
+    assert second.state.note == "\n\n".join((warning, verified, constraint))
+    assert obsolete not in second.state.note and len(second.state.note.encode()) <= 2048
+    assert second.state.completed_boundaries == 2
+    assert second.state.format == "development-memory-state-v2" and second.state.assertions == ()
+    assert len(first_model.calls) == len(second_model.calls) == 1
+    packing = next(event["data"] for event in events if event["kind"] == "memory_handoff_packing")
+    assert packing["included_indices"] == [0, 1, 2] and packing["omitted_indices"] == []
+    delivery = asyncio.run(workflow(bound, saved=second.state, session=3).deliver("Current brief"))
+    assert delivery.text == second.state.note
+
+
 @pytest.mark.parametrize("items,included,proposed_bytes", [
     (["a" * 1023, "b" * 1023], 2, 2048),
     (["a" * 1023, "b" * 1024], 1, 2049),
@@ -616,6 +695,69 @@ def test_initial_pg_maintenance_observes_exact_visible_text_and_publishes_only_r
                for read in native.reads)
     assert events[-1]["kind"] == "memory_retention"
     assert result.destructive_calls == 0
+
+
+def test_scripted_pg_operational_facts_use_current_evidence_without_invented_verification():
+    warning = "In this guest, apply_patch returned exit 127: command not found."
+    verified = "In this session, python with pathlib wrote the file and read-back matched."
+    proposed = "A sed-based edit was suggested but was not executed or verified."
+    source = transcript("\n".join((warning, verified, proposed)))
+    bound = binding()
+    existing = fact("Preserve the existing JSON output keys.")
+    saved = state(bound, [existing])
+    native = FakeNative([existing])
+
+    def choose_operational_facts(phase, prompt, planning_round):
+        data = json.loads(prompt[len(development_memory._DECISION_PROMPT):])
+        assert phase == "memory_decision" and planning_round is None
+        assert data["transcript"] == source.text
+        assert [entry["content"] for entry in data["inventory"]["active"]] == [existing.content]
+        return decision(
+            create=[proposal(text, source.text) for text in (warning, verified, proposed)],
+        )
+
+    # Conforming scripted proposals do not establish automatic semantic entailment checking.
+    model = ScriptedModel([choose_operational_facts])
+    result = asyncio.run(workflow(
+        bound, native=native, saved=saved, session=2, model=model,
+    ).maintain(source, boundary_id="operations-2", keys=keys("operations")))
+    assert [operation for operation, _, _ in native.writes] == [
+        "observe", "remember", "remember", "remember",
+    ]
+    remembered = [request for operation, request, _ in native.writes if operation == "remember"]
+    assert [request.value for request in remembered] == [warning, verified, proposed]
+    for request in remembered:
+        assert request.scope_id == bound.scope_id
+        assert request.evidence[0].memory_id == result.observation_ref.memory_id
+        assert request.evidence[0].quote == request.value
+        assert request.evidence[0].quote in source.text
+    assert existing.memory_id in {entry.memory_id for entry in result.retained_refs}
+    assert native.items[existing.memory_id] == existing
+    assert len(result.created_refs) == 3 and len(result.state.assertions) == 4
+    assert result.revisions == result.pending_refs == ()
+    assert result.destructive_calls == 0 and len(model.calls) == 1
+
+
+def test_scripted_pg_unmentioned_operational_warning_stays_retained_without_duplicate():
+    warning = fact("In the previous guest session, apply_patch was not found.")
+    bound = binding()
+    native = FakeNative([warning])
+    saved = state(bound, [warning])
+    source = transcript("The current correction preserves the existing output keys.")
+    model = ScriptedModel([decision(create=[proposal(source.text, source.text)])])
+    result = asyncio.run(workflow(
+        bound, native=native, saved=saved, session=2, model=model,
+    ).maintain(source, boundary_id="correction-2", keys=keys("correction")))
+    assert "apply_patch" not in source.text and warning.content in model.calls[0][1]
+    assert [entry.value for operation, entry, _ in native.writes if operation == "remember"] == [
+        source.text,
+    ]
+    assert result.retained_refs == (
+        CurrentReference(memory_id=warning.memory_id, revision=warning.revision),
+        result.created_refs[0],
+    )
+    assert native.items[warning.memory_id] == warning
+    assert len(result.state.assertions) == 2 and result.revisions == ()
 
 
 @pytest.mark.parametrize("padding", list(

@@ -9,6 +9,7 @@ import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles } from "./development-eval-pack.mjs";
 import {
   EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, PROTOCOL, RETRIEVAL_POLICY, sha256,
+  WORK_PROTOCOL,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
 
@@ -48,6 +49,7 @@ function controllerResult(operations, overrides = {}) {
   const refs = models.map((row) => row.result.receipt_ref).filter((ref) => ref !== null);
   return {
     protocol: PROTOCOL, session_id: "unit-session", mode: "work",
+    work_protocol: WORK_PROTOCOL,
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: null,
     memory_retrieval_policy: RETRIEVAL_POLICY,
     slot: { project_id: "toy-a", milestone: 1, arm: "no_memory" },
@@ -66,15 +68,17 @@ function repliesFor(operations) {
 
 test("unit: maintenance protocol preflight is required for every mode and initial arm", () => {
   assert.equal(PROTOCOL, "pgag-development-controller-v1");
-  assert.equal(MAINTENANCE_PROTOCOL, "development-maintenance-v2");
+  assert.equal(MAINTENANCE_PROTOCOL, "development-maintenance-v3");
   for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
-    for (const invalid of [undefined, null, false, 2, "", "development-maintenance-v1"]) {
+    for (const invalid of [undefined, null, false, 2, "",
+      "development-maintenance-v1", "development-maintenance-v2"]) {
       let callbacks = 0;
       const ledger = new InvocationLedger({
         record: () => { callbacks += 1; }, runId: "test-run", model: "gpt-6-astra", effort: "high",
       });
       const config = {
         protocol: PROTOCOL, mode, session_id: "unit-session",
+        work_protocol: WORK_PROTOCOL,
         slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: null,
         maintenance_protocol: MAINTENANCE_PROTOCOL,
         memory_retrieval_policy: RETRIEVAL_POLICY,
@@ -101,6 +105,7 @@ test("unit: old or missing state versions cannot enter a v2 host controller", ()
       });
       assert.throws(() => new ControllerSession({
         config: { protocol: PROTOCOL, memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+          work_protocol: WORK_PROTOCOL,
           memory_retrieval_policy: RETRIEVAL_POLICY,
           mode, slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: state },
         transport: { ledger }, infrastructure: {}, guest: null,
@@ -123,6 +128,7 @@ test("unit: retrieval policy is explicit before any callback in every initial ar
       });
       const config = {
         protocol: PROTOCOL, mode, session_id: "unit-session",
+        work_protocol: WORK_PROTOCOL,
         slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: null,
         memory_maintenance_protocol: MAINTENANCE_PROTOCOL, retrieval_policy: RETRIEVAL_POLICY,
       };
@@ -131,6 +137,31 @@ test("unit: retrieval policy is explicit before any callback in every initial ar
         config, transport: { ledger, invoke: forbidden }, infrastructure: { bearer: forbidden },
         guest: null, record: forbidden, runner: forbidden, runDeadline: Date.now() + 60000,
       }), { code: "invalid_memory_retrieval_policy" });
+      assert.equal(ledger.ordinal, 0);
+      assert.equal(ledger.stopped, true);
+    }
+  }
+});
+
+test("unit: work identity rejects every initial arm and mode before any callback", () => {
+  assert.equal(WORK_PROTOCOL, "development-work-v2");
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const invalid of [undefined, null, false, 2, "", "development-work-v1"]) {
+      const forbidden = () => assert.fail("No model, Native, guest or controller callback allowed");
+      const ledger = new InvocationLedger({
+        record: forbidden, runId: "test-run", model: "gpt-6-astra", effort: "high",
+      });
+      const config = {
+        protocol: PROTOCOL, mode, slot: { project_id: "toy-a", milestone: 1, arm },
+        memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+        memory_retrieval_policy: RETRIEVAL_POLICY, memory_state: null,
+      };
+      if (invalid !== undefined) config.work_protocol = invalid;
+      assert.throws(() => new ControllerSession({
+        config, transport: { ledger, invoke: forbidden }, infrastructure: { bearer: forbidden },
+        guest: { execute: forbidden }, record: forbidden, runner: forbidden,
+        runDeadline: Date.now() + 60000,
+      }), { code: "invalid_work_protocol" });
       assert.equal(ledger.ordinal, 0);
       assert.equal(ledger.stopped, true);
     }
@@ -304,9 +335,11 @@ async function unitSession(t, options = {}) {
       this.owned.delete(name);
     },
   };
+  let executions = 0;
   const guest = {
     closed: false,
     async execute() {
+      executions += 1;
       if (options.executeError) {
         this.closed = true;
         throw options.executeError;
@@ -358,6 +391,7 @@ async function unitSession(t, options = {}) {
     protocol: PROTOCOL, run_id: "test-run", session_id: "unit-session", mode: "work",
     memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: state, memory_binding: binding,
     memory_retrieval_policy: RETRIEVAL_POLICY,
+    work_protocol: WORK_PROTOCOL,
     slot,
     model: { model: "gpt-6-astra", reasoning_effort: "high" },
     ...options.config,
@@ -418,6 +452,7 @@ async function unitSession(t, options = {}) {
     if (!options.omitStarted) await event("controller_started", {
       memory_maintenance_protocol: config.memory_maintenance_protocol,
       memory_retrieval_policy: config.memory_retrieval_policy,
+      work_protocol: config.work_protocol,
       ...options.started,
     });
     if (options.memoryEvent) await event("memory_event", options.memoryEvent);
@@ -449,7 +484,7 @@ async function unitSession(t, options = {}) {
   };
   return {
     session, transport, infrastructure, guest, config, runner, records, cleanup, published,
-    calls: () => calls, launches: () => launches,
+    calls: () => calls, launches: () => launches, executions: () => executions,
   };
 }
 
@@ -469,22 +504,34 @@ test("unit: changed configuration is fatal before any controller or model launch
   }
 });
 
-test("unit: mutated retrieval config is fatal before launch or active model dispatch", async (t) => {
+test("unit: all mutated identities are fatal before launch or active dispatch", async (t) => {
   for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
-    for (const policy of [undefined, "development-retrieval-v1"]) for (const active of [false, true]) {
-      const mutate = (config) => {
-        if (policy === undefined) delete config.memory_retrieval_policy;
-        else config.memory_retrieval_policy = policy;
-      };
-      const fixture = await unitSession(t, {
-        config: { mode, slot: { project_id: "toy-a", milestone: 1, arm } },
-        afterStarted: active ? mutate : undefined,
-      });
-      if (!active) mutate(fixture.config);
-      await assert.rejects(fixture.session.run(), { code: "invalid_memory_retrieval_policy" });
-      assert.equal(fixture.launches(), active ? 1 : 0);
-      assert.equal(fixture.calls(), 0);
-      assert.equal(fixture.transport.ledger.stopped, true);
+    for (const [field, old, identity, code] of [
+      ["work_protocol", "development-work-v1", WORK_PROTOCOL, "invalid_work_protocol"],
+      ["memory_retrieval_policy", "development-retrieval-v1", RETRIEVAL_POLICY,
+        "invalid_memory_retrieval_policy"],
+      ["memory_maintenance_protocol", "development-maintenance-v2", MAINTENANCE_PROTOCOL,
+        "invalid_memory_maintenance_protocol"],
+    ]) {
+      for (const policy of [undefined, old]) for (const active of [false, true]) {
+        const mutate = (config) => {
+          if (policy === undefined) delete config[field];
+          else config[field] = policy;
+        };
+        const fixture = await unitSession(t, {
+          config: { mode, slot: { project_id: "toy-a", milestone: 1, arm } },
+          afterStarted: active ? mutate : undefined,
+          requests: [request(1, "execute")],
+        });
+        if (!active) mutate(fixture.config);
+        await assert.rejects(fixture.session.run(), { code });
+        assert.equal(fixture.launches(), active ? 1 : 0);
+        assert.equal(fixture.calls(), 0);
+        assert.equal(fixture.executions(), 0);
+        assert.equal(fixture.transport.ledger.stopped, true);
+        fixture.config[field] = identity;
+        assert.throws(() => fixture.session.assertActive(), { code });
+      }
     }
   }
 });
@@ -509,6 +556,7 @@ test("unit: controller startup must bind the maintenance identity before dispatc
     { omitStarted: true },
     { started: { memory_maintenance_protocol: undefined } },
     { started: { memory_maintenance_protocol: "development-maintenance-v1" } },
+    { started: { memory_maintenance_protocol: "development-maintenance-v2" } },
   ]) {
     const fixture = await unitSession(t, options);
     await assert.rejects(fixture.session.run(), { code: "controller_maintenance_protocol" });
@@ -518,10 +566,50 @@ test("unit: controller startup must bind the maintenance identity before dispatc
   }
 });
 
+test("unit: nested memory audits require maintenance v3 even after a valid startup", async (t) => {
+  for (const protocol of [undefined, "development-maintenance-v1", "development-maintenance-v2"]) {
+    const fixture = await unitSession(t, {
+      memoryEvent: { kind: "memory_delivery", phase: "deliver", status: "completed",
+        data: { memory_maintenance_protocol: protocol, memory_retrieval_policy: RETRIEVAL_POLICY } },
+    });
+    await assert.rejects(fixture.session.run(), { code: "controller_maintenance_protocol" });
+    assert.equal(fixture.calls(), 0);
+    assert.equal(fixture.executions(), 0);
+    assert.equal(fixture.transport.ledger.stopped, true);
+  }
+});
+
+test("unit: startup must bind work identity before model or guest dispatch", async (t) => {
+  for (const protocol of [undefined, "development-work-v1"]) {
+    const fixture = await unitSession(t, { started: { work_protocol: protocol } });
+    await assert.rejects(fixture.session.run(), { code: "controller_work_protocol" });
+    assert.equal(fixture.calls(), 0);
+    assert.equal(fixture.executions(), 0);
+    assert.equal(fixture.published.length, 0);
+    assert.equal(fixture.transport.ledger.stopped, true);
+  }
+});
+
+test("unit: launch and result audits carry all three bound identities", async (t) => {
+  const fixture = await unitSession(t);
+  const result = await fixture.session.run();
+  const audit = fixture.records.filter((row) =>
+    ["controller_launched", "controller_result"].includes(row.kind));
+  assert.equal(audit.length, 2);
+  for (const row of [...audit, result]) {
+    assert.equal(row.work_protocol, WORK_PROTOCOL);
+    assert.equal(row.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    assert.equal(row.memory_retrieval_policy, RETRIEVAL_POLICY);
+  }
+});
+
 test("unit: result identity cannot drop the version or reintroduce v1 state", async (t) => {
   for (const change of [
+    { work_protocol: undefined },
+    { work_protocol: "development-work-v1" },
     { memory_maintenance_protocol: undefined },
     { memory_maintenance_protocol: "development-maintenance-v1" },
+    { memory_maintenance_protocol: "development-maintenance-v2" },
     { memory_retrieval_policy: undefined },
     { memory_retrieval_policy: "development-retrieval-v1" },
     { memory_state: { format: "development-memory-state-v1" } },
@@ -529,7 +617,8 @@ test("unit: result identity cannot drop the version or reintroduce v1 state", as
   ]) {
     const fixture = await unitSession(t, { result: (value) => ({ ...value, ...change }) });
     await assert.rejects(fixture.session.run(), {
-      code: change.memory_state || change.boundary_result
+      code: Object.hasOwn(change, "work_protocol") ? "invalid_work_protocol"
+        : change.memory_state || change.boundary_result
         ? "invalid_memory_state" : Object.hasOwn(change, "memory_retrieval_policy")
           ? "invalid_memory_retrieval_policy" : "invalid_memory_maintenance_protocol",
     });
@@ -543,6 +632,7 @@ test("unit: result identity cannot drop the version or reintroduce v1 state", as
 test("unit: memory identity and state integrity errors are fatal in every mode and arm", async (t) => {
   for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
     for (const reason of [
+      "invalid_work_protocol", "controller_work_protocol",
       "invalid_memory_maintenance_protocol", "invalid_memory_retrieval_policy", "invalid_memory_state",
     ]) {
       const fixture = await unitSession(t, {
@@ -929,13 +1019,33 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
   const packedHandoff = handoffItems.slice(0, 2).join("\n\n");
   assert.ok(handoffItems.every((item) => Buffer.byteLength(item) <= 2048));
   assert.ok(Buffer.byteLength(packedHandoff) <= 2048 && Buffer.byteLength(proposedHandoff) > 2048);
+  const firstEdit = "python - <<'PY'\nfrom pathlib import Path\n"
+    + "p=Path('main.py')\ns=p.read_text()\nassert s == 'print(0)\\n'\n"
+    + "p.write_text(s.replace('print(0)', 'print(1)'))\nprint('first edit complete')\nPY";
+  const secondEdit = "python - <<'PY'\nfrom pathlib import Path\n"
+    + "p=Path('main.py')\ns=p.read_text()\nassert s == 'print(1)\\n'\n"
+    + "p.write_text(s.replace('print(1)', 'print(2)'))\nprint('second edit complete')\nPY";
+  const workActions = [
+    { command: "apply_patch --help" }, { command: firstEdit }, { command: secondEdit },
+    { final: "Synthetic protocol submission." },
+  ].map((value) => JSON.stringify(value));
+  assert.ok([firstEdit, secondEdit].every((value) => Buffer.byteLength(value) < 1024));
+  const workCalls = new Map();
   const transport = {
     ledger,
     async invoke(context) {
       const admission = ledger.reserve(context);
+      const workIndex = workCalls.get(context.arm) ?? 0;
+      if (context.phase === "work") {
+        assert.ok(workIndex < workActions.length, "No automatic retry or extra model turn");
+        if (workIndex === 1) assert.match(context.prompt, /apply_patch.*not found/s);
+        if (workIndex === 2) assert.match(context.prompt, /first edit complete/);
+        if (workIndex === 3) assert.match(context.prompt, /second edit complete/);
+        workCalls.set(context.arm, workIndex + 1);
+      }
       const text = context.phase === "handoff" ? handoffReply
         : context.phase === "memory_decision" ? '{"create":[],"revise":[],"propose_forget":[]}'
-          : '{"final":"Synthetic protocol submission."}';
+          : workActions[workIndex];
       return {
         text, receipt_ref: admission.receipt,
         usage: context.phase === "work" ? { ...usage, nano_aiu: nanoAiu } : usage,
@@ -944,10 +1054,13 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
     },
   };
   const model = { model: "gpt-6-astra", reasoning_effort: "high" };
-  const raw = Buffer.from("print(0)\n");
-  const files = [{ path: "main.py", size: raw.length, sha256: sha256(raw),
-    content_base64: raw.toString("base64") }];
-  const seed = artifactFromFiles(files, ["main.py"]);
+  const allowedPaths = ["main.py", "sentinel.txt"];
+  const files = Object.entries({ "main.py": "print(0)\n", "sentinel.txt": "unchanged sentinel\n" })
+    .map(([path, content]) => {
+      const raw = Buffer.from(content);
+      return { path, size: raw.length, sha256: sha256(raw), content_base64: raw.toString("base64") };
+    });
+  const seed = artifactFromFiles(files, allowedPaths);
   const guests = [];
   try {
     await infrastructure.start(["toy-a", "toy-b"]);
@@ -958,6 +1071,7 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
         protocol: PROTOCOL, run_id: runId,
         memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
         memory_retrieval_policy: RETRIEVAL_POLICY,
+        work_protocol: WORK_PROTOCOL,
         slot: { project_id: "toy-a", milestone: 1, arm }, recipe_sha256: "a".repeat(64),
         model, memory_binding: binding, memory_state: null,
       };
@@ -972,7 +1086,7 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
         infrastructure, transport, guest, record, runDeadline: Date.now() + 120000,
         config: {
           ...common, mode: "work", session_id: sessionId, brief: "Protocol self-test only.",
-          starting_tree_sha256: seed.tree_sha256, allowed_output_paths: ["main.py"],
+          starting_tree_sha256: seed.tree_sha256, allowed_output_paths: allowedPaths,
           entry_point: "main.py",
         },
       }).run();
@@ -980,15 +1094,20 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
         recent_events: records.slice(-5) }));
       assert.equal(work.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
       assert.equal(work.memory_retrieval_policy, RETRIEVAL_POLICY);
+      assert.equal(work.work_protocol, WORK_PROTOCOL);
       assert.equal(records.find((row) => row.kind === "controller_event"
         && row.event.session_id === sessionId && row.event.kind === "controller_started")
         .event.data.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
       assert.equal(records.find((row) => row.kind === "controller_event"
         && row.event.session_id === sessionId && row.event.kind === "controller_started")
         .event.data.memory_retrieval_policy, RETRIEVAL_POLICY);
-      assert.equal(work.query_attempts, 1);
-      assert.equal(work.admitted_invocations, 1);
-      assert.equal(work.provider_api_requests, 1);
+      assert.equal(records.find((row) => row.kind === "controller_event"
+        && row.event.session_id === sessionId && row.event.kind === "controller_started")
+        .event.data.work_protocol, WORK_PROTOCOL);
+      assert.equal(work.query_attempts, 4);
+      assert.equal(work.admitted_invocations, 4);
+      assert.equal(work.provider_api_requests, 4);
+      assert.equal(work.execute_attempts, 3);
       assert.equal(work.host_accounting.complete, true);
       assert.equal(work.host_accounting.transport_healthy, true);
       const replyBytes = await fs.readFile(path.join(
@@ -998,10 +1117,22 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       assert.equal(JSON.parse(replyBytes).result.usage.nano_aiu, nanoAiu);
       const consumed = records.filter((row) => row.kind === "controller_event"
         && row.event.session_id === sessionId && row.event.kind === "ipc_reply");
-      assert.equal(consumed.length, 1);
+      assert.equal(consumed.length, 7);
       assert.equal(consumed[0].event.data.reply.result.usage.nano_aiu, nanoAiu);
-      const captured = await guest.export(["main.py"]);
-      assert.equal(captured.tree_sha256, seed.tree_sha256);
+      assert.deepEqual(consumed.map((row) => row.event.data.reply.sequence), [1, 2, 3, 4, 5, 6, 7]);
+      const executed = consumed.map((row) => row.event.data.reply)
+        .filter((row) => row.operation === "execute");
+      assert.deepEqual(executed.map((row) => row.result.status), ["ok", "ok", "ok"]);
+      assert.deepEqual(executed.map((row) => row.result.exit_code), [127, 0, 0]);
+      assert.match(Buffer.from(executed[0].result.output_base64, "base64").toString(),
+        /apply_patch.*not found/s);
+      assert.deepEqual(consumed.map((row) => row.event.data.reply)
+        .filter((row) => row.operation === "invoke_model").map((row) => row.result.text), workActions);
+      const captured = await guest.export(allowedPaths);
+      assert.deepEqual(captured.files.map((row) => row.path), allowedPaths);
+      assert.equal(Buffer.from(captured.files[0].content_base64, "base64").toString(), "print(2)\n");
+      assert.deepEqual({ ...captured.files[1] }, files[1]);
+      assert.notEqual(captured.tree_sha256, seed.tree_sha256);
       if (arm === "no_memory") continue;
       const boundary = await new ControllerSession({
         infrastructure, transport, guest: null, record, runDeadline: Date.now() + 120000,
@@ -1019,7 +1150,9 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
         recent_events: records.slice(-8) }));
       assert.equal(boundary.memory_state.completed_boundaries, 1);
       assert.equal(boundary.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(boundary.work_protocol, WORK_PROTOCOL);
       assert.equal(boundary.memory_state.format, "development-memory-state-v2");
+      assert.equal(Object.hasOwn(boundary.memory_state, "work_protocol"), false);
       assert.equal(boundary.memory_state.note,
         arm === "handoff" ? packedHandoff : null);
       if (arm === "handoff") {
@@ -1028,6 +1161,8 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
           && row.event.session_id === `${sessionId}-boundary` && row.event.kind === "memory_event"
           && row.event.data.kind === "memory_handoff_packing").event.data.data;
         assert.equal(packing.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+        assert.equal(packing.memory_retrieval_policy, RETRIEVAL_POLICY);
+        assert.equal(Object.hasOwn(packing, "work_protocol"), false);
         assert.deepEqual(packing.receipt_ref, boundary.invocation_receipts[0]);
         assert.equal(packing.proposed_count, 3);
         assert.equal(packing.included_count, 2);
@@ -1044,7 +1179,8 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       assert.equal(records.filter((row) => row.kind === "model_admitted"
         && row.session_id === `${sessionId}-boundary`).length, 1);
     }
-    assert.equal(ledger.ordinal, 5);
+    assert.deepEqual([...workCalls.values()], [4, 4, 4]);
+    assert.equal(ledger.ordinal, 14);
   } finally {
     for (const guest of guests) await guest.close();
     await infrastructure.close();

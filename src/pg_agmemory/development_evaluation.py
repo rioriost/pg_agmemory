@@ -54,6 +54,8 @@ if TYPE_CHECKING:
     from pg_agmemory.sdk import AsyncMemoryClient
 
 PROTOCOL: Literal["pgag-development-controller-v1"] = "pgag-development-controller-v1"
+WorkProtocol = Literal["development-work-v2"]
+WORK_PROTOCOL: WorkProtocol = "development-work-v2"
 MAX_PROMPT_BYTES = 65536
 MAX_IPC_BYTES = 70000
 MAX_RECORD_BYTES = 524288
@@ -282,6 +284,7 @@ def boundary_transcript(brief: str, messages: list[VisibleMessage]) -> BoundaryT
 
 class ControllerInput(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
+    work_protocol: WorkProtocol
     memory_maintenance_protocol: MaintenanceProtocol
     memory_retrieval_policy: RetrievalPolicy
     run_id: Identifier
@@ -347,7 +350,9 @@ CONFIG_ADAPTER: TypeAdapter[Config] = TypeAdapter(Config)
 
 
 def parse_config(raw: bytes) -> WorkInput | BoundaryInput:
-    parse_json(raw, limit=MAX_RECORD_BYTES)
+    value = parse_json(raw, limit=MAX_RECORD_BYTES)
+    require(isinstance(value, dict) and value.get("work_protocol") == WORK_PROTOCOL,
+            "invalid_work_protocol")
     try:
         return CONFIG_ADAPTER.validate_json(raw)
     except ValidationError:
@@ -542,7 +547,9 @@ class MemoryAuditEvent(StrictModel):
     data: dict[str, JsonValue]
 
     @model_validator(mode="after")
-    def valid_retrieval_identity(self) -> Self:
+    def valid_memory_identity(self) -> Self:
+        require(self.data.get("memory_maintenance_protocol") == MAINTENANCE_PROTOCOL,
+                "invalid_memory_maintenance_protocol")
         require(self.data.get("memory_retrieval_policy") == RETRIEVAL_POLICY,
                 "invalid_memory_retrieval_policy")
         return self
@@ -564,6 +571,7 @@ def audit_json(value: object) -> JsonValue:
 
 class ControllerResult(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
+    work_protocol: WorkProtocol
     memory_maintenance_protocol: MaintenanceProtocol
     memory_retrieval_policy: RetrievalPolicy
     session_id: Identifier
@@ -790,8 +798,9 @@ class FileIPC:
         self.events.emit("work_started", {"work_limit_seconds": WORK_SECONDS})
         self.work_deadline = self.clock() + WORK_SECONDS
 
-    def _check_memory_identity(self) -> None:
+    def _check_identity(self) -> None:
         for field, expected_policy, code in (
+            ("work_protocol", WORK_PROTOCOL, "invalid_work_protocol"),
             ("memory_retrieval_policy", RETRIEVAL_POLICY, "invalid_memory_retrieval_policy"),
             ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL,
              "invalid_memory_maintenance_protocol"),
@@ -800,10 +809,10 @@ class FileIPC:
             if type(value) is not str or value != expected_policy:
                 self.poisoned = True
                 raise EvaluationFailure(code)
+        require(not self.poisoned and not self.inflight, "ipc_closed")
 
     def check(self) -> None:
-        self._check_memory_identity()
-        require(not self.poisoned and not self.inflight, "ipc_closed")
+        self._check_identity()
         if self.work_deadline is not None:
             require(self.clock() < self.work_deadline, "session_deadline")
         require({entry.name for entry in self.requests.iterdir()} == set(self._request_hashes),
@@ -953,7 +962,7 @@ class FileIPC:
             self.inflight = False
 
     def invoke(self, phase: ModelPhase, prompt: str, planning_round: int | None) -> ModelReply:
-        self._check_memory_identity()
+        self._check_identity()
         allowed = (
             {"handoff"} if self.config.slot.arm == "handoff"
             else {"memory_decision"} if self.config.slot.arm == "pg_agmemory" else set()
@@ -980,7 +989,7 @@ class FileIPC:
         return value
 
     def execute(self, command: str) -> ExecuteReply:
-        self._check_memory_identity()
+        self._check_identity()
         require(self.config.mode == "work" and self.work_deadline is not None,
                 "execute_outside_work")
         require(self.execute_attempts < 16, "execute_budget_exhausted")

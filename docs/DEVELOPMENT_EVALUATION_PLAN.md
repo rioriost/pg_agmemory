@@ -15,7 +15,7 @@ fourteen successful submissions and four dependent-unrun slots caused by
 memory-boundary contract failures. No-memory passed all six planned slots;
 added memory usefulness and production readiness are not established.
 The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
-separately. The protocol revision below is a distinct offline follow-up; later
+separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
 
@@ -215,18 +215,93 @@ Storage behavior was not changed.
 Offline regressions must distinguish prompt/contract correctness and direct
 query feasibility from actual model query-selection quality. Published v3
 briefs are now exposed regression material, never held-out evaluation.
-Tool availability, work-command limits and handoff replacement behavior are
-outside this revision. A new live comparison requires separately frozen
+Tool guidance, work-command limits and handoff replacement behavior were
+outside the retrieval revision. A new live comparison requires separately frozen
 conditions, independent tasks and preregistration.
+
+## Post-retrieval work and operational-memory revision
+
+**Implemented and validated offline, not a new live evaluation.** This
+follow-up separately versions common work guidance as `development-work-v2`
+and memory-maintenance guidance as `development-maintenance-v3`. Retrieval
+remains `development-retrieval-v2` / `development-v4`; retained state remains
+`development-memory-state-v2`. No task, grading, model, dependency, execution
+tool or resource ceiling changes are part of this revision.
+
+Every work and boundary configuration requires `work_protocol`, including M1
+and no-memory. It is bound into the recipe before hashing, controller startup,
+launch/result audits and summary. Missing or mismatched identities stop
+admission before model, Native or shell operations, including active-config
+mutation. Direct `run_agent` callers are checked before upstream version
+inspection or agent construction. Nested memory audits validate both the
+maintenance and retrieval identities. No work field is added to memory state
+or nested memory events; no version is inferred or migrated.
+
+All arms receive the same work system prompt. It describes the qualified
+execution image's `/bin/sh`, `python` / Python 3 standard library and absence
+of a provided `apply_patch`, not tools discovered on the host. The whole
+decoded command, including heredoc content, must fit **8,192 UTF-8 bytes**;
+character counts and serialized JSON lengths are not substitutes. Independent
+response, prompt and IPC limits still apply. Large edits should be split
+proactively across successive turns, with exactly one valid action per
+response. Commands and the final response share the same sixteen-step budget.
+An ordinary nonzero command result permits another valid action; invalid or
+oversized responses and timeouts remain terminal. This is prevention guidance,
+not automatic recovery, JSON repair, an extra retry or an enlarged budget.
+
+Both maintenance prompts ask the model to consider still-relevant task
+constraints/corrections and scoped operational observations. An observed
+failure, an execution-supported workaround and an untested proposal are
+different evidence; an old environment observation is not a universal tool
+guarantee. Handoff replacement should reconsider useful previous-note evidence
+even when it is not repeated in the current transcript, while allowing obsolete,
+contradicted or lower-priority material to be omitted under the same cap.
+PG should preserve existing useful facts without duplication; unmentioned
+facts remain retained. Every creation or revision still requires provenance
+in the **current** transcript, not the supplied inventory.
+
+There is no host-pinned warning, mandatory category, reserved operational
+budget or additional history channel. Whole-prefix handoff packing, full-array
+validation, span validation and trimming, assertion/revision limits, pending
+exclusions and final retrieval guards remain unchanged. These instructions
+cannot restore already omitted evidence or guarantee the model's selection.
+
+Final baked Linux validation passed Ruff, mypy for all 66 source files and the
+session script, and **1,032 Python tests without skips**. The host suite passed
+**87 Node tests without skips**, using the baked controller runtime and unchanged
+execution image. Tests cover actual action byte boundaries, first-invalid-call
+accounting, unchanged bounded-recall goldens, and scripted two-boundary memory
+carriage. For every arm, real DefaultAgent/IPC execution observes a missing
+command's exit 127, performs two small Python edits and submits on its fourth
+model turn, with three executions and exact artifact/sentinel checks. The
+separate guest checks use the sanitized UID/GID-10001 `ExecutionGuest.execute`
+path. The full eighteen-slot fake-model flow still uses 44 scripted invocations.
+
+Earlier failed validation evidence is retained. A model-level pre-validator
+had disrupted Pydantic's strict JSON tuple handling; moving identity preflight
+outside that validator restored native JSON validation without relaxing DTOs.
+A real-controller test then compared a null-prototype parsed record with a
+plain object. Its test-only normalization preserves exact keys and values;
+the complete Node suite passed afterward. Neither correction changes action
+limits or candidate grading.
+
+Such scripted cases establish plumbing and provenance, not actual
+model retention quality. The common prompt now supplies the tool warning
+directly to **all** arms: subsequently avoiding that failure would not
+demonstrate historical-memory transfer. Changing work and maintenance prompts
+together also does not isolate their individual effects. Earlier results stay
+immutable; a new live comparison requires independent tasks, qualification,
+frozen conditions and preregistration.
 
 ## Post-pilot maintenance protocol: offline revision
 
-Current development-evaluation code uses **`development-maintenance-v2`**,
+The post-pilot revision introduced **`development-maintenance-v2`**,
 an explicitly new protocol reviewed by Astra/xhigh after the published pilot.
 This is not the protocol measured in the v1/v2 results. Their source commits,
 manifests, packs, raw replies and outcomes remain unchanged; use their pinned
 source to reproduce the old contracts. This revision authorizes neither a
-live retry nor a renewed held-out evaluation.
+live retry nor a renewed held-out evaluation. The later maintenance-v3
+guidance revision above preserves the packing and provenance mechanics below.
 
 Every work and boundary configuration requires the exact
 `memory_maintenance_protocol` identifier, including M1 and no-memory
@@ -572,7 +647,7 @@ recorded. Handoff and pg_agmemory receive the same boundary transcript.
 After sessions one and two of each project:
 
 - Fixed handoff makes exactly one model call using the previous packed note
-  and boundary transcript. Under `development-maintenance-v2`, it returns
+  and boundary transcript. Under `development-maintenance-v3`, it returns
   ranked items for audited whole-prefix packing as specified above. Invalid
   JSON or individual items fail the boundary; aggregate omissions are explicit,
   not silent truncation. The frozen v1/v2 pilots used the earlier strict
@@ -917,9 +992,11 @@ state. Work additionally receives the current brief, starting-tree hash,
 allowed output paths and entry point. Boundary instead receives the exact
 `BoundaryTranscript`, host-owned `boundary_id` and required nullable
 `BoundaryKeys`; it receives no grading results.
-The post-pilot revision additionally requires the exact
-`memory_maintenance_protocol="development-maintenance-v2"` on every input,
-including null-state work. It is bound into the host recipe and audit records.
+The current revision additionally requires the exact
+`work_protocol="development-work-v2"`,
+`memory_maintenance_protocol="development-maintenance-v3"` and
+`memory_retrieval_policy="development-retrieval-v2"` on every input, including
+null-state work. They are bound into the host recipe and audit records.
 
 `MemoryBinding` contains run ID, project ID, exact arm and a host-provisioned
 scope UUID. A current bound state contains format `development-memory-state-v2`,
@@ -945,8 +1022,8 @@ completion state. No boundary runs after milestone three.
 The agreed memory surface is:
 
 ```python
-DevelopmentMemory(binding, *, maintenance_protocol, session_number, state,
-                  native_factory, invoke, emit, now)
+DevelopmentMemory(binding, *, maintenance_protocol, retrieval_policy,
+                  session_number, state, native_factory, invoke, emit, now)
 
 async deliver(public_brief) -> MemoryDelivery
 async maintain(transcript, *, boundary_id, keys) -> MemoryBoundaryResult

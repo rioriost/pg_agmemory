@@ -119,6 +119,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
         ipc.check()
         events.emit("controller_started", {
             "mode": config.mode, "run_id": config.run_id,
+            "work_protocol": config.work_protocol,
             "memory_maintenance_protocol": config.memory_maintenance_protocol,
             "memory_retrieval_policy": config.memory_retrieval_policy,
             "slot": config.slot.model_dump(mode="json"), "recipe_sha256": config.recipe_sha256,
@@ -211,6 +212,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
     try:
         result = ControllerResult(
             protocol=PROTOCOL, session_id=config.session_id, slot=config.slot, mode=config.mode,
+            work_protocol=config.work_protocol,
             memory_maintenance_protocol=config.memory_maintenance_protocol,
             memory_retrieval_policy=config.memory_retrieval_policy,
             status=status, reason=reason, outcome_unknown=unknown,

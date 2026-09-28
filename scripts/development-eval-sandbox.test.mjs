@@ -173,15 +173,31 @@ test("owned guest uses read-only networkless runtime, root helper and unprivileg
 
   let captured;
   try {
-    await work.start(artifact({ "main.py": 'print("not yet")\n' }).files);
+    const sentinel = "unchanged sentinel\n";
+    await work.start(artifact({ "main.py": 'print("not yet")\n', "sentinel.txt": sentinel }).files);
     const identity = await work.execute(
-      "python -c 'import os; print(os.getuid()); print(open(\"/proc/net/route\").read())'",
+      "test -x /bin/sh && python - <<'PY'\nimport os, shutil, sys\n"
+      + "assert os.getuid() == os.getgid() == 10001\nassert sys.version_info.major == 3\n"
+      + "assert shutil.which('apply_patch') is None\n"
+      + "expected = {'PATH':'/usr/local/bin:/usr/bin:/bin', 'HOME':'/home/task', "
+      + "'LANG':'C.UTF-8', 'PYTHONDONTWRITEBYTECODE':'1', 'TMPDIR':'/tmp'}\n"
+      + "assert all(os.environ.get(k) == v for k,v in expected.items())\n"
+      + "assert set(os.environ) <= set(expected) | {'PWD', 'LC_CTYPE'}\n"
+      + "if 'PWD' in os.environ: assert os.environ['PWD'] == '/workspace'\n"
+      + "if 'LC_CTYPE' in os.environ: assert os.environ['LC_CTYPE'] == 'C.UTF-8'\n"
+      + "print(os.getuid())\nprint(open('/proc/net/route').read())\nPY",
     );
+    assert.equal(identity.exitCode, 0, identity.stderr.toString());
     assert.match(identity.stdout.toString(), /^10001\n/);
-    await work.execute(
-      "printf 'import json,sys\\nvalue=json.load(sys.stdin)\\nprint(json.dumps(value))\\n' > main.py",
-    );
-    captured = await work.export(["main.py"]);
+    const target = "import json,sys\nvalue=json.load(sys.stdin)\nprint(json.dumps(value))\n";
+    const edited = await work.execute("python - <<'PY'\nfrom pathlib import Path\n"
+      + "p=Path('main.py')\nassert p.read_text() == 'print(\"not yet\")\\n'\n"
+      + `p.write_text(${JSON.stringify(target)})\nPY`);
+    assert.equal(edited.exitCode, 0, edited.stderr.toString());
+    captured = await work.export(["main.py", "sentinel.txt"]);
+    assert.deepEqual(captured.files.map((row) => row.path), ["main.py", "sentinel.txt"]);
+    assert.equal(Buffer.from(captured.files[0].content_base64, "base64").toString(), target);
+    assert.equal(Buffer.from(captured.files[1].content_base64, "base64").toString(), sentinel);
     assert.equal(work.closed, true);
   } finally { await work.close(); }
   assert.ok(records.some((row) => row.kind === "guest_isolation_verified"));

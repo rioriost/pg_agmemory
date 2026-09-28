@@ -100,8 +100,26 @@ item単位で省略した根拠を監査記録に残します。
 以前の切詰めは情報欠落でしたが、観測した取りこぼしへの因果的な寄与は未確認です。
 scripted回帰やNativeへの直接queryでは、実modelの検索選択品質は証明できません。
 公開済みv3課題は既知の回帰fixtureであり、未見評価には使いません。
-ツールの利用可否、command超過時の復旧、引継ぎ置換時の運用上の注意の保持は変更していません。
+この検索改訂では、ツールの説明、command超過時の復旧、
+引継ぎ置換時の運用上の注意の保持は変更していません。
 詳細は[修正契約](DEVELOPMENT_EVALUATION_PLAN.md#post-v3-retrieval-revision-offline-implementation)を参照してください。
+
+### 別の作業・運用情報の引継ぎ改善
+
+実装済みのオフライン改訂`development-work-v2`／`development-maintenance-v3`では、
+利用可能なツールと、command全体の**JSON復号後のUTF-8で8,192 bytes**という上限を明示します。
+同じ16 stepの中で、小さな編集を1応答1 actionの複数turnへ分けるよう促します。
+上限超過・不正なaction・timeoutは引き続き終了条件で、自動修復や再試行は追加しません。
+両メモリ方式には、関連する運用上の観測を適用範囲付きで保持し、
+仮定を確認済みの事実に変えないよう指示します。
+保存・検索・packing・根拠検証の規則は変更しません。
+
+これは実modelの作業信頼性や保持品質の証明ではありません。
+特に、ツールに関する注意は全方式共通の作業promptで直接与えるため、
+以前のツール不在による失敗を避けても記憶転送の証拠にはできません。
+作業と記憶更新のpromptを同時に変更するため、各変更の効果も分離できません。
+過去の成績は変更せず、新しい実測の実施も意味しません。
+詳細は[別改訂の契約](DEVELOPMENT_EVALUATION_PLAN.md#post-retrieval-work-and-operational-memory-revision)を参照してください。
 
 ## 第2回: メモリ追加の有用性は確認できず
 
@@ -182,9 +200,9 @@ model別nano-AIUの厳密な十進合計は`1119056749999.9999995`、
 
 ### その後の記憶更新プロトコル改訂: offline回帰確認のみ
 
-現在のharnessでは、上記の成績を変更せずに出力契約の脆さへ対処するため、
+第2回の後、上記の成績を変更せずに出力契約の脆さへ対処するため、
 [`development-maintenance-v2`](DEVELOPMENT_EVALUATION_PLAN.md#post-pilot-maintenance-protocol-offline-revision)
-を導入します。全controller設定に明示的なversionを必須とし、
+を導入しました。全controller設定に明示的なversionを必須とし、
 状態は`development-memory-state-v2`を使います。旧状態やversionの欠落・不一致は、
 controllerのmodel/Native呼出し前に拒否します。
 

@@ -114,9 +114,27 @@ This is an offline implementation change, **not a rerun or revised score**.
 The old clipping was information loss, but its causal contribution to the
 observed misses is unproven. Scripted regressions and direct Native query
 fixtures cannot establish live model query-selection quality; published v3
-tasks are exposed regression material. Tool availability, command-size recovery
-and handoff replacement of operational warnings are unchanged. See the
+tasks are exposed regression material. That revision did not change tool
+guidance, command-size recovery or handoff replacement of operational warnings. See the
 [revision contract](DEVELOPMENT_EVALUATION_PLAN.md#post-v3-retrieval-revision-offline-implementation).
+
+### Separate work and operational-memory follow-up
+
+The implemented offline `development-work-v2` / `development-maintenance-v3`
+follow-up makes tool availability and the **8,192 decoded UTF-8 byte** command
+limit explicit. It recommends small edits across successive valid actions
+within the existing sixteen steps; oversized/invalid actions and timeouts
+remain terminal, without automatic repair or retry. Both memory arms receive
+guidance to preserve relevant, scoped operational observations without
+promoting assumptions to verified facts. Storage, retrieval, packing and
+provenance rules remain unchanged.
+
+This does not establish live-model reliability or retention quality. In
+particular, the common work prompt supplies the tool warning to every arm:
+avoiding the earlier missing-tool failure would not demonstrate memory
+transfer. Joint work/maintenance prompt changes also do not isolate either
+effect. Earlier scores are unchanged, and no new live study is implied.
+See the [separate contract](DEVELOPMENT_EVALUATION_PLAN.md#post-retrieval-work-and-operational-memory-revision).
 
 ## Second study: no added memory benefit established
 
@@ -207,7 +225,7 @@ model or candidate replay was used.
 
 ### Subsequent maintenance revision: offline regressions only
 
-The current harness introduces
+The post-v2 revision introduced
 [`development-maintenance-v2`](DEVELOPMENT_EVALUATION_PLAN.md#post-pilot-maintenance-protocol-offline-revision)
 to address the observed contract-fragility classes without changing these
 results. It requires an explicit version on every controller configuration

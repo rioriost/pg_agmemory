@@ -1,9 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  canonicalJson, gradeCandidate, InvocationLedger, parseJson, PROTOCOL,
-  safePath, validateRequest, validateUsage,
+  canonicalJson, gradeCandidate, InvocationLedger, LIMITS, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL,
+  RETRIEVAL_POLICY, safePath, validateRequest, validateUsage, WORK_PROTOCOL,
 } from "./development-eval-protocol.mjs";
+
+test("work and maintenance revisions preserve retrieval and decoded command budgets", () => {
+  assert.equal(WORK_PROTOCOL, "development-work-v2");
+  assert.equal(MAINTENANCE_PROTOCOL, "development-maintenance-v3");
+  assert.equal(RETRIEVAL_POLICY, "development-retrieval-v2");
+  assert.equal(LIMITS.command, 8192);
+  assert.equal(LIMITS.work, 16);
+  const prefix = "python - <<'PY'\n#";
+  const suffix = "\nPY";
+  const command = prefix + "x".repeat(8192 - Buffer.byteLength(prefix + suffix)) + suffix;
+  const request = {
+    protocol: PROTOCOL, session_id: "session-a", sequence: 1,
+    operation: "execute", body: { command },
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(request)) > 8192);
+  assert.deepEqual(validateRequest(JSON.parse(JSON.stringify(request)), "session-a", 1), request);
+  assert.throws(() => validateRequest({
+    ...request, body: { command: command + "x" },
+  }, "session-a", 1));
+  const multibyte = prefix + "界".repeat(2730) + suffix;
+  assert.ok(multibyte.length < 8192 && Buffer.byteLength(multibyte) > 8192);
+  assert.throws(() => validateRequest({
+    ...request, body: { command: multibyte },
+  }, "session-a", 1));
+});
 
 test("strict JSON compares objects without key order but preserves types and strings", () => {
   assert.equal(canonicalJson(parseJson('{"b":2,"a":[1,true]}')),

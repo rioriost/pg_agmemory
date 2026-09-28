@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from pg_agmemory.development_evaluation import (
+    WORK_PROTOCOL,
     ArtifactManifest,
     BoundaryTranscript,
     ControllerResult,
@@ -34,6 +35,7 @@ from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, RETRIEVAL_POLIC
 def config_value(arm="no_memory", milestone=1, *, mode="work"):
     value = {
         "protocol": "pgag-development-controller-v1", "mode": "work",
+        "work_protocol": WORK_PROTOCOL,
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "memory_retrieval_policy": RETRIEVAL_POLICY,
         "run_id": "test-run", "session_id": "test-session",
@@ -204,8 +206,9 @@ def test_no_memory_state_is_null_at_every_milestone():
 
 
 @pytest.mark.parametrize(("field", "identity", "old", "alias"), [
+    ("work_protocol", WORK_PROTOCOL, "development-work-v1", "work_policy"),
     ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL,
-     "development-maintenance-v1", "maintenance_protocol"),
+     "development-maintenance-v2", "maintenance_protocol"),
     ("memory_retrieval_policy", RETRIEVAL_POLICY, "development-retrieval-v1", "retrieval_policy"),
 ])
 @pytest.mark.parametrize(("mode", "arm"), [
@@ -231,20 +234,21 @@ def test_memory_identity_is_required_even_with_initial_null_state(
     assert config.memory_state is None
     assert getattr(config, field) == identity
     assert type(config).model_fields[field].is_required()
+    failure = "invalid_work_protocol" if field == "work_protocol" else "invalid_controller_config"
     for protocol in (None, False, 2, "", old, identity + " "):
-        with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+        with pytest.raises(EvaluationFailure, match=failure):
             parse_config(json_bytes(value | {field: protocol}))
     value.pop(field)
-    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+    with pytest.raises(EvaluationFailure, match=failure):
         parse_config(json_bytes(value))
     value[alias] = identity
-    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+    with pytest.raises(EvaluationFailure, match=failure):
         parse_config(json_bytes(value))
 
 
 @pytest.mark.parametrize("mode", ["work", "boundary"])
 @pytest.mark.parametrize("arm", ["handoff", "pg_agmemory"])
-def test_maintenance_v2_never_loads_a_v1_continuity_state(mode, arm):
+def test_maintenance_v3_never_loads_a_v1_continuity_state(mode, arm):
     value = config_value(arm, 2)
     value["memory_state"] = {
         "format": "development-memory-state-v1", "binding": value["memory_binding"],
@@ -267,12 +271,14 @@ def test_maintenance_v2_never_loads_a_v1_continuity_state(mode, arm):
 
 
 @pytest.mark.parametrize(("field", "identity", "old"), [
-    ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL, "development-maintenance-v1"),
+    ("work_protocol", WORK_PROTOCOL, "development-work-v1"),
+    ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL, "development-maintenance-v2"),
     ("memory_retrieval_policy", RETRIEVAL_POLICY, "development-retrieval-v1"),
 ])
 def test_controller_result_requires_the_same_fixed_memory_identity(field, identity, old):
     value = {
         "protocol": "pgag-development-controller-v1",
+        "work_protocol": WORK_PROTOCOL,
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "memory_retrieval_policy": RETRIEVAL_POLICY,
         "session_id": "test-session", "slot": config_value()["slot"], "mode": "work",
@@ -375,7 +381,8 @@ def test_memory_events_preserve_typed_host_receipts_without_custom_object_serial
     )
     event = MemoryAuditEvent.model_validate(audit_json({
         "kind": "memory_model_receipt", "phase": "maintain", "status": "completed",
-        "data": {"receipt_ref": ref, "memory_retrieval_policy": RETRIEVAL_POLICY},
+        "data": {"receipt_ref": ref, "memory_retrieval_policy": RETRIEVAL_POLICY,
+                 "memory_maintenance_protocol": MAINTENANCE_PROTOCOL},
     }))
     assert event.data["receipt_ref"] == ref.model_dump(mode="json")
     with pytest.raises(EvaluationFailure, match="unsupported_audit_value"):
@@ -386,6 +393,7 @@ def test_native_memory_intent_is_started_not_completed():
     event = MemoryAuditEvent.model_validate({
         "kind": "memory_native_intent", "phase": "maintain", "status": "started",
         "data": {"operation": "inventory_read", "request": {"query": ""},
+                 "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
                  "memory_retrieval_policy": RETRIEVAL_POLICY},
     })
     assert event.status == "started"
@@ -393,10 +401,22 @@ def test_native_memory_intent_is_started_not_completed():
         MemoryAuditEvent.model_validate(event.model_dump() | {"status": "unknown"})
 
 
-@pytest.mark.parametrize("policy", [None, "", "development-retrieval-v1"])
-def test_memory_audit_rejects_missing_or_wrong_retrieval_identity(policy):
-    data = {} if policy is None else {"memory_retrieval_policy": policy}
-    with pytest.raises(EvaluationFailure, match="invalid_memory_retrieval_policy"):
+@pytest.mark.parametrize(("field", "old", "code"), [
+    ("memory_retrieval_policy", "development-retrieval-v1", "invalid_memory_retrieval_policy"),
+    ("memory_maintenance_protocol", "development-maintenance-v2",
+     "invalid_memory_maintenance_protocol"),
+])
+@pytest.mark.parametrize("fault", ["missing", "wrong", "empty"])
+def test_memory_audit_rejects_missing_or_wrong_identity(field, old, code, fault):
+    data = {
+        "memory_retrieval_policy": RETRIEVAL_POLICY,
+        "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+    }
+    if fault == "missing":
+        data.pop(field)
+    else:
+        data[field] = old if fault == "wrong" else ""
+    with pytest.raises(EvaluationFailure, match=code):
         MemoryAuditEvent.model_validate({
             "kind": "memory_search_preparation", "phase": "deliver", "status": "completed",
             "data": data,
@@ -407,9 +427,16 @@ def test_memory_audit_rejects_missing_or_wrong_retrieval_identity(policy):
     ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
     ("boundary", "handoff"), ("boundary", "pg_agmemory"),
 ])
-@pytest.mark.parametrize("policy", [None, "", "development-retrieval-v1"])
-def test_mutated_retrieval_config_poisoned_before_ipc_or_native(
-    tmp_path, monkeypatch, mode, arm, policy,
+@pytest.mark.parametrize(("field", "identity", "old", "code"), [
+    ("work_protocol", WORK_PROTOCOL, "development-work-v1", "invalid_work_protocol"),
+    ("memory_retrieval_policy", RETRIEVAL_POLICY,
+     "development-retrieval-v1", "invalid_memory_retrieval_policy"),
+    ("memory_maintenance_protocol", MAINTENANCE_PROTOCOL,
+     "development-maintenance-v2", "invalid_memory_maintenance_protocol"),
+])
+@pytest.mark.parametrize("fault", ["missing", "wrong", "empty"])
+def test_mutated_identity_config_poisoned_before_ipc_or_native(
+    tmp_path, monkeypatch, mode, arm, field, identity, old, code, fault,
 ):
     import asyncio
 
@@ -424,10 +451,10 @@ def test_mutated_retrieval_config_poisoned_before_ipc_or_native(
         "http://127.0.0.1:8123", "synthetic.identity.signature", events, ipc.check,
     )
     monkeypatch.setattr(sdk, "AsyncMemoryClient", forbidden)
-    if policy is None:
-        object.__delattr__(ipc.config, "memory_retrieval_policy")
+    if fault == "missing":
+        object.__delattr__(ipc.config, field)
     else:
-        object.__setattr__(ipc.config, "memory_retrieval_policy", policy)
+        object.__setattr__(ipc.config, field, old if fault == "wrong" else "")
 
     async def open_native():
         async with factory():
@@ -439,14 +466,18 @@ def test_mutated_retrieval_config_poisoned_before_ipc_or_native(
             lambda: ipc.execute("synthetic"),
             lambda: asyncio.run(open_native()),
         ):
-            with pytest.raises(EvaluationFailure, match="invalid_memory_retrieval_policy"):
+            with pytest.raises(EvaluationFailure, match=code):
                 operation()
         assert ipc.sequence == 0 and ipc.poisoned
         assert ipc.execute_attempts == 0 and ipc._phase_attempts == {}
         assert not list(ipc.requests.iterdir())
-        object.__setattr__(ipc.config, "memory_retrieval_policy", RETRIEVAL_POLICY)
-        with pytest.raises(EvaluationFailure, match="ipc_closed"):
-            ipc.check()
+        object.__setattr__(ipc.config, field, identity)
+        for operation in (
+            ipc.check, ipc.start_work, lambda: ipc.invoke("work", "prompt", None),
+            lambda: ipc.execute("synthetic"), lambda: asyncio.run(open_native()),
+        ):
+            with pytest.raises(EvaluationFailure, match="ipc_closed"):
+                operation()
     finally:
         events.close()
 

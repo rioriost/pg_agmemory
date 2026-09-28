@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 export const ARMS = Object.freeze(["no_memory", "handoff", "pg_agmemory"]);
 export const PHASES = Object.freeze(["work", "handoff", "memory_decision", "memory_plan"]);
 export const PROTOCOL = "pgag-development-controller-v1";
-export const MAINTENANCE_PROTOCOL = "development-maintenance-v2";
+export const WORK_PROTOCOL = "development-work-v2";
+export const MAINTENANCE_PROTOCOL = "development-maintenance-v3";
 export const RETRIEVAL_POLICY = "development-retrieval-v2";
 export const LIMITS = Object.freeze({
   invocations: 318, bridgeInvocations: 160, work: 16, prompt: 65536,

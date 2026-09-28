@@ -4,6 +4,7 @@ import json
 import pytest
 
 from pg_agmemory.development_agent import (
+    SYSTEM_PROMPT,
     DevelopmentEnvironment,
     DevelopmentModel,
     FinalAction,
@@ -14,6 +15,7 @@ from pg_agmemory.development_agent import (
     run_agent,
 )
 from pg_agmemory.development_evaluation import (
+    WORK_PROTOCOL,
     EvaluationFailure,
     ExecuteReply,
     ModelReply,
@@ -27,6 +29,7 @@ from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, RETRIEVAL_POLIC
 def work_config(arm="no_memory"):
     return parse_config(json_bytes({
         "protocol": "pgag-development-controller-v1", "mode": "work", "run_id": "test-run",
+        "work_protocol": WORK_PROTOCOL,
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "memory_retrieval_policy": RETRIEVAL_POLICY,
         "session_id": "test-work", "slot": {"project_id": "project-a", "milestone": 1, "arm": arm},
@@ -88,6 +91,117 @@ def test_valid_empty_final_and_exact_command_text():
     assert parse_action(json.dumps({"command": command})).command == command
 
 
+HEREDOC_HEADER = "python - <<'PY'\n#"
+HEREDOC_END = "\nPY\n"
+
+
+@pytest.mark.parametrize("command", [
+    "x" * 8192, "é" * 4096, "界" * 2730 + "xx", "😀" * 2048, "\\" * 8192,
+    HEREDOC_HEADER + "x" * (8192 - len(HEREDOC_HEADER + HEREDOC_END)) + HEREDOC_END,
+])
+@pytest.mark.parametrize("ensure_ascii", [False, True])
+@pytest.mark.parametrize("extra", ["", "x"])
+def test_action_command_limit_counts_entire_decoded_utf8_not_json(command, ensure_ascii, extra):
+    command += extra
+    raw = json.dumps({"command": command}, ensure_ascii=ensure_ascii)
+    assert len(command.encode("utf-8")) == 8192 + len(extra)
+    assert len(raw.encode("utf-8")) > len(command.encode("utf-8"))
+    if extra:
+        with pytest.raises(EvaluationFailure, match="^invalid_action$"):
+            parse_action(raw)
+    else:
+        assert parse_action(raw).command == command
+
+
+def test_action_serialized_response_cap_remains_independent_of_command_bytes():
+    raw = '{"command":"x"}'
+    boundary = raw + " " * (65536 - len(raw))
+    assert parse_action(boundary).command == "x"
+    with pytest.raises(EvaluationFailure, match="^json_byte_limit$"):
+        parse_action(boundary + " ")
+
+
+@pytest.mark.parametrize("protocol", [
+    None, True, 2, "", "development-work-v1", WORK_PROTOCOL + " ", WORK_PROTOCOL.encode(),
+])
+def test_required_work_protocol_rejected_before_upstream_checks_or_callbacks(monkeypatch, protocol):
+    import importlib.metadata
+
+    from minisweagent.agents.default import DefaultAgent
+
+    config = work_config().model_copy(update={"work_protocol": protocol})
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        pytest.fail("Invalid protocol must precede upstream checks and all callbacks")
+
+    monkeypatch.setattr(importlib.metadata, "version", forbidden)
+    monkeypatch.setattr(DefaultAgent, "__init__", forbidden)
+    with pytest.raises(EvaluationFailure, match="^invalid_work_protocol$"):
+        run_agent(config, "", forbidden, forbidden, forbidden)
+    assert calls == []
+
+
+@pytest.mark.parametrize("mutation", ["missing", "str_subclass"])
+def test_missing_or_nonexact_string_work_protocol_has_no_inferred_default(monkeypatch, mutation):
+    import importlib.metadata
+
+    from minisweagent.agents.default import DefaultAgent
+
+    class StringSubclass(str):
+        pass
+
+    config = work_config().model_copy()
+    if mutation == "missing":
+        object.__delattr__(config, "work_protocol")
+    else:
+        config = config.model_copy(update={"work_protocol": StringSubclass(WORK_PROTOCOL)})
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        pytest.fail("Missing/mutated protocol must not reach upstream or callbacks")
+
+    monkeypatch.setattr(importlib.metadata, "version", forbidden)
+    monkeypatch.setattr(DefaultAgent, "__init__", forbidden)
+    with pytest.raises(EvaluationFailure, match="^invalid_work_protocol$"):
+        run_agent(config, "", forbidden, forbidden, forbidden)
+    assert calls == []
+
+
+def test_system_prompt_identical_for_all_arms_and_matches_qualified_tool_contract():
+    systems, prompts = [], []
+
+    def invoke(phase, prompt, planning_round):
+        prompts.append(json.loads(prompt))
+        return reply('{"final":"done"}')
+
+    for arm in ("no_memory", "handoff", "pg_agmemory"):
+        prompts.clear()
+        result = run_agent(
+            work_config(arm), "" if arm == "no_memory" else "Fallible historical note.",
+            invoke, lambda _: pytest.fail("final must not execute"), lambda _: None,
+        )
+        assert result.exit_status == "Submitted" and result.query_attempts == 1
+        systems.append(prompts[0]["messages"][0]["content"])
+    assert systems == [SYSTEM_PROMPT] * 3
+    assert len(SYSTEM_PROMPT.encode()) <= 4096
+    for phrase in (
+        "current brief and source are authoritative", "fallible historical evidence",
+        "qualified execution image", "POSIX /bin/sh", "Python 3 as the command python",
+        "standard library", "No apply_patch command is provided", "Do not infer capabilities",
+        "do not install", "small, targeted edits", "ENTIRE decoded command",
+        "including any heredoc", "8192 UTF-8 bytes", "not 8192 characters or serialized JSON bytes",
+        "Independent serialized-response and prompt limits", "split larger edits",
+        "exactly one valid action per response", "final action share the same 16 model steps",
+        "ordinary nonzero shell result permits another action", "actual observation",
+        "timeout or invalid/oversized response terminates", "no automatic retry",
+        "JSON repair, new tool or relaxed limit",
+    ):
+        assert phrase in SYSTEM_PROMPT
+
+
 def test_actual_default_agent_command_observation_and_submitted(monkeypatch):
     from minisweagent.agents.default import DefaultAgent
 
@@ -130,12 +244,19 @@ def test_actual_default_agent_command_observation_and_submitted(monkeypatch):
     ] == "disabled_unverified"
 
 
-def test_first_format_error_ends_actual_agent_after_one_charged_call():
+@pytest.mark.parametrize("text", [
+    '{"final":"ok","final":"duplicate"}',
+    '{"command":"x","final":"done"}',
+    json.dumps({"command": "x" * 8193}),
+    json.dumps({"command": "界" * 2731}, ensure_ascii=False),
+    json.dumps({"command": "界" * 2731}, ensure_ascii=True),
+])
+def test_first_format_error_ends_actual_agent_after_one_charged_call(text):
     calls = []
 
     def invoke(*args):
         calls.append(args)
-        return reply('{"final":"ok","final":"duplicate"}')
+        return reply(text)
 
     result = run_agent(
         work_config(), "", invoke, lambda _: pytest.fail("must not execute"), lambda _: None,
@@ -143,6 +264,57 @@ def test_first_format_error_ends_actual_agent_after_one_charged_call():
     assert result.exit_status == "RepeatedFormatError"
     assert result.failure_code == "invalid_action"
     assert result.query_attempts == len(calls) == 1
+
+
+def test_actual_default_agent_missing_tool_then_small_python_edits_and_final(monkeypatch):
+    from minisweagent.agents.default import DefaultAgent
+
+    original = DefaultAgent.run
+    observed_agents = []
+
+    def checked_run(self, *args, **kwargs):
+        observed_agents.append(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(DefaultAgent, "run", checked_run)
+    edits = [
+        "apply_patch <<'PATCH'\n*** Begin Patch\n*** End Patch\nPATCH",
+        "python - <<'PY'\nfrom pathlib import Path\n"
+        "Path('solution.py').write_text('def answer():\\n    return 1\\n')\nPY",
+        "python - <<'PY'\nfrom pathlib import Path\np = Path('solution.py')\n"
+        "p.write_text(p.read_text().replace('return 1', 'return 2'))\nPY",
+    ]
+    prompts, commands = [], []
+    outputs = [
+        execution(b"/bin/sh: 1: apply_patch: not found\n", code=127),
+        execution(b"first small edit completed\n"),
+        execution(b"second small edit completed\n"),
+    ]
+
+    def invoke(phase, prompt, planning_round):
+        prompts.append(json.loads(prompt))
+        index = len(prompts) - 1
+        if index:
+            expected = observation(outputs[index - 1])
+            assert prompts[-1]["messages"][-1]["content"] == expected
+        action = {"command": edits[index]} if index < len(edits) else {"final": "done"}
+        return reply(json.dumps(action), len(prompts))
+
+    def execute(command):
+        commands.append(command)
+        assert len(command.encode()) <= 8192
+        return outputs[len(commands) - 1]
+
+    # Scripted observations exercise actual DefaultAgent control flow, not guest filesystem proof.
+    result = run_agent(work_config(), "", invoke, execute, lambda _: None)
+    assert type(observed_agents[0]) is DefaultAgent
+    assert observed_agents[0].config.step_limit == 16
+    assert observed_agents[0].config.max_consecutive_format_errors == 1
+    assert result.exit_status == "Submitted" and result.failure_code is None
+    assert result.query_attempts == len(prompts) == 4 and commands == edits
+    assert "[exit_code=127]" in prompts[1]["messages"][-1]["content"]
+    observations = [message for message in result.visible_messages if message.role == "observation"]
+    assert len(observations) == 3
 
 
 def test_step_exhaustion_has_exactly_sixteen_calls_and_no_seventeenth():

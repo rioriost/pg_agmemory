@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pg_agmemory.development_evaluation import (
+    WORK_PROTOCOL,
     ControllerResult,
     EvaluationFailure,
     EventSink,
@@ -32,6 +33,7 @@ def config_value(*, arm="no_memory", milestone=1, session="work-a", state=None):
         "protocol": "pgag-development-controller-v1", "mode": "work",
         "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "memory_retrieval_policy": RETRIEVAL_POLICY,
+        "work_protocol": WORK_PROTOCOL,
         "run_id": "test-run", "session_id": session,
         "slot": {"project_id": "project-a", "milestone": milestone, "arm": arm},
         "recipe_sha256": "a" * 64,
@@ -126,9 +128,14 @@ def test_two_actual_fresh_controllers_do_not_carry_history_or_ids(tmp_path):
         assert result.status == "submitted" and result.memory_state is None
         assert result.memory_maintenance_protocol == MAINTENANCE_PROTOCOL
         assert result.memory_retrieval_policy == RETRIEVAL_POLICY
+        assert result.work_protocol == WORK_PROTOCOL
         assert events[0]["kind"] == "controller_started"
         assert events[0]["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
         assert events[0]["data"]["memory_retrieval_policy"] == RETRIEVAL_POLICY
+        assert events[0]["data"]["work_protocol"] == WORK_PROTOCOL
+        assert all(event["data"]["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
+                   and "work_protocol" not in event["data"]["data"]
+                   for event in events if event["kind"] == "memory_event")
         assert all(event["data"]["data"]["memory_retrieval_policy"] == RETRIEVAL_POLICY
                    for event in events if event["kind"] == "memory_event")
         assert result.query_attempts == result.admitted_invocations == 1
@@ -260,6 +267,7 @@ def test_fresh_handoff_boundary_directly_maintains_without_deliver(tmp_path):
 ])
 @pytest.mark.parametrize("fault", [
     "missing", "wrong", "v1_state", "missing_retrieval", "wrong_retrieval",
+    "missing_work", "wrong_work",
 ])
 def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
     tmp_path, monkeypatch, mode, arm, fault,
@@ -281,11 +289,15 @@ def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
     if fault == "missing":
         config.pop("memory_maintenance_protocol")
     elif fault == "wrong":
-        config["memory_maintenance_protocol"] = "development-maintenance-v1"
+        config["memory_maintenance_protocol"] = "development-maintenance-v2"
     elif fault == "missing_retrieval":
         config.pop("memory_retrieval_policy")
     elif fault == "wrong_retrieval":
         config["memory_retrieval_policy"] = "development-retrieval-v1"
+    elif fault == "missing_work":
+        config.pop("work_protocol")
+    elif fault == "wrong_work":
+        config["work_protocol"] = "development-work-v1"
     else:
         config["memory_state"] = {
             "format": "development-memory-state-v1", "binding": config["memory_binding"],
@@ -306,7 +318,8 @@ def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
     spec = importlib.util.spec_from_file_location("development_controller_version", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+    code = "invalid_work_protocol" if fault.endswith("_work") else "invalid_controller_config"
+    with pytest.raises(EvaluationFailure, match=code):
         module.run(tmp_path / "input.json", tmp_path / "ipc", tmp_path / "output")
     assert callbacks == []
     assert not (tmp_path / "output").exists()
