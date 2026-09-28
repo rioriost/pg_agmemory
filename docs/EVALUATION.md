@@ -89,6 +89,37 @@ controller state are not included. The 933-file private evidence tree was
 sealed before post-hoc inspection and verified unchanged. No new scoring
 model or candidate replay was used.
 
+### Subsequent maintenance revision: offline regressions only
+
+The current harness introduces
+[`development-maintenance-v2`](DEVELOPMENT_EVALUATION_PLAN.md#post-pilot-maintenance-protocol-offline-revision)
+to address the observed contract-fragility classes without changing these
+results. It requires an explicit version on every controller configuration
+and uses `development-memory-state-v2`; old state or missing/wrong versions
+are rejected before controller model/Native operations.
+
+Handoff models now supply ranked items. The host validates every item and
+packs a whole ordered prefix into the unchanged 2,048-byte cap, reporting
+omissions rather than cutting text or requesting a retry. PG evidence keeps
+the model's original span, validates its coordinates first, and moves only
+whitespace endpoints inward using Python `str.isspace()`. It records both
+spans and still supplies an exact substring to the unchanged Native evidence
+validator. All proposals are prevalidated before assertion writes.
+
+This is an explicitly different maintenance protocol, not a repair or
+rescoring of the first two attempts. The original `{note}` responses are not
+converted into accepted item lists. Pinned manifests, packs and results remain
+unchanged. Offline protocol regressions cannot establish that a live model
+will follow the new contract or that memory adds usefulness; a renewed
+held-out evaluation needs separate preregistration.
+
+The final baked revision passed Ruff/mypy, 355 focused Python tests and 65
+Node tests without skips, including real Native/controller IPC and the full
+eighteen-slot fake-model flow. A new three-item IPC fixture proposes 2,831 bytes,
+delivers a 1,857-byte whole prefix, and verifies omission evidence and unchanged
+call accounting. These are post-hoc protocol regressions, not recovered pilot
+successes or a live-model reliability result.
+
 ### Second-attempt preregistration and qualification
 
 The [second-attempt manifest](../examples/development-memory-pilot-v2-manifest.json)

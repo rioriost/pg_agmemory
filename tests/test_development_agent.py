@@ -21,11 +21,13 @@ from pg_agmemory.development_evaluation import (
     json_bytes,
     parse_config,
 )
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL
 
 
 def work_config(arm="no_memory"):
     return parse_config(json_bytes({
         "protocol": "pgag-development-controller-v1", "mode": "work", "run_id": "test-run",
+        "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "session_id": "test-work", "slot": {"project_id": "project-a", "milestone": 1, "arm": arm},
         "recipe_sha256": "a" * 64,
         "model": {"model": "gpt-6-astra", "reasoning_effort": "high"},

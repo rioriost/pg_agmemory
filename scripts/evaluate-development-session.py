@@ -118,6 +118,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
     try:
         events.emit("controller_started", {
             "mode": config.mode, "run_id": config.run_id,
+            "memory_maintenance_protocol": config.memory_maintenance_protocol,
             "slot": config.slot.model_dump(mode="json"), "recipe_sha256": config.recipe_sha256,
             "model": config.model.model_dump(mode="json"),
             "memory_binding": config.memory_binding.model_dump(mode="json"),
@@ -137,6 +138,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
             require(url is None and token is None, "unexpected_native_authorization")
         memory = DevelopmentMemory(
             config.memory_binding, session_number=config.slot.milestone, state=state,
+            maintenance_protocol=config.memory_maintenance_protocol,
             native_factory=native_factory, invoke=ipc.invoke, emit=emit_memory,
             now=lambda: datetime.now(UTC),
         )
@@ -206,6 +208,7 @@ def run(config_path: Path, ipc_path: Path, output_path: Path) -> "ControllerResu
     try:
         result = ControllerResult(
             protocol=PROTOCOL, session_id=config.session_id, slot=config.slot, mode=config.mode,
+            memory_maintenance_protocol=config.memory_maintenance_protocol,
             status=status, reason=reason, outcome_unknown=unknown,
             upstream_exit_status=upstream_exit, submission=submission,
             query_attempts=query_attempts,

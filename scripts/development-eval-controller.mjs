@@ -3,8 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
-  canonicalJson, EvaluationError, exactKeys, parseJson, PROTOCOL, requireCondition, sha256,
-  remainingMilliseconds, validateRequest, validateUsage,
+  canonicalJson, EvaluationError, exactKeys, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL,
+  remainingMilliseconds, requireCondition, sha256, validateRequest, validateUsage,
 } from "./development-eval-protocol.mjs";
 import { runProcess } from "./development-eval-sandbox.mjs";
 import { privateDirectory, readPrivate, writeNew } from "./development-eval-transport.mjs";
@@ -34,6 +34,17 @@ const MEMORY_FAILURES = new Set([
   "memory_prompt_budget_exhausted", "memory_inventory_too_large",
 ]);
 const TIMEOUT_REASONS = new Set(["response_timeout", "late_ipc_reply", "session_deadline"]);
+const MAINTENANCE_INTEGRITY_FAILURES = new Set([
+  "invalid_memory_maintenance_protocol", "invalid_memory_state",
+]);
+
+function validateMaintenanceIdentity(value) {
+  requireCondition(value?.memory_maintenance_protocol === MAINTENANCE_PROTOCOL,
+    "invalid_memory_maintenance_protocol");
+  requireCondition(value.memory_state === null || value.memory_state !== undefined
+    && typeof value.memory_state === "object" && !Array.isArray(value.memory_state)
+    && value.memory_state.format === "development-memory-state-v2", "invalid_memory_state");
+}
 
 const errorCode = (error) => typeof error?.code === "string" ? error.code : "coordinator_failed";
 const same = (left, right) => left !== undefined && right !== undefined
@@ -82,9 +93,11 @@ function commandReply(operation) {
 }
 
 class EventTail {
-  constructor(file, sessionId, record) {
+  constructor(file, config, record) {
     this.file = file;
-    this.sessionId = sessionId;
+    this.sessionId = config.session_id;
+    this.maintenanceProtocol = config.memory_maintenance_protocol;
+    this.started = false;
     this.record = record;
     this.offset = 0;
     this.pending = Buffer.alloc(0);
@@ -118,6 +131,13 @@ class EventTail {
           requireCondition(event.protocol === PROTOCOL && event.session_id === this.sessionId
             && event.sequence === ++this.sequence && this.sequence <= 1024,
           "controller_event_identity");
+          if (event.kind === "controller_started") {
+            requireCondition(!this.started && this.sequence === 1
+              && event.data.memory_maintenance_protocol === this.maintenanceProtocol,
+            "controller_maintenance_protocol");
+            this.started = true;
+          }
+          requireCondition(this.started, "controller_maintenance_protocol");
           if (event.kind === "work_started") {
             requireCondition(this.workStarted === null && !this.finished
               && event.data.work_limit_seconds === 900, "work_deadline_reset");
@@ -151,6 +171,11 @@ class EventTail {
 export class ControllerSession {
   constructor({ infrastructure, transport, config, guest, record, runDeadline, runner = runProcess,
     signal }) {
+    try { validateMaintenanceIdentity(config); }
+    catch (error) {
+      transport.ledger?.stop();
+      throw error;
+    }
     this.infrastructure = infrastructure;
     this.transport = transport;
     this.config = config;
@@ -186,6 +211,8 @@ export class ControllerSession {
 
   assertActive() {
     if (this.fatalFailure !== null) throw this.fatalFailure;
+    try { validateMaintenanceIdentity(this.config); }
+    catch (error) { throw this.latchFatal(error); }
     requireCondition(!this.abort.signal.aborted, "operation_cancelled");
     requireCondition(!this.transport.ledger?.stopped, "admission_stopped");
     requireCondition(Date.now() < this.runDeadline, "run_deadline");
@@ -296,6 +323,7 @@ export class ControllerSession {
 
   async handleRequest(request, events) {
     this.assertActive();
+    requireCondition(events.started, "controller_maintenance_protocol");
     this.activeDeadline = this.deadline(events);
     const admissionBefore = this.transport.ledger?.ordinal;
     let result;
@@ -391,6 +419,7 @@ export class ControllerSession {
         await privateDirectory(path.join(this.root, name), { create: true });
       }
       await writeNew(path.join(this.root, "input.json"), config);
+      this.assertActive();
       const args = [
         "exec", this.infrastructure.api, "/usr/bin/env", "-i",
         "PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8",
@@ -405,13 +434,14 @@ export class ControllerSession {
         "--config", `${this.guestRoot}/input.json`, "--ipc", `${this.guestRoot}/ipc`,
         "--output", `${this.guestRoot}/output`, "--home", `${this.guestRoot}/home`);
       const events = new EventTail(path.join(this.root, "output", "events.jsonl"),
-        config.session_id, this.record);
+        config, this.record);
       execution = this.runner("container", args, {
         timeoutMs: remainingMilliseconds(this.runDeadline, this.runDeadline - Date.now()),
         maximum: 65536, signal: this.abort.signal,
       }).then((result) => { processResult = result; }, (error) => { processFailure = error; })
         .finally(() => { exited = true; });
-      this.record({ kind: "controller_launched", session_id: config.session_id, mode: config.mode });
+      this.record({ kind: "controller_launched", session_id: config.session_id, mode: config.mode,
+        memory_maintenance_protocol: config.memory_maintenance_protocol });
       while (!exited) {
         this.assertActive();
         await events.drain();
@@ -431,6 +461,7 @@ export class ControllerSession {
       requireCondition(processResult !== undefined && !processResult.timedOut
         && !processResult.overflow && !processResult.cancelled, "controller_process_incomplete");
       await events.drain();
+      requireCondition(events.started, "controller_maintenance_protocol");
       requireCondition(events.pending.length === 0, "controller_event_incomplete");
       await writeNew(path.join(this.root, "process.json"), {
         exit_code: processResult.exitCode, duration_seconds: processResult.durationSeconds,
@@ -438,6 +469,10 @@ export class ControllerSession {
       });
       const resultBytes = await readPrivate(path.join(this.root, "output", "result.json"), 1048576);
       const result = parseJson(resultBytes);
+      validateMaintenanceIdentity(result);
+      requireCondition(result.boundary_result == null
+        || result.boundary_result.state?.format === "development-memory-state-v2",
+      "invalid_memory_state");
       requireCondition(result.protocol === PROTOCOL && result.session_id === config.session_id
         && result.mode === config.mode && result.slot.project_id === config.slot.project_id
         && result.slot.arm === config.slot.arm && result.slot.milestone === config.slot.milestone
@@ -487,13 +522,15 @@ export class ControllerSession {
         const retrievalBudget = retrievalFailure && result.reason === "search_prompt_too_large"
           && this.operations.every((operation) => operation.request.operation === "invoke_model"
             && operation.request.body.phase === "memory_plan");
-        if (!(hostFailure || localFailure || memoryFailure || plannerFailure || retrievalBudget)) {
+        if (MAINTENANCE_INTEGRITY_FAILURES.has(result.reason)
+          || !(hostFailure || localFailure || memoryFailure || plannerFailure || retrievalBudget)) {
           const error = new EvaluationError("controller_failure_requires_abort");
           error.controller_reason = result.reason;
           throw error;
         }
       }
       this.record({ kind: "controller_result", session_id: config.session_id,
+        memory_maintenance_protocol: result.memory_maintenance_protocol,
         status: result.status, result_sha256: sha256(resultBytes) });
       return { ...result, host_accounting: accounting };
     } catch (error) {

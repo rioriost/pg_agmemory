@@ -12,6 +12,7 @@ import pytest
 
 from pg_agmemory.development_evaluation import (
     ControllerResult,
+    EvaluationFailure,
     EventSink,
     FileIPC,
     InstrumentedNativeFactory,
@@ -19,7 +20,9 @@ from pg_agmemory.development_evaluation import (
     json_bytes,
     private_read,
     publish,
+    sha256,
 )
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL
 from pg_agmemory.models import Observe, Recall
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "evaluate-development-session.py"
@@ -28,6 +31,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "evaluate-development
 def config_value(*, arm="no_memory", milestone=1, session="work-a", state=None):
     return {
         "protocol": "pgag-development-controller-v1", "mode": "work",
+        "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "run_id": "test-run", "session_id": session,
         "slot": {"project_id": "project-a", "milestone": milestone, "arm": arm},
         "recipe_sha256": "a" * 64,
@@ -120,6 +124,9 @@ def test_two_actual_fresh_controllers_do_not_carry_history_or_ids(tmp_path):
     for code, result, events, requests, _, stderr in (first, second):
         assert code == 0, stderr.decode()
         assert result.status == "submitted" and result.memory_state is None
+        assert result.memory_maintenance_protocol == MAINTENANCE_PROTOCOL
+        assert events[0]["kind"] == "controller_started"
+        assert events[0]["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
         assert result.query_attempts == result.admitted_invocations == 1
         assert result.provider_api_requests == 1
         kinds = [event["kind"] for event in events]
@@ -169,6 +176,16 @@ def test_command_is_only_ipc_and_ordinary_nonzero_exit_is_observed(tmp_path):
 
 
 def test_fresh_handoff_boundary_directly_maintains_without_deliver(tmp_path):
+    items = [
+        "Visible historical fact. " * 36,
+        "Second standalone fact. " * 36,
+        "Omitted lower-ranked fact. " * 36,
+    ]
+    raw = json.dumps({"items": items})
+    proposed = "\n\n".join(items)
+    packed = "\n\n".join(items[:2])
+    assert all(len(item.encode()) <= 2048 for item in items)
+    assert len(packed.encode()) <= 2048 < len(proposed.encode())
     config = config_value(arm="handoff", session="boundary-a")
     for field in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
         config.pop(field)
@@ -182,20 +199,40 @@ def test_fresh_handoff_boundary_directly_maintains_without_deliver(tmp_path):
         assert request["operation"] == "invoke_model"
         assert request["body"]["phase"] == "handoff"
         assert request["body"]["planning_round"] is None
-        return model_result('{"note":"Visible historical fact."}')
+        return model_result(raw)
 
     code, result, events, requests, _, stderr = run_controller(
         tmp_path / "boundary", config, respond,
     )
     assert code == 0, stderr.decode()
     assert result.status == "boundary_completed"
+    assert result.memory_maintenance_protocol == MAINTENANCE_PROTOCOL
+    assert result.memory_state.format == "development-memory-state-v2"
     assert result.query_attempts == result.execute_attempts == 0
     assert result.admitted_invocations == result.provider_api_requests == 1
     assert result.memory_state.completed_boundaries == 1
-    assert result.memory_state.note == "Visible historical fact."
+    assert result.memory_state.note == packed
+    assert items[2] not in result.memory_state.model_dump_json()
     assert result.boundary_result.model_receipt_ref == model_result("")["receipt_ref"]
     assert result.transcript == transcript
     assert len(requests) == 1
+    packing = next(
+        event["data"]["data"] for event in events
+        if event["kind"] == "memory_event" and event["data"]["kind"] == "memory_handoff_packing"
+    )
+    assert packing["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
+    assert packing["receipt_ref"] == result.invocation_receipts[0].model_dump(mode="json")
+    assert packing["proposed_count"] == 3
+    assert packing["included_count"] == 2
+    assert packing["omitted_count"] == 1
+    assert packing["included_indices"] == [0, 1]
+    assert packing["omitted_indices"] == [2]
+    assert packing["raw_reply_bytes"] == len(raw.encode())
+    assert packing["proposed_bytes"] == len(proposed.encode())
+    assert packing["delivered_bytes"] == len(packed.encode())
+    assert packing["raw_reply_sha256"] == sha256(raw.encode())
+    assert packing["proposed_sha256"] == sha256(proposed.encode())
+    assert packing["delivered_sha256"] == sha256(packed.encode())
     assert not any(event["kind"] in ("retrieval_completed", "work_started") for event in events)
     assert not any(
         event["kind"] == "memory_event" and event["data"]["kind"] == "memory_delivery"
@@ -209,6 +246,60 @@ def test_fresh_handoff_boundary_directly_maintains_without_deliver(tmp_path):
     )
     assert subsequent[0] == 0, subsequent[-1].decode()
     assert "Visible historical fact." in subsequent[3][0]["body"]["prompt"]
+    assert "Omitted lower-ranked fact." not in subsequent[3][0]["body"]["prompt"]
+    assert subsequent[1].memory_delivery.text == packed
+
+
+@pytest.mark.parametrize(("mode", "arm"), [
+    ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
+    ("boundary", "no_memory"), ("boundary", "handoff"), ("boundary", "pg_agmemory"),
+])
+@pytest.mark.parametrize("fault", ["missing", "wrong", "v1_state"])
+def test_maintenance_version_gate_precedes_ipc_memory_and_native_construction(
+    tmp_path, monkeypatch, mode, arm, fault,
+):
+    import pg_agmemory.development_evaluation as contracts
+    from pg_agmemory.development_memory import DevelopmentMemory
+
+    config = config_value(arm=arm)
+    if mode == "boundary":
+        for field in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
+            config.pop(field)
+        config.update(
+            mode=mode, transcript=boundary_transcript("Visible task.", []).model_dump(mode="json"),
+            boundary_id="boundary-a", keys=None if arm != "pg_agmemory" else {
+                "observe": "observe-a", "create": [f"create-{i}" for i in range(6)],
+                "revise": [f"revise-{i}" for i in range(4)],
+            },
+        )
+    if fault == "missing":
+        config.pop("memory_maintenance_protocol")
+    elif fault == "wrong":
+        config["memory_maintenance_protocol"] = "development-maintenance-v1"
+    else:
+        config["memory_state"] = {
+            "format": "development-memory-state-v1", "binding": config["memory_binding"],
+            "completed_boundaries": 1, "last_boundary_id": "old-boundary",
+            "note": "Old handoff." if arm == "handoff" else None, "assertions": [],
+        }
+    tmp_path.chmod(0o700)
+    publish(tmp_path / "input.json", json_bytes(config))
+    callbacks = []
+
+    def forbidden(*args, **kwargs):
+        callbacks.append(True)
+        pytest.fail("version rejection must precede controller, IPC, memory and Native callbacks")
+
+    for name in ("EventSink", "FileIPC", "InstrumentedNativeFactory"):
+        monkeypatch.setattr(contracts, name, forbidden)
+    monkeypatch.setattr(DevelopmentMemory, "__init__", forbidden)
+    spec = importlib.util.spec_from_file_location("development_controller_version", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+        module.run(tmp_path / "input.json", tmp_path / "ipc", tmp_path / "output")
+    assert callbacks == []
+    assert not (tmp_path / "output").exists()
 
 
 @pytest.mark.parametrize("failure", ["timeout", "multiple", "malformed_action"])
@@ -374,7 +465,7 @@ def test_typed_retrieval_failure_preserves_code_origin_and_existing_model_accoun
     ipc.mkdir(mode=0o700)
     config = config_value(arm="pg_agmemory", milestone=2)
     config["memory_state"] = {
-        "format": "development-memory-state-v1", "binding": config["memory_binding"],
+        "format": "development-memory-state-v2", "binding": config["memory_binding"],
         "completed_boundaries": 1, "last_boundary_id": "boundary-1", "note": None,
         "assertions": [{
             "memory_id": "00000000-0000-4000-8000-000000000002", "revision": 1, "status": "active",

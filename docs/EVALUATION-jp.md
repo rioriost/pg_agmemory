@@ -79,6 +79,35 @@ model別nano-AIUの厳密な十進合計は`1119056749999.9999995`、
 非公開の933 fileの証跡は事後分析前に固定し、変更がないことを照合しました。
 追加の採点modelや成果物の再実行は使っていません。
 
+### その後の記憶更新プロトコル改訂: offline回帰確認のみ
+
+現在のharnessでは、上記の成績を変更せずに出力契約の脆さへ対処するため、
+[`development-maintenance-v2`](DEVELOPMENT_EVALUATION_PLAN.md#post-pilot-maintenance-protocol-offline-revision)
+を導入します。全controller設定に明示的なversionを必須とし、
+状態は`development-memory-state-v2`を使います。旧状態やversionの欠落・不一致は、
+controllerのmodel/Native呼出し前に拒否します。
+
+引継ぎは優先順のitem配列をmodelが返し、hostが全itemを検証したうえで、
+変更しない2,048-byte上限に収まる先頭からのitemを丸ごと採用します。
+途中切断や再試行はせず、省略を記録します。
+PGの根拠は元のspan座標を先に検証し、Pythonの`str.isspace()`に該当する
+両端の空白だけを内側へ除きます。元の範囲と実効範囲を記録し、
+Native側の証拠検証は変更せず、正確な部分文字列を渡します。
+assertionを書き込む前に、全提案を事前検証します。
+
+これは別versionの記憶更新契約であり、初回・第2回の応答修復や再採点ではありません。
+元の`{note}`応答をitem配列へ変換して成功扱いにはせず、
+既存manifest・課題・結果も変更しません。
+offline回帰確認は、新しい契約への実modelの追従性やメモリの有用性を証明しません。
+新たな未見評価には、別の事前登録が必要です。
+
+最終のbaked imageでRuff/mypy、Pythonの関連355件、Node 65件がskipなしで通過しました。
+実際のNative/controller IPCと、18 slotのfake model通し実行を含みます。
+新しいIPC fixtureでは、3 item・2,831 bytesの提案から先頭2 item・1,857 bytesを配送し、
+省略の証跡と呼出し数の会計が維持されることを確認しています。
+これは事後のプロトコル回帰確認であり、過去のpilotの成功数を増やしたり、
+実modelの信頼性を測定したりした結果ではありません。
+
 ### 第2回の事前登録と適格性確認
 
 [第2回のmanifest](../examples/development-memory-pilot-v2-manifest.json)で、

@@ -7,7 +7,9 @@ import test from "node:test";
 import { ControllerSession, verifyControllerAccounting } from "./development-eval-controller.mjs";
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles } from "./development-eval-pack.mjs";
-import { EvaluationError, InvocationLedger, PROTOCOL, sha256 } from "./development-eval-protocol.mjs";
+import {
+  EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, PROTOCOL, sha256,
+} from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
 
 const usage = {
@@ -46,6 +48,7 @@ function controllerResult(operations, overrides = {}) {
   const refs = models.map((row) => row.result.receipt_ref).filter((ref) => ref !== null);
   return {
     protocol: PROTOCOL, session_id: "unit-session", mode: "work",
+    memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: null,
     slot: { project_id: "toy-a", milestone: 1, arm: "no_memory" },
     status: "submitted", reason: null, outcome_unknown: false, upstream_exit_status: "Submitted",
     query_attempts: models.filter((row) => row.request.body.phase === "work").length,
@@ -59,6 +62,53 @@ function repliesFor(operations) {
     operation: req.operation, result,
   }]));
 }
+
+test("unit: maintenance protocol preflight is required for every mode and initial arm", () => {
+  assert.equal(PROTOCOL, "pgag-development-controller-v1");
+  assert.equal(MAINTENANCE_PROTOCOL, "development-maintenance-v2");
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const invalid of [undefined, null, false, 2, "", "development-maintenance-v1"]) {
+      let callbacks = 0;
+      const ledger = new InvocationLedger({
+        record: () => { callbacks += 1; }, runId: "test-run", model: "gpt-6-astra", effort: "high",
+      });
+      const config = {
+        protocol: PROTOCOL, mode, session_id: "unit-session",
+        slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: null,
+        maintenance_protocol: MAINTENANCE_PROTOCOL,
+      };
+      if (invalid !== undefined) config.memory_maintenance_protocol = invalid;
+      assert.throws(() => new ControllerSession({
+        config, transport: { ledger, invoke: () => { callbacks += 1; } },
+        infrastructure: { bearer: () => { callbacks += 1; } }, guest: null,
+        record: () => { callbacks += 1; }, runner: () => { callbacks += 1; },
+        runDeadline: Date.now() + 60000,
+      }), { code: "invalid_memory_maintenance_protocol" });
+      assert.equal(callbacks, 0);
+      assert.equal(ledger.ordinal, 0);
+      assert.equal(ledger.stopped, true);
+    }
+  }
+});
+
+test("unit: old or missing state versions cannot enter a v2 host controller", () => {
+  for (const mode of ["work", "boundary"]) for (const arm of ["no_memory", "handoff", "pg_agmemory"]) {
+    for (const state of [undefined, {}, { format: "development-memory-state-v1" }]) {
+      const ledger = new InvocationLedger({
+        record: () => assert.fail("no admission"), runId: "test-run", model: "gpt-6-astra", effort: "high",
+      });
+      assert.throws(() => new ControllerSession({
+        config: { protocol: PROTOCOL, memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
+          mode, slot: { project_id: "toy-a", milestone: 1, arm }, memory_state: state },
+        transport: { ledger }, infrastructure: {}, guest: null,
+        record: () => assert.fail("no event"), runner: () => assert.fail("no controller operation"),
+        runDeadline: Date.now() + 60000,
+      }), { code: "invalid_memory_state" });
+      assert.equal(ledger.ordinal, 0);
+      assert.equal(ledger.stopped, true);
+    }
+  }
+});
 
 test("unit: failed accounting allows only one explained unpublished attempt", () => {
   const operations = [modelOperation(1, '{"command":"synthetic command"}'), executeOperation(2)];
@@ -266,9 +316,21 @@ async function unitSession(t, options = {}) {
       if (options.hungStop) return new Promise(() => {});
     },
   };
+  const slot = options.config?.slot ?? { project_id: "toy-a", milestone: 1, arm: "no_memory" };
+  const binding = {
+    run_id: "test-run", project_id: slot.project_id, arm: slot.arm,
+    scope_id: "00000000-0000-4000-8000-000000000001",
+  };
+  const state = slot.arm !== "no_memory" && slot.milestone > 1 ? {
+    format: "development-memory-state-v2", binding, completed_boundaries: slot.milestone - 1,
+    last_boundary_id: "prior-boundary", note: slot.arm === "handoff" ? "Historical fact." : null,
+    assertions: slot.arm === "pg_agmemory"
+      ? [{ memory_id: "00000000-0000-4000-8000-000000000002", revision: 1, status: "active" }] : [],
+  } : null;
   const config = {
     protocol: PROTOCOL, run_id: "test-run", session_id: "unit-session", mode: "work",
-    slot: { project_id: "toy-a", milestone: 1, arm: "no_memory" },
+    memory_maintenance_protocol: MAINTENANCE_PROTOCOL, memory_state: state, memory_binding: binding,
+    slot,
     model: { model: "gpt-6-astra", reasoning_effort: "high" },
     ...options.config,
   };
@@ -294,7 +356,9 @@ async function unitSession(t, options = {}) {
       request: options.requests?.find((req) => req.sequence === reply.sequence)
         ?? request(reply.sequence), result: reply.result,
     }));
-    let result = controllerResult(operations, { mode: config.mode, slot: config.slot });
+    let result = controllerResult(operations, {
+      mode: config.mode, slot: config.slot, memory_state: config.memory_state,
+    });
     const last = operations.at(-1);
     if (last?.result.status === "error") {
       result = { ...result, status: "failed", reason: last.result.code,
@@ -323,6 +387,10 @@ async function unitSession(t, options = {}) {
     }), { once: true });
     await fs.mkdir(path.join(session.root, "ipc", "requests"), { mode: 0o700 });
     await fs.mkdir(path.join(session.root, "ipc", "replies"), { mode: 0o700 });
+    if (!options.omitStarted) await event("controller_started", {
+      memory_maintenance_protocol: config.memory_maintenance_protocol,
+      ...options.started,
+    });
     if (!options.retrieval) await event("work_started", { work_limit_seconds: 900 });
     if (options.noRequests) await finish();
     else await requestFile(options.requests?.[0] ?? request(1));
@@ -353,6 +421,70 @@ async function unitSession(t, options = {}) {
     calls: () => calls, launches: () => launches,
   };
 }
+
+test("unit: changed configuration is fatal before any controller or model launch", async (t) => {
+  for (const change of [
+    { memory_maintenance_protocol: "development-maintenance-v1" },
+    { memory_state: { format: "development-memory-state-v1" } },
+  ]) {
+    const fixture = await unitSession(t);
+    Object.assign(fixture.config, change);
+    await assert.rejects(fixture.session.run(), {
+      code: change.memory_state ? "invalid_memory_state" : "invalid_memory_maintenance_protocol",
+    });
+    assert.equal(fixture.launches(), 0);
+    assert.equal(fixture.calls(), 0);
+    assert.equal(fixture.transport.ledger.stopped, true);
+  }
+});
+
+test("unit: controller startup must bind the maintenance identity before dispatch", async (t) => {
+  for (const options of [
+    { omitStarted: true },
+    { started: { memory_maintenance_protocol: undefined } },
+    { started: { memory_maintenance_protocol: "development-maintenance-v1" } },
+  ]) {
+    const fixture = await unitSession(t, options);
+    await assert.rejects(fixture.session.run(), { code: "controller_maintenance_protocol" });
+    assert.equal(fixture.calls(), 0);
+    assert.equal(fixture.published.length, 0);
+    assert.equal(fixture.transport.ledger.stopped, true);
+  }
+});
+
+test("unit: result identity cannot drop the version or reintroduce v1 state", async (t) => {
+  for (const change of [
+    { memory_maintenance_protocol: undefined },
+    { memory_maintenance_protocol: "development-maintenance-v1" },
+    { memory_state: { format: "development-memory-state-v1" } },
+    { boundary_result: { state: { format: "development-memory-state-v1" } } },
+  ]) {
+    const fixture = await unitSession(t, { result: (value) => ({ ...value, ...change }) });
+    await assert.rejects(fixture.session.run(), {
+      code: change.memory_state || change.boundary_result
+        ? "invalid_memory_state" : "invalid_memory_maintenance_protocol",
+    });
+    assert.equal(fixture.calls(), 1);
+    assert.equal(fixture.transport.ledger.stopped, true);
+    assert.equal(fixture.session.operations[0].result.receipt_ref.global_ordinal, 1);
+    assert.equal(fixture.records.some((row) => row.kind === "controller_result"), false);
+  }
+});
+
+test("unit: maintenance and state integrity errors never become ordinary boundary failures", async (t) => {
+  for (const reason of ["invalid_memory_maintenance_protocol", "invalid_memory_state"]) {
+    const fixture = await unitSession(t, {
+      retrieval: true, noRequests: true,
+      config: { mode: "boundary", slot: { project_id: "toy-a", milestone: 1, arm: "handoff" } },
+      result: (value) => ({ ...value, status: "failed", reason }),
+    });
+    await assert.rejects(fixture.session.run(), {
+      code: "controller_failure_requires_abort", controller_reason: reason,
+    });
+    assert.equal(fixture.transport.ledger.stopped, true);
+    assert.equal(fixture.calls(), 0);
+  }
+});
 
 test("unit: cleanup failure is latched before IPC and blocks a later boundary", async (t) => {
   const original = new EvaluationError("owned_cleanup_failed");
@@ -714,11 +846,21 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
   });
   const ledger = new InvocationLedger({ record, runId, model: "gpt-6-astra", effort: "high" });
   const nanoAiu = 15974250000.000002;
+  const handoffItems = [
+    "Preserve the integer value. ".repeat(34),
+    "Keep output as JSON. ".repeat(43),
+    "Omitted lower-ranked fact. ".repeat(36),
+  ];
+  const handoffReply = JSON.stringify({ items: handoffItems });
+  const proposedHandoff = handoffItems.join("\n\n");
+  const packedHandoff = handoffItems.slice(0, 2).join("\n\n");
+  assert.ok(handoffItems.every((item) => Buffer.byteLength(item) <= 2048));
+  assert.ok(Buffer.byteLength(packedHandoff) <= 2048 && Buffer.byteLength(proposedHandoff) > 2048);
   const transport = {
     ledger,
     async invoke(context) {
       const admission = ledger.reserve(context);
-      const text = context.phase === "handoff" ? '{"note":"Preserve the integer value."}'
+      const text = context.phase === "handoff" ? handoffReply
         : context.phase === "memory_decision" ? '{"create":[],"revise":[],"propose_forget":[]}'
           : '{"final":"Synthetic protocol submission."}';
       return {
@@ -741,6 +883,7 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       const binding = { run_id: runId, project_id: "toy-a", arm, scope_id: provisioned.scope_id };
       const common = {
         protocol: PROTOCOL, run_id: runId,
+        memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
         slot: { project_id: "toy-a", milestone: 1, arm }, recipe_sha256: "a".repeat(64),
         model, memory_binding: binding, memory_state: null,
       };
@@ -761,6 +904,10 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       }).run();
       assert.equal(work.status, "submitted", JSON.stringify({ arm, work,
         recent_events: records.slice(-5) }));
+      assert.equal(work.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(records.find((row) => row.kind === "controller_event"
+        && row.event.session_id === sessionId && row.event.kind === "controller_started")
+        .event.data.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
       assert.equal(work.query_attempts, 1);
       assert.equal(work.admitted_invocations, 1);
       assert.equal(work.provider_api_requests, 1);
@@ -793,8 +940,29 @@ test("real DefaultAgent and separate boundary controllers use host-owned single-
       assert.equal(boundary.status, "boundary_completed", JSON.stringify({ arm, boundary,
         recent_events: records.slice(-8) }));
       assert.equal(boundary.memory_state.completed_boundaries, 1);
+      assert.equal(boundary.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(boundary.memory_state.format, "development-memory-state-v2");
       assert.equal(boundary.memory_state.note,
-        arm === "handoff" ? "Preserve the integer value." : null);
+        arm === "handoff" ? packedHandoff : null);
+      if (arm === "handoff") {
+        assert.ok(!JSON.stringify(boundary.memory_state).includes(handoffItems[2]));
+        const packing = records.find((row) => row.kind === "controller_event"
+          && row.event.session_id === `${sessionId}-boundary` && row.event.kind === "memory_event"
+          && row.event.data.kind === "memory_handoff_packing").event.data.data;
+        assert.equal(packing.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+        assert.deepEqual(packing.receipt_ref, boundary.invocation_receipts[0]);
+        assert.equal(packing.proposed_count, 3);
+        assert.equal(packing.included_count, 2);
+        assert.equal(packing.omitted_count, 1);
+        assert.deepEqual(packing.included_indices, [0, 1]);
+        assert.deepEqual(packing.omitted_indices, [2]);
+        assert.equal(packing.raw_reply_bytes, Buffer.byteLength(handoffReply));
+        assert.equal(packing.proposed_bytes, Buffer.byteLength(proposedHandoff));
+        assert.equal(packing.delivered_bytes, Buffer.byteLength(packedHandoff));
+        assert.equal(packing.raw_reply_sha256, sha256(handoffReply));
+        assert.equal(packing.proposed_sha256, sha256(proposedHandoff));
+        assert.equal(packing.delivered_sha256, sha256(packedHandoff));
+      }
       assert.equal(records.filter((row) => row.kind === "model_admitted"
         && row.session_id === `${sessionId}-boundary`).length, 1);
     }

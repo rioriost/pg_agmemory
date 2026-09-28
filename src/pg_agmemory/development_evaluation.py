@@ -29,7 +29,9 @@ from pydantic import (
 )
 
 from pg_agmemory.development_memory import (
+    MAINTENANCE_PROTOCOL,
     BoundaryKeys,
+    MaintenanceProtocol,
     MemoryBinding,
     MemoryBoundaryResult,
     MemoryDelivery,
@@ -278,6 +280,7 @@ def boundary_transcript(brief: str, messages: list[VisibleMessage]) -> BoundaryT
 
 class ControllerInput(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
+    memory_maintenance_protocol: MaintenanceProtocol
     run_id: Identifier
     session_id: Identifier
     slot: SlotKey
@@ -288,6 +291,8 @@ class ControllerInput(StrictModel):
 
     @model_validator(mode="after")
     def validate_binding(self) -> Self:
+        require(self.memory_maintenance_protocol == MAINTENANCE_PROTOCOL,
+                "invalid_memory_maintenance_protocol")
         binding = self.memory_binding
         require(binding.run_id == self.run_id and binding.project_id == self.slot.project_id
                 and binding.arm == self.slot.arm, "controller_binding_mismatch")
@@ -548,6 +553,7 @@ def audit_json(value: object) -> JsonValue:
 
 class ControllerResult(StrictModel):
     protocol: Literal["pgag-development-controller-v1"]
+    memory_maintenance_protocol: MaintenanceProtocol
     session_id: Identifier
     slot: SlotKey
     mode: Literal["work", "boundary"]

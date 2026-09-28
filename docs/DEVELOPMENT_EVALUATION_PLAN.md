@@ -6,8 +6,86 @@ fourteen successful submissions and four dependent-unrun slots caused by
 memory-boundary contract failures. No-memory passed all six planned slots;
 added memory usefulness and production readiness are not established.
 The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
-separately. The remaining sections record the reviewed design and historical
-pre-live gates; no outcome below authorizes retry or retrospective scoring changes.
+separately. The protocol revision below is a distinct offline follow-up; later
+sections retain the reviewed design and historical pre-live gates. No outcome
+below authorizes retry or retrospective scoring changes.
+
+## Post-pilot maintenance protocol: offline revision
+
+Current development-evaluation code uses **`development-maintenance-v2`**,
+an explicitly new protocol reviewed by Astra/xhigh after the published pilot.
+This is not the protocol measured in the v1/v2 results. Their source commits,
+manifests, packs, raw replies and outcomes remain unchanged; use their pinned
+source to reproduce the old contracts. This revision authorizes neither a
+live retry nor a renewed held-out evaluation.
+
+Every work and boundary configuration requires the exact
+`memory_maintenance_protocol` identifier, including M1 and no-memory
+configurations whose state is null. The recipe binds it before hashing and
+controller audit records identify it. `DevelopmentMemory` also requires an
+explicit `maintenance_protocol` argument. Continuity state uses
+`development-memory-state-v2`. Missing/wrong identifiers and v1 states fail
+before controller model or Native operations; a mismatch is not a recoverable
+maintenance failure. Do not infer a version from an answer's shape. The general
+Native API and `pgag-development-controller-v1` IPC envelope are unchanged.
+
+**Handoff packing.** The model returns strict `{"items":[...]}` JSON with zero
+to twelve ranked, standalone text items, rather than `{"note":"..."}`.
+Validate the entire array, including any tail that would be omitted: every
+item must contain non-whitespace text, contain no NUL, encode as valid UTF-8
+and fit 2,048 bytes individually. Preserve its bytes; do not strip or rewrite
+it. Join the longest whole ordered prefix with `"\n\n"` within the same
+2,048-byte delivery cap, counting separator bytes. Stop at the first item that
+would overflow; do not skip it to admit smaller later items. A nonempty valid
+array must retain at least the first item, and an empty array is explicitly
+valid empty memory. Malformed JSON, an invalid tail or an oversized individual
+item still fails without repair or another model call.
+
+The packing event distinguishes raw-response bytes/hash, proposed bytes/hash
+of the complete joined array, and delivered bytes/hash of the chosen prefix,
+with included/omitted item indices and counts. Only the packed note enters
+continuity state, the next maintenance input and work prompts. Omitted text
+remains in the original response audit only. Standalone meaning and ranking
+are instructions to the model, not semantic guarantees of the validator.
+
+**Provenance canonicalization.** The model still supplies half-open Python
+Unicode-code-point spans into the exact current transcript. Validate original
+coordinate types, order, range and the 4,096-code-point ceiling before moving
+either endpoint. Move endpoints inward only while the corresponding character
+satisfies Python `str.isspace()`. Reject an empty/all-whitespace result.
+An oversized or out-of-range original span remains invalid even if trimming
+could make it fit. Do not search for another occurrence, decode serialized
+escape sequences, normalize Unicode or alter internal whitespace, combining
+characters or non-whitespace zero-width characters.
+
+Prevalidate all proposals and resulting Native request DTOs before any
+assertion write. The serialized evidence quote must remain exactly
+`transcript[effective_start:effective_end]`; the production Native evidence
+contract is not relaxed. Audit pairs of original/effective spans are bound to
+the action kind/index, transcript hash, model receipt and maintenance protocol.
+These records mean **validated**, not **written**: Native receipts establish
+application. An invalid later proposal prevents all assertion writes, while
+any preceding Observe/inventory operations remain recorded. This does not
+provide transaction-wide atomicity after writes start.
+
+Offline regressions cover byte boundaries, Unicode, full-input validation,
+omission non-carryover, original/effective provenance and version rejection,
+including real Native/controller IPC with fake model replies. New item fixtures
+with the observed 2,055/2,181-byte aggregate lengths are not conversions or
+rescored successes of the old `{note}` replies. No extra model calls, larger
+budgets, new dependency, scoring change or demonstrated model robustness is
+implied by this protocol revision.
+
+The final baked Linux revision passed Ruff, mypy for all 66 source files and
+the controller script, **355 focused Python tests** and **65 Node tests without
+skips**. These include real Native/controller IPC and an eighteen-slot fake-model
+run, not new model-quality measurements. The IPC handoff fixture packs a new
+2,831-byte three-item proposal into a 1,857-byte two-item prefix and records the
+omitted third item without carrying it forward. The initially detected mypy
+tuple-widening error was corrected with an explicit request-union annotation;
+the corrected baked source passed the same runtime selection.
+
+## Historical framework gates
 
 This is the second evaluation stage, following the bounded phase-one findings
 published in `b543bd1`. The first paired cost data remain tied to `a31e7c9`;
@@ -284,9 +362,12 @@ recorded. Handoff and pg_agmemory receive the same boundary transcript.
 
 After sessions one and two of each project:
 
-- Fixed handoff makes exactly one model call using the previous note and
-  boundary transcript, producing a replacement note within the byte cap.
-  Oversized or malformed output is a failed boundary, not silently truncated.
+- Fixed handoff makes exactly one model call using the previous packed note
+  and boundary transcript. Under `development-maintenance-v2`, it returns
+  ranked items for audited whole-prefix packing as specified above. Invalid
+  JSON or individual items fail the boundary; aggregate omissions are explicit,
+  not silent truncation. The frozen v1/v2 pilots used the earlier strict
+  `{note}` contract and retain its over-budget failures.
 - pg_agmemory first Observes that transcript, then makes exactly one structured
   decision call. Supply a bounded inventory of current assertion references
   and contents fetched from Native, not a private text cache. The model can
@@ -627,12 +708,17 @@ state. Work additionally receives the current brief, starting-tree hash,
 allowed output paths and entry point. Boundary instead receives the exact
 `BoundaryTranscript`, host-owned `boundary_id` and required nullable
 `BoundaryKeys`; it receives no grading results.
+The post-pilot revision additionally requires the exact
+`memory_maintenance_protocol="development-maintenance-v2"` on every input,
+including null-state work. It is bound into the host recipe and audit records.
 
 `MemoryBinding` contains run ID, project ID, exact arm and a host-provisioned
-scope UUID. A bound state contains format `development-memory-state-v1`,
+scope UUID. A current bound state contains format `development-memory-state-v2`,
 the binding, completed-boundary count, last boundary ID, required nullable
 note, and up to twelve ordered current assertion records
 `{memory_id, revision, status}`. Status is `active` or `pending`.
+The earlier `development-memory-state-v1` remains part of the frozen pilot
+artifacts, but is rejected by the current controller rather than upgraded.
 The handoff state contains only its replacement note and continuity metadata;
 pg_agmemory has a null note and reference-only assertion records.
 No-memory requires null state at every milestone. All arms begin with null
@@ -650,7 +736,7 @@ completion state. No boundary runs after milestone three.
 The agreed memory surface is:
 
 ```python
-DevelopmentMemory(binding, *, session_number, state,
+DevelopmentMemory(binding, *, maintenance_protocol, session_number, state,
                   native_factory, invoke, emit, now)
 
 async deliver(public_brief) -> MemoryDelivery
@@ -685,8 +771,11 @@ boundary; unused slots are not dispatched. All keys and boundary IDs are
 caller-owned and recorded before use. Boundary keys are null for handoff.
 The transcript's exact text/hash and message-omission metadata are built by B
 and verified, not reconstructed, by A.
-Decision spans are half-open Unicode-code-point offsets into that exact text;
-derive evidence quotes locally and validate before assertion mutations.
+Decision spans are half-open Unicode-code-point offsets into that exact text.
+The current maintenance protocol validates original coordinates, canonicalizes
+only edge whitespace inward, and validates exact effective quotes in every
+Native DTO before assertion mutations. Original/effective span audits mean
+validation, not successful application.
 Partial known/uncertain mutation receipts remain evidence and block dependent
 sessions rather than publishing a partially successful continuity state.
 

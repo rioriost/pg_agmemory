@@ -6,7 +6,7 @@ import { ControllerSession } from "./development-eval-controller.mjs";
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule, validatePack } from "./development-eval-pack.mjs";
 import {
-  ARMS, canonicalJson, EvaluationError, InvocationLedger, parseJson, PROTOCOL,
+  ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, parseJson, PROTOCOL,
   requireCondition, RunBudget, sha256,
 } from "./development-eval-protocol.mjs";
 import { ExecutionGuest, runProcess } from "./development-eval-sandbox.mjs";
@@ -131,6 +131,7 @@ export async function runEvaluation({
   const record = (event) => { journal.record(event); events.push(event); };
   const recipe = {
     format: "pgag-development-recipe-v1", run_id: runId, source_revision: sourceRevision,
+    memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
     pack_sha256: sha256(canonicalJson(pack)), runtime_image: runtimeImage,
     execution_image: executionImage, model, reasoning_effort: effort,
     real_models: realModels, coordinator_invocation_limit: 318, work_steps: 16,
@@ -210,6 +211,7 @@ export async function runEvaluation({
         scope_id: provisioned.scope_id };
       const common = {
         protocol: PROTOCOL, run_id: runId,
+        memory_maintenance_protocol: recipe.memory_maintenance_protocol,
         slot: { project_id: slot.project_id, milestone: slot.milestone, arm: slot.arm },
         recipe_sha256: recipeHash, model: { model, reasoning_effort: effort },
         memory_binding: binding, memory_state: memory.get(key) ?? null,
@@ -346,6 +348,7 @@ export async function runEvaluation({
     - slots.findIndex((slot) => slot.slot_id === b.slot_id));
   const summary = {
     format: "pgag-development-evaluation-v1", run_id: runId,
+    memory_maintenance_protocol: recipe.memory_maintenance_protocol,
     status: failure === null ? "completed" : "failed", failure, real_models: realModels,
     cleanup_failures: cleanupFailures, termination_reason: signal.reason?.code ?? null,
     evidence_kind: realModels ? "synthetic_development_pilot" : "no_model_protocol_dry_run",

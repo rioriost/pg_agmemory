@@ -7,7 +7,9 @@ import test from "node:test";
 import { ControllerSession, verifyControllerAccounting } from "./development-eval-controller.mjs";
 import { NativeInfrastructure } from "./development-eval-infrastructure.mjs";
 import { artifactFromFiles, qualifyPack, schedule } from "./development-eval-pack.mjs";
-import { ARMS, EvaluationError, InvocationLedger, RunBudget, sha256 } from "./development-eval-protocol.mjs";
+import {
+  ARMS, canonicalJson, EvaluationError, InvocationLedger, MAINTENANCE_PROTOCOL, RunBudget, sha256,
+} from "./development-eval-protocol.mjs";
 import { ExecutionGuest } from "./development-eval-sandbox.mjs";
 import {
   frozenImage, gradeCase, parseArguments, runEvaluation, ScriptedTransport, validateQualification,
@@ -89,6 +91,7 @@ test("host verifies controller counts and exact receipts instead of trusting Sub
       } } },
   ];
   const result = {
+    memory_maintenance_protocol: MAINTENANCE_PROTOCOL,
     mode: "work", status: "submitted", reason: null, outcome_unknown: false,
     upstream_exit_status: "Submitted", query_attempts: 1, admitted_invocations: 1,
     execute_attempts: 0, provider_api_requests: 1, invocation_receipts: [receipt],
@@ -155,6 +158,13 @@ test("pre-start cancellation preserves all eighteen unrun slots without starting
     assert.equal(result.outcomes.length, 18);
     assert.ok(result.outcomes.every((slot) => slot.status === "unrun"));
     assert.equal(result.usage.real_model_invocations, 0);
+    assert.equal(result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    const recipe = JSON.parse(await fs.readFile(path.join(root, "recipe.json")));
+    assert.equal(recipe.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+    assert.equal(sha256(canonicalJson(recipe)), result.recipe_sha256);
+    const legacy = { ...recipe };
+    delete legacy.memory_maintenance_protocol;
+    assert.notEqual(sha256(canonicalJson(legacy)), result.recipe_sha256);
   } finally { await fs.rm(root, { recursive: true }); }
 });
 
@@ -242,7 +252,7 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
     responses.push({ arm: slot.arm, phase: "work", text: '{"final":"Protocol fixture submitted."}' });
     if (slot.milestone < 3 && slot.arm !== "no_memory") {
       responses.push({ arm: slot.arm, phase: slot.arm === "handoff" ? "handoff" : "memory_decision",
-        text: slot.arm === "handoff" ? '{"note":"Preserve the integer value."}'
+        text: slot.arm === "handoff" ? '{"items":["Preserve the integer value."]}'
           : '{"create":[],"revise":[],"propose_forget":[]}' });
     }
   }
@@ -254,6 +264,7 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
     scriptedResponses: responses,
   });
   assert.equal(summary.status, "completed", JSON.stringify({ root, summary }));
+  assert.equal(summary.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
   assert.equal(summary.real_models, false);
   assert.equal(summary.usage.real_model_invocations, 0);
   assert.equal(summary.usage.provider_usage, null);
@@ -264,13 +275,21 @@ test("no-model full run executes eighteen isolated sessions and separate memory 
     assert.deepEqual(summary.arms[arm], { slots: 6, task_successes: 6, unrun: 0, unknown_slots: 0 });
   }
   for (const outcome of summary.outcomes) {
+    assert.equal(outcome.work_result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
     assert.equal(outcome.work_result.host_accounting.complete, true);
     assert.notEqual(outcome.artifact_sha256, outcome.starting_tree_sha256);
     if (outcome.arm === "handoff" && outcome.milestone > 1) {
       assert.match(outcome.work_result.memory_delivery.text, /Preserve the integer value/);
     }
+    if (outcome.boundary_result) {
+      assert.equal(outcome.boundary_result.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+      assert.equal(outcome.boundary_result.memory_state.format, "development-memory-state-v2");
+    }
     if (outcome.arm === "no_memory") assert.equal(outcome.work_result.memory_delivery.byte_count, 0);
   }
+  const recipe = JSON.parse(await fs.readFile(path.join(root, "recipe.json")));
+  assert.equal(recipe.memory_maintenance_protocol, MAINTENANCE_PROTOCOL);
+  assert.equal(sha256(canonicalJson(recipe)), summary.recipe_sha256);
   assert.equal(JSON.parse(await fs.readFile(path.join(root, "summary.json"))).status, "completed");
   await fs.rm(root, { recursive: true });
 });

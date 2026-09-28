@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from pg_agmemory.development_evaluation import (
     ArtifactManifest,
     BoundaryTranscript,
+    ControllerResult,
     EvaluationFailure,
     EventSink,
     ExecuteReply,
@@ -27,11 +28,13 @@ from pg_agmemory.development_evaluation import (
     publish,
     sha256,
 )
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL
 
 
 def config_value(arm="no_memory", milestone=1):
     return {
         "protocol": "pgag-development-controller-v1", "mode": "work",
+        "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
         "run_id": "test-run", "session_id": "test-session",
         "slot": {"project_id": "project-a", "milestone": milestone, "arm": arm},
         "recipe_sha256": "a" * 64,
@@ -180,10 +183,95 @@ def test_no_memory_state_is_null_at_every_milestone():
     for milestone in (1, 2, 3):
         config = parse_config(json_bytes(config_value(milestone=milestone)))
         assert config.memory_state is None
+        assert config.memory_maintenance_protocol == MAINTENANCE_PROTOCOL
     value = config_value()
     value["previous_handoff"] = "forbidden duplicate continuity field"
     with pytest.raises(EvaluationFailure):
         parse_config(json_bytes(value))
+
+
+@pytest.mark.parametrize(("mode", "arm"), [
+    ("work", "no_memory"), ("work", "handoff"), ("work", "pg_agmemory"),
+    ("boundary", "handoff"), ("boundary", "pg_agmemory"),
+])
+def test_maintenance_protocol_is_required_even_with_initial_null_state(mode, arm):
+    value = config_value(arm)
+    if mode == "boundary":
+        for key in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
+            value.pop(key)
+        value.update(
+            mode=mode, boundary_id="boundary-a",
+            transcript=boundary_transcript("Visible task.", []).model_dump(mode="json"),
+            keys=None if arm == "handoff" else {
+                "observe": "observe-a", "create": [f"create-{i}" for i in range(6)],
+                "revise": [f"revise-{i}" for i in range(4)],
+            },
+        )
+    config = parse_config(json_bytes(value))
+    assert config.memory_state is None
+    assert config.memory_maintenance_protocol == "development-maintenance-v2"
+    assert type(config).model_fields["memory_maintenance_protocol"].is_required()
+    for protocol in (
+        None, False, 2, "", "development-maintenance-v1", "development-maintenance-v3",
+    ):
+        with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+            parse_config(json_bytes(value | {"memory_maintenance_protocol": protocol}))
+    value.pop("memory_maintenance_protocol")
+    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+        parse_config(json_bytes(value))
+    value["maintenance_protocol"] = MAINTENANCE_PROTOCOL
+    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+        parse_config(json_bytes(value))
+
+
+@pytest.mark.parametrize("mode", ["work", "boundary"])
+@pytest.mark.parametrize("arm", ["handoff", "pg_agmemory"])
+def test_maintenance_v2_never_loads_a_v1_continuity_state(mode, arm):
+    value = config_value(arm, 2)
+    value["memory_state"] = {
+        "format": "development-memory-state-v1", "binding": value["memory_binding"],
+        "completed_boundaries": 1, "last_boundary_id": "boundary-a",
+        "note": "Existing historical note." if arm == "handoff" else None, "assertions": [],
+    }
+    if mode == "boundary":
+        for key in ("brief", "starting_tree_sha256", "allowed_output_paths", "entry_point"):
+            value.pop(key)
+        value.update(
+            mode=mode, boundary_id="boundary-b",
+            transcript=boundary_transcript("Visible task.", []).model_dump(mode="json"),
+            keys=None if arm == "handoff" else {
+                "observe": "observe-b", "create": [f"create-{i}" for i in range(6)],
+                "revise": [f"revise-{i}" for i in range(4)],
+            },
+        )
+    with pytest.raises(EvaluationFailure, match="invalid_controller_config"):
+        parse_config(json_bytes(value))
+
+
+def test_controller_result_requires_the_same_fixed_maintenance_protocol():
+    value = {
+        "protocol": "pgag-development-controller-v1",
+        "memory_maintenance_protocol": MAINTENANCE_PROTOCOL,
+        "session_id": "test-session", "slot": config_value()["slot"], "mode": "work",
+        "status": "failed", "reason": "prompt_budget_exhausted", "outcome_unknown": False,
+        "upstream_exit_status": "EvaluationFailure", "submission": None,
+        "query_attempts": 1, "admitted_invocations": 0, "provider_api_requests": 0,
+        "execute_attempts": 0, "invocation_receipts": [], "memory_state": None,
+        "memory_delivery": None, "boundary_result": None, "transcript": None,
+        "monetary_cost_status": "disabled_unverified", "elapsed_ns": 1,
+    }
+    assert ControllerResult.model_validate_json(json_bytes(value)).memory_maintenance_protocol == (
+        MAINTENANCE_PROTOCOL
+    )
+    assert ControllerResult.model_fields["memory_maintenance_protocol"].is_required()
+    for protocol in (None, "development-maintenance-v1"):
+        with pytest.raises(ValidationError):
+            ControllerResult.model_validate_json(
+                json_bytes(value | {"memory_maintenance_protocol": protocol}),
+            )
+    value.pop("memory_maintenance_protocol")
+    with pytest.raises(ValidationError):
+        ControllerResult.model_validate_json(json_bytes(value))
 
 
 @pytest.mark.parametrize("change", [

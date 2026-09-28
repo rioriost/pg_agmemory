@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from pg_agmemory.bounded_recall import BoundedRecallError
 from pg_agmemory.development_memory import (
     FACT_PREFIX,
+    MAINTENANCE_PROTOCOL,
     AssertionRecord,
     BoundaryKeys,
     CurrentReference,
@@ -83,7 +84,7 @@ def fact(text="Alpha uses Beta.", **changes):
 
 def state(bound, items=(), *, completed=1, pending=(), note=None):
     return MemoryState(
-        format="development-memory-state-v1", binding=bound,
+        format="development-memory-state-v2", binding=bound,
         completed_boundaries=completed, last_boundary_id=f"previous-{completed}", note=note,
         assertions=tuple(AssertionRecord(
             memory_id=item.memory_id, revision=item.revision,
@@ -95,6 +96,16 @@ def state(bound, items=(), *, completed=1, pending=(), note=None):
 def proposal(text, source, **extra):
     offset = source.index(text)
     return {"text": text, "span": {"start": offset, "end": offset + len(text)}, **extra}
+
+
+def padded_proposal(text, source, **extra):
+    value = proposal(text, source, **extra)
+    span = value["span"]
+    while span["start"] > 0 and source[span["start"] - 1].isspace():
+        span["start"] -= 1
+    while span["end"] < len(source) and source[span["end"]].isspace():
+        span["end"] += 1
+    return value
 
 
 def decision(*, create=(), revise=(), forget=()):
@@ -234,8 +245,54 @@ def workflow(bound, *, native=None, model=None, saved=None, session=1, emit=None
         bound, session_number=session, state=saved,
         native_factory=native.factory if native is not None else None,
         invoke=model or ScriptedModel([]), emit=emit or (lambda event: None),
-        now=clock or (lambda: NOW),
+        now=clock or (lambda: NOW), maintenance_protocol=MAINTENANCE_PROTOCOL,
     )
+
+
+@pytest.mark.parametrize("protocol", [
+    None, True, 2, "", "development-maintenance-v1", "development-maintenance-v2 ",
+])
+@pytest.mark.parametrize("arm", ["no_memory", "handoff", "pg_agmemory"])
+def test_maintenance_protocol_rejects_before_callbacks_or_native(protocol, arm):
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        pytest.fail("Invalid protocol must fail during initialization")
+
+    with pytest.raises(DevelopmentMemoryError) as failure:
+        DevelopmentMemory(
+            binding(arm), session_number=1, state=None, native_factory=forbidden,
+            invoke=forbidden, emit=forbidden, now=forbidden, maintenance_protocol=protocol,
+        )
+    assert failure.value.code == "invalid_memory_maintenance_protocol"
+    assert failure.value.phase == "initialization"
+    assert not failure.value.outcome_unknown and failure.value.completed_refs == ()
+    assert calls == []
+
+
+def test_maintenance_protocol_has_no_constructor_default():
+    def forbidden(*args, **kwargs):
+        pytest.fail("Missing protocol must fail at the signature")
+
+    arguments = {
+        "session_number": 1, "state": None, "native_factory": forbidden,
+        "invoke": forbidden, "emit": forbidden, "now": forbidden,
+    }
+    with pytest.raises(TypeError, match="maintenance_protocol"):
+        DevelopmentMemory(binding(), **arguments)
+    assert MAINTENANCE_PROTOCOL == "development-maintenance-v2"
+
+
+@pytest.mark.parametrize("arm", ["handoff", "pg_agmemory"])
+def test_legacy_memory_state_is_rejected_without_migration(arm):
+    bound = binding(arm)
+    saved = state(bound, note="packed note" if arm == "handoff" else None)
+    legacy = saved.model_copy(update={"format": "development-memory-state-v1"})
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_state"):
+        parse_memory_state(legacy.model_dump_json())
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_state"):
+        workflow(bound, saved=legacy, session=2)
 
 
 @pytest.mark.parametrize("session", [1, 2, 3])
@@ -320,38 +377,154 @@ def test_decision_list_caps_utf8_and_overlap():
     assert parsed.create == parsed.revise == parsed.propose_forget == ()
 
 
-@pytest.mark.parametrize("note", ["", "handoff correction", "界" * 682])
-def test_handoff_boundary_is_fresh_direct_single_use_and_preserves_receipt(note):
+@pytest.mark.parametrize("items", [
+    [], ["handoff correction"], ["界" * 682], ["😀" * 512], ["x" * 2048],
+    [" \tkeep surrounding whitespace\u3000 "], ["item"] * 12,
+])
+def test_handoff_boundary_is_fresh_direct_single_use_and_preserves_receipt(items):
     bound = binding("handoff")
-    model = ScriptedModel([json.dumps({"note": note})])
-    value = workflow(bound, model=model)
+    note = "\n\n".join(items)
+    model = ScriptedModel([json.dumps({"items": items})])
+    events = []
+    value = workflow(bound, model=model, emit=events.append)
     result = asyncio.run(value.maintain(transcript(), boundary_id="b1", keys=None))
     assert result.state.note == note and not result.state.assertions
+    assert result.state.format == "development-memory-state-v2"
     assert result.model_receipt_ref is model.receipts[0]
     assert [call[0] for call in model.calls] == ["handoff"]
     assert model.calls[0][2] is None
     later = workflow(bound, saved=result.state, session=2)
     delivery = asyncio.run(later.deliver("Current public brief"))
     assert delivery.text == note and delivery.byte_count == len(note.encode("utf-8"))
+    assert delivery.empty_reason == ("empty_handoff" if not items else None)
+    packing = next(event["data"] for event in events if event["kind"] == "memory_handoff_packing")
+    assert packing["included_count"] == len(items) and packing["omitted_count"] == 0
+    assert packing["proposed_bytes"] == packing["delivered_bytes"] == len(note.encode("utf-8"))
+    assert packing["proposed_sha256"] == packing["delivered_sha256"] == hashlib.sha256(
+        note.encode("utf-8"),
+    ).hexdigest()
+    assert packing["proposed_indices"] == packing["included_indices"] == list(range(len(items)))
+    assert packing["omitted_indices"] == []
     with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
         asyncio.run(value.maintain(transcript(), boundary_id="b2", keys=None))
 
 
+@pytest.mark.parametrize("items,included,proposed_bytes", [
+    (["a" * 1023, "b" * 1023], 2, 2048),
+    (["a" * 1023, "b" * 1024], 1, 2049),
+    (["a" * 1000, "b" * 1053], 1, 2055),
+    (["a" * 1000, "b" * 1179], 1, 2181),
+    (["a" * 2045, "xx", "z"], 1, 2052),
+    (["界" * 341, "😀" * 255, "z"], 3, 2048),
+    (["界" * 341, "😀" * 255, "zz"], 2, 2049),
+])
+def test_handoff_packs_ordered_whole_prefix_and_audits_distinct_byte_domains(
+    items, included, proposed_bytes,
+):
+    raw = json.dumps({"items": items}, ensure_ascii=True, indent=2)
+    model = ScriptedModel([raw])
+    events = []
+    result = asyncio.run(workflow(
+        binding("handoff"), model=model, emit=events.append,
+    ).maintain(transcript(), boundary_id="b1", keys=None))
+    proposed = "\n\n".join(items)
+    delivered = "\n\n".join(items[:included])
+    assert len(proposed.encode("utf-8")) == proposed_bytes
+    assert result.state.note == delivered
+    assert len(delivered.encode("utf-8")) <= 2048
+    if included < len(items):
+        assert len("\n\n".join(items[:included + 1]).encode("utf-8")) > 2048
+    assert len(model.calls) == 1
+    assert all(
+        event["data"]["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL for event in events
+    )
+    packing_events = [event for event in events if event["kind"] == "memory_handoff_packing"]
+    assert len(packing_events) == 1
+    packing = packing_events[0]
+    assert packing["phase"] == "maintain" and packing["status"] == "completed"
+    data = packing["data"]
+    assert data["validation"] == "validated" and data["receipt_ref"] is model.receipts[0]
+    assert data["proposed_indices"] == list(range(len(items)))
+    assert data["included_indices"] == list(range(included))
+    assert data["omitted_indices"] == list(range(included, len(items)))
+    assert data["proposed_count"] == len(items)
+    assert data["included_count"] == included and data["omitted_count"] == len(items) - included
+    for domain, text in [("raw_reply", raw), ("proposed", proposed), ("delivered", delivered)]:
+        assert data[f"{domain}_bytes"] == len(text.encode("utf-8"))
+        assert data[f"{domain}_sha256"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_handoff_omitted_items_never_survive_state_delivery_or_next_prompt():
+    kept = "KEPT_PREFIX " + "x" * 2020
+    omitted = "OMITTED_ITEM_ONLY_NONCE"
+    bound = binding("handoff")
+    model = ScriptedModel([json.dumps({"items": [kept, omitted]})])
+    first = asyncio.run(workflow(bound, model=model).maintain(
+        transcript(), boundary_id="b1", keys=None,
+    ))
+    assert first.state.note == kept and omitted not in first.state.model_dump_json()
+    saved = parse_memory_state(first.state.model_dump_json())
+    delivery = asyncio.run(workflow(bound, saved=saved, session=2).deliver("Current brief"))
+    assert delivery.text == kept and omitted not in delivery.model_dump_json()
+    next_model = ScriptedModel(['{"items":[]}'])
+    second = asyncio.run(workflow(
+        bound, saved=saved, session=2, model=next_model,
+    ).maintain(transcript("New visible boundary"), boundary_id="b2", keys=None))
+    assert second.state.note == ""
+    assert kept in next_model.calls[0][1] and omitted not in next_model.calls[0][1]
+    assert len(model.calls) == len(next_model.calls) == 1
+
+
+@pytest.mark.parametrize("note", ["\x00", " \t\u3000", "\ud800", "x" * 2049])
+def test_handoff_state_rejects_impossible_packed_note(note):
+    saved = state(binding("handoff"), note="valid note")
+    data = json.loads(saved.model_dump_json())
+    data["note"] = note
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_state"):
+        parse_memory_state(json.dumps(data))
+
+
 @pytest.mark.parametrize("raw", [
-    '{"note":"' + "x" * 2049 + '"}',
-    json.dumps({"note": "界" * 683}),
-    '{"note":"a","note":"b"}',
+    json.dumps({"items": ["x" * 2049]}),
+    json.dumps({"items": ["界" * 683]}),
+    json.dumps({"items": ["😀" * 512 + "x"]}),
+    json.dumps({"items": ["x"] * 13}),
+    *[json.dumps({"items": ["x" * 2048, invalid]})
+      for invalid in ("", " \t\n\u3000", "bad\x00tail", "\ud800", "x" * 2049, 1, True, None, [])],
+    '{"items":"not an array"}',
+    '{"items":null}',
+    '{"items":["a"],"items":["b"]}',
+    '{"items":[],"note":"legacy extra"}',
+    '{"note":"valid legacy note"}',
     "{}",
     "not JSON",
 ])
-def test_handoff_oversize_or_malformed_is_not_truncated_or_repaired(raw):
+def test_handoff_invalid_whole_array_or_legacy_json_is_not_repaired(raw):
     model = ScriptedModel([raw])
-    value = workflow(binding("handoff"), model=model)
+    events = []
+    value = workflow(binding("handoff"), model=model, emit=events.append)
     with pytest.raises(DevelopmentMemoryError, match="invalid_handoff_note"):
         asyncio.run(value.maintain(transcript(), boundary_id="b", keys=None))
     assert len(model.calls) == 1
+    assert not any(event["kind"] == "memory_handoff_packing" for event in events)
     with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
         asyncio.run(value.deliver("Current public brief"))
+
+
+def test_handoff_packing_sink_failure_propagates_without_publishing_state():
+    failure = RuntimeError("packing sink failed")
+    model = ScriptedModel(['{"items":["valid item"]}'])
+
+    def emit(event):
+        if event["kind"] == "memory_handoff_packing":
+            raise failure
+
+    value = workflow(binding("handoff"), model=model, emit=emit)
+    with pytest.raises(RuntimeError) as caught:
+        asyncio.run(value.maintain(transcript(), boundary_id="b1", keys=None))
+    assert caught.value is failure and len(model.calls) == 1 and value.completed_refs == ()
+    with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
+        asyncio.run(value.deliver("Current brief"))
 
 
 def test_initial_pg_maintenance_observes_exact_visible_text_and_publishes_only_refs():
@@ -386,6 +559,244 @@ def test_initial_pg_maintenance_observes_exact_visible_text_and_publishes_only_r
                for read in native.reads)
     assert events[-1]["kind"] == "memory_retention"
     assert result.destructive_calls == 0
+
+
+@pytest.mark.parametrize("padding", list(
+    "\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680"
+    "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000"
+))
+def test_provenance_trims_exact_python_unicode_whitespace_inward(padding):
+    assert padding.isspace()
+    quote = "a \t b\nc\r\ne\u0301\u200b"
+    source = transcript("[" + padding + quote + padding + "]")
+    original_span = {"start": 1, "end": len(source.text) - 1}
+    raw = decision(create=[{"text": "canonical fact", "span": original_span}])
+    native = FakeNative()
+    events = []
+    model = ScriptedModel([raw])
+    result = asyncio.run(workflow(
+        binding(), native=native, model=model, emit=events.append,
+    ).maintain(source, boundary_id="b1", keys=keys()))
+    observed = native.writes[0][1]
+    assert observed.content == source.text
+    assert json.loads(observed.model_dump_json())["content"] == source.text
+    assert native.episodes[result.observation_ref.memory_id] == source.text
+    assert len(model.calls) == 1
+    assert json.loads(model.calls[0][1].rsplit("\n", 1)[1])["transcript"] == source.text
+    request = native.writes[1][1]
+    effective_span = {"start": 2, "end": len(source.text) - 2}
+    assert request.evidence[0].quote == quote == source.text[
+        effective_span["start"]:effective_span["end"]
+    ]
+    assert json.loads(request.model_dump_json())["evidence"] == [{
+        "memory_id": str(result.observation_ref.memory_id), "quote": quote,
+    }]
+    event = next(event for event in events if event["kind"] == "memory_decision")
+    data = event["data"]
+    assert data["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
+    assert data["receipt_ref"] is model.receipts[0] and data["validation"] == "validated"
+    assert data["transcript_sha256"] == source.sha256
+    assert data["raw_reply_sha256"] == hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    assert data["raw_reply_bytes"] == len(raw.encode("utf-8"))
+    assert data["provenance_spans"] == [effective_span]
+    assert data["provenance_validation"] == [{
+        "action": "create", "index": 0,
+        "original_span": original_span, "effective_span": effective_span,
+    }]
+    assert json.loads(raw)["create"][0]["span"] == original_span
+    first_write = next(index for index, entry in enumerate(events) if (
+        entry["kind"] == "memory_native_intent" and entry["data"]["operation"] == "remember"
+    ))
+    assert events.index(event) < first_write
+
+
+@pytest.mark.parametrize("leading,quote,trailing", [
+    (" \t", "ASCII fact", ""),
+    ("", "ASCII fact", "\r\n"),
+    ("\u3000", "日本語😀", "\u00a0"),
+    (" ", "e\u0301  \tcombining\ncharacters", " "),
+    (" ", "\u200bzero width\u200b", "\u3000"),
+    ("\t", "\ufeffnot whitespace\ufeff", "\n"),
+    (" ", r'{"text":"literal\n\u3000\t\"escapes"}', "\t"),
+    ("", "界" * 4096, ""),
+    (" ", "x", " " * 4094),
+])
+def test_provenance_preserves_internal_text_nonwhitespace_and_literal_serialized_escapes(
+    leading, quote, trailing,
+):
+    source = transcript("😀[" + leading + quote + trailing + "]")
+    start, end = 2, len(source.text) - 1
+    native = FakeNative()
+    raw = decision(create=[{"text": "preserved fact", "span": {"start": start, "end": end}}])
+    asyncio.run(workflow(
+        binding(), native=native, model=ScriptedModel([raw]),
+    ).maintain(source, boundary_id="b1", keys=keys()))
+    request = native.writes[1][1]
+    assert json.loads(request.model_dump_json())["evidence"][0]["quote"] == quote
+    assert request.evidence[0].quote == source.text[start + len(leading):end - len(trailing)]
+    assert native.writes[0][1].content == source.text
+
+
+def test_provenance_audit_binds_original_and_effective_spans_to_each_action_index():
+    item = fact("old fact")
+    bound = binding()
+    source = transcript("{  first fact \t| \u3000second fact\n|  revised fact \u00a0}")
+    entries = []
+    for text in ("first fact", "second fact", "revised fact"):
+        value = proposal(text, source.text)
+        value["span"]["start"] -= 1
+        value["span"]["end"] += 1
+        entries.append(value)
+    raw = decision(create=entries[:2], revise=[{**entries[2], **ref(item)}])
+    original = parse_memory_decision(raw)
+    native = FakeNative([item])
+    events = []
+    model = ScriptedModel([raw])
+    result = asyncio.run(workflow(
+        bound, native=native, saved=state(bound, [item]), session=2,
+        model=model, emit=events.append,
+    ).maintain(source, boundary_id="b2", keys=keys()))
+    assert len(result.created_refs) == 2 and len(result.revisions) == 1
+    assert [operation for operation, _, _ in native.writes] == [
+        "observe", "revise", "remember", "remember",
+    ]
+    data = next(event["data"] for event in events if event["kind"] == "memory_decision")
+    assert data["validation"] == "validated"
+    assert data["receipt_ref"] is model.receipts[0] and data["transcript_sha256"] == source.sha256
+    assert data["memory_maintenance_protocol"] == MAINTENANCE_PROTOCOL
+    assert [(entry["action"], entry["index"]) for entry in data["provenance_validation"]] == [
+        ("create", 0), ("create", 1), ("revise", 0),
+    ]
+    ordered_requests = [native.writes[index][1] for index in (2, 3, 1)]
+    for proposal_value, request, entry, span in zip(
+        (*original.create, *original.revise), ordered_requests,
+        data["provenance_validation"], data["provenance_spans"], strict=True,
+    ):
+        assert entry["original_span"] == proposal_value.span.model_dump()
+        assert entry["effective_span"] == span == {
+            "start": proposal_value.span.start + 1, "end": proposal_value.span.end - 1,
+        }
+        assert json.loads(request.model_dump_json())["evidence"][0]["quote"] == source.text[
+            span["start"]:span["end"]
+        ]
+    assert original == parse_memory_decision(raw)
+
+
+@pytest.mark.parametrize("action", ["create", "revise"])
+@pytest.mark.parametrize("bad_span,code", [
+    ({"start": True, "end": 2}, "invalid_memory_decision"),
+    ({"start": 0, "end": True}, "invalid_memory_decision"),
+    ({"start": 1.0, "end": 2}, "invalid_memory_decision"),
+    ({"start": "1", "end": 2}, "invalid_memory_decision"),
+    ({"start": -1, "end": 2}, "invalid_memory_decision"),
+    ({"start": 3, "end": 2}, "invalid_memory_decision"),
+    ({"start": 2, "end": 2}, "invalid_memory_decision"),
+    ({"start": 0, "end": 5000}, "invalid_memory_decision"),
+    ({"start": 4097, "end": 4102}, "invalid_memory_provenance"),
+    ({"start": 10, "end": 20}, "invalid_memory_provenance"),
+])
+def test_bad_later_proposal_prevents_all_assertion_writes_in_mixed_batch(action, bad_span, code):
+    source = transcript("[x" + " " * 4096 + "]")
+    items = [fact("old one"), fact("old two")]
+    bound = binding()
+    native = FakeNative(items)
+    valid_create = {"text": "created fact", "span": {"start": 1, "end": 3}}
+    valid_revision = {"text": "revised fact", "span": {"start": 1, "end": 3}, **ref(items[0])}
+    invalid = {"text": "invalid later fact", "span": bad_span}
+    data = {
+        "create": [valid_create], "revise": [valid_revision], "propose_forget": [],
+    }
+    data[action].append({**invalid, **(ref(items[1]) if action == "revise" else {})})
+    events = []
+    model = ScriptedModel([json.dumps(data)])
+    value = workflow(
+        bound, native=native, model=model, saved=state(bound, items), session=2, emit=events.append,
+    )
+    with pytest.raises(DevelopmentMemoryError, match=code) as failure:
+        asyncio.run(value.maintain(source, boundary_id="b2", keys=keys()))
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+    assert len(native.reads) == 2 and len(model.calls) == 1
+    assert len(value.completed_refs) == len(failure.value.completed_refs) == 1
+    assert list(native.episodes.values()) == [source.text]
+    assert native.items == {item.memory_id: item for item in items}
+    assert not any(event["kind"] in ("memory_decision", "memory_retention") for event in events)
+    assert [event["data"]["operation"] for event in events
+            if event["kind"] == "memory_native_intent"] == [
+        "observe", "inventory_read", "inventory_read",
+    ]
+    with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
+        asyncio.run(value.maintain(source, boundary_id="not-a-retry", keys=keys("later")))
+
+
+def test_original_oversized_span_is_rejected_even_when_trimmed_quote_would_fit():
+    source = transcript("[" + " " * 2048 + "x" + " " * 2048 + "]")
+    span = {"start": 1, "end": len(source.text) - 1}
+    assert span["end"] - span["start"] == 4097
+    assert source.text[span["start"]:span["end"]].strip() == "x"
+    native = FakeNative()
+    model = ScriptedModel([decision(create=[{"text": "short fact", "span": span}])])
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_decision"):
+        asyncio.run(workflow(binding(), native=native, model=model).maintain(
+            source, boundary_id="b1", keys=keys(),
+        ))
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+
+
+def test_all_unicode_whitespace_span_cannot_expand_into_adjacent_evidence():
+    source = transcript("[left \t\u00a0\u2003\u3000 right]")
+    span = {"start": len("[left"), "end": source.text.index("right")}
+    native = FakeNative()
+    model = ScriptedModel([decision(create=[{"text": "no evidence", "span": span}])])
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_provenance"):
+        asyncio.run(workflow(binding(), native=native, model=model).maintain(
+            source, boundary_id="b1", keys=keys(),
+        ))
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+
+
+@pytest.mark.parametrize("action", ["create", "revise"])
+def test_native_dto_quote_must_equal_effective_substring_before_any_write(action, monkeypatch):
+    def changed_evidence(**values):
+        return Evidence(**{**values, "quote": "not the effective substring"})
+
+    monkeypatch.setattr("pg_agmemory.development_memory.Evidence", changed_evidence)
+    item = fact("old fact")
+    bound = binding()
+    native = FakeNative([item])
+    source = transcript("[ fact evidence ]")
+    value = padded_proposal("fact evidence", source.text)
+    data = {"create": [], "revise": [], "propose_forget": []}
+    data[action] = [{**value, **(ref(item) if action == "revise" else {})}]
+    model = ScriptedModel([json.dumps(data)])
+    events = []
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_provenance"):
+        asyncio.run(workflow(
+            bound, native=native, model=model, saved=state(bound, [item]), session=2,
+            emit=events.append,
+        ).maintain(source, boundary_id="b2", keys=keys()))
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+    assert not any(event["kind"] == "memory_decision" for event in events)
+
+
+def test_provenance_audit_sink_failure_stops_before_assertion_writes():
+    failure = RuntimeError("provenance sink failed")
+    native = FakeNative()
+    source = transcript("[ fact evidence ]")
+    model = ScriptedModel([decision(create=[padded_proposal("fact evidence", source.text)])])
+
+    def emit(event):
+        if event["kind"] == "memory_decision":
+            assert event["data"]["validation"] == "validated"
+            raise failure
+
+    value = workflow(binding(), native=native, model=model, emit=emit)
+    with pytest.raises(RuntimeError) as caught:
+        asyncio.run(value.maintain(source, boundary_id="b1", keys=keys()))
+    assert caught.value is failure and len(value.completed_refs) == 1
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+    with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
+        asyncio.run(value.deliver("Current brief"))
 
 
 def test_empty_decision_records_empty_review_without_calling_nonempty_helper(monkeypatch):
@@ -665,6 +1076,10 @@ def test_partial_unknown_write_preserves_known_receipts_and_propagates_original_
     assert len(model.calls) == 1 and native.closes == 1
     assert [entry[0] for entry in native.writes] == ["observe", "remember", "remember"]
     assert not any(event["kind"] == "memory_retention" for event in events)
+    validated = next(event["data"] for event in events if event["kind"] == "memory_decision")
+    assert validated["validation"] == "validated" and validated["create_count"] == 2
+    assert [event["data"]["operation"] for event in events
+            if event["kind"] == "memory_native_receipt"] == ["observe", "remember"]
     with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
         asyncio.run(value.maintain(source, boundary_id="new-id-not-a-retry", keys=keys("new")))
 
@@ -867,11 +1282,12 @@ def guarded(name, *args, **kwargs):
         raise ImportError('optional SDK intentionally unavailable')
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded
-from pg_agmemory.development_memory import DevelopmentMemory, MemoryBinding
+from pg_agmemory.development_memory import MAINTENANCE_PROTOCOL, DevelopmentMemory, MemoryBinding
 DevelopmentMemory(
     MemoryBinding(run_id='r', project_id='p', arm='no_memory', scope_id=uuid4()),
     session_number=3, state=None, native_factory=None,
     invoke=lambda *args: None, emit=lambda event: None, now=lambda: datetime.now(UTC),
+    maintenance_protocol=MAINTENANCE_PROTOCOL,
 )
 """
     completed = subprocess.run(
@@ -945,13 +1361,13 @@ def live_native_factory(env, http):
 def test_real_sdk_boundary_revision_pending_and_sequential_delivery(env, api_process):
     bound = binding(scope=env.scopes[0])
     source = transcript(
-        "Cedar requires Willow. Willow accepts unsigned payloads. "
-        "Cedar pending obsolete guidance. EPISODE_ONLY_NONCE"
+        "{ \tCedar requires Willow.\u3000 Willow accepts unsigned payloads.\n "
+        "Cedar pending obsolete guidance.\t EPISODE_ONLY_NONCE}"
     )
     first_model = ScriptedModel([decision(create=[
-        proposal("Cedar requires Willow.", source.text),
-        proposal("Willow accepts unsigned payloads.", source.text),
-        proposal("Cedar pending obsolete guidance.", source.text),
+        padded_proposal("Cedar requires Willow.", source.text),
+        padded_proposal("Willow accepts unsigned payloads.", source.text),
+        padded_proposal("Cedar pending obsolete guidance.", source.text),
     ])])
     with api_process("development-memory-sdk.log") as (http, _):
         factory = live_native_factory(env, http)
@@ -961,15 +1377,18 @@ def test_real_sdk_boundary_revision_pending_and_sequential_delivery(env, api_pro
                 bound, session_number=session, state=saved, native_factory=factory,
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) - timedelta(days=1),
+                maintenance_protocol=MAINTENANCE_PROTOCOL,
             )
 
         first = asyncio.run(component(1, None, first_model).maintain(
             source, boundary_id="native-boundary-1", keys=keys("native-1"),
         ))
         route, endpoint, pending = first.created_refs
-        revised_source = transcript("Willow accepts signed payloads. CURRENT_EPISODE_ONLY_NONCE")
+        revised_source = transcript(
+            "{ \u3000Willow accepts signed payloads.\t CURRENT_EPISODE_ONLY_NONCE}",
+        )
         second_model = ScriptedModel([decision(
-            revise=[proposal(
+            revise=[padded_proposal(
                 "Willow accepts signed payloads.", revised_source.text,
                 memory_id=str(endpoint.memory_id), revision=endpoint.revision,
             )],
@@ -1026,6 +1445,7 @@ def test_real_sdk_foreign_scope_and_stale_registry_refs_fail_inventory(env, api_
                 bound, session_number=session, state=saved, native_factory=factory,
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) + timedelta(days=1),
+                maintenance_protocol=MAINTENANCE_PROTOCOL,
             )
 
         first = asyncio.run(component(
@@ -1081,6 +1501,7 @@ def test_real_sdk_epoch_change_between_search_and_validation_aborts(env, api_pro
                 bound, session_number=session, state=saved, native_factory=factory,
                 invoke=model, emit=lambda event: None,
                 now=lambda: datetime.now(UTC) - timedelta(hours=6),
+                maintenance_protocol=MAINTENANCE_PROTOCOL,
             )
 
         captured = asyncio.run(component(None, 1, ScriptedModel([
