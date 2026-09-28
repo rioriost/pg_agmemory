@@ -21,7 +21,17 @@ below authorizes retry or retrospective scoring changes.
 
 ## Fourth study: fresh tasks on the fixed revised pipelines
 
-**Qualified and independently audited; no live calls dispatched or authorized yet.**
+**Single preregistered attempt stopped before historical-memory evaluation.**
+The [audited terminal result](../examples/development-memory-pilot-v4-result.json)
+preserves four graded successes, one submitted/captured but ungraded-unknown
+slot and thirteen unrun slots. Admission 26 hit the 150-second bridge deadline
+before its first token; the original `copilot_timeout` surfaced downstream as
+`failed_transport_accounting` with unknown usage. All M2/M3 slots were unrun.
+No retry, rescoring or task repair was performed. See the
+[evaluation report](EVALUATION.md#fourth-study-interrupted-before-historical-memory-evaluation).
+The following records the frozen preparation/qualification method, not
+permission for another run.
+
 The [v4 preregistration](../examples/development-memory-pilot-v4-manifest.json)
 freezes the content-free conditions and exact opaque case/decision registry
 before any live dispatch.

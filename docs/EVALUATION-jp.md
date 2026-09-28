@@ -2,6 +2,63 @@
 
 [English](EVALUATION.md)
 
+## 第4回: 履歴記憶の評価前に中断
+
+[第4回の事前登録](../examples/development-memory-pilot-v4-manifest.json)を
+`610cae4`で公開した後、固定source `67b6d5c`で1回だけ実行しました。
+`development-work-v2`、`development-maintenance-v3`、
+`development-retrieval-v2`、GPT-6 Astra/highを使い、上限は変更していません。
+[監査済み結果](../examples/development-memory-pilot-v4-result.json)は最初の失敗を保存し、
+**判定済み成功4 slot、正規の提出物を取得したが未判定の1 slot、未実行13 slot**
+としています。
+
+| 方式 | 判定済み成功／予定slot | 判定不能slot | 未実行slot | 合格／判定case | 未判定case | 未実行case |
+|---|---:|---:|---:|---:|---:|---:|
+| 記憶なし | 1/6 | 0 | 5 | 6/6 | 0 | 34 |
+| 固定長の引継ぎメモ | 2/6 | 0 | 4 | 12/12 | 0 | 28 |
+| pg_agmemory | 1/6 | 1 | 4 | 6/6 | 6 | 28 |
+
+各方式の予定は40 caseです。全体では**合格24、未判定6、未実行90**であり、
+未判定・未実行を候補コードの誤答として数えません。この完了数で方式の順位は
+付けられません。判定済みcaseはすべて現在の情報だけで解けるM1の対照です。
+M2/M3は全slot未実行で、履歴のみを必要とする予定24 arm-caseもすべて未実行でした。
+したがって、**履歴の引継ぎ、検索改善、記憶の有用性を比較する観測は得られていません**。
+履歴のみの8 caseは2つの固有の判断を繰り返すもので、8つの独立した要求ではありません。
+
+26回目の呼び出しは、2つ目のprojectのM1提出後に行うPGの`memory_decision`でした。
+最初のtokenを受信する前に**bridgeの150秒制限**へ達し、元のエラー
+`copilot_timeout`に続いて、使用量不明が`failed_transport_accounting`として
+報告されました。CLIのstdoutにある`exitCode: 0`や、model metricsが空のままの
+top-levelのゼロ値は、応答成功・費用ゼロの証拠ではありません。
+CLIの`user_initiated`という取消ラベルも、今回は人の介入を意味しません。
+bridgeの制限時間が発動し、supervisorへの停止要求はありませんでした。
+提供側で遅延した理由は不明であり、小数の計測値を検証で拒否した失敗ではありません。
+CLI子processのOS終了code・signalは記録されておらず、stdoutからは推定しません。
+
+**26回中、計測済み25回・使用量不明1回**です。内訳はcanary 6回、work 16回、
+handoff 2回、PG decision 2回で、planner呼び出しはありません。
+既知部分のmodel-level・top-levelの正確な合計はともに
+**275,718,750,000 nano-AIU**で、元の集計値との差はゼロでした。
+実行全体のrequest数・費用は不明であり、25 requestやこの既知小計を総額とはしません。
+supervisorでの経過時間は940.455秒です。重複するphase区間は別記し、単純加算しません。
+
+handoffの2境界とPGの1境界は完了し、もう1つのPG境界が中断しました。
+両handoffは5項目中4項目を丸ごと保持し、2,048 byte上限内の1,931 byteと
+1,711 byteになりました。PGでは6 assertionの保持を確認しましたが、
+後続業務での検索・配信はありません。保持だけでは配信・因果的利用の証拠にはならず、
+忘却や根拠範囲の端点空白除去も今回の観測対象にはなりませんでした。
+
+終了時の249ファイルは開封前に封印しました。独立した課題内容の監査担当による
+結果・記憶処理の照合と、別担当による計測・transportの照合に未解決の不整合はなく、
+監査ツール自体の修正履歴も実評価とは分離して保存しています。
+所有container 32個すべての不存在とbridge 3個の終了を確認しました。
+再試行・課題修正・取得済み提出物の再採点・制限時間の緩和はしていません。
+[課題pack](../examples/development-memory-pilot-v4-pack.json)と
+[反実仮想witness](../examples/development-memory-pilot-v4-history-witnesses.json)は、
+事前登録した原本とbyte単位で同じ内容を公開し、以後は未見課題として扱いません。
+過去の結果は変更・統合していません。元のbridgeエラーの保持とCLI processの終了証跡追加は、
+今後の診断改善案であり、今回の試行を変更するものではありません。
+
 ## 第3回: 限定条件で差を観測、一般的な有用性の証明ではない
 
 [第3回の事前登録](../examples/development-memory-pilot-v3-manifest.json)に従い、

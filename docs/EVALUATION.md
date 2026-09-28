@@ -2,6 +2,72 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Fourth study: interrupted before historical-memory evaluation
+
+The [v4 preregistration](../examples/development-memory-pilot-v4-manifest.json)
+was published in `610cae4` before the single live attempt on frozen source
+`67b6d5c`. It used `development-work-v2`, `development-maintenance-v3` and
+`development-retrieval-v2`, with GPT-6 Astra/high and unchanged budgets.
+The [audited result](../examples/development-memory-pilot-v4-result.json)
+preserves the failed attempt: **four graded successes, one valid submitted
+artifact left ungraded/unknown, and thirteen unrun slots**.
+
+| Arm | Graded successes / planned slots | Unknown slots | Unrun slots | Checks passed / evaluated | Unknown-ungraded checks | Unrun checks |
+|---|---:|---:|---:|---:|---:|---:|
+| No memory | 1/6 | 0 | 5 | 6/6 | 0 | 34 |
+| Fixed handoff | 2/6 | 0 | 4 | 12/12 | 0 | 28 |
+| pg_agmemory | 1/6 | 1 | 4 | 6/6 | 6 | 28 |
+
+Each arm had 40 scheduled checks. Across the study, **24 passed, six were
+unknown-ungraded and 90 were unrun**; unknown/unrun checks are not wrong
+candidate answers. These completion counts do not rank the arms. All graded
+checks were M1 current-information controls. Every M2/M3 slot and all 24
+scheduled history-only arm-case observations were unrun, so **no historical
+transfer, retrieval improvement or memory-usefulness comparison was observed**.
+The eight history-only cases repeat two unique decisions, not eight independent
+obligations.
+
+The 26th admission, a PG `memory_decision` call after the second project's M1
+submission, reached the bridge's **150-second deadline before its first token**.
+Its original error was `copilot_timeout`; unavailable usage was subsequently
+reported as `failed_transport_accounting`. Raw CLI stdout's `exitCode: 0`
+and zero-valued top-level metrics with empty model metrics do not establish a
+successful response or zero cost. The CLI's `user_initiated` cancellation label
+does not indicate a human intervention here: the bridge deadline fired and
+the supervisor received no stop request. The provider-side reason for the
+delay is unknown; this was not rejection of fractional accounting values.
+The framework did not retain the CLI child's OS exit/signal receipt, so it
+cannot be inferred from stdout.
+
+There were **26 admissions: 25 metered calls and one unknown**—six canaries,
+sixteen work calls, two handoff calls and two PG decision calls; no planning
+calls. Known model-level and top-level exact sums both equal
+**275,718,750,000 nano-AIU**, with zero difference from the original aggregate.
+The full-attempt request count and cost remain unknown, not 25 requests or
+that subtotal. Supervisor elapsed time was 940.455 seconds; overlapping phase
+intervals are reported separately rather than summed.
+
+Two handoff boundaries and one PG boundary completed; the other PG boundary
+was interrupted. Both handoffs retained four of five whole items within the
+2,048-byte cap (1,931 and 1,711 bytes). Six PG assertions were verified retained,
+but no subsequent task retrieved or received them. Retention is not evidence
+of delivery or causal use; no forgetting or provenance-endpoint trimming was
+exercised.
+
+The 249-file terminal evidence set was sealed before unblinding. Independent
+task-aware outcome/memory reconciliation and separate accounting/transport
+reconciliation found no unresolved defects; their tooling corrections are
+preserved separately from live outcomes. All 32 owned containers have absence
+receipts, and all three bridges acknowledged exit. There was no retry, task
+repair, artifact rescoring or deadline relaxation. The
+[pack](../examples/development-memory-pilot-v4-pack.json) and
+[counterfactual witnesses](../examples/development-memory-pilot-v4-history-witnesses.json)
+are released byte-identically to their preregistered originals and are no longer
+unseen tasks. Earlier results remain unchanged and are not pooled with this
+attempt. Preserving the underlying bridge error and adding explicit CLI process
+termination receipts are proposed diagnostic follow-ups, not changes to this
+attempt.
+
 ## Third study: a bounded memory-mechanism contrast, not general usefulness
 
 The separately [preregistered v3 study](../examples/development-memory-pilot-v3-manifest.json)

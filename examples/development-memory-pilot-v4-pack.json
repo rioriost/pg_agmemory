@@ -1,0 +1,1702 @@
+{
+  "format": "pgag-development-pack-v1",
+  "projects": [
+    {
+      "project_id": "project-a",
+      "milestones": [
+        {
+          "number": 1,
+          "brief": "Build a rehearsal-room booking CLI for a community arts desk. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"requests\":[...]}. Each request has exactly integer id (1..999, unique), start (0..1439), end (start+1..1440), urgency (0..9). There are 0..16 requests. Times are minute offsets within one day and intervals are half-open: an ending request does not conflict with one starting at that minute.\nThere is one room, numbered 0. Greedily consider each request once. Higher urgency values are processed first. Among requests with equal urgency, process them in their input order to preserve the desk's first-accepted service promise. Accept it if its entire interval is free; otherwise reject it. Accepted bookings are never moved or shortened.\nReturn exactly {\"scheduled\":[{\"id\":integer,\"room\":0},...],\"rejected\":[integer,...]}; both lists are sorted by increasing request id and partition all requests. Empty input example: {\"requests\":[]} returns {\"scheduled\":[],\"rejected\":[]}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 1
+                  },
+                  {
+                    "id": 2,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 9
+                  }
+                ]
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 2,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  1
+                ]
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "requests": [
+                  {
+                    "id": 10,
+                    "start": 0,
+                    "end": 8,
+                    "urgency": 2
+                  },
+                  {
+                    "id": 20,
+                    "start": 0,
+                    "end": 3,
+                    "urgency": 2
+                  },
+                  {
+                    "id": 30,
+                    "start": 3,
+                    "end": 6,
+                    "urgency": 2
+                  }
+                ]
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 10,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  20,
+                  30
+                ]
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "requests": []
+              },
+              "expected": {
+                "scheduled": [],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0
+                  },
+                  {
+                    "id": 1,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 0
+                  }
+                ]
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "requests": [
+                  {
+                    "id": 7,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0
+                  },
+                  {
+                    "id": 8,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 7
+                  }
+                ]
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 7,
+                    "room": 0
+                  },
+                  {
+                    "id": 8,
+                    "room": 0
+                  }
+                ],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": true
+                  }
+                ]
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3293,
+              "sha256": "7cebb4deba1971ff95cc49c3ffc705f2f945cd5911e37d571af1cf7664b5f7c7",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDEKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAoLXJvd1sidXJnZW5jeSJdLCBpbmRleCkKICAgIHNjaGVkdWxlZCA9IFtdCiAgICByZWplY3RlZCA9IFtdCiAgICBmb3IgaW5kZXgsIHJvdyBpbiBzb3J0ZWQoZW51bWVyYXRlKHJlcXVlc3RzKSwga2V5PW9yZGVyKToKICAgICAgICBjaG9pY2VzID0gc29ydGVkKHJvd1siYWxsb3dlZF9yb29tcyJdKSBpZiBzdGFnZSA9PSAzIGVsc2UgWzBdCiAgICAgICAgZm9yIHJvb20gaW4gY2hvaWNlczoKICAgICAgICAgICAgaWYgYWxsKHJvd1siZW5kIl0gPD0gc3RhcnQgb3Igcm93WyJzdGFydCJdID49IGVuZAogICAgICAgICAgICAgICAgICAgZm9yIHN0YXJ0LCBlbmQgaW4gb2NjdXBpZWRbcm9vbV0pOgogICAgICAgICAgICAgICAgb2NjdXBpZWRbcm9vbV0uYXBwZW5kKChyb3dbInN0YXJ0Il0sIHJvd1siZW5kIl0pKQogICAgICAgICAgICAgICAgc2NoZWR1bGVkLmFwcGVuZCh7ImlkIjogcm93WyJpZCJdLCAicm9vbSI6IHJvb219KQogICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbHNlOgogICAgICAgICAgICByZWplY3RlZC5hcHBlbmQocm93WyJpZCJdKQogICAgcmV0dXJuIHsic2NoZWR1bGVkIjogc29ydGVkKHNjaGVkdWxlZCwga2V5PWxhbWJkYSByb3c6IHJvd1siaWQiXSksCiAgICAgICAgICAgICJyZWplY3RlZCI6IHNvcnRlZChyZWplY3RlZCl9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3292,
+                  "sha256": "0ea46cf096625d90b6412b21397016628b77fd73bf3d036b5e29ac27b7c44c08",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDEKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAocm93WyJ1cmdlbmN5Il0sIGluZGV4KQogICAgc2NoZWR1bGVkID0gW10KICAgIHJlamVjdGVkID0gW10KICAgIGZvciBpbmRleCwgcm93IGluIHNvcnRlZChlbnVtZXJhdGUocmVxdWVzdHMpLCBrZXk9b3JkZXIpOgogICAgICAgIGNob2ljZXMgPSBzb3J0ZWQocm93WyJhbGxvd2VkX3Jvb21zIl0pIGlmIHN0YWdlID09IDMgZWxzZSBbMF0KICAgICAgICBmb3Igcm9vbSBpbiBjaG9pY2VzOgogICAgICAgICAgICBpZiBhbGwocm93WyJlbmQiXSA8PSBzdGFydCBvciByb3dbInN0YXJ0Il0gPj0gZW5kCiAgICAgICAgICAgICAgICAgICBmb3Igc3RhcnQsIGVuZCBpbiBvY2N1cGllZFtyb29tXSk6CiAgICAgICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKHJvd1sic3RhcnQiXSwgcm93WyJlbmQiXSkpCiAgICAgICAgICAgICAgICBzY2hlZHVsZWQuYXBwZW5kKHsiaWQiOiByb3dbImlkIl0sICJyb29tIjogcm9vbX0pCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHJlamVjdGVkLmFwcGVuZChyb3dbImlkIl0pCiAgICByZXR1cm4geyJzY2hlZHVsZWQiOiBzb3J0ZWQoc2NoZWR1bGVkLCBrZXk9bGFtYmRhIHJvdzogcm93WyJpZCJdKSwKICAgICAgICAgICAgInJlamVjdGVkIjogc29ydGVkKHJlamVjdGVkKX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+                }
+              ],
+              "fails_cases": [
+                "case-001"
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "brief": "Extend the rehearsal-room booking CLI to respect maintenance closures. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"requests\":[...],\"closures\":[...]}. Each request has exactly integer id (1..999, unique), start (0..1439), end (start+1..1440), urgency (0..9); at most 16 requests. Each closure has exactly integer start (0..1439), end (start+1..1440); at most 16 closures, which may overlap each other.\nThere is one room, numbered 0. Closures occupy it before scheduling. Every interval is half-open. Greedily consider each request once, accepting only if its entire interval avoids closures and accepted bookings. Higher urgency values are processed first. Keep the established resolution of equal-urgency conflicts. Accepted bookings are never moved or shortened.\nReturn exactly {\"scheduled\":[{\"id\":integer,\"room\":0},...],\"rejected\":[integer,...]}; both lists are sorted by increasing request id and partition all requests. Empty input example: {\"requests\":[],\"closures\":[]} returns {\"scheduled\":[],\"rejected\":[]}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "requests": [
+                  {
+                    "id": 10,
+                    "start": 0,
+                    "end": 8,
+                    "urgency": 2
+                  },
+                  {
+                    "id": 20,
+                    "start": 0,
+                    "end": 3,
+                    "urgency": 2
+                  },
+                  {
+                    "id": 30,
+                    "start": 3,
+                    "end": 6,
+                    "urgency": 2
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 10,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  20,
+                  30
+                ]
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Among requests with equal urgency, process them in their input order to preserve the desk's first-accepted service promise."
+              }
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "requests": [
+                  {
+                    "id": 40,
+                    "start": 5,
+                    "end": 12,
+                    "urgency": 4
+                  },
+                  {
+                    "id": 50,
+                    "start": 8,
+                    "end": 10,
+                    "urgency": 4
+                  },
+                  {
+                    "id": 60,
+                    "start": 0,
+                    "end": 5,
+                    "urgency": 4
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 40,
+                    "room": 0
+                  },
+                  {
+                    "id": 60,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  50
+                ]
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Among requests with equal urgency, process them in their input order to preserve the desk's first-accepted service promise."
+              }
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 1
+                  },
+                  {
+                    "id": 2,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 9
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 2,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  1
+                ]
+              },
+              "tags": [
+                "history-available"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Higher urgency values are processed first."
+              }
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 2,
+                    "end": 5,
+                    "urgency": 3
+                  }
+                ],
+                "closures": [
+                  {
+                    "start": 1,
+                    "end": 4
+                  }
+                ]
+              },
+              "expected": {
+                "scheduled": [],
+                "rejected": [
+                  1
+                ]
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "requests": [],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0
+                  },
+                  {
+                    "id": 1,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 0
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-007",
+              "input": {
+                "requests": [
+                  {
+                    "id": 7,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0
+                  },
+                  {
+                    "id": 8,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 7
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 7,
+                    "room": 0
+                  },
+                  {
+                    "id": 8,
+                    "room": 0
+                  }
+                ],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3293,
+              "sha256": "0e9fdfad56e3042e98c32f44211ec47875468b043d6c5d51cf3add687515f390",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAoLXJvd1sidXJnZW5jeSJdLCBpbmRleCkKICAgIHNjaGVkdWxlZCA9IFtdCiAgICByZWplY3RlZCA9IFtdCiAgICBmb3IgaW5kZXgsIHJvdyBpbiBzb3J0ZWQoZW51bWVyYXRlKHJlcXVlc3RzKSwga2V5PW9yZGVyKToKICAgICAgICBjaG9pY2VzID0gc29ydGVkKHJvd1siYWxsb3dlZF9yb29tcyJdKSBpZiBzdGFnZSA9PSAzIGVsc2UgWzBdCiAgICAgICAgZm9yIHJvb20gaW4gY2hvaWNlczoKICAgICAgICAgICAgaWYgYWxsKHJvd1siZW5kIl0gPD0gc3RhcnQgb3Igcm93WyJzdGFydCJdID49IGVuZAogICAgICAgICAgICAgICAgICAgZm9yIHN0YXJ0LCBlbmQgaW4gb2NjdXBpZWRbcm9vbV0pOgogICAgICAgICAgICAgICAgb2NjdXBpZWRbcm9vbV0uYXBwZW5kKChyb3dbInN0YXJ0Il0sIHJvd1siZW5kIl0pKQogICAgICAgICAgICAgICAgc2NoZWR1bGVkLmFwcGVuZCh7ImlkIjogcm93WyJpZCJdLCAicm9vbSI6IHJvb219KQogICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbHNlOgogICAgICAgICAgICByZWplY3RlZC5hcHBlbmQocm93WyJpZCJdKQogICAgcmV0dXJuIHsic2NoZWR1bGVkIjogc29ydGVkKHNjaGVkdWxlZCwga2V5PWxhbWJkYSByb3c6IHJvd1siaWQiXSksCiAgICAgICAgICAgICJyZWplY3RlZCI6IHNvcnRlZChyZWplY3RlZCl9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3320,
+                  "sha256": "a94b640d2d1b5a0f33ae451375232e138411d3f060d2eb6ed61026d562c0e63b",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAoLXJvd1sidXJnZW5jeSJdLCByb3dbImVuZCJdIC0gcm93WyJzdGFydCJdLCBpbmRleCkKICAgIHNjaGVkdWxlZCA9IFtdCiAgICByZWplY3RlZCA9IFtdCiAgICBmb3IgaW5kZXgsIHJvdyBpbiBzb3J0ZWQoZW51bWVyYXRlKHJlcXVlc3RzKSwga2V5PW9yZGVyKToKICAgICAgICBjaG9pY2VzID0gc29ydGVkKHJvd1siYWxsb3dlZF9yb29tcyJdKSBpZiBzdGFnZSA9PSAzIGVsc2UgWzBdCiAgICAgICAgZm9yIHJvb20gaW4gY2hvaWNlczoKICAgICAgICAgICAgaWYgYWxsKHJvd1siZW5kIl0gPD0gc3RhcnQgb3Igcm93WyJzdGFydCJdID49IGVuZAogICAgICAgICAgICAgICAgICAgZm9yIHN0YXJ0LCBlbmQgaW4gb2NjdXBpZWRbcm9vbV0pOgogICAgICAgICAgICAgICAgb2NjdXBpZWRbcm9vbV0uYXBwZW5kKChyb3dbInN0YXJ0Il0sIHJvd1siZW5kIl0pKQogICAgICAgICAgICAgICAgc2NoZWR1bGVkLmFwcGVuZCh7ImlkIjogcm93WyJpZCJdLCAicm9vbSI6IHJvb219KQogICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbHNlOgogICAgICAgICAgICByZWplY3RlZC5hcHBlbmQocm93WyJpZCJdKQogICAgcmV0dXJuIHsic2NoZWR1bGVkIjogc29ydGVkKHNjaGVkdWxlZCwga2V5PWxhbWJkYSByb3c6IHJvd1siaWQiXSksCiAgICAgICAgICAgICJyZWplY3RlZCI6IHNvcnRlZChyZWplY3RlZCl9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-001",
+                "case-002"
+              ]
+            },
+            {
+              "control_id": "control-002",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3292,
+                  "sha256": "e120cbf02790375c5e394887d22d38fe40d5a7f673037e2fd2fa157623459173",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAocm93WyJ1cmdlbmN5Il0sIGluZGV4KQogICAgc2NoZWR1bGVkID0gW10KICAgIHJlamVjdGVkID0gW10KICAgIGZvciBpbmRleCwgcm93IGluIHNvcnRlZChlbnVtZXJhdGUocmVxdWVzdHMpLCBrZXk9b3JkZXIpOgogICAgICAgIGNob2ljZXMgPSBzb3J0ZWQocm93WyJhbGxvd2VkX3Jvb21zIl0pIGlmIHN0YWdlID09IDMgZWxzZSBbMF0KICAgICAgICBmb3Igcm9vbSBpbiBjaG9pY2VzOgogICAgICAgICAgICBpZiBhbGwocm93WyJlbmQiXSA8PSBzdGFydCBvciByb3dbInN0YXJ0Il0gPj0gZW5kCiAgICAgICAgICAgICAgICAgICBmb3Igc3RhcnQsIGVuZCBpbiBvY2N1cGllZFtyb29tXSk6CiAgICAgICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKHJvd1sic3RhcnQiXSwgcm93WyJlbmQiXSkpCiAgICAgICAgICAgICAgICBzY2hlZHVsZWQuYXBwZW5kKHsiaWQiOiByb3dbImlkIl0sICJyb29tIjogcm9vbX0pCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHJlamVjdGVkLmFwcGVuZChyb3dbImlkIl0pCiAgICByZXR1cm4geyJzY2hlZHVsZWQiOiBzb3J0ZWQoc2NoZWR1bGVkLCBrZXk9bGFtYmRhIHJvdzogcm93WyJpZCJdKSwKICAgICAgICAgICAgInJlamVjdGVkIjogc29ydGVkKHJlamVjdGVkKX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+                }
+              ],
+              "fails_cases": [
+                "case-003"
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "brief": "Extend the rehearsal-room booking CLI to multiple rooms and request-specific room eligibility. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"rooms\":integer,\"requests\":[...],\"closures\":[...]}. rooms is 1..4, defining indices 0..rooms-1. At most 16 requests; each has exactly integer id (1..999, unique), start (0..1439), end (start+1..1440), urgency (0..9), plus allowed_rooms, a nonempty array of distinct valid room indices in any order. At most 16 closures; each has exactly integer room (valid index), start (0..1439), end (start+1..1440). Closures may overlap.\nAll intervals are half-open. Closures occupy their rooms before scheduling. Greedily consider each request once. Higher urgency values are processed first. Keep the established resolution of equal-urgency conflicts. Choose the lowest-index eligible room whose entire requested interval avoids its closures and accepted bookings. Reject when none exists. Accepted bookings are never moved or shortened.\nReturn exactly {\"scheduled\":[{\"id\":integer,\"room\":integer},...],\"rejected\":[integer,...]}; both lists are sorted by increasing request id and partition all requests. Empty input example: {\"rooms\":2,\"requests\":[],\"closures\":[]} returns {\"scheduled\":[],\"rejected\":[]}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "rooms": 2,
+                "requests": [
+                  {
+                    "id": 10,
+                    "start": 0,
+                    "end": 8,
+                    "urgency": 2,
+                    "allowed_rooms": [
+                      0,
+                      1
+                    ]
+                  },
+                  {
+                    "id": 20,
+                    "start": 0,
+                    "end": 3,
+                    "urgency": 2,
+                    "allowed_rooms": [
+                      0,
+                      1
+                    ]
+                  },
+                  {
+                    "id": 30,
+                    "start": 3,
+                    "end": 6,
+                    "urgency": 2,
+                    "allowed_rooms": [
+                      0,
+                      1
+                    ]
+                  }
+                ],
+                "closures": [
+                  {
+                    "room": 1,
+                    "start": 0,
+                    "end": 20
+                  }
+                ]
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 10,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  20,
+                  30
+                ]
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Among requests with equal urgency, process them in their input order to preserve the desk's first-accepted service promise."
+              }
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "rooms": 2,
+                "requests": [
+                  {
+                    "id": 40,
+                    "start": 5,
+                    "end": 12,
+                    "urgency": 4,
+                    "allowed_rooms": [
+                      1
+                    ]
+                  },
+                  {
+                    "id": 50,
+                    "start": 8,
+                    "end": 10,
+                    "urgency": 4,
+                    "allowed_rooms": [
+                      1
+                    ]
+                  },
+                  {
+                    "id": 60,
+                    "start": 0,
+                    "end": 5,
+                    "urgency": 4,
+                    "allowed_rooms": [
+                      0,
+                      1
+                    ]
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 40,
+                    "room": 1
+                  },
+                  {
+                    "id": 60,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  50
+                ]
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Among requests with equal urgency, process them in their input order to preserve the desk's first-accepted service promise."
+              }
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "rooms": 1,
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 1,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  },
+                  {
+                    "id": 2,
+                    "start": 0,
+                    "end": 6,
+                    "urgency": 9,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 2,
+                    "room": 0
+                  }
+                ],
+                "rejected": [
+                  1
+                ]
+              },
+              "tags": [
+                "history-available"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Higher urgency values are processed first."
+              }
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "rooms": 2,
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 5,
+                    "urgency": 9,
+                    "allowed_rooms": [
+                      1
+                    ]
+                  },
+                  {
+                    "id": 2,
+                    "start": 0,
+                    "end": 5,
+                    "urgency": 1,
+                    "allowed_rooms": [
+                      1,
+                      0
+                    ]
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 1,
+                    "room": 1
+                  },
+                  {
+                    "id": 2,
+                    "room": 0
+                  }
+                ],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "rooms": 1,
+                "requests": [],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "rooms": 1,
+                "requests": [
+                  {
+                    "id": 1,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  },
+                  {
+                    "id": 1,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 0,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-007",
+              "input": {
+                "rooms": 1,
+                "requests": [
+                  {
+                    "id": 7,
+                    "start": 0,
+                    "end": 2,
+                    "urgency": 0,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  },
+                  {
+                    "id": 8,
+                    "start": 2,
+                    "end": 4,
+                    "urgency": 7,
+                    "allowed_rooms": [
+                      0
+                    ]
+                  }
+                ],
+                "closures": []
+              },
+              "expected": {
+                "scheduled": [
+                  {
+                    "id": 7,
+                    "room": 0
+                  },
+                  {
+                    "id": 8,
+                    "room": 0
+                  }
+                ],
+                "rejected": []
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3293,
+              "sha256": "af6c76feb8c283e8915effad1a7fc57e58c88d79298f309b1f57becc0cf3ff64",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAoLXJvd1sidXJnZW5jeSJdLCBpbmRleCkKICAgIHNjaGVkdWxlZCA9IFtdCiAgICByZWplY3RlZCA9IFtdCiAgICBmb3IgaW5kZXgsIHJvdyBpbiBzb3J0ZWQoZW51bWVyYXRlKHJlcXVlc3RzKSwga2V5PW9yZGVyKToKICAgICAgICBjaG9pY2VzID0gc29ydGVkKHJvd1siYWxsb3dlZF9yb29tcyJdKSBpZiBzdGFnZSA9PSAzIGVsc2UgWzBdCiAgICAgICAgZm9yIHJvb20gaW4gY2hvaWNlczoKICAgICAgICAgICAgaWYgYWxsKHJvd1siZW5kIl0gPD0gc3RhcnQgb3Igcm93WyJzdGFydCJdID49IGVuZAogICAgICAgICAgICAgICAgICAgZm9yIHN0YXJ0LCBlbmQgaW4gb2NjdXBpZWRbcm9vbV0pOgogICAgICAgICAgICAgICAgb2NjdXBpZWRbcm9vbV0uYXBwZW5kKChyb3dbInN0YXJ0Il0sIHJvd1siZW5kIl0pKQogICAgICAgICAgICAgICAgc2NoZWR1bGVkLmFwcGVuZCh7ImlkIjogcm93WyJpZCJdLCAicm9vbSI6IHJvb219KQogICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbHNlOgogICAgICAgICAgICByZWplY3RlZC5hcHBlbmQocm93WyJpZCJdKQogICAgcmV0dXJuIHsic2NoZWR1bGVkIjogc29ydGVkKHNjaGVkdWxlZCwga2V5PWxhbWJkYSByb3c6IHJvd1siaWQiXSksCiAgICAgICAgICAgICJyZWplY3RlZCI6IHNvcnRlZChyZWplY3RlZCl9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3320,
+                  "sha256": "e850ad362152dd6b260cdb3637d65bb47ad9c3b767c5758569cfa68f29685a88",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAoLXJvd1sidXJnZW5jeSJdLCByb3dbImVuZCJdIC0gcm93WyJzdGFydCJdLCBpbmRleCkKICAgIHNjaGVkdWxlZCA9IFtdCiAgICByZWplY3RlZCA9IFtdCiAgICBmb3IgaW5kZXgsIHJvdyBpbiBzb3J0ZWQoZW51bWVyYXRlKHJlcXVlc3RzKSwga2V5PW9yZGVyKToKICAgICAgICBjaG9pY2VzID0gc29ydGVkKHJvd1siYWxsb3dlZF9yb29tcyJdKSBpZiBzdGFnZSA9PSAzIGVsc2UgWzBdCiAgICAgICAgZm9yIHJvb20gaW4gY2hvaWNlczoKICAgICAgICAgICAgaWYgYWxsKHJvd1siZW5kIl0gPD0gc3RhcnQgb3Igcm93WyJzdGFydCJdID49IGVuZAogICAgICAgICAgICAgICAgICAgZm9yIHN0YXJ0LCBlbmQgaW4gb2NjdXBpZWRbcm9vbV0pOgogICAgICAgICAgICAgICAgb2NjdXBpZWRbcm9vbV0uYXBwZW5kKChyb3dbInN0YXJ0Il0sIHJvd1siZW5kIl0pKQogICAgICAgICAgICAgICAgc2NoZWR1bGVkLmFwcGVuZCh7ImlkIjogcm93WyJpZCJdLCAicm9vbSI6IHJvb219KQogICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbHNlOgogICAgICAgICAgICByZWplY3RlZC5hcHBlbmQocm93WyJpZCJdKQogICAgcmV0dXJuIHsic2NoZWR1bGVkIjogc29ydGVkKHNjaGVkdWxlZCwga2V5PWxhbWJkYSByb3c6IHJvd1siaWQiXSksCiAgICAgICAgICAgICJyZWplY3RlZCI6IHNvcnRlZChyZWplY3RlZCl9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-001",
+                "case-002"
+              ]
+            },
+            {
+              "control_id": "control-002",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3292,
+                  "sha256": "e6eb103aec290aec3e04cb292f989e738fcd1b069e83f969cac1f717851e747a",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsicmVxdWVzdHMiXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJjbG9zdXJlcyIpCiAgICBpZiBzdGFnZSA9PSAzOgogICAgICAgIGZpZWxkcy5hcHBlbmQoInJvb21zIikKICAgIG9iamVjdF9maWVsZHModmFsdWUsIGZpZWxkcykKICAgIHJvb21zID0gdmFsdWVbInJvb21zIl0gaWYgc3RhZ2UgPT0gMyBlbHNlIDEKICAgIGludGVnZXIocm9vbXMsIDEsIDQpCiAgICByZXF1ZXN0cyA9IHZhbHVlWyJyZXF1ZXN0cyJdCiAgICBhcnJheShyZXF1ZXN0cywgMTYpCiAgICBzZWVuID0gc2V0KCkKICAgIGZvciByb3cgaW4gcmVxdWVzdHM6CiAgICAgICAga2V5cyA9IFsiaWQiLCAic3RhcnQiLCAiZW5kIiwgInVyZ2VuY3kiXQogICAgICAgIGlmIHN0YWdlID09IDM6CiAgICAgICAgICAgIGtleXMuYXBwZW5kKCJhbGxvd2VkX3Jvb21zIikKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywga2V5cykKICAgICAgICBpbnRlZ2VyKHJvd1siaWQiXSwgMSwgOTk5KQogICAgICAgIGludGVnZXIocm93WyJzdGFydCJdLCAwLCAxNDM5KQogICAgICAgIGludGVnZXIocm93WyJlbmQiXSwgcm93WyJzdGFydCJdICsgMSwgMTQ0MCkKICAgICAgICBpbnRlZ2VyKHJvd1sidXJnZW5jeSJdLCAwLCA5KQogICAgICAgIGlmIHJvd1siaWQiXSBpbiBzZWVuOgogICAgICAgICAgICBpbnZhbGlkKCkKICAgICAgICBzZWVuLmFkZChyb3dbImlkIl0pCiAgICAgICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICAgICAgYXJyYXkocm93WyJhbGxvd2VkX3Jvb21zIl0sIDQpCiAgICAgICAgICAgIGlmIG5vdCByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igcm9vbSBpbiByb3dbImFsbG93ZWRfcm9vbXMiXToKICAgICAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBpZiBsZW4oc2V0KHJvd1siYWxsb3dlZF9yb29tcyJdKSkgIT0gbGVuKHJvd1siYWxsb3dlZF9yb29tcyJdKToKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgb2NjdXBpZWQgPSBbW10gZm9yIF8gaW4gcmFuZ2Uocm9vbXMpXQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiY2xvc3VyZXMiXSwgMTYpCiAgICAgICAgZm9yIGNsb3N1cmUgaW4gdmFsdWVbImNsb3N1cmVzIl06CiAgICAgICAgICAgIGtleXMgPSBbInN0YXJ0IiwgImVuZCJdICsgKFsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSBbXSkKICAgICAgICAgICAgb2JqZWN0X2ZpZWxkcyhjbG9zdXJlLCBrZXlzKQogICAgICAgICAgICBpbnRlZ2VyKGNsb3N1cmVbInN0YXJ0Il0sIDAsIDE0MzkpCiAgICAgICAgICAgIGludGVnZXIoY2xvc3VyZVsiZW5kIl0sIGNsb3N1cmVbInN0YXJ0Il0gKyAxLCAxNDQwKQogICAgICAgICAgICByb29tID0gY2xvc3VyZVsicm9vbSJdIGlmIHN0YWdlID09IDMgZWxzZSAwCiAgICAgICAgICAgIGludGVnZXIocm9vbSwgMCwgcm9vbXMgLSAxKQogICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKGNsb3N1cmVbInN0YXJ0Il0sIGNsb3N1cmVbImVuZCJdKSkKICAgIGRlZiBvcmRlcihpdGVtKToKICAgICAgICBpbmRleCwgcm93ID0gaXRlbQogICAgICAgIHJldHVybiAocm93WyJ1cmdlbmN5Il0sIGluZGV4KQogICAgc2NoZWR1bGVkID0gW10KICAgIHJlamVjdGVkID0gW10KICAgIGZvciBpbmRleCwgcm93IGluIHNvcnRlZChlbnVtZXJhdGUocmVxdWVzdHMpLCBrZXk9b3JkZXIpOgogICAgICAgIGNob2ljZXMgPSBzb3J0ZWQocm93WyJhbGxvd2VkX3Jvb21zIl0pIGlmIHN0YWdlID09IDMgZWxzZSBbMF0KICAgICAgICBmb3Igcm9vbSBpbiBjaG9pY2VzOgogICAgICAgICAgICBpZiBhbGwocm93WyJlbmQiXSA8PSBzdGFydCBvciByb3dbInN0YXJ0Il0gPj0gZW5kCiAgICAgICAgICAgICAgICAgICBmb3Igc3RhcnQsIGVuZCBpbiBvY2N1cGllZFtyb29tXSk6CiAgICAgICAgICAgICAgICBvY2N1cGllZFtyb29tXS5hcHBlbmQoKHJvd1sic3RhcnQiXSwgcm93WyJlbmQiXSkpCiAgICAgICAgICAgICAgICBzY2hlZHVsZWQuYXBwZW5kKHsiaWQiOiByb3dbImlkIl0sICJyb29tIjogcm9vbX0pCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHJlamVjdGVkLmFwcGVuZChyb3dbImlkIl0pCiAgICByZXR1cm4geyJzY2hlZHVsZWQiOiBzb3J0ZWQoc2NoZWR1bGVkLCBrZXk9bGFtYmRhIHJvdzogcm93WyJpZCJdKSwKICAgICAgICAgICAgInJlamVjdGVkIjogc29ydGVkKHJlamVjdGVkKX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+                }
+              ],
+              "fails_cases": [
+                "case-003"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "project_id": "project-b",
+      "milestones": [
+        {
+          "number": 1,
+          "brief": "Build a walking-route CLI for a botanical garden's numbered junction map. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"nodes\":integer,\"links\":[...],\"from\":integer,\"to\":integer}. nodes is 1..8 and defines node indices 0..nodes-1; from and to are valid indices. Each link has exactly integer a, b (distinct valid indices), minutes (1..100). Links are undirected; no duplicate unordered endpoint pair. At most 28 links.\nFind a route from from to to using links. Minimize total travel minutes. For equal total minutes, prefer fewer links, then the lexicographically smaller full node sequence, so equally fast trips require fewer junction decisions. A full node sequence includes both endpoints; compare integer node sequences using ordinary lexicographic order.\nReturn exactly {\"route\":[node,...],\"minutes\":integer}, or {\"route\":[],\"minutes\":null} if unreachable. Staying at the starting node costs zero: {\"nodes\":1,\"links\":[],\"from\":0,\"to\":0} returns {\"route\":[0],\"minutes\":0}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "nodes": 5,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 5
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 4
+              },
+              "expected": {
+                "route": [
+                  0,
+                  1,
+                  4
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "nodes": 5,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 4
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 4
+              },
+              "expected": {
+                "route": [
+                  0,
+                  4
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "nodes": 1,
+                "links": [],
+                "from": 0,
+                "to": 0
+              },
+              "expected": {
+                "route": [
+                  0
+                ],
+                "minutes": 0
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "nodes": 2,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 0,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 1
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "nodes": 3,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 2
+              },
+              "expected": {
+                "route": [],
+                "minutes": null
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "nodes": true,
+                "links": [],
+                "from": 0,
+                "to": 0
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3515,
+              "sha256": "f7e89bff4686d81831eaa227b2dfa1dfb41adca4c61f92b2587fcc2eb7b6da48",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDEKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKG1pbnV0ZXMsIGxlbihyb3V0ZSksIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3515,
+                  "sha256": "64ff7cca33c305c2ed34f451244e65674fba98df2847b3a8ecb0e0d3870ea1bc",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDEKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKGxlbihyb3V0ZSksIG1pbnV0ZXMsIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-001"
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "brief": "Extend the botanical-garden walking-route CLI to avoid temporarily blocked links. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"nodes\":integer,\"links\":[...],\"from\":integer,\"to\":integer,\"blocked\":[...]}. nodes is 1..8 and defines indices 0..nodes-1; from and to are valid indices. Each of at most 28 undirected links has exactly integer a, b (distinct valid indices), minutes (1..100), with no duplicate unordered pair. Each blocked item is a two-element array of valid integer node indices naming an existing link in either direction; no duplicate unordered blocked pair, at most 28 items.\nRemove blocked links before finding a route. Minimize total travel minutes. Keep the established tie policy for equally fast routes. A route lists all traversed nodes, including both endpoints.\nReturn exactly {\"route\":[node,...],\"minutes\":integer}, or {\"route\":[],\"minutes\":null} if unreachable. Staying at the starting node costs zero: {\"nodes\":1,\"links\":[],\"from\":0,\"to\":0,\"blocked\":[]} returns {\"route\":[0],\"minutes\":0}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "nodes": 5,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 4
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 4,
+                "blocked": []
+              },
+              "expected": {
+                "route": [
+                  0,
+                  4
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "For equal total minutes, prefer fewer links, then the lexicographically smaller full node sequence, so equally fast trips require fewer junction decisions."
+              }
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "nodes": 6,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 3,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 3,
+                    "b": 5,
+                    "minutes": 4
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  },
+                  {
+                    "a": 1,
+                    "b": 2,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 2,
+                    "b": 5,
+                    "minutes": 3
+                  }
+                ],
+                "from": 0,
+                "to": 5,
+                "blocked": []
+              },
+              "expected": {
+                "route": [
+                  0,
+                  3,
+                  5
+                ],
+                "minutes": 6
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "For equal total minutes, prefer fewer links, then the lexicographically smaller full node sequence, so equally fast trips require fewer junction decisions."
+              }
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "nodes": 5,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 5
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 4,
+                "blocked": []
+              },
+              "expected": {
+                "route": [
+                  0,
+                  1,
+                  4
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "history-available"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Minimize total travel minutes."
+              }
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "nodes": 4,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 3,
+                    "minutes": 7
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  },
+                  {
+                    "a": 1,
+                    "b": 3,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 3,
+                "blocked": [
+                  [
+                    1,
+                    3
+                  ]
+                ]
+              },
+              "expected": {
+                "route": [
+                  0,
+                  3
+                ],
+                "minutes": 7
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "nodes": 1,
+                "links": [],
+                "from": 0,
+                "to": 0,
+                "blocked": []
+              },
+              "expected": {
+                "route": [
+                  0
+                ],
+                "minutes": 0
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "nodes": 2,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 0,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 1,
+                "blocked": []
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-007",
+              "input": {
+                "nodes": 3,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 2,
+                "blocked": []
+              },
+              "expected": {
+                "route": [],
+                "minutes": null
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3515,
+              "sha256": "bdc4f7f9d052243f75780a64c6344acce2ebf79cbcb726662b707eec97d56cee",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKG1pbnV0ZXMsIGxlbihyb3V0ZSksIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3503,
+                  "sha256": "a56e51b7fcecfb7ef5b71d835cea12e9d6e0b8d80b6f3c72e09fe84bff224692",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKG1pbnV0ZXMsIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-001",
+                "case-002"
+              ]
+            },
+            {
+              "control_id": "control-002",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3515,
+                  "sha256": "ea5018fdf9b3557ecfd5ed3dd16e542bb6d780d5e325df1636a3aef1b65243a5",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDIKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKGxlbihyb3V0ZSksIG1pbnV0ZXMsIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-003"
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "brief": "Extend the botanical-garden walking-route CLI to require a stop at one specified junction. Implement main.py as a Python 3.12 standard-library CLI: one strict JSON value on stdin, one JSON value on stdout, no diagnostics on stdout. Numbers must use integer JSON syntax. Reject malformed JSON, duplicate object keys, noninteger numbers, and any schema violation with exactly {\"error\":\"invalid\"}; booleans are not integers. Reject missing or extra fields at every object level. The supplied source is a fresh canonical starter, not a previous completed submission. Implement this milestone's complete behavior in run(value); keep strict parsing. Use no dependencies.\nInput has exactly {\"nodes\":integer,\"links\":[...],\"from\":integer,\"to\":integer,\"blocked\":[...],\"via\":integer}. nodes is 1..8; from, to, via and link endpoints are indices 0..nodes-1. Each of at most 28 undirected links has exactly integer a, b (distinct valid indices), minutes (1..100), with no duplicate unordered endpoint pair. Each blocked item is a two-element array of valid integer indices naming an existing link in either direction; no duplicate unordered blocked pair, at most 28 items.\nRemove blocked links. Find a route from from to to visiting via at least once, including an endpoint visit. Nodes and links may be revisited when needed. Minimize total travel minutes. Keep the established tie policy for equally fast routes, applied to the complete route rather than separately ranked pieces. A route lists every traversal's nodes in order, including both endpoints.\nReturn exactly {\"route\":[node,...],\"minutes\":integer}, or {\"route\":[],\"minutes\":null} if no qualifying route exists. Example: {\"nodes\":1,\"links\":[],\"from\":0,\"to\":0,\"blocked\":[],\"via\":0} returns {\"route\":[0],\"minutes\":0}.",
+          "files": [
+            {
+              "path": "main.py",
+              "size": 1015,
+              "sha256": "48f84e7565c2db9c09219f0585f8cbd3551cfdfd668e9c04f1db6f8b0098f8d2",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICByZXR1cm4geyJ1bmltcGxlbWVudGVkIjogVHJ1ZX0KCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgdHJ5OgogICAgICAgIHJlcXVlc3QgPSBqc29uLmxvYWRzKHN5cy5zdGRpbi5yZWFkKCksIG9iamVjdF9wYWlyc19ob29rPXVuaXF1ZV9vYmplY3QsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgcGFyc2VfZmxvYXQ9aW52YWxpZCwgcGFyc2VfY29uc3RhbnQ9aW52YWxpZCkKICAgICAgICByZXNwb25zZSA9IHJ1bihyZXF1ZXN0KQogICAgZXhjZXB0IChWYWx1ZUVycm9yLCBUeXBlRXJyb3IsIEtleUVycm9yLCBJbmRleEVycm9yKToKICAgICAgICByZXNwb25zZSA9IHsiZXJyb3IiOiAiaW52YWxpZCJ9CiAgICBwcmludChqc29uLmR1bXBzKHJlc3BvbnNlLCBzZXBhcmF0b3JzPSgiLCIsICI6IiksIGFsbG93X25hbj1GYWxzZSkpCg=="
+            }
+          ],
+          "allowed_paths": [
+            "main.py"
+          ],
+          "entry_point": "main.py",
+          "cases": [
+            {
+              "case_id": "case-001",
+              "input": {
+                "nodes": 6,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 4
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 4,
+                    "b": 5,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 5,
+                "blocked": [],
+                "via": 4
+              },
+              "expected": {
+                "route": [
+                  0,
+                  4,
+                  5
+                ],
+                "minutes": 5
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "For equal total minutes, prefer fewer links, then the lexicographically smaller full node sequence, so equally fast trips require fewer junction decisions."
+              }
+            },
+            {
+              "case_id": "case-002",
+              "input": {
+                "nodes": 7,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 3,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 3,
+                    "b": 5,
+                    "minutes": 4
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  },
+                  {
+                    "a": 1,
+                    "b": 2,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 2,
+                    "b": 5,
+                    "minutes": 3
+                  },
+                  {
+                    "a": 5,
+                    "b": 6,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 6,
+                "blocked": [],
+                "via": 5
+              },
+              "expected": {
+                "route": [
+                  0,
+                  3,
+                  5,
+                  6
+                ],
+                "minutes": 8
+              },
+              "tags": [
+                "history-only"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "For equal total minutes, prefer fewer links, then the lexicographically smaller full node sequence, so equally fast trips require fewer junction decisions."
+              }
+            },
+            {
+              "case_id": "case-003",
+              "input": {
+                "nodes": 5,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 4,
+                    "minutes": 5
+                  },
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 2
+                  },
+                  {
+                    "a": 1,
+                    "b": 4,
+                    "minutes": 2
+                  }
+                ],
+                "from": 0,
+                "to": 4,
+                "blocked": [],
+                "via": 0
+              },
+              "expected": {
+                "route": [
+                  0,
+                  1,
+                  4
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "history-available"
+              ],
+              "history_origin": {
+                "milestone": 1,
+                "visible_quote": "Minimize total travel minutes."
+              }
+            },
+            {
+              "case_id": "case-004",
+              "input": {
+                "nodes": 4,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  },
+                  {
+                    "a": 1,
+                    "b": 2,
+                    "minutes": 1
+                  },
+                  {
+                    "a": 1,
+                    "b": 3,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 2,
+                "blocked": [],
+                "via": 3
+              },
+              "expected": {
+                "route": [
+                  0,
+                  1,
+                  3,
+                  1,
+                  2
+                ],
+                "minutes": 4
+              },
+              "tags": [
+                "memory-independent",
+                "milestone-work"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-005",
+              "input": {
+                "nodes": 1,
+                "links": [],
+                "from": 0,
+                "to": 0,
+                "blocked": [],
+                "via": 0
+              },
+              "expected": {
+                "route": [
+                  0
+                ],
+                "minutes": 0
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-006",
+              "input": {
+                "nodes": 2,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 0,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 1,
+                "blocked": [],
+                "via": 0
+              },
+              "expected": {
+                "error": "invalid"
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            },
+            {
+              "case_id": "case-007",
+              "input": {
+                "nodes": 3,
+                "links": [
+                  {
+                    "a": 0,
+                    "b": 1,
+                    "minutes": 1
+                  }
+                ],
+                "from": 0,
+                "to": 2,
+                "blocked": [],
+                "via": 1
+              },
+              "expected": {
+                "route": [],
+                "minutes": null
+              },
+              "tags": [
+                "memory-independent"
+              ],
+              "history_origin": null
+            }
+          ],
+          "reference_files": [
+            {
+              "path": "main.py",
+              "size": 3515,
+              "sha256": "73924ee2ad7904f7719bf6be4ada0d582c7b40d6ca7b1592ad71f381735b047a",
+              "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKG1pbnV0ZXMsIGxlbihyb3V0ZSksIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+            }
+          ],
+          "negative_controls": [
+            {
+              "control_id": "control-001",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3503,
+                  "sha256": "f7b6128a2ea363a7b895a859178a34e425535e81d8b4dff6081983a4afce8916",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKG1pbnV0ZXMsIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-001",
+                "case-002"
+              ]
+            },
+            {
+              "control_id": "control-002",
+              "files": [
+                {
+                  "path": "main.py",
+                  "size": 3515,
+                  "sha256": "7aef19b91324a9f76199f9d5d6e45778aa557b302353430ffc87bd68bb0abca8",
+                  "content_base64": "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwoKCmRlZiBpbnZhbGlkKCphcmdzKToKICAgIHJhaXNlIFZhbHVlRXJyb3IoImludmFsaWQiKQoKCmRlZiB1bmlxdWVfb2JqZWN0KHBhaXJzKToKICAgIHZhbHVlID0ge30KICAgIGZvciBrZXksIGNoaWxkIGluIHBhaXJzOgogICAgICAgIGlmIGtleSBpbiB2YWx1ZToKICAgICAgICAgICAgaW52YWxpZCgpCiAgICAgICAgdmFsdWVba2V5XSA9IGNoaWxkCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKToKICAgIGlmIHR5cGUodmFsdWUpIGlzIG5vdCBkaWN0IG9yIHNldCh2YWx1ZSkgIT0gc2V0KGZpZWxkcyk6CiAgICAgICAgaW52YWxpZCgpCgoKZGVmIGludGVnZXIodmFsdWUsIGxvdywgaGlnaCk6CiAgICBpZiB0eXBlKHZhbHVlKSBpcyBub3QgaW50IG9yIG5vdCBsb3cgPD0gdmFsdWUgPD0gaGlnaDoKICAgICAgICBpbnZhbGlkKCkKCgpkZWYgYXJyYXkodmFsdWUsIG1heGltdW0pOgogICAgaWYgdHlwZSh2YWx1ZSkgaXMgbm90IGxpc3Qgb3IgbGVuKHZhbHVlKSA+IG1heGltdW06CiAgICAgICAgaW52YWxpZCgpCgoKaW1wb3J0IGhlYXBxCgoKZGVmIHJ1bih2YWx1ZSk6CiAgICBzdGFnZSA9IDMKICAgIGZpZWxkcyA9IFsibm9kZXMiLCAibGlua3MiLCAiZnJvbSIsICJ0byJdCiAgICBpZiBzdGFnZSA+PSAyOgogICAgICAgIGZpZWxkcy5hcHBlbmQoImJsb2NrZWQiKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBmaWVsZHMuYXBwZW5kKCJ2aWEiKQogICAgb2JqZWN0X2ZpZWxkcyh2YWx1ZSwgZmllbGRzKQogICAgbm9kZXMgPSB2YWx1ZVsibm9kZXMiXQogICAgaW50ZWdlcihub2RlcywgMSwgOCkKICAgIGludGVnZXIodmFsdWVbImZyb20iXSwgMCwgbm9kZXMgLSAxKQogICAgaW50ZWdlcih2YWx1ZVsidG8iXSwgMCwgbm9kZXMgLSAxKQogICAgaWYgc3RhZ2UgPT0gMzoKICAgICAgICBpbnRlZ2VyKHZhbHVlWyJ2aWEiXSwgMCwgbm9kZXMgLSAxKQogICAgYXJyYXkodmFsdWVbImxpbmtzIl0sIDI4KQogICAgbGlua3MgPSB7fQogICAgZm9yIHJvdyBpbiB2YWx1ZVsibGlua3MiXToKICAgICAgICBvYmplY3RfZmllbGRzKHJvdywgWyJhIiwgImIiLCAibWludXRlcyJdKQogICAgICAgIGludGVnZXIocm93WyJhIl0sIDAsIG5vZGVzIC0gMSkKICAgICAgICBpbnRlZ2VyKHJvd1siYiJdLCAwLCBub2RlcyAtIDEpCiAgICAgICAgaW50ZWdlcihyb3dbIm1pbnV0ZXMiXSwgMSwgMTAwKQogICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQoKHJvd1siYSJdLCByb3dbImIiXSkpKQogICAgICAgIGlmIHJvd1siYSJdID09IHJvd1siYiJdIG9yIGVkZ2UgaW4gbGlua3M6CiAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgIGxpbmtzW2VkZ2VdID0gcm93WyJtaW51dGVzIl0KICAgIGJsb2NrZWQgPSBzZXQoKQogICAgaWYgc3RhZ2UgPj0gMjoKICAgICAgICBhcnJheSh2YWx1ZVsiYmxvY2tlZCJdLCAyOCkKICAgICAgICBmb3IgcGFpciBpbiB2YWx1ZVsiYmxvY2tlZCJdOgogICAgICAgICAgICBhcnJheShwYWlyLCAyKQogICAgICAgICAgICBpZiBsZW4ocGFpcikgIT0gMjoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBmb3Igbm9kZSBpbiBwYWlyOgogICAgICAgICAgICAgICAgaW50ZWdlcihub2RlLCAwLCBub2RlcyAtIDEpCiAgICAgICAgICAgIGVkZ2UgPSB0dXBsZShzb3J0ZWQocGFpcikpCiAgICAgICAgICAgIGlmIGVkZ2Ugbm90IGluIGxpbmtzIG9yIGVkZ2UgaW4gYmxvY2tlZDoKICAgICAgICAgICAgICAgIGludmFsaWQoKQogICAgICAgICAgICBibG9ja2VkLmFkZChlZGdlKQogICAgYWRqYWNlbmN5ID0gW1tdIGZvciBfIGluIHJhbmdlKG5vZGVzKV0KICAgIGZvciAoYSwgYiksIG1pbnV0ZXMgaW4gbGlua3MuaXRlbXMoKToKICAgICAgICBpZiAoYSwgYikgbm90IGluIGJsb2NrZWQ6CiAgICAgICAgICAgIGFkamFjZW5jeVthXS5hcHBlbmQoKGIsIG1pbnV0ZXMpKQogICAgICAgICAgICBhZGphY2VuY3lbYl0uYXBwZW5kKChhLCBtaW51dGVzKSkKICAgIGRlZiByYW5rKG1pbnV0ZXMsIHJvdXRlKToKICAgICAgICByZXR1cm4gKGxlbihyb3V0ZSksIG1pbnV0ZXMsIHJvdXRlKQogICAgc3RhcnQgPSB2YWx1ZVsiZnJvbSJdCiAgICB2aXNpdGVkID0gc3RhZ2UgIT0gMyBvciBzdGFydCA9PSB2YWx1ZVsidmlhIl0KICAgIHJvdXRlID0gKHN0YXJ0LCkKICAgIGluaXRpYWwgPSByYW5rKDAsIHJvdXRlKQogICAgYmVzdCA9IHsoc3RhcnQsIHZpc2l0ZWQpOiBpbml0aWFsfQogICAgaGVhcCA9IFsoaW5pdGlhbCwgMCwgcm91dGUsIHZpc2l0ZWQpXQogICAgd2hpbGUgaGVhcDoKICAgICAgICBzY29yZSwgbWludXRlcywgcm91dGUsIHZpc2l0ZWQgPSBoZWFwcS5oZWFwcG9wKGhlYXApCiAgICAgICAgbm9kZSA9IHJvdXRlWy0xXQogICAgICAgIGlmIGJlc3QuZ2V0KChub2RlLCB2aXNpdGVkKSkgIT0gc2NvcmU6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgbm9kZSA9PSB2YWx1ZVsidG8iXSBhbmQgdmlzaXRlZDoKICAgICAgICAgICAgcmV0dXJuIHsicm91dGUiOiBsaXN0KHJvdXRlKSwgIm1pbnV0ZXMiOiBtaW51dGVzfQogICAgICAgIGZvciBjaGlsZCwgY29zdCBpbiBhZGphY2VuY3lbbm9kZV06CiAgICAgICAgICAgIG5leHRfdmlzaXRlZCA9IHZpc2l0ZWQgb3IgKHN0YWdlID09IDMgYW5kIGNoaWxkID09IHZhbHVlWyJ2aWEiXSkKICAgICAgICAgICAgbmV4dF9yb3V0ZSA9IHJvdXRlICsgKGNoaWxkLCkKICAgICAgICAgICAgbmV4dF9taW51dGVzID0gbWludXRlcyArIGNvc3QKICAgICAgICAgICAgbmV4dF9zY29yZSA9IHJhbmsobmV4dF9taW51dGVzLCBuZXh0X3JvdXRlKQogICAgICAgICAgICBzdGF0ZSA9IChjaGlsZCwgbmV4dF92aXNpdGVkKQogICAgICAgICAgICBpZiBzdGF0ZSBub3QgaW4gYmVzdCBvciBuZXh0X3Njb3JlIDwgYmVzdFtzdGF0ZV06CiAgICAgICAgICAgICAgICBiZXN0W3N0YXRlXSA9IG5leHRfc2NvcmUKICAgICAgICAgICAgICAgIGhlYXBxLmhlYXBwdXNoKGhlYXAsIChuZXh0X3Njb3JlLCBuZXh0X21pbnV0ZXMsIG5leHRfcm91dGUsIG5leHRfdmlzaXRlZCkpCiAgICByZXR1cm4geyJyb3V0ZSI6IFtdLCAibWludXRlcyI6IE5vbmV9CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByZXF1ZXN0ID0ganNvbi5sb2FkcyhzeXMuc3RkaW4ucmVhZCgpLCBvYmplY3RfcGFpcnNfaG9vaz11bmlxdWVfb2JqZWN0LAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHBhcnNlX2Zsb2F0PWludmFsaWQsIHBhcnNlX2NvbnN0YW50PWludmFsaWQpCiAgICAgICAgcmVzcG9uc2UgPSBydW4ocmVxdWVzdCkKICAgIGV4Y2VwdCAoVmFsdWVFcnJvciwgVHlwZUVycm9yLCBLZXlFcnJvciwgSW5kZXhFcnJvcik6CiAgICAgICAgcmVzcG9uc2UgPSB7ImVycm9yIjogImludmFsaWQifQogICAgcHJpbnQoanNvbi5kdW1wcyhyZXNwb25zZSwgc2VwYXJhdG9ycz0oIiwiLCAiOiIpLCBhbGxvd19uYW49RmFsc2UpKQo="
+                }
+              ],
+              "fails_cases": [
+                "case-003"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
