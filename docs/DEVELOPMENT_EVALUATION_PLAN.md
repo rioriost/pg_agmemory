@@ -6,6 +6,13 @@ the historical-memory comparison remains incomplete**. The
 interruption without retry or rescoring. Neither v4 nor v5 reached later
 memory-eligible work; no sixth study is automatically authorized.
 
+A separate, prospectively fixed maintenance-interface probe has now completed
+its twelve calls. Both offset and anchor-selector interfaces passed all six
+conditions; the required correctness gain was absent. This does not complete
+the historical-memory study or authorize adopting the selector. See the
+[interface result](../examples/development-maintenance-interface-result.json)
+and [evaluation summary](EVALUATION.md#maintenance-interface-probe-both-correct-no-integration-benefit).
+
 The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
 3/6 successful slots for no-memory and 5/6 for each memory pipeline, with
@@ -24,6 +31,78 @@ The [evaluation report](EVALUATION.md) preserves the incomplete first attempt
 separately. The protocol revisions below are distinct offline follow-ups; later
 sections retain the reviewed design and historical pre-live gates. No outcome
 below authorizes retry or retrospective scoring changes.
+
+## Completed maintenance-interface probe
+
+This separate probe supplies required selections and compares their encoding
+with existing `span_v3` offsets versus one frozen `exact-boundary-anchors-v1`
+prototype. It does not run DefaultAgent development milestones, compare memory
+storage arms or test whether an agent discovers useful facts. Six purposive
+paired conditions cover distinctive fields, Unicode/literals, overlap and
+whitespace, long repetition, a maximum operation batch, and obsolete decoys.
+The fixed order and all twelve call measurements are retained in the
+[sanitized result](../examples/development-maintenance-interface-result.json).
+
+Both interfaces were supported-complete on **6/6 conditions**: all 46 required
+actions and 44 evidence-bearing actions matched. Exact model-level nano-AIU was
+`39660500000.000001` for offsets and `42119250000` for the selector, totaling
+`81779750000.000001`. The selector/offset paired transport-time ratio had median
+`1.0093392602818512` and maximum `1.3965402042067925`; every selector answer was
+larger. All predeclared integration-review guards passed except the required
+gain of at least two correct conditions. The equal correctness ceiling is
+neither a benefit finding nor permission to substitute harder fixtures.
+
+One prior outer launch failed closed on a `0644` risk-receipt input before any
+claim, runtime preflight or model call. Its failed record and all twelve unrun
+slots remain separate. A new explicit user approval and exact one-attempt
+authorization selected the already-qualified private byte-identical copy;
+the completed attempt had twelve fresh CLI calls, zero canaries/probes/retries,
+complete reported accounting and acknowledged owned-resource closure.
+
+The accepted `beforePublish` source change below was independently qualified
+and explicitly bound before this attempt. Its executable was a frozen,
+uncommitted overlay on `1cd8100`, not a clean commit. These result-documentation
+additions are later than the run and do not change that historical source
+binding. Session-local prospective hashes are not public trusted timestamps.
+Private raw evidence remains private; only sanitized measurements and binding
+hashes belong in the result summary. No automatic adoption, further trial or
+sixth memory study follows.
+
+Independent post-terminal receipt reconciliation passed without regrading.
+Its independence limits and retained failed checks are disclosed in the result.
+The wrapper's cleanup-deadline field was 38 ms later than the coordinator's;
+actual closure completed within the original cutoff. This nonblocking receipt
+distinction is preserved, not represented as identical component deadlines or
+a new qualification of future timeout behavior.
+
+## Prospective request-publication guard
+
+The transport now accepts an optional synchronous `beforePublish` callback on
+`CopilotTransport.invoke` and `writeNew`. It runs after the private staging file
+has been written, synced and closed, immediately before submitting its public
+hard link. A thrown error prevents link submission and leaves the staging file
+as evidence. Asynchronous/thenable callback results are rejected rather than
+awaited. Existing callers that omit the option retain their previous behavior.
+
+For the separately prepared synthetic interface experiment, the callback must
+check the original response deadline, cancellation and latched evidence-integrity
+failures. The 200,000-ms run reserve remains a **before-invoke** requirement:
+staging consumes part of the original 180,000-ms response allowance, not a new
+allowance or a fresh 200,000-ms reserve at publication. The final eligibility
+sample must not be followed by application I/O inside the callback.
+
+This is a check before link submission, not atomic enforcement at filesystem
+linearization, watcher delivery or provider spawn. A submitted link may complete
+late or ambiguously. Such outcomes, post-link persistence failures and unknown
+usage remain explicit failures/unknowns, never fabricated nonpublication. A
+denied guard does not release a consumed reservation or permit retry.
+
+This prospective, opt-in source change is separate from the frozen historical
+executables and results. It does not modify the work, maintenance or retrieval
+protocols, model policy, experiment limits or outcome thresholds. The new source
+bytes and experiment runner require their own binding, independent audit and
+final authorization before any live comparison; neither this change nor the
+offline tests authorize a retry, a sixth memory study or candidate adoption.
 
 ## Fifth study: interrupted before historical-memory evaluation
 

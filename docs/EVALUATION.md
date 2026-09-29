@@ -2,6 +2,71 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Maintenance interface probe: both correct, no integration benefit
+
+The separately authorized [synthetic comparison](../examples/development-maintenance-interface-result.json)
+completed all twelve calls with GPT-6 Astra/high and Copilot CLI 1.0.88.
+It compared the existing `span_v3` Unicode-code-point offsets with one frozen,
+unadopted `exact-boundary-anchors-v1` selector. Required selections were supplied;
+this measured **encoding compliance, not memory usefulness in development work**.
+There were six fixed paired conditions, one fresh CLI process per call, one call
+in flight, and no canary, provider-readiness probe or automatic retry.
+
+| Interface | Supported-complete / 6 | Exact reported model nano-AIU | Total answer UTF-8 bytes |
+|---|---:|---:|---:|
+| Existing offsets | 6/6 | `39660500000.000001` | 1,938 |
+| Anchor selector | 6/6 | `42119250000` | 2,896 |
+
+All **46 required actions and 44 evidence-bearing actions matched**. All calls
+had complete usable accounting; the exact total was `81779750000.000001`
+nano-AIU, below the `100000000000` threshold. Reported API requests total
+twelve, not a verified count of provider-internal requests. Preparation-assistant
+usage is separate, and nano-AIU is not a verified monetary invoice.
+
+The selector used approximately **6.2% more reported model usage**. The median
+of the six paired selector/offset transport-time ratios was **1.00934**, with
+a maximum of **1.39654**. Every selector answer was larger. The JSON retains
+every call's time, bytes and cost, not only favorable pairs. Transport includes
+local CLI startup and bridge scheduling; it is not provider-only latency.
+
+The predeclared integration-review screen required at least five selector
+successes **and at least two more than the baseline**, no paired regression,
+at least three both-correct pairs, and fixed latency/cost guards. Only the
+required correctness gain failed: both interfaces reached 6/6. This establishes
+**no demonstrated benefit for the fixed integration objective**, not statistical
+equivalence or general superiority. It does not authorize harder replacement
+fixtures, more repetitions, automatic adoption or a sixth memory study.
+
+An earlier outer launch failed before claim or preflight because the selected
+risk receipt had mode `0644`; the private reader correctly rejected it.
+There were zero model calls and twelve unrun slots in that preserved launch.
+After new explicit user approval and a new one-attempt authorization, the
+completed attempt selected an existing `0600` byte-identical copy. Neither
+the original file permissions nor the consumed first authorization were reused
+or rewritten. This was a lead input-selection and dispatch-review gap, not a
+model failure.
+
+The successful attempt used an explicitly bound **uncommitted source overlay**
+on `1cd8100`, including the optional synchronous
+[`beforePublish` guard](DEVELOPMENT_EVALUATION_PLAN.md#prospective-request-publication-guard).
+Its method, inputs and order were fixed in session evidence before inference,
+not in a publicly timestamped preregistration. All 478 terminal files were bound
+before reading outcomes; 39 tracked children, including twelve model CLI
+processes, acknowledged exit and close, and the owned oracle guest has an
+absence receipt. The linked artifact is a sanitized summary with hashes of
+retained private evidence, **not a release of raw logs or container inventories**.
+The historical-memory comparison below remains incomplete.
+
+The independent post-terminal receipt audit passed. Its auditor is independent
+of runner/selector authorship, not fixture/oracle authorship or prior-study
+exposure; no new oracle execution or regrade occurred. Failed audit checks
+remain retained. One nonblocking observation is a wrapper cleanup-deadline
+field **38 ms later** than the coordinator's: all wrapper children had already
+closed, and actual cleanup finished within the original allowance in **392 ms**.
+The fields are not identical, and future timeout paths are not requalified here.
+Two slots also contain an extra empty native assistant message before their
+single final answer; message counts are not admission or provider-request counts.
+
 ## Fifth study: another interruption before historical-memory evaluation
 
 The [v5 preregistration](../examples/development-memory-pilot-v5-manifest.json)

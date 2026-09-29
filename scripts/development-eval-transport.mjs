@@ -43,7 +43,9 @@ export async function readPrivate(file, maximum = 1048576, { singleLink = false 
   } finally { await handle.close(); }
 }
 
-export async function writeNew(file, value) {
+export async function writeNew(file, value, { beforePublish } = {}) {
+  requireCondition(beforePublish === undefined || typeof beforePublish === "function",
+    "invalid_publication_guard");
   await privateDirectory(path.dirname(file));
   const temporary = `${file}.writing`;
   const handle = await fs.open(temporary, "wx", 0o600);
@@ -51,6 +53,12 @@ export async function writeNew(file, value) {
     await handle.writeFile(JSON.stringify(value) + "\n");
     await handle.sync();
   } finally { await handle.close(); }
+  const guarded = beforePublish?.();
+  if (guarded !== null && guarded !== undefined && typeof guarded.then === "function") {
+    // Reject asynchronous guards without leaving a rejected promise unhandled.
+    Promise.resolve(guarded).catch(() => {});
+    throw new EvaluationError("asynchronous_publication_guard");
+  }
   await fs.link(temporary, file);
   await fs.unlink(temporary);
   const directory = await fs.open(path.dirname(file), constants.O_RDONLY);
@@ -158,7 +166,7 @@ export class CopilotTransport {
     return bridge;
   }
 
-  async invoke(context, { deadline = Date.now() + 180000, signal } = {}) {
+  async invoke(context, { deadline = Date.now() + 180000, signal, beforePublish } = {}) {
     requireCondition(!this.active, "concurrent_model_dispatch_forbidden");
     this.active = true;
     let bridge;
@@ -171,7 +179,7 @@ export class CopilotTransport {
       admitted = this.ledger.reserve(context);
       const callId = admitted.receipt.bridge_call_id;
       await writeNew(path.join(bridge.directory, "queue", `${callId}.request.json`),
-        admitted.request);
+        admitted.request, { beforePublish });
       const raw = await waitPrivate(
         path.join(bridge.directory, "queue", `${callId}.response.json`),
         { deadline: Math.min(deadline, Date.now() + 180000), signal, alive: () => !bridge.exited },

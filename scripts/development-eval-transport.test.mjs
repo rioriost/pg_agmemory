@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -25,6 +26,200 @@ test("private evidence files reject overwrites, symlinks and broad permissions",
     await assert.rejects(readPrivate(path.join(directory, "link.json")));
     await fs.chmod(file, 0o644);
     await assert.rejects(readPrivate(file), /private_file_invalid/);
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+test("publication guard runs synchronously after staged fsync and close, before link", async (t) => {
+  const directory = await temporary();
+  const file = path.join(directory, "guarded.json");
+  const stages = [];
+  const open = fs.open, link = fs.link;
+  t.mock.method(fs, "open", async (...args) => {
+    const handle = await open(...args);
+    if (args[0] === `${file}.writing`) {
+      const sync = handle.sync.bind(handle), close = handle.close.bind(handle);
+      t.mock.method(handle, "sync", async () => { await sync(); stages.push("synced"); });
+      t.mock.method(handle, "close", async () => { await close(); stages.push("closed"); });
+    }
+    return handle;
+  });
+  t.mock.method(fs, "link", (...args) => {
+    stages.push("link");
+    return link(...args);
+  });
+  try {
+    await writeNew(file, { value: 1 }, { beforePublish: () => {
+      stages.push("guard");
+      assert.equal(readFileSync(`${file}.writing`, "utf8"), '{"value":1}\n');
+      assert.equal(existsSync(file), false);
+      queueMicrotask(() => stages.push("microtask"));
+    } });
+    assert.deepEqual(stages, ["synced", "closed", "guard", "link", "microtask"]);
+    assert.equal((await readPrivate(file)).toString(), '{"value":1}\n');
+    assert.equal(existsSync(`${file}.writing`), false);
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+for (const code of ["response_deadline", "operation_cancelled", "process_evidence_invalid"]) {
+  test(`publication guard rejects ${code} observed during staged I/O`, async (t) => {
+    const directory = await temporary();
+    const file = path.join(directory, "guarded.json");
+    const failure = new EvaluationError(code);
+    const open = fs.open;
+    let stopped = false;
+    let guarded = false;
+    t.mock.method(fs, "open", async (...args) => {
+      const handle = await open(...args);
+      if (args[0] === `${file}.writing`) {
+        const sync = handle.sync.bind(handle);
+        t.mock.method(handle, "sync", async () => { await sync(); stopped = true; });
+      }
+      return handle;
+    });
+    const link = t.mock.method(fs, "link", () => assert.fail("denied request was linked"));
+    try {
+      await assert.rejects(writeNew(file, { value: 1 }, { beforePublish: () => {
+        guarded = true;
+        if (stopped) throw failure;
+      } }), (error) => error === failure);
+      assert.equal(guarded, true);
+      assert.equal(link.mock.callCount(), 0);
+      assert.equal(existsSync(file), false);
+      assert.equal((await readPrivate(`${file}.writing`, 1024, { singleLink: true })).toString(),
+        '{"value":1}\n');
+    } finally { await fs.rm(directory, { recursive: true }); }
+  });
+}
+
+for (const [name, beforePublish] of [
+  ["async callback", async () => {}],
+  ["rejected promise", () => Promise.reject(new Error("unsupported async failure"))],
+  ["thenable", () => ({ then: (resolve) => resolve() })],
+]) {
+  test(`publication guard rejects ${name} without publishing`, async () => {
+    const directory = await temporary();
+    const file = path.join(directory, "guarded.json");
+    try {
+      await assert.rejects(writeNew(file, { value: 1 }, { beforePublish }),
+        /asynchronous_publication_guard/);
+      assert.equal(existsSync(file), false);
+      assert.equal((await readPrivate(`${file}.writing`)).toString(), '{"value":1}\n');
+    } finally { await fs.rm(directory, { recursive: true }); }
+  });
+}
+
+test("invalid publication guard is rejected before creating a staged file", async () => {
+  const directory = await temporary();
+  try {
+    const file = path.join(directory, "guarded.json");
+    await assert.rejects(writeNew(file, {}, { beforePublish: false }), /invalid_publication_guard/);
+    assert.deepEqual(await fs.readdir(directory), []);
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+test("staging and link failures retain their own error and publication evidence", async (t) => {
+  const directory = await temporary();
+  const failure = Object.assign(new Error("synthetic staging failure"), { code: "EIO" });
+  const file = path.join(directory, "staging.json");
+  const open = fs.open;
+  t.mock.method(fs, "open", async (...args) => {
+    const handle = await open(...args);
+    if (args[0] === `${file}.writing`) {
+      t.mock.method(handle, "sync", async () => { throw failure; });
+    }
+    return handle;
+  });
+  try {
+    await assert.rejects(writeNew(file, {}, {
+      beforePublish: () => assert.fail("guard called after staging failure"),
+    }), (error) => error === failure);
+    assert.equal(existsSync(file), false);
+    assert.equal((await readPrivate(`${file}.writing`)).toString(), "{}\n");
+    const existing = path.join(directory, "existing.json");
+    await writeNew(existing, { original: true });
+    let calls = 0;
+    await assert.rejects(writeNew(existing, { replacement: true }, {
+      beforePublish: () => { calls++; },
+    }), { code: "EEXIST" });
+    assert.equal(calls, 1);
+    assert.equal((await readPrivate(existing)).toString(), '{"original":true}\n');
+    assert.equal((await readPrivate(`${existing}.writing`)).toString(), '{"replacement":true}\n');
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+test("post-link failure does not misrepresent a published request as absent", async (t) => {
+  const directory = await temporary();
+  const file = path.join(directory, "published.json");
+  const failure = Object.assign(new Error("synthetic unlink failure"), { code: "EIO" });
+  const unlink = fs.unlink;
+  t.mock.method(fs, "unlink", async (target) => {
+    if (target === `${file}.writing`) throw failure;
+    return unlink(target);
+  });
+  try {
+    await assert.rejects(writeNew(file, { value: 1 }, { beforePublish: () => {} }),
+      (error) => error === failure);
+    assert.equal((await readPrivate(file)).toString(), '{"value":1}\n');
+    assert.equal((await fs.stat(file)).ino, (await fs.stat(`${file}.writing`)).ino);
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+test("uncertain link completion retains both names after a passing guard", async (t) => {
+  const directory = await temporary();
+  const file = path.join(directory, "uncertain.json");
+  const failure = Object.assign(new Error("synthetic link acknowledgement failure"), { code: "EIO" });
+  const link = fs.link;
+  let guarded = false;
+  t.mock.method(fs, "link", async (...args) => {
+    assert.equal(guarded, true);
+    await link(...args);
+    throw failure;
+  });
+  try {
+    await assert.rejects(writeNew(file, { value: 1 }, {
+      beforePublish: () => { guarded = true; },
+    }), (error) => error === failure);
+    assert.equal((await readPrivate(file)).toString(), '{"value":1}\n');
+    assert.equal((await fs.stat(file)).ino, (await fs.stat(`${file}.writing`)).ino);
+  } finally { await fs.rm(directory, { recursive: true }); }
+});
+
+test("transport guard rejection retains the consumed reservation and never publishes", async () => {
+  const directory = await temporary();
+  const events = [];
+  const record = (event) => events.push(event);
+  const ledger = new InvocationLedger({ record, runId: "unit", model: "gpt-6-astra", effort: "high" });
+  const transport = new CopilotTransport({
+    directory, runId: "unit", model: "gpt-6-astra", effort: "high", ledger, record,
+  });
+  const failure = new EvaluationError("operation_cancelled");
+  const context = {
+    arm: "no_memory", sessionId: "unit", slotId: "unit", phase: "work", prompt: "unit", sequence: 1,
+  };
+  const stopped = [];
+  try {
+    await privateDirectory(path.join(directory, "queue"), { create: true });
+    transport.bridge = async () => ({ directory, exited: false });
+    transport.stop = async (_arm, options) => { stopped.push(options); };
+    await assert.rejects(transport.invoke(context, { beforePublish: () => { throw failure; } }),
+      (error) => {
+        assert.equal(error, failure);
+        assert.equal(error.receipt_ref.global_ordinal, 1);
+        assert.equal(error.usage, null);
+        return true;
+      });
+    assert.equal(ledger.ordinal, 1);
+    assert.equal(ledger.stopped, true);
+    assert.equal(stopped.length, 1);
+    assert.equal(stopped[0].cancel, true);
+    assert.equal(events.filter((event) => event.kind === "model_admitted").length, 1);
+    assert.equal(events.find((event) => event.kind === "model_invocation_failed").code,
+      "operation_cancelled");
+    const request = path.join(directory, "queue", "000001.request.json");
+    assert.equal(existsSync(request), false);
+    assert.ok((await readPrivate(`${request}.writing`)).length > 0);
+    assert.throws(() => ledger.reserve({ ...context, sequence: 2 }), /admission_stopped/);
+    assert.equal(ledger.ordinal, 1);
   } finally { await fs.rm(directory, { recursive: true }); }
 });
 
