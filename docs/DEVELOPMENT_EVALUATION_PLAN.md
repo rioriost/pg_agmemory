@@ -13,6 +13,17 @@ the historical-memory study or authorize adopting the selector. See the
 [interface result](../examples/development-maintenance-interface-result.json)
 and [evaluation summary](EVALUATION.md#maintenance-interface-probe-both-correct-no-integration-benefit).
 
+The subsequent full-decision presentation comparison is now **stopped and
+incomplete**. Its third separately approved attempt reached model execution:
+two calls completed transport and mechanical validation, one timed out with
+unknown usage, and five stayed unrun. The
+[sanitized result](../examples/development-maintenance-presentation-result.json)
+retains all three consumed attempts separately. No masked semantic comparison,
+candidate adoption or further live attempt is authorized. The user subsequently
+selected a 300-second maximum response wait for a separate
+[offline design](#300-second-response-policy-offline-design-only), not
+automatic repetition or live execution.
+
 The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
 3/6 successful slots for no-memory and 5/6 for each memory pipeline, with
@@ -74,6 +85,798 @@ The wrapper's cleanup-deadline field was 38 ms later than the coordinator's;
 actual closure completed within the original cutoff. This nonblocking receipt
 distinction is preserved, not represented as identical component deadlines or
 a new qualification of future timeout behavior.
+
+## Maintenance completion: content-preserving presentation candidate
+
+**Session-only structural proof and bounded independent review complete; the
+later live comparison is incomplete and the candidate is not integrated.**
+The following records the original offline investigation and qualification.
+The [third-attempt outcome](#third-approved-launch-stopped-prefix-after-a-model-timeout)
+does not establish a completion improvement or the cause of the historical
+timeouts.
+Default `development-maintenance-v3`, its validator, work/retrieval protocols,
+continuity state and all historical results remain unchanged.
+
+The current boundary builder produces a compact JSON transcript containing the
+brief and a bounded whole suffix of visible messages. PG maintenance then
+serializes that transcript as a string inside another JSON object. One model
+call must select useful information, synthesize facts and supply exact source
+offsets. The additional escaping is observable from the implementation; its
+contribution to the interrupted calls is **unknown**. Neither host CPU
+profiling nor the successful selector-encoding probe supplies that causal link.
+
+**Retained-record diagnosis is complete; the provider-side cause remains
+unresolved.** Both v4 and v5 invoked two of their four planned PG maintenance
+opportunities: one completed and one timed out in each study; the later
+opportunities were unstarted. This is an inventory of different tasks and
+studies, not a pooled reliability estimate.
+
+| Original call | Transcript bytes | Full prompt bytes | Extra escaping bytes | Bridge seconds (rounded) | Outcome |
+|---|---:|---:|---:|---:|---|
+| v4 completed | 13,447 | 16,474 | 1,127 | 137.467 | Final answer and usage complete |
+| v4 interrupted | 17,146 | 20,563 | 1,517 | 150.040 | No final answer; usage unknown |
+| v5 completed | 10,579 | 13,228 | 749 | 75.943 | Final answer and usage complete |
+| v5 interrupted | 14,083 | 16,981 | 998 | 150.040 | No final answer; usage unknown |
+
+All four inventories were empty, with 26-byte inventory JSON and capacity 12.
+No transcript messages were omitted, and all inputs fit the original byte
+limits. SDK setup and Observe completed before each model admission; no
+Native, execution or grading event was recorded during the response wait.
+The observed delay is therefore localized to the external CLI/model transport
+boundary, not to an identified provider stage or PostgreSQL operation.
+
+Interrupted inputs were longer within each study, but content, order and task
+differences prevent a causal length threshold. The extra-escaping column
+excludes the two outer quotation marks and is **not candidate net savings**.
+It must not be combined with candidate overhead from different synthetic
+inputs to predict improvement. Interrupted proposals and eventual completion
+times remain unknown. Typed partial-stream events do not establish continuous
+computation; missing events do not prove an absence of internal progress.
+Reasoning contents were not used for this diagnosis.
+
+The independent retained-record report binds 47 selected original files and
+preserves five reader-tool failures. Its author is independent of B's
+implementation, not of the original fixture/oracle authorship or prior study
+exposure. The private report SHA-256 is
+`9adadedaa8e215f06be21158d9a6096c341bf581f57bdbb24290f3a3fb425a35`.
+It does not regrade, retry or change any historical result.
+
+The candidate changes only the presentation of that existing transcript:
+
+1. Keep the existing decision rules, complete active/pending inventory and
+   remaining capacity. Do not combine this with shorter empty-inventory
+   instructions, source selection, smaller operation limits or split calls.
+2. Let `T` be the exact transcript already supplied to Native Observe. Present
+   it verbatim as the final prompt suffix, with no trailing newline. Bind its
+   UTF-8 byte length, Unicode-code-point length and SHA-256 in host-produced
+   metadata. Preserve internal JSON escape characters; do not decode,
+   reserialize, normalize, truncate or reorder `T`.
+3. Define the source by the final recorded number of UTF-8 bytes, not by
+   searching for a marker that source data could repeat. Returned spans still
+   address code points in `T`, beginning at zero and excluding the prefix.
+   Verify the complete host-produced framing and suffix. Label the source as
+   untrusted evidence; deterministic framing is not model prompt-injection
+   resistance.
+4. Use the unchanged response/action validation and Native request rules.
+   Validate all actions before assertion writes. An invalid late action still
+   prevents every assertion write, without pretending an earlier Observe was
+   rolled back. Do not repair, retry or fall back to another presentation.
+
+Keep the prototype session-only and give it its own presentation identity and
+artifact hashes. It is not a newly accepted live maintenance-protocol version.
+The 24,576-byte transcript, 16,384-byte inventory, 65,536-byte prompt/answer,
+2,048-byte delivery, fact/span/action limits and one-call boundary remain in
+force. A complete candidate prompt that exceeds admission limits fails; no
+additional allowance is inferred from a shorter representation elsewhere.
+The fixed model and 150-second model deadline are not changed.
+
+Offline qualification must compare the same state and scripted decision under
+the baseline and candidate using the actual v3 validator/workflow. Cover exact
+source and quote identity, Unicode and escaped versus actual newlines, repeated
+marker/header-looking data, empty/pending/full inventories, action and byte
+limits, invalid later actions, and unchanged handoff/no-memory behavior.
+Record representation byte counts as bytes, not estimated tokens or speed.
+Identical validation of identical responses does not establish that a model
+will produce those responses.
+
+The first session-only proof, `session-raw-final-suffix-proof-v1`, passed
+94 deterministic tests, including 42 paired actual-v3 workflow cases: 13
+accepted and 29 rejected identically. The new files passed Ruff and the
+prototype passed strict mypy. One approved network-disabled Python 3.12.14
+guest used read-only mounts and has an absence receipt. A blocked preflight
+and two failed qualification attempts remain preserved, not replaced by the
+passing result. Repository executable files and default protocols were not
+changed.
+
+The independent Astra/xhigh review found no blocking structural findings in
+the exact frozen prototype and retained qualification. It did not rerun the
+Python checks, establish universal response equivalence, or approve production
+integration or live execution. The retained private prototype SHA-256 is
+`ed97b0e71f0deb693081c11bd3f93bffe6ec7f683f5a15fbf676645f946a63db`;
+the bounded review SHA-256 is
+`27fcf7eeac651e62b9126e0372366af523be105d37d41e39b3a77f16ea19f8a6`.
+
+This adapter still traverses the original legacy-prompt budget check before
+its candidate check; it does not admit inputs the original path rejected.
+The candidate check can reject an input that fits the legacy prompt budget.
+For its 15 short synthetic byte examples, framing made the total prompt
+**743 to 759 UTF-8 bytes larger**. Removing one escaping layer therefore does
+not guarantee a smaller request, fewer tokens or faster completion. These are
+synthetic representation measurements, not observations of model behavior or
+replayed v4/v5 calls.
+
+Retained-record reconciliation and independent structural review are now
+complete, but neither proves an effective completion improvement. Previously
+exposed inputs are regression material, not held-out tasks. Live integration
+would additionally require explicit protocol
+binding across configuration, recipes and audits, a frozen source, and a
+separately approved comparison method and execution budget. This design does
+not authorize that integration, candidate adoption or a sixth development study.
+
+### Fixed method: full-decision known-input comparison
+
+**Historical pre-execution method.** Its original budget and execution approval
+was followed by separate permissions for attempts002 and003. All three are now
+consumed; the outcome below does not alter these fixed rules.
+Prepare exactly four pairs using the complete original
+v4/v5 maintenance inputs above. Baseline prompts retain their original bytes;
+candidate prompts use the one frozen raw-suffix factory. Do not supply required
+selections, remove transcript content, tune another presentation or substitute
+new tasks. Actual candidate byte differences must be measured on each of these
+inputs rather than inferred from the short synthetic examples.
+
+The unchanged factory has now materialized all four private prompt pairs:
+
+| Known input | Baseline bytes | Candidate bytes | Candidate minus baseline |
+|---|---:|---:|---:|
+| v4 completed | 16,474 | 16,115 | -359 |
+| v4 interrupted | 20,563 | 19,814 | -749 |
+| v5 completed | 13,228 | 13,247 | +19 |
+| v5 interrupted | 16,981 | 16,751 | -230 |
+| Total | 67,246 | 65,927 | -1,319 |
+
+This is about 1.96% fewer aggregate bytes, with one input growing, not a token
+or latency prediction. Initial generation succeeded inside an offline guest
+but export failed; those candidate bytes were lost and remain unavailable.
+A separately recorded replacement used the same inputs and frozen factory,
+captured and validated a bounded output packet on the host before cleanup,
+and retained all eight prompts. Replacement is not recovery of the lost bytes.
+Both owned guests have absence receipts. The failed export, a replacement
+pre-dispatch syntax error and all earlier evidence remain preserved; there
+were no model calls. The replacement manifest SHA-256 is
+`6add01b162e1fcf79a1ed2a99c9d86ce9ec47717ea89fcba2f169260107cbff0`.
+
+The fixed eight-call order is v4-completed baseline/candidate,
+v4-interrupted candidate/baseline, v5-completed candidate/baseline, then
+v5-interrupted baseline/candidate. These would be eight new observations after
+technical qualification; historical results never fill missing slots. Each call uses a
+fresh process/session, with one in flight and no probes, warmups or retries.
+Keep the original model, 150-second model deadline and 180-second response
+deadline. The source inputs remain known regression material, not held-out
+development tasks.
+
+Predefine a separate quality rubric from source-supported historical decisions.
+It must not reach the model. Distinguish mechanical validity, valid empty
+memory, supported retention, unknown grading and incomplete transport.
+A short empty answer must not win merely by being fast. Use the actual v3
+validator for structural checks and explicitly identified, condition-masked
+semantic judgment for factual support and retained meaning; quoted text or
+keyword matching alone does not establish entailment. Old successful replies
+are not a gold standard.
+
+The fixed private rubric covers four historical decisions with nine diagnostic
+meaning clauses; the clauses are not nine independent trials. All proposed
+material claims must be supported, not merely the best selected subset.
+This is a minimal retention floor, not preservation of every useful fact in
+the transcript or every optional fact retained by the other arm.
+Semantic paraphrases are allowed; an unresolved meaning/support judgment
+remains unknown. This is not a fully automatic semantic oracle. The rubric
+SHA-256 is
+`e1fa12003a56df8f070026bd9ec2e8c22b6969939e93b48ecf7cc55341da0393`.
+
+The rubric author is the nominated semantic assessor; the parent is the
+separate condition-map custodian. Original fixture/oracle authorship and
+prior-input exposure are disclosed. Opaque IDs and review order are committed
+privately before outputs. The assessor receives the same source and rubric,
+uniformly rendered proposals/citations, and no variant, sequence or performance
+labels. Preserve one initial rating pass and one masked consistency pass,
+then seal both before unmasking; do not add graders or repair the rubric after
+exposure. Reported condition recognition or map/performance exposure blocks
+the engineering screen.
+
+Only a technically complete eight-slot run enters this masked comparison.
+An incomplete prefix could reveal the known schedule through missing-slot
+patterns, so retain its raw answers and mechanical outcomes without claiming
+a condition-masked semantic contrast or using a favorable prefix.
+
+The fixed engineering screen requires all eight complete transports with usable
+accounting, supported retention in all four candidate responses, and four
+both-supported pairs for the efficiency comparison. It requires at least 20%
+lower median paired transport time, no pair more than 10% slower, and no
+increase in total reported candidate nano-AIU. These are prospective engineering
+criteria, not statistical significance or general reliability guarantees.
+
+The user separately approved the **400,000,000,000 nano-AIU** stopping threshold
+and one execution at 2026-09-29T12:29:39.048+09:00. It is not a cost forecast
+or invoice cap: postpaid overshoot
+and unknown interrupted usage remain possible. The old 100,000,000,000-nano-AIU
+approval belonged to a different experiment and is not reused.
+Preparation and post-terminal semantic-review assistant usage are separate,
+disclosed costs, not covered by this experimental-call threshold.
+The new approval receipt is separate from the unchanged historical method and
+review, which correctly recorded the then-unapproved state. It does not
+authorize retries or bypass technical gates. Its SHA-256 is
+`62bcf2317debcca71c7785680229f9ff400c547403fff6831972c7724b6bb895`.
+
+**A timeout with unknown usage still stops every subsequent admission, even
+if that leaves a pair incomplete.** No historical result, extra call or reordered
+schedule may repair the missing observation. Such a run is incomplete, not an
+efficiency success. Conversely, an all-complete comparison can measure relative
+burden but cannot prove how interrupted calls would have completed or that
+future timeouts are prevented.
+
+The independent Astra/xhigh method review accepted this limited question for
+**offline runner, mechanical-oracle and masked-packet preparation only**.
+It did not approve expenditure or predict an informative result. The operative
+method SHA-256 is
+`622f315afd0061e471fab8440d0987a5bec75447cb8f97881128ea9b475e6670`;
+the review SHA-256 is
+`ce2bc88b81a07c4c668c465b1702c228a14d248c0cb3c4a15d461640bd0e424e`.
+Two failed reviewer tooling checks remain recorded; the corrected read-only
+check used unchanged inputs, rubric and map. The later user approval above
+satisfies the budget/execution permission gate, not runner/oracle and
+packet-path qualification or the final exact-bound one-attempt dispatch
+authorization. Those technical steps remain required. The existing default
+maintenance protocol is unchanged.
+
+An implementation-boundary review clarified that a **complete invalid decision**
+is an outcome accepted by the existing bridge/transport before v3 validation.
+The selected final assistant content must still pass the unchanged nonempty
+JavaScript `trim()` check. A literal empty string, trim-empty string or non-string
+content is a transport failure and stops subsequent admission, even if raw usage
+metrics and zero process exit/close codes are available. Preserve the original
+raw value separately from the rejected envelope's null content/usage fields;
+later diagnostic accounting cannot restore transport eligibility or admission.
+An earlier empty assistant message does not itself fail this check when the
+selected final message is acceptable.
+
+Nonempty transport-accepted malformed text, including the two-character JSON
+text `""`, instead reaches actual v3 validation. An invalid decision is retained
+without repair or retry and may be followed by the next fixed slot under all
+unchanged admission gates. A valid empty-decision object is mechanically distinct
+but does not satisfy the retention floor. A stopped prefix still receives no
+masked semantic comparison.
+
+The first incomplete runner preparation is retained with four fake-process
+boundary cases; these are not model observations or a qualified mechanical
+oracle. The independent Astra/xhigh ruling found this clarification compatible
+with the frozen method and transport, requiring no source or method change.
+Its SHA-256 is
+`1daab0d5cc94c8c326fe695c524ae854737cb34e300d9daa9a1732d5f280058a`.
+The ruling does not grant live dispatch.
+
+The replacement session-only implementation is now frozen with the eight-slot
+runner, actual-v3 mechanical oracle, complete-eight-only masked packets, and
+fixed two-pass rating/sealing controls. Author qualification passed 29 distinct
+Node checks and 42 Python cases, plus Ruff and mypy. The Python cases use the
+existing v3 workflow and contextual Native validation with controlled in-memory
+behavior, not a storage benchmark. Two failed qualification attempts remain
+preserved. All 188 registered child exit/close records were observed and the
+four owned offline guests were absent at handoff.
+
+The parent verified all 2,146 indexed evidence files, exact 2,148-file membership,
+116 runtime bindings, the closure index and the future argv hash. The runtime
+manifest SHA-256 is
+`a4a1da0a672f2c4ccbe475230f327df13f4d8ea2c9504a851153221463a37890`;
+the qualification report SHA-256 is
+`86dbc06c114e4649fc122dbbea0edc548ac1aca7b7c9bad32a41d063c1bf66ba`.
+These are scripted offline observations, not evidence of model quality,
+latency improvement or a timeout remedy.
+
+The independent exact implementation review returned **NO-GO** with two
+blockers. The packet reader rejected underscores in all eight precommitted
+masked IDs, while the synthetic qualification maps used a hyphen-only prefix.
+Separately, the runtime manifest fingerprinted the Container shell launcher
+but omitted the native executable it invokes. Verifying the indexed hashes
+does not establish compatibility with actual custodian inputs or completeness
+of the executable bindings.
+
+The review SHA-256 is
+`239b3ba8cb3bdcf7ae9cbb7fc566cb51ee77dd16434ea05ffd2e782b2c1b9988`.
+The rejected preparation remains frozen. A separate revision now accepts the
+committed ID separator and binds both the existing Container launcher and native
+target, checking actual command resolution before dispatch and each Container
+invocation. These are check-time identity checks, not atomic OS execution
+attestation or a shared-library/daemon audit.
+
+Ten targeted checks passed across the initial run and one focused recheck.
+The retained initial failure concerned an object-prototype assertion, not
+different executable-chain fields; no runtime code changed after the successful
+eight-fake-call actual-v3 oracle and synthetic custodian flow. All 46 registered
+children closed and the one owned guest was absent. Prior Python qualification
+is referenced, not claimed as rerun.
+
+The parent verified the revised 615-file evidence membership and 116 runtime
+bindings, then ran the exact read-only validator against the unchanged committed
+map: all eight IDs passed without exposing their values. The revised runtime
+manifest SHA-256 is
+`7731f3b671cd108aa29eedbac125c3aae3364115814ca6095da3947e68471888`;
+the targeted qualification SHA-256 is
+`77ccabda36024d2333df0a6f9f9e1fe8eb7748015d1322f81f39e58371b00572`.
+The bounded independent delta review closed both identified blockers and
+granted an exact one-attempt GO. Its SHA-256 is
+`eeaf7b4fe28317cd3179801f6f4ca5d735d97c013d7f3b0001b78077bab56040`;
+the exact dispatch GO receipt SHA-256 is
+`5de3bb86b00eb266829cc5ee04835a9560af81e263f0bf37a2a1956c35362172`.
+
+The existing map, seed, schedule, method, prompts, rubric, approved tools/image
+and budget remained unchanged. The parent created the private exact-bound
+authorization and validated all four actual selected private files, 116 runtime
+bindings, eight prompts, tool resolution, expiry and exclusive claim absence
+before launching the bound command once.
+
+**That authorized attempt stopped during preflight, before any model admission.**
+Container rejected the derived 65-character guest name as an invalid container
+ID. The local constructor accepted a suffix-only name predicate, and prior
+offline qualification used shorter names rather than the actual production
+name. This is an execution-harness validation/qualification gap, not a provider
+timeout, model-quality result or prompt comparison. The exact upstream name
+limit has not been established by this observation alone.
+
+The run returned `STOPPED_SEALED`, with all eight slots `UNRUN`, no model
+reservation, request publication or inference process, and no masked semantic
+comparison. The inherited local CLI version check did run. The known
+experimental-call subtotal is zero, but the complete scheduled comparison
+total is unavailable, not a successful zero-cost comparison. Preparation and
+review assistant usage remain separate.
+
+The terminal report SHA-256 is
+`1238ea52166167ac343a263ba3fe2b86bc7e1ab8d68976a32ef47b8bfc2a34cb`.
+The parent verified the 96-file evidence index and exact 98-file sealed tree,
+all 14 registered child spawn/exit/close records, and exact owned-guest absence.
+Preflight took about 2.766 seconds; cleanup completed in about 191 ms within
+the original 15-second cutoff. The wrapper's cleanup-deadline field was 131 ms
+later than the coordinator's; this is retained, not described as identical
+deadlines. One parent receipt-schema inspection failed and was corrected
+without changing the evidence.
+
+**The one-attempt authorization is consumed despite zero model calls.**
+The failed attempt and all unrun slots remain immutable; no automatic retry,
+historical substitution or semantic scoring is permitted. A bounded offline
+identifier-generation correction is now frozen separately.
+
+The corrected implementation derives a 54-byte guest name from the full,
+domain-separated SHA-256 of the complete attempt identity, encoded without
+truncation. Launch, oracle validation, the prospective recipe and qualification
+share the same helper. Existing exact-name absence and image-ownership checks
+remain mandatory; cryptographic collision resistance is not a claim that
+collisions are impossible.
+
+Six targeted checks passed, including one actual offline guest created through
+the production factory with the exact prospective attempt identity. Three
+actual-v3 oracle cases covered a valid empty decision, a nonempty Unicode
+evidence slice and an invalid late action with no assertion writes. All 29
+registered children closed and the owned guest was absent. A finalizer-only
+counting error and its correction remain recorded. Earlier full suites are
+referenced, not claimed as rerun.
+
+The parent reviewed the bounded correction and verified all 277 indexed files,
+279-file membership, 115 runtime bindings, exact generated-name/create/absence
+agreement, and the explicit rejection of new dispatch authority. The
+qualification report SHA-256 is
+`08795a072c70a344d646a615e1f066cd0652218f2b9f69afa98d63821896092f`;
+the runtime manifest SHA-256 is
+`95ef47f3f996908f00fbc95d3b2a4502fb2c6ea82f2d0320733f37b0485bbf5f`.
+This establishes acceptance of that specific 54-byte name by the existing
+tool, not an exact upstream maximum or universal launch guarantee.
+
+The frozen revision is intentionally disabled for dispatch, including reuse
+of the consumed permission. No new provider CLI/model call, authorization or
+claim occurred during that remediation.
+
+The user separately approved **one new execution** at
+2026-09-29T15:30:44.179+09:00 under the unchanged 400,000,000,000-nano-AIU
+postpaid stopping policy. The new permission is bound specifically to the
+second attempt; it does not reuse or erase the consumed first attempt and
+does not authorize another retry. Its receipt SHA-256 is
+`c9d453aecf57a945b2fbb65d27c7d5677c8928121c1396486159ea191b115f7f`.
+Postpaid overshoot and unknown interrupted usage remain possible; preparation
+and semantic-review assistant usage remain separate.
+
+A separate successor is now frozen with the actual new receipt selected by
+both filename and hash, authority restricted to the second attempt, and the
+consumed first receipt retained separately as historical evidence. The qualified
+naming helper, production launch factory and oracle are byte-identical to the
+offline remediation; the disabled predecessor remains immutable.
+
+Successor qualification covered 26 synthetic authority-inspection cases and
+three focused current-binding checks. Two test-harness failures and their
+corrections are retained. All eight registered children closed; no new guest,
+provider CLI/model process, actual authorization or claim was created.
+Synthetic acceptance does not substitute for inspection of the eventual real
+review and dispatch-authorization files.
+
+The parent verified all 554 indexed evidence files, exact 556-file membership,
+117 runtime bindings, child closures and the prospective argv hash. The runtime
+manifest SHA-256 is
+`8634d0788cea32e9b6950474db791c1e5b1b62af4b482b9437a94e721e8eb726`;
+the qualification report SHA-256 is
+`5d3a3f9d7a05922d0cc909f59d4864a0081257f799eae81ef7a86b2684ea5d2f`.
+These binding checks record the state observed at that check, not a guarantee
+that the shared host's executable installation remains unchanged.
+
+The independent exact review subsequently returned **NO-GO** because the
+approved Container 1.4.1 launcher and native executable were absent and the
+selected command resolved to a 1.5.0 installation path. The parent independently
+confirmed that metadata without executing the replacement tool. The review
+found no new implementation blocker in the naming or authority changes, but
+the retained qualification does not qualify a different executable chain.
+The review SHA-256 is
+`5b2dc6657b079a6ae85bffd625a2b058f2ec55f2b43d5b401309ad542bd72ae7`.
+The reason or exact time of the installation change is not established.
+
+No second-attempt GO receipt, dispatch authorization or claim was created, and
+the second execution permission remains unconsumed. Do not silently substitute
+the newer tool or weaken identity checks. Resuming requires separately
+authorized restoration of the exact approved toolchain, or explicit approval
+to qualify and bind the installed successor in a new immutable revision.
+The comparison method, budget and single-attempt permission are otherwise
+unchanged; exact review and actual-file checks remain required before launch.
+
+At 2026-09-29T16:12:31.800+09:00 the user confirmed that Container had been
+updated and explicitly approved qualifying and binding the already installed
+1.5.0 successor, without rolling back the host. This is a tool-scope addendum,
+not another model-attempt allowance. Its SHA-256 is
+`3c7243b77c23d5489d622a47d06149a34b18663cbc841330c75788bda6a38ae2`.
+The exact update time and mechanism remain unestablished.
+
+A separate successor was prepared with exact executable-chain and
+command-resolution bindings. Container 1.5.0 identity, version and help checks
+passed, but offline image inspection failed with
+`XPC connection error: Connection invalid` before any guest-creation request.
+Seven check groups passed before that failure; image identity, isolation,
+actual-v3 oracle and guest-cleanup qualification remain incomplete. The blocked
+preparation is frozen, not qualified for dispatch.
+
+The parent verified its 202 indexed files, exact 204-file membership, 118
+runtime bindings and all 19 registered child closures. No guest or model call
+was created. A fresh exact-owned absence observation was not obtained: the
+oracle's unchanged `created` flag is not an inspect-based absence proof.
+The blocker report SHA-256 is
+`20806907966d748d793c1aa1d45158dfb803635f533a0cd0cf2eda300192c4d6`.
+
+After checking installed CLI help, a bounded read-only
+`container system status --format json` returned exit 1 and
+`{"status":"unregistered"}`. This records current service state; it does not
+prove when or why that state arose. No service startup, stop, restart or host
+configuration change was attempted. Starting the local services with kernel
+installation disabled requires separately scoped approval; it is not inferred
+from permission to run the comparison.
+
+The earlier frozen revisions and NO-GO remain intact. No dependency installation,
+image replacement or weakening of identity checks is authorized. Successful
+offline runtime qualification, bounded independent exact review and actual-file
+checks remain required before the already approved single second attempt.
+Its execution permission remains unconsumed.
+
+At 2026-09-29T16:34:11.978+09:00 the user reported starting Container. The parent
+then reverified the approved 1.5.0 executable chain and ran only the read-only
+status command: it returned exit 0, no stderr and `status: running`. The parent
+did not start, restart or reconfigure services. The user's exact startup
+command, startup time and any kernel-installation choice are not established.
+The private observation SHA-256 is
+`07b0b2454be86ab8fe1a7eeb725018dc9b75b1efb0ab6979cbaadec2a061b08c`.
+
+The missing offline image/oracle/isolation/cleanup qualification completed in a
+new immutable successor without production-module changes from the blocked
+preparation. Eight fresh check groups passed. One guest used the exact
+production-derived second-attempt name and unchanged approved image; Python
+3.12.14, loopback-only networking, read-only mounts and dropped capabilities
+were verified. Three actual-v3 oracle cases passed, followed by exact-owned
+guest absence. Cleanup took about 401 ms within the original cutoff; all 26
+registered children closed. The seven earlier pure check groups remain
+historical, not additional fresh results or a reclassification of the failed
+preparation.
+
+The parent verified 249 indexed files, exact 251-file membership, 118 runtime
+bindings, all child-closure bindings, the future argv, and the recorded image,
+isolation, oracle and absence proofs. The qualification SHA-256 is
+`45420d871b2517e027237f3354c021abb29024595a7d92733fc61375d2558701`;
+the runtime manifest SHA-256 is
+`fea63314158cf7b39bf21c52630aa83137dddc6f2ec7e6c23f73701a97cd5321`.
+Container 1.5.0 is explicitly distinguished from the earlier 1.4.1 qualification.
+No service action or provider/model call occurred during this preparation.
+
+Bounded independent exact review of the approved tool change and completed
+successor returned `GO_EXACT_BOUND_ONE_ATTEMPT`. The parent verified the genuine
+review and private file metadata, created the exact second-attempt authorization,
+and passed the pure actual-file inspector before launching the bound command
+once. The review SHA-256 is
+`d060de3e0f22c5cf39efda7616d1534bdbd5723ee2e926d2cfe2077ef8e7d62e`;
+the dispatch authorization SHA-256 is
+`b0375930a15ace2485af5e43206e970f81464389361367001c66221ea50f2d87`.
+
+### Second approved launch: CLI version drift before model admission
+
+The second attempt terminated as `STOPPED_SEALED`, not a completed comparison.
+The bridge's actual local version command reported Copilot CLI **1.0.89**,
+whereas the frozen transport required **1.0.88**. This was the only failing
+transport-metadata identity predicate. The guard rejected the mismatch during
+preflight before any oracle command, guest-creation request or model admission.
+This was not another Container startup failure or a model timeout.
+
+The bound Copilot executable's SHA-256 remained unchanged, including in the
+parent's post-terminal read-only check. Binding that file alone therefore did
+not establish the effective CLI version. The underlying version-selection or
+update mechanism has not been established; no installation, rollback, update
+or broader execution-chain qualification was performed.
+
+All eight slots remain `UNRUN`: zero invocation intents, reservations, queue
+publications and inference spawns. There are no comparison usage observations;
+the scheduled total is unavailable, not a measured zero-cost eight-call result.
+The local CLI version process did run. All five registered children closed;
+preflight took about 2.242 seconds and cleanup about 104 ms within the original
+15-second cutoff. The wrapper's recorded cutoff was 68 ms later, but all observed
+closures met the coordinator's original cutoff. No guest was created by this
+attempt. The oracle's uncreated-state cleanup flag is not a fresh absence probe.
+
+Before interpreting the outcome, the parent verified all 40 indexed files and
+exact 42-file terminal membership, then reconciled metadata, slots, accounting
+and child closures. The terminal report SHA-256 is
+`125b983b932b47adba0f0e2c2f3180b9b2a830683f672e2ac7a7cc7679b567e8`;
+the terminal seal SHA-256 is
+`ddd0d501062f673eb0b02c0c80fc3dfe3ebd3785657d75e397ec10f44a99b33a`.
+No masked semantic comparison or engineering screen is eligible.
+
+**The second attempt's permission is consumed despite zero model calls.**
+There is no automatic retry, reuse of its claim, or permission to accept CLI
+1.0.89 silently. Continuing requires an explicitly approved CLI successor scope,
+qualification of its effective execution path, and a new single-attempt
+authorization. The two stopped attempts and all prior qualification failures
+remain preserved; neither supplies evidence of a candidate improvement.
+
+### Third permission: qualifying the installed CLI execution path
+
+At 2026-09-29T22:30:46.519+09:00 the user reported that Copilot CLI had also
+been updated. Read-only inspection still found the same command symlink,
+resolved entrypoint and executable hash. The update mechanism and current
+effective version were not inferred from that observation. The update notice
+alone was not treated as another model-attempt authorization.
+
+At 2026-09-29T22:31:57.278+09:00 the user explicitly approved qualifying the
+currently installed effective CLI execution path and then, only after
+qualification, performing one new attempt under the same
+400,000,000,000-nano-AIU postpaid admission stopping policy. Additional updates
+and installation were expressly excluded. The private approval receipt SHA-256
+is `aca2ae053e14ed81e0881989c434a79b32ca747a11482d73b593dde0f7f8976f`.
+It authorizes attempt003 only; it does not revive either consumed permission.
+
+A new session-only successor has completed offline qualification. Static
+discovery established that the unchanged launcher selects a cached application
+package; its own hash did not bind that package. The successor pins the existing
+Node executable directly to the installed 1.0.89 JavaScript entrypoint and binds
+all 231 packaged files, including the application and native runtime. It adds
+the supported process-local `COPILOT_AUTO_UPDATE=false` and `--no-auto-update`
+controls without changing global settings or installing anything.
+
+The pinned CLI reported 1.0.89 twice, including through actual bridge startup
+and the shared production metadata predicate that rejected attempt002.
+Qualification disabled model admission, invocation and queue publication.
+Seventeen pure and eight runtime check groups passed, including synthetic
+pre-spawn rejection of changed payload, selector, package version, missing
+runtime and symlink inputs. The exact prospective attempt003 guest completed
+the three actual-v3 oracle cases and isolation checks, followed by fresh owned
+absence. All 36 actual children closed; metadata-boundary cleanup took about
+138 ms and guest cleanup about 381 ms within their original cutoffs. Earlier
+unchanged checks remain inherited evidence, not new executions.
+
+The parent verified 453 indexed files, exact 455-file membership, 353 runtime
+bindings, all child-closure bindings, the retained real version and metadata
+proofs, and the guest's image, isolation, oracle results and absence. The
+qualification SHA-256 is
+`14724ab4461b9fbbc9a135afeff5028b27a045303b158a91f286d348b302ec14`;
+the runtime manifest SHA-256 is
+`36dd3ff259f015422d5b917941011da4455ca5b05e0f8b6ef00ef87b635f1a12`.
+No model inference, update, installation or service action occurred. The
+existing Container 1.5.0 and image bindings remain fixed.
+
+The CLI successor is an explicitly approved runtime change, not a prompt,
+candidate, model, effort, schedule, rubric, deadline or accounting-policy
+change. File checks are check-time observations, not atomic execution locks or
+a general OS/shared-library audit. The discovery does not establish who updated
+the earlier package or its exact historical bytes; offline qualification does
+not establish live provider usage-schema compatibility or a successful
+comparison.
+
+Independent exact review of the CLI and attempt003 authority changes returned
+`GO_EXACT_BOUND_ONE_ATTEMPT`. The parent completed evidence reconciliation,
+verified the genuine review, created the private authorization and passed the
+actual-file pure inspector before launching the exact bound command once.
+The exact review SHA-256 is
+`34eb852884b930e710df673bf8d918bda7417ad22faf84e5da87aea108078edf`;
+the dispatch authorization SHA-256 is
+`2220471327f1b0c436f59c5c0e93bbd9fa9586a271242677a2752c7394736a77`.
+The frozen recipe contains stale prose referring to claim002, but independent
+review confirmed that its executable validation, structured paths, schemas
+and argv all select claim003; the historical recipe was not edited.
+
+### Third approved launch: stopped prefix after a model timeout
+
+The third attempt passed preflight and reached actual model execution with
+the pinned CLI. The first two calls completed transport and actual-v3
+mechanical validation as `VALID_NONEMPTY`. The third reached the original
+150-second model deadline and failed with `copilot_timeout`; its transport
+observation was about 150.562 seconds. Unknown usage latched
+`failed_transport_accounting`, and the remaining five assigned slots stayed
+`UNRUN`. The run ended as `STOPPED_SEALED`, with `technical_complete: false`
+and `semantic_comparison: NOT_EVALUATED`.
+
+The two complete calls have an exact known subtotal of **56,473,500,000
+nano-AIU**, reconciled from their original numeric lexemes using only the
+requested-model metric family. Each reported one API request, and all nine
+required metrics were usable. The interrupted call's raw usage had empty model
+metrics and top-level zero counters; those counters do **not** establish zero
+usage or cost. Its model-specific usage, the admitted total and the scheduled
+total remain unknown. The secondary `raw_usage_identity` error is retained.
+Admission stopped because usage became unknown, not because the known subtotal
+reached 400,000,000,000 nano-AIU. Preparation/review assistant usage is separate,
+and no complete invoice-total claim is made.
+
+All three calls were reserved, published and observed to spawn. All 23
+registered children closed, including the three CLI children reconciled
+against both bridge and wrapper observations without double-counting them.
+The timed-out child received SIGTERM and exited with code zero, but its timeout
+was correctly retained as failure rather than reclassified as success. Fresh
+exact-owned guest absence was recorded. Preflight took about 6.196 seconds,
+the comparison-loop phase about 338.526 seconds, and the recorded cleanup phase
+about 447 ms. The wrapper cleanup cutoff was 44 ms earlier than the coordinator's;
+all closures, guest absence and cleanup completion met the earlier cutoff.
+
+Before interpreting the outcome, the parent verified all 205 indexed files and
+exact 207-file terminal membership, then reconciled all scheduled slots,
+original usage, physical closures and owned absence. The terminal report
+SHA-256 is `b12c95346bbb362254fd37e6017ef8dc6e2be9b597d4e0357b60983a2210ac9e`;
+the terminal seal SHA-256 is
+`4621797fb22830bfd6776907cced6bec15e202fde6dc638977257cc6b57bf0b9`.
+
+**Attempt003 is consumed and the planned eight-call comparison is incomplete.**
+Mechanical validity of two responses is not supported-complete semantic
+success. No masked packet, semantic rating, paired efficiency contrast or
+engineering screen was produced from this stopped prefix. No historical
+answer fills its missing slots, and no candidate is adopted. The CLI
+execution-path remediation enabled actual calls but did not establish a remedy
+for maintenance timeouts or evidence of development-memory usefulness.
+There is no automatic retry, remaining-call continuation or new attempt
+permission; all three consumed attempts remain preserved.
+
+The sanitized result and corresponding English/Japanese evaluation summaries
+received a separate post-terminal review: `SUMMARY_READY_WITH_LIMITS`, with
+no material reporting findings. The audit SHA-256 is
+`35a06dbb714346f95439efbbfd9011ff5cae19017a3bfdc83413dc17e9505b5a`.
+It binds the reviewed result draft
+`4f2d01ca735f159f6ad350fddcfc37e41237db79a4aceca38023d79d7cc4419d`;
+the later additions record the audit and its optional API-duration provenance
+clarification, without changing numeric outcomes or interpretation.
+The new reviewer was independent of draft authorship and execution, but
+received the parent's expected findings. Selected originals were reconciled;
+the full tree and pre-live qualification were not audited again. Reader
+failures are retained. The review grants neither semantic success nor
+further execution authority.
+
+### After the stopped comparison: decide the constraint before another method
+
+The current comparison is closed as incomplete, not queued for another retry.
+The result supports retaining the existing default protocol and declining
+candidate adoption for lack of qualifying evidence. It does not show that the
+candidate is generally worse, that a longer deadline would finish, or that
+PostgreSQL caused the wait. The two complete responses remain mechanically
+validated but semantically ungraded.
+
+Before another live proposal, decide which operational constraint must hold:
+
+| Constraint | Separate offline design question | Required evidence before proposing execution |
+|---|---|---|
+| Keep the current 150-second, one-call boundary | Can the maintenance decision require less work without silently losing source support or required retained meaning? | An explicit new candidate and invariants, deterministic checks of changed input/output contracts, and a prospective quality/completion method. Structural checks alone cannot establish speed. |
+| Permit a longer response window | Is a longer synchronous wait acceptable, and what new resource and usage exposure is acceptable? | Explicit latency and usage approval, coordinated model/response/run/cleanup budgets, qualification and a new fixed method. The censored timeout supplies no justified replacement deadline. |
+
+The latency choice was resolved by the explicit user instruction recorded
+below, not by the preceding generic `continue`. Neither alternative changed
+the stopped comparison. Reducing reasoning effort, splitting calls or discarding
+transcript content would be additional method changes; they are not combined
+with the new waiting policy merely to complete the experiment.
+
+A future attempt requires fresh explicit execution permission and exact
+tool/source qualification; it cannot continue the five unrun slots, reuse a
+consumed claim, grade the stopped prefix as a masked comparison or fill gaps
+from historical answers. The 400,000,000,000-nano-AIU threshold is not an
+unspent balance authorizing further calls, especially while interrupted usage
+remains unknown. No sixth development-memory study or production HA
+qualification follows from this result.
+
+### 300-second response policy: offline design only
+
+At 2026-09-30T22:24:36.924+09:00 the user approved proceeding with the offline
+design and set the maximum wait to **300 seconds**. The preceding proposal
+explicitly excluded additional inference. The private scope receipt SHA-256 is
+`bb6702793b970637d832654c1f6087f7dad9553950ebc98fd128140ee66199df`.
+This is latency/design approval, not a new paid-attempt or budget authorization.
+
+The proposed interpretation is **300 seconds from the original host invoke
+origin to an eligible response**, including request staging, publication and
+response receipt. It is not a 300-second model timer followed by a longer
+transport allowance. Both original wall and monotonic cutoffs must still pass;
+a response at or after the cutoff is rejected. Preflight, mechanical validation
+and failure cleanup are separate phases. In particular, cleanup can require a
+further bounded 15 seconds: this policy does not promise physical termination
+or caller return by 300 seconds under arbitrary scheduling or synchronous I/O.
+
+| Proposed limit | Value | Rationale |
+|---|---:|---|
+| Inner model timer | 270 seconds | Retain 30 seconds of nominal difference from the outer response timer; not an estimate of sufficient model time |
+| Original-invoke response window | 300 seconds | User-selected maximum eligible response wait; never reset after staging |
+| Remaining loop time required before invoke | 320 seconds | Response 300 + oracle 5 + cleanup 15; no fresh reserve at publication |
+| Preflight | 300 seconds | Separate, unchanged allowance |
+| Comparison loop | 3,000 seconds | Eight 320-second allocations plus 440 seconds of planning slack, not a completion guarantee |
+| Mechanical oracle / shared cleanup | 5 / 15 seconds | Existing bounded checks and earliest inherited cleanup cutoff |
+| Owned oracle guest lifetime | 3,600 seconds | Covers the nominal preflight + loop + cleanup allocation of 3,315 seconds with 285 seconds of margin |
+
+Delayed staging or CLI startup consumes the original response window. If it
+uses 60 seconds, at most 240 seconds remain before the host cutoff, even though
+the inner model timer is 270 seconds. The guest lifetime does not permit
+deferring cleanup after a stop. The nominal phase allocation is not an
+end-to-end wall-clock guarantee; evidence sealing and blocked synchronous work
+are not bounded by adding these timers.
+
+Static tracing found three coupled implementation gaps. The bridge actually
+hardcodes `MODEL_TIMEOUT_MS = 150000`; the transport separately clamps its wait
+with `Math.min(deadline, Date.now() + 180000)`; the oracle guest sleeps for
+2,700 seconds. Changing only the runner's policy constants would therefore
+leave the real model/response limits unchanged and the proposed guest lifetime
+too short. A future implementation needs one explicitly bound opt-in profile
+across the actual bridge, transport, coordinator, publication guards, manifests
+and resource recipe, while preserving the old defaults and frozen artifacts.
+No executable source or runner has been changed yet.
+
+The separate method design keeps the same four known inputs, eight prompt
+files, presentation candidate, fixed order, model/effort, v3 validator and
+quality screen. It does not simultaneously shrink prompts or divide decisions.
+The timing change was selected after observing a stopped run; it is not an
+unchanged replication, a causal experiment on deadline effects, or evidence
+that 270 seconds will suffice. Historical outputs never fill the new slots.
+
+Ten pure policy checks passed for arithmetic, strict boundaries, delayed
+startup, reserve placement, earliest cleanup and the unchanged legacy
+source limits. These are **design checks only**, not execution of a
+300-second wait, qualification of new bridge code, a model result or evidence
+of improved completion. The private method-design SHA-256 is
+`a7d53b5e33c77c2afbf68e7a87c6d1c6e5c449b8f86527dcb4630aaceb1e7e89`.
+An independent design review returned `DESIGN_ACCEPTABLE_WITH_OPEN_GATES`,
+with no required offline-design corrections. Its private report SHA-256 is
+`85c792acbfddc6deb03f262dab2303b14c2312eb4110e088698c97d446cd4de9`.
+The reviewer read the frozen design, scope receipt, historical method, policy
+checks and existing log, and selected legacy timing paths. It did not execute
+tests, qualify runtime identities, inspect answers or the private map, or grant
+dispatch approval. The frozen method remains unchanged; this review records
+the decision separately from that draft's pending-review status.
+
+The review made one implementation acceptance criterion explicit: the
+original monotonic deadline must **cancel active response waiting**, including
+when wall time moves backwards and model startup is delayed. Rejecting a late
+answer only after a wall-clock-based wait eventually returns is insufficient.
+Qualification must observe cancellation and late-response rejection separately,
+without granting the late-started model a fresh host window or comparing
+unrelated process-local monotonic origins. This is required future evidence,
+not a claim that the new waiting path already exists.
+
+Before any future inference, resolve the named assessor's availability and
+exposure, bind a run-specific private masking commitment, implement and qualify
+the complete timing path with actual-code synthetic-process cases, and obtain
+fresh explicit postpaid-budget and single-attempt approval. The previous
+400,000,000,000-nano-AIU threshold is a proposal for this new method, not an
+approved allowance. Current tool/payload identities, exact private inputs and
+argv still require qualification and independent exact dispatch review.
+No new map, dispatch authorization, claim, guest or model call was created by
+this design work.
 
 ## Prospective request-publication guard
 

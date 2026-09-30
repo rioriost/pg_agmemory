@@ -2,6 +2,64 @@
 
 [日本語](EVALUATION-jp.md)
 
+## Maintenance presentation comparison: interrupted, no adoption decision
+
+The [known-input presentation comparison](../examples/development-maintenance-presentation-result.json)
+ended before all eight scheduled calls completed. It compared complete
+maintenance decisions using the existing prompt and one lossless raw-transcript
+suffix, without supplying the required selections. GPT-6 Astra/high and the
+pinned Copilot CLI 1.0.89 ran three calls: two passed transport and actual-v3
+mechanical validation, the third reached the original 150-second model deadline,
+and the remaining five were not run.
+
+**Two mechanically valid responses are not two semantic successes.** The fixed
+method permits masked semantic assessment only after a technically complete
+eight-call run. No semantic ratings, paired speed/cost contrast or engineering
+screen were produced. The candidate remains unadopted; development-memory
+usefulness and a remedy for maintenance timeouts remain unestablished.
+
+The exact known model-usage subtotal is **56,473,500,000 nano-AIU** for the first
+two calls. The interrupted call has no usable model-specific usage, so admitted
+and scheduled totals remain unknown. Its top-level zero counters are not
+evidence of zero cost. Unknown usage stopped admission before the known subtotal
+reached the 400,000,000,000-nano-AIU postpaid threshold. That threshold is not an
+invoice cap, and preparation/review assistant usage is separate.
+
+Two earlier, separately approved attempts stopped before inference: a
+production guest-name rejection, then effective CLI version drift despite an
+unchanged launcher hash. Their consumed permissions and zero-model outcomes
+remain separate; neither fills missing slots in the third attempt. The later
+CLI fix bound the installed package directly and disabled automatic updates
+for those processes. It enabled actual calls but did not prevent the timeout.
+
+All 207 terminal files were bound before interpretation. The parent reconciled
+the original numeric usage, all eight slots, 23 child exit/close records and
+fresh owned-guest absence. The timed-out child exited zero after SIGTERM;
+the recorded timeout remained a failure. Cleanup completed within the earlier
+of the component deadlines. The linked JSON preserves all slot outcomes and
+evidence hashes without publishing raw answers or logs.
+
+An independent post-terminal review found no material reporting defects in
+the audited draft. It reconciled selected original usage and closure evidence,
+not the full terminal tree or pre-live qualification. The reviewer was
+independent of the draft author and executor but received the parent's outcome
+summary. Its optional clarification is reflected in the JSON: API duration
+comes from the reported root duration; cost, tokens and request counters use
+the requested-model family. Recorded local closure does not establish closure
+of unregistered or provider-side work. This review did not grade answers or
+grant execution authority.
+
+The user subsequently selected a **300-second maximum response wait for
+offline design**, recorded separately in the
+[prospective timing policy](DEVELOPMENT_EVALUATION_PLAN.md#300-second-response-policy-offline-design-only).
+That design uses a 270-second inner model timer within the original-invoke
+300-second response window, with a separate 15-second cleanup allowance.
+A separate independent review accepted the design with open implementation,
+qualification and authorization gates. It has not changed running code or
+established an improvement. This result does not authorize a retry,
+remaining-slot continuation or sixth study; latency-design approval is not
+a new paid-attempt approval.
+
 ## Maintenance interface probe: both correct, no integration benefit
 
 The separately authorized [synthetic comparison](../examples/development-maintenance-interface-result.json)
