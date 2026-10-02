@@ -2,6 +2,56 @@
 
 [日本語](EVALUATION-jp.md)
 
+## 300-second presentation comparison: retention observed, adoption unresolved
+
+The separately approved [300-second comparison](../examples/development-maintenance-presentation-300s-result.json)
+completed all eight calls with GPT-6 Astra/high and Copilot CLI 1.0.90.
+One named assessor completed an initial pass and one masked consistency pass;
+both full tables were sealed before unmasking. **The candidate was
+supported-complete on 4/4 known inputs; the baseline on 3/4.** The remaining
+baseline response failed actual-v3 mechanical validation
+(`invalid_memory_decision`); it was not assigned a fabricated semantic grade.
+Subsequent [offline diagnosis](DEVELOPMENT_EVALUATION_PLAN.md#offline-diagnosis-of-the-rejected-response)
+identified a 257-byte fact against the explicit 256-UTF-8-byte limit.
+The complete decision was rejected before assertion writes; no answer was
+shortened, repaired or regraded.
+
+| Presentation | Supported-complete / 4 | Exact reported model nano-AIU |
+|---|---:|---:|
+| Unchanged baseline | 3/4 | `116520750000.000004` |
+| Lossless raw-transcript suffix | 4/4 | `120183250000.000004` |
+
+The frozen engineering screen returned **`INCONCLUSIVE`**. It requires all
+four pairs to be supported-complete on both sides; only three qualify.
+No favorable-subset speed comparison was substituted, and the candidate
+remains unadopted. The observed difference is not a population success rate
+or evidence of usefulness in later development work.
+
+All 15 applicable meaning atoms and 156 material claims across 41 proposals
+in the seven valid responses were rated preserved/supported. These are
+coverage counts, not independent trials. No verdict changed in the consistency
+pass; one assessor-written schema description and rationale were corrected.
+The assessor's prior exposure to historical rubric metadata was disclosed
+and prospectively accepted. Neither pass reported new recognition/exposure
+or a rubric defect; task-blindness and all-component independence are not
+claimed. The parent checked bindings and aggregation, not a second semantic grade.
+
+Exact reported usage totaled **236,704,000,000.000008 nano-AIU**, including
+the rejected response and excluding preparation/review assistant usage.
+All eight transports completed within 300 seconds; 31 registered local
+children closed and fresh owned-guest absence was recorded. This separate,
+post-timeout-adapted run changed the CLI and waiting policy, so completion
+cannot be attributed to the longer deadline. The historical incomplete
+result below remains unchanged; both it and this attempt have consumed
+their permissions. No further model run is authorized.
+
+The [next-study proposal](DEVELOPMENT_EVALUATION_PLAN.md#next-study-proposal-observe-one-complete-development-memory-lifecycle)
+reduces the development experiment to one fresh project, two milestones and
+three arms, prioritizing actual later work. Its six work slots and at most
+42 core model admissions are an offline feasibility design, not an approved
+run. The proposed `600000000000`-nano-AIU postpaid stop and the existing
+runner's mandatory-canary policy still need explicit resolution.
+
 ## Maintenance presentation comparison: interrupted, no adoption decision
 
 The [known-input presentation comparison](../examples/development-maintenance-presentation-result.json)
@@ -55,10 +105,35 @@ offline design**, recorded separately in the
 That design uses a 270-second inner model timer within the original-invoke
 300-second response window, with a separate 15-second cleanup allowance.
 A separate independent review accepted the design with open implementation,
-qualification and authorization gates. It has not changed running code or
-established an improvement. This result does not authorize a retry,
+qualification and authorization gates. The subsequent
+[core implementation](DEVELOPMENT_EVALUATION_PLAN.md#opt-in-300-second-core-implementation)
+adds an explicit bridge/transport profile, preserving the old defaults and
+actively cancelling at the original host deadline even if wall time moves
+backwards. A separate
+[offline-only runner](DEVELOPMENT_EVALUATION_PLAN.md#300-second-offline-runner-integration)
+now integrates the policy and preserves complete and stopped synthetic
+eight-slot scenarios. This does not qualify the installed tools, actual oracle
+or live runtime, and no completion improvement is established.
+This result does not authorize a retry,
 remaining-slot continuation or sixth study; latency-design approval is not
 a new paid-attempt approval.
+
+On 2026-10-01, the user separately approved additional paid inference.
+[Current-runtime preparation](DEVELOPMENT_EVALUATION_PLAN.md#additional-paid-approval-and-current-runtime-preparation)
+has qualified Copilot CLI 1.0.90 metadata startup and the actual-v3 oracle
+with model admission disabled. The one owned guest was removed with fresh
+absence and recorded process closure. An independent prospective review
+accepted the approval's bounded one-attempt interpretation and the new
+assessor's disclosed source awareness; the unchanged rubric/procedure and a
+fresh private masking commitment are fixed. The scope remains one fresh
+eight-slot comparison under the 400,000,000,000-nano-AIU postpaid threshold,
+not continuation of the stopped prefix or an invoice cap. A separately
+bound live-capable runner is now implemented, with one further version-only
+metadata check and no additional guest during preparation. Independent exact
+dispatch review and parent actual-file inspection subsequently passed.
+That comparison and its two-pass masked assessment are now complete, as
+reported [above](#300-second-presentation-comparison-retention-observed-adoption-unresolved).
+Its separate evidence does not fill the historical missing slots.
 
 ## Maintenance interface probe: both correct, no integration benefit
 

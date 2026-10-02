@@ -4,11 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
+import { evaluationTiming } from "./development-eval-timing.mjs";
 
 const MAX_PROMPT_BYTES = 65536;
 const MAX_EVENT_BYTES = 8 * 1024 * 1024;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
-const MODEL_TIMEOUT_MS = 150000;
 const KILL_GRACE_MS = 2000;
 const CLOSE_ACK_GRACE_MS = 2000;
 const PROCESS_ERRNOS = new Set([
@@ -37,7 +37,7 @@ export function safeCopilotErrorCode(value) {
 export function parseArguments(argv) {
   const fields = new Map();
   for (let i = 0; i < argv.length; i += 2) {
-    if (!["--directory", "--model", "--reasoning-effort", "--max-calls", "--run-id"]
+    if (!["--directory", "--model", "--reasoning-effort", "--max-calls", "--run-id", "--timing-profile"]
       .includes(argv[i]) || !argv[i + 1] || fields.has(argv[i])) {
       throw new Error("invalid_bridge_arguments");
     }
@@ -50,6 +50,10 @@ export function parseArguments(argv) {
     max_calls: Number(fields.get("--max-calls")),
     run_id: fields.get("--run-id"),
   };
+  if (fields.has("--timing-profile")) {
+    result.timing_profile = fields.get("--timing-profile");
+  }
+  evaluationTiming(result.timing_profile);
   if (!result.directory || !path.isAbsolute(result.directory)
       || !/^[a-z0-9][a-z0-9._-]{0,99}$/.test(result.model ?? "")
       || !EFFORTS.has(result.reasoning_effort)
@@ -199,11 +203,12 @@ const safeErrno = value => typeof value === "string" && PROCESS_ERRNOS.has(value
 const exitCode = value => Number.isSafeInteger(value) ? value : null;
 const exitSignal = value => value === null ? null : PROCESS_SIGNALS.has(value) ? value : "unknown_signal";
 
-// Injection is for offline tests only; production callers cannot change deadlines via CLI or environment.
+// Process/timer injection is for offline tests; production callers can only select the named timing profile.
 export function observeCopilotProcess(args, options, {
   spawnProcess = spawn, timers = globalThis, now = () => performance.now(),
-  signal, failure = { code: null },
+  signal, failure = { code: null }, timingProfile,
 } = {}) {
+  const timing = evaluationTiming(timingProfile);
   const observed = processObservation();
   const started = now();
   return new Promise((resolve) => {
@@ -226,7 +231,8 @@ export function observeCopilotProcess(args, options, {
       resolve({ observed, output });
     };
     const requestSignal = requestedSignal => {
-      if (settled || !child || observed.exit_observed || observed.pid === null) return;
+      if (settled || !child || observed.exit_observed || observed.pid === null
+          || observed.termination_requests.some(request => request.signal === requestedSignal)) return;
       const request = { signal: requestedSignal, elapsed_ms: elapsed(), kill_return: null, error: null };
       observed.termination_requests.push(request);
       try {
@@ -271,11 +277,13 @@ export function observeCopilotProcess(args, options, {
       return;
     }
     observed.pid = Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null;
-    modelTimer = timers.setTimeout(() => stop("copilot_timeout"), MODEL_TIMEOUT_MS);
+    const modelStarted = now();
+    if (!stopping) modelTimer = timers.setTimeout(() => stop("copilot_timeout"), timing.model_ms);
     child.on("spawn", () => {
       if (settled) return;
       observed.spawn_observed = true;
       observed.pid = Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null;
+      if (stopping) requestSignal("SIGTERM");
     });
     child.on("error", error => {
       if (settled) return;
@@ -298,6 +306,10 @@ export function observeCopilotProcess(args, options, {
       observed.close_observed = true;
       observed.close_code = exitCode(code);
       observed.close_signal = exitSignal(closeSignal);
+      // The opt-in deadline also applies when a due timer is delayed by the event loop.
+      if (timingProfile !== undefined && now() - modelStarted >= timing.model_ms) {
+        latch("copilot_timeout");
+      }
       if (!observed.spawn_observed || !observed.exit_observed || observed.exit_code !== 0
         || observed.exit_signal !== null || observed.close_code !== 0 || observed.close_signal !== null) {
         latch("copilot_unsuccessful");
@@ -318,6 +330,8 @@ export function observeCopilotProcess(args, options, {
         observed.stdout_bytes_retained += Buffer.byteLength(chunk);
       }
     });
+    // Cancellation can occur inside spawnProcess before ownership of the child is returned.
+    if (stopping) requestSignal("SIGTERM");
   });
 }
 
@@ -326,6 +340,8 @@ export async function invokeCopilot(config, callId, prompt, {
   signal = bridgeCancellation.signal, fileSystem = fs, publishReceipt = writeNew,
   diagnostic = code => console.error(code),
 } = {}) {
+  const timingProfile = config.timing_profile;
+  const timing = evaluationTiming(timingProfile);
   const callDirectory = path.join(config.directory, `call-${callId}`);
   await fileSystem.mkdir(callDirectory, { mode: 0o700 });
   const usageFile = path.join(callDirectory, "usage.json");
@@ -363,7 +379,7 @@ export async function invokeCopilot(config, callId, prompt, {
       result = await observeCopilotProcess(args, {
         cwd: callDirectory, stdio: ["ignore", "pipe", stderrFile.fd],
         env: { ...process.env, COPILOT_ALLOW_ALL: "false" },
-      }, { spawnProcess, timers, now, signal, failure });
+      }, { spawnProcess, timers, now, signal, failure, timingProfile });
       if (result.observed.close_wait_expired) {
         reusable = false;
         recordFailure("copilot_close_unacknowledged");
@@ -396,6 +412,9 @@ export async function invokeCopilot(config, callId, prompt, {
       observation_scope: "subprocess_and_output_cleanup_before_event_usage_validation",
       ...result.observed, first_failure: failure.code, secondary_failures: secondary,
       io, invocation_elapsed_ms: Math.max(0, now() - started),
+      ...(timingProfile === undefined ? {} : {
+        timing_profile: timingProfile, model_timeout_ms: timing.model_ms,
+      }),
     };
     try { await publishReceipt(path.join(callDirectory, "process.json"), receipt); }
     catch {
@@ -424,8 +443,9 @@ export async function invokeCopilot(config, callId, prompt, {
 }
 
 export async function main(argv, { invoke = invokeCopilot, versionProbe = spawnSync } = {}) {
-  process.umask(0o077);
   const config = parseArguments(argv);
+  const timing = evaluationTiming(config.timing_profile);
+  process.umask(0o077);
   await privateDirectory(config.directory);
   if ((await fs.readdir(config.directory)).length) throw new Error("new_bridge_directory_required");
   const version = versionProbe("copilot", ["--version"], { encoding: "utf8", timeout: 10000 });
@@ -438,6 +458,10 @@ export async function main(argv, { invoke = invokeCopilot, versionProbe = spawnS
     cli_version: versionMatch[1], max_calls: config.max_calls,
     fresh_session_per_call: true, custom_instructions: false, tools_allowed: false,
     model_weights_revision_verified: false,
+    ...(config.timing_profile === undefined ? {} : {
+      timing_profile: config.timing_profile,
+      model_timeout_ms: timing.model_ms, response_timeout_ms: timing.response_ms,
+    }),
   });
   let completed = 0;
   let errors = 0;

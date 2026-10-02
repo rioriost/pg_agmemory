@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { EvaluationError, InvocationLedger } from "./development-eval-protocol.mjs";
+import { MAINTENANCE_TIMING_PROFILE } from "./development-eval-timing.mjs";
 import {
   CopilotTransport, Journal, privateDirectory, readPrivate, waitPrivate, writeNew,
 } from "./development-eval-transport.mjs";
@@ -392,7 +393,8 @@ for (const [name, change, primary, bridgeError, received] of [
   });
 }
 
-test("real bridge wiring uses fake Copilot, preserves IDs and stops on multi-request usage", {
+for (const timingProfile of [undefined, MAINTENANCE_TIMING_PROFILE]) {
+test(`real ${timingProfile ?? "legacy"} bridge wiring preserves IDs and stops on multi-request usage`, {
   timeout: 30000,
 }, async () => {
   const directory = await temporary();
@@ -429,12 +431,20 @@ else {
     const ledger = new InvocationLedger({ record, runId: "test-run",
       model: "gpt-6-astra", effort: "high" });
     const transport = new CopilotTransport({ directory, runId: "test-run",
-      model: "gpt-6-astra", effort: "high", ledger, record });
+      model: "gpt-6-astra", effort: "high", ledger, record, timingProfile });
     transports.push(transport);
     const context = { arm: "no_memory", sessionId: "first", slotId: "p1-1-no_memory",
       phase: "work", prompt: "normal", sequence: 1 };
     const first = await transport.invoke(context);
     assert.equal(first.text, '{"final":"test"}');
+    const metadata = events.find(row => row.kind === "bridge_ready").transport;
+    assert.equal(metadata.timing_profile, timingProfile);
+    assert.equal(metadata.model_timeout_ms, timingProfile === undefined ? undefined : 270000);
+    assert.equal(metadata.response_timeout_ms, timingProfile === undefined ? undefined : 300000);
+    const processReceipt = JSON.parse(await readPrivate(
+      path.join(transport.bridges.get("no_memory").directory, "call-000001", "process.json")));
+    assert.equal(processReceipt.timing_profile, timingProfile);
+    assert.equal(processReceipt.model_timeout_ms, timingProfile === undefined ? undefined : 270000);
     const second = await transport.invoke({ ...context, sessionId: "second", sequence: 2 });
     assert.equal(second.receipt_ref.bridge_call_id, "000002");
     assert.equal(second.receipt_ref.global_ordinal, 2);
@@ -453,3 +463,4 @@ else {
     await fs.rm(directory, { recursive: true });
   }
 });
+}

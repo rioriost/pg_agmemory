@@ -435,6 +435,63 @@ def test_decision_list_caps_utf8_and_overlap():
     assert parsed.create == parsed.revise == parsed.propose_forget == ()
 
 
+@pytest.mark.parametrize("action", ["create", "revise"])
+@pytest.mark.parametrize("text,size", [
+    ("x" * 256, 256),
+    ("x" * 257, 257),
+    ("界" * 85 + "x", 256),
+    ("界" * 85 + "xx", 257),
+])
+def test_fact_utf8_byte_boundary_is_inclusive_for_create_and_revise(action, text, size):
+    assert len(text.encode("utf-8")) == size
+    value = proposal(text, text)
+    if action == "revise":
+        value.update(memory_id=str(uuid4()), revision=1)
+    raw = decision(**{action: [value]})
+    if size == 257:
+        with pytest.raises(DevelopmentMemoryError, match="invalid_memory_decision"):
+            parse_memory_decision(raw)
+    else:
+        parsed = parse_memory_decision(raw)
+        assert getattr(parsed, action)[0].text == text
+
+
+@pytest.mark.parametrize("action", ["create", "revise"])
+@pytest.mark.parametrize("invalid_index", [0, 1])
+@pytest.mark.parametrize("oversized", ["x" * 257, "界" * 85 + "xx"])
+def test_oversized_fact_prevents_all_assertion_writes(action, invalid_index, oversized):
+    assert len(oversized.encode("utf-8")) == 257
+    source = transcript("valid create. valid revision. " + oversized)
+    items = [fact("old one"), fact("old two")]
+    bound = binding()
+    native = FakeNative(items)
+    data = {
+        "create": [proposal("valid create", source.text)],
+        "revise": [proposal("valid revision", source.text, **ref(items[0]))],
+    }
+    invalid = proposal(oversized, source.text)
+    if action == "revise":
+        invalid.update(ref(items[1]))
+    data[action].insert(invalid_index, invalid)
+    events = []
+    model = ScriptedModel([decision(**data)])
+    value = workflow(
+        bound, native=native, model=model, saved=state(bound, items), session=2,
+        emit=events.append,
+    )
+    with pytest.raises(DevelopmentMemoryError, match="invalid_memory_decision") as failure:
+        asyncio.run(value.maintain(source, boundary_id="b2", keys=keys()))
+    assert [operation for operation, _, _ in native.writes] == ["observe"]
+    assert native.items == {item.memory_id: item for item in items}
+    assert list(native.episodes.values()) == [source.text]
+    assert native.opens == native.closes == 1
+    assert len(model.calls) == 1
+    assert len(value.completed_refs) == len(failure.value.completed_refs) == 1
+    assert not any(event["kind"] in ("memory_decision", "memory_retention") for event in events)
+    with pytest.raises(DevelopmentMemoryError, match="memory_workflow_closed"):
+        asyncio.run(value.maintain(source, boundary_id="not-a-retry", keys=keys("later")))
+
+
 @pytest.mark.parametrize("items", [
     [], ["handoff correction"], ["界" * 682], ["😀" * 512], ["x" * 2048],
     [" \tkeep surrounding whitespace\u3000 "], ["item"] * 12,

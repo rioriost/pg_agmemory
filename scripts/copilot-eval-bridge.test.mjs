@@ -8,9 +8,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import {
-  auditEvents, invokeCopilot, observeCopilotProcess, parseArguments, safeCopilotErrorCode,
+  auditEvents, invokeCopilot, main, observeCopilotProcess, parseArguments, safeCopilotErrorCode,
   usageSummary, validateRequest, writeNew,
 } from "./copilot-eval-bridge.mjs";
+import { MAINTENANCE_TIMING_PROFILE } from "./development-eval-timing.mjs";
 
 const model = "gpt-6-astra";
 function events(changes = {}) {
@@ -75,8 +76,9 @@ class FakeChild extends EventEmitter {
   }
 }
 
-function processHarness(options = {}) {
-  const child = options.child ?? new FakeChild(), clock = new Clock(), cancellation = new AbortController();
+function processHarness({
+  child = new FakeChild(), clock = new Clock(), cancellation = new AbortController(), ...options
+} = {}) {
   const failure = { code: null };
   const promise = observeCopilotProcess([], {}, {
     spawnProcess: () => child, timers: clock, now: () => clock.time,
@@ -93,11 +95,14 @@ async function directoryFixture(t) {
 
 async function invocationFixture(t, {
   drive = child => child.complete(), output = events(), publishReceipt = writeNew, fileSystem = fs,
-  cancellation = new AbortController(),
+  cancellation = new AbortController(), timingProfile,
 } = {}) {
   const directory = await directoryFixture(t), clock = new Clock(), diagnostics = [];
   const child = new FakeChild();
-  const promise = invokeCopilot({ directory, model, reasoning_effort: "high" }, "000001", "Synthetic only.", {
+  const promise = invokeCopilot({
+    directory, model, reasoning_effort: "high",
+    ...(timingProfile === undefined ? {} : { timing_profile: timingProfile }),
+  }, "000001", "Synthetic only.", {
     timers: clock, now: () => clock.time, signal: cancellation.signal, fileSystem, publishReceipt,
     diagnostic: code => diagnostics.push(code),
     spawnProcess: (_command, args) => {
@@ -197,6 +202,158 @@ test("timeout remains primary even when the child subsequently exits zero", asyn
     { signal: "SIGTERM", elapsed_ms: 150000, kill_return: true, error: null },
   ]);
   assert.equal(observed.elapsed_ms, 150023);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+test("maintenance opt-in times out at 270000ms, not 269999ms, even with a subsequent zero exit", async () => {
+  const h = processHarness({ timingProfile: MAINTENANCE_TIMING_PROFILE });
+  h.child.emit("spawn");
+  h.child.stdout.emit("data", events());
+  h.clock.tick(269999);
+  assert.equal(h.failure.code, null);
+  assert.deepEqual(h.child.signals, []);
+  h.clock.tick(1);
+  assert.equal(h.failure.code, "copilot_timeout");
+  assert.deepEqual(h.child.signals, ["SIGTERM"]);
+  h.child.complete();
+  const { observed } = await h.promise;
+  assert.equal(observed.exit_code, 0);
+  assert.equal(observed.close_observed, true);
+  assert.equal(observed.elapsed_ms, 270000);
+  assert.deepEqual(observed.termination_requests, [
+    { signal: "SIGTERM", elapsed_ms: 270000, kill_return: true, error: null },
+  ]);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+test("maintenance missing close stops at 274000ms with unchanged TERM/KILL graces", async () => {
+  const h = processHarness({ timingProfile: MAINTENANCE_TIMING_PROFILE });
+  h.child.emit("spawn");
+  h.clock.tick(270000);
+  h.clock.tick(1999);
+  assert.deepEqual(h.child.signals, ["SIGTERM"]);
+  h.cancellation.abort();
+  h.clock.tick(1);
+  assert.deepEqual(h.child.signals, ["SIGTERM", "SIGKILL"]);
+  h.clock.tick(1999);
+  assert.equal(h.child.unreferenced, false);
+  h.clock.tick(1);
+  const { observed } = await h.promise;
+  assert.equal(h.failure.code, "copilot_timeout");
+  assert.equal(observed.elapsed_ms, 274000);
+  assert.equal(observed.close_wait_expired, true);
+  assert.equal(observed.close_observed, false);
+  assert.equal(observed.exit_observed, false);
+  assert.equal(observed.exit_code, null);
+  assert.deepEqual(observed.termination_requests.map(x => [x.signal, x.elapsed_ms]),
+    [["SIGTERM", 270000], ["SIGKILL", 272000]]);
+  assert.equal(h.child.destroyed, true);
+  assert.equal(h.child.unreferenced, true);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+test("maintenance host cancellation before 270s ends the child without a fresh model allowance", async () => {
+  const h = processHarness({ timingProfile: MAINTENANCE_TIMING_PROFILE });
+  h.child.emit("spawn");
+  h.clock.tick(210000);
+  h.cancellation.abort();
+  h.clock.tick(4000);
+  const { observed } = await h.promise;
+  assert.equal(h.failure.code, "copilot_interrupted");
+  assert.equal(observed.elapsed_ms, 214000);
+  assert.equal(observed.close_wait_expired, true);
+  assert.deepEqual(observed.termination_requests.map(x => [x.signal, x.elapsed_ms]),
+    [["SIGTERM", 210000], ["SIGKILL", 212000]]);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+for (const closeAt of [269999, 270000, 270001]) {
+  test(`maintenance elapsed deadline rejects delayed timeout callbacks at ${closeAt}ms`, async () => {
+    const h = processHarness({ timingProfile: MAINTENANCE_TIMING_PROFILE });
+    h.child.emit("spawn");
+    h.child.stdout.emit("data", events());
+    h.clock.time = closeAt;
+    h.child.complete();
+    const { observed } = await h.promise;
+    assert.equal(h.failure.code, closeAt < 270000 ? null : "copilot_timeout");
+    assert.equal(observed.close_observed, true);
+    assert.equal(observed.exit_code, 0);
+    assert.deepEqual(h.child.signals, []);
+    assert.equal(h.clock.pending.size, 0);
+  });
+}
+
+test("omitted profile retains the historical close-before-timeout-callback behavior", async () => {
+  const h = processHarness();
+  h.child.emit("spawn");
+  h.clock.time = 150001;
+  h.child.complete();
+  await h.promise;
+  assert.equal(h.failure.code, null);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+test("maintenance deadline starts after synchronous spawn returns, not at observation start", async () => {
+  const clock = new Clock(), child = new FakeChild();
+  const h = processHarness({ clock, child, timingProfile: MAINTENANCE_TIMING_PROFILE,
+    spawnProcess() { clock.time = 40000; return child; },
+  });
+  child.emit("spawn");
+  clock.time = 309999;
+  child.complete();
+  const { observed } = await h.promise;
+  assert.equal(h.failure.code, null);
+  assert.equal(observed.elapsed_ms, 309999);
+  assert.equal(clock.pending.size, 0);
+});
+
+for (const timingProfile of [undefined, MAINTENANCE_TIMING_PROFILE]) {
+  test(`cancellation during spawn delivers owned TERM once without resetting grace (${timingProfile ?? "legacy"})`, async () => {
+    const clock = new Clock(), child = new FakeChild(), cancellation = new AbortController();
+    const h = processHarness({ child, clock, cancellation, timingProfile,
+      spawnProcess() {
+        clock.time = 100;
+        cancellation.abort();
+        clock.time = 1500;
+        return child;
+      },
+    });
+    assert.deepEqual(child.signals, ["SIGTERM"]);
+    child.emit("spawn");
+    assert.deepEqual(child.signals, ["SIGTERM"]);
+    clock.tick(599);
+    assert.deepEqual(child.signals, ["SIGTERM"]);
+    clock.tick(1);
+    assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+    clock.tick(2000);
+    const { observed } = await h.promise;
+    assert.equal(h.failure.code, "copilot_interrupted");
+    assert.equal(observed.elapsed_ms, 4100);
+    assert.deepEqual(observed.termination_requests.map(x => [x.signal, x.elapsed_ms]),
+      [["SIGTERM", 1500], ["SIGKILL", 2100]]);
+    assert.equal(observed.close_wait_expired, true);
+    assert.equal(clock.pending.size, 0);
+  });
+}
+
+test("maintenance cancellation during spawn waits for PID ownership but never duplicates TERM", async () => {
+  const child = new FakeChild(), cancellation = new AbortController();
+  child.pid = undefined;
+  const h = processHarness({ child, cancellation, timingProfile: MAINTENANCE_TIMING_PROFILE,
+    spawnProcess() { cancellation.abort(); return child; },
+  });
+  assert.deepEqual(child.signals, []);
+  h.clock.tick(500);
+  child.pid = 12345;
+  child.emit("spawn");
+  child.emit("spawn");
+  assert.deepEqual(child.signals, ["SIGTERM"]);
+  h.clock.tick(1500);
+  assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+  child.complete(null, "SIGKILL");
+  const { observed } = await h.promise;
+  assert.equal(h.failure.code, "copilot_interrupted");
+  assert.equal(observed.elapsed_ms, 2000);
   assert.equal(h.clock.pending.size, 0);
 });
 
@@ -425,7 +582,101 @@ test("process receipt is flushed, cleaned up, private and durable before validat
   assert.deepEqual(receipt.io, { stdout_flushed: true, stderr_flushed: true, stdout_closed: true, stderr_closed: true });
   assert.equal((await fs.stat(path.join(h.directory, "call-000001", "process.json"))).mode & 0o777, 0o600);
   assert.equal((await fs.stat(path.join(h.directory, "call-000001"))).mode & 0o777, 0o700);
+  assert.deepEqual(Object.keys(receipt).sort(), [
+    "call_id", "close_code", "close_observed", "close_signal", "close_wait_expired", "elapsed_ms",
+    "exit_code", "exit_observed", "exit_signal", "first_failure", "format", "invocation_elapsed_ms",
+    "io", "observation_scope", "pid", "process_error", "process_error_after_spawn", "process_error_count",
+    "secondary_failures", "spawn_attempted", "spawn_observed", "stdout_bytes_observed",
+    "stdout_bytes_retained", "termination_requests",
+  ]);
   assert.doesNotMatch(JSON.stringify(receipt), /Synthetic|deliberately|prompt|argv|\/private/);
+});
+
+for (const elapsed of [269999, 270000, 274000]) {
+  test(`invokeCopilot wires maintenance timer and persists its exact policy at ${elapsed}ms`, async t => {
+    const h = await invocationFixture(t, { timingProfile: MAINTENANCE_TIMING_PROFILE,
+      drive(child, clock) {
+        clock.tick(elapsed);
+        if (elapsed < 274000) child.complete();
+      },
+    });
+    const { error, value } = await h.outcome, receipt = await h.receipt();
+    assert.equal(receipt.timing_profile, MAINTENANCE_TIMING_PROFILE);
+    assert.equal(receipt.model_timeout_ms, 270000);
+    assert.equal(Object.hasOwn(receipt, "response_timeout_ms"), false);
+    assert.equal(receipt.elapsed_ms, elapsed);
+    assert.equal(receipt.invocation_elapsed_ms, elapsed);
+    assert.equal(receipt.first_failure, elapsed < 270000 ? null : "copilot_timeout");
+    if (elapsed < 270000) {
+      assert.equal(error, null);
+      assert.deepEqual(value, { content: '{"answer":"synthetic"}', usage: usageSummary(measuredUsage(), model) });
+      assert.deepEqual(receipt.termination_requests, []);
+    } else {
+      assert.equal(value, null);
+      assert.equal(error.message, "copilot_timeout");
+      assert.equal(error.bridge_reusable, elapsed < 274000);
+      assert.deepEqual(receipt.termination_requests.map(x => [x.signal, x.elapsed_ms]),
+        elapsed < 274000 ? [["SIGTERM", 270000]] : [["SIGTERM", 270000], ["SIGKILL", 272000]]);
+    }
+    assert.equal(receipt.close_wait_expired, elapsed === 274000);
+    assert.equal(receipt.close_observed, elapsed < 274000);
+    assert.deepEqual(receipt.secondary_failures, elapsed === 274000 ? ["copilot_close_unacknowledged"] : []);
+    assert.equal(h.clock.pending.size, 0);
+    assert.doesNotMatch(JSON.stringify(receipt), /Synthetic|prompt|argv|\/private/);
+  });
+}
+
+test("invokeCopilot maintenance cancellation wins before model timeout and binds the receipt", async t => {
+  const h = await invocationFixture(t, { timingProfile: MAINTENANCE_TIMING_PROFILE,
+    drive(child, clock, cancellation) {
+      clock.tick(269999);
+      cancellation.abort();
+      clock.tick(1);
+      child.complete();
+    },
+  });
+  const { error, value } = await h.outcome, receipt = await h.receipt();
+  assert.equal(value, null);
+  assert.equal(error.message, "copilot_interrupted");
+  assert.equal(receipt.first_failure, "copilot_interrupted");
+  assert.equal(receipt.timing_profile, MAINTENANCE_TIMING_PROFILE);
+  assert.equal(receipt.model_timeout_ms, 270000);
+  assert.equal(receipt.exit_code, 0);
+  assert.deepEqual(receipt.termination_requests.map(x => [x.signal, x.elapsed_ms]),
+    [["SIGTERM", 269999]]);
+  assert.equal(h.clock.pending.size, 0);
+});
+
+test("maintenance timeout stays primary if receipt publication also fails", async t => {
+  const h = await invocationFixture(t, { timingProfile: MAINTENANCE_TIMING_PROFILE,
+    drive(child, clock) { clock.tick(270000); child.complete(); },
+    async publishReceipt() { throw new Error("synthetic detail"); },
+  });
+  const { error, value } = await h.outcome;
+  assert.equal(value, null);
+  assert.equal(error.message, "copilot_timeout");
+  assert.equal(error.bridge_reusable, false);
+  assert.deepEqual(h.diagnostics.map(JSON.parse), [{
+    format: "pgag-copilot-diagnostic-v1", call_id: "000001",
+    primary_code: "copilot_timeout", secondary_code: "copilot_process_receipt_failed",
+  }]);
+});
+
+test("invalid direct timing profiles reject before observing, creating files, or spawning", async () => {
+  const forbidden = () => assert.fail("invalid timing must not cause side effects");
+  for (const timingProfile of [null, false, 270000, "", "default", "maintenance-300s-v2", "maintenance-300s-v1 "]) {
+    assert.throws(() => observeCopilotProcess([], {}, {
+      timingProfile, spawnProcess: forbidden, now: forbidden,
+      timers: { setTimeout: forbidden, clearTimeout: forbidden },
+    }), { name: "EvaluationError", code: "invalid_timing_profile" });
+    await assert.rejects(invokeCopilot({
+      get directory() { return forbidden(); },
+      model, reasoning_effort: "high", timing_profile: timingProfile,
+    }, "000001", "Synthetic only.", {
+      spawnProcess: forbidden, now: forbidden, fileSystem: { mkdir: forbidden, open: forbidden },
+      publishReceipt: forbidden, diagnostic: forbidden,
+    }), { name: "EvaluationError", code: "invalid_timing_profile", message: "invalid_timing_profile" });
+  }
 });
 
 test("writeNew fsyncs file then parent directory and never overwrites prior evidence", async t => {
@@ -537,6 +788,84 @@ test("unacknowledged close is persisted as unknown, logged safely and disallows 
   assert.equal(receipt.exit_code, null);
   assert.deepEqual(receipt.secondary_failures, ["copilot_close_unacknowledged"]);
   assert.equal(JSON.parse(h.diagnostics[0]).secondary_code, "copilot_close_unacknowledged");
+});
+
+for (const timingProfile of [undefined, MAINTENANCE_TIMING_PROFILE]) {
+  test(`main forwards ${timingProfile ?? "legacy"} config and publishes exact transport metadata offline`, async t => {
+    const directory = await directoryFixture(t), attempts = [], probes = [];
+    const previousUmask = process.umask();
+    let completion;
+    const config = { directory, model, reasoning_effort: "high", max_calls: 1,
+      run_id: "agent-eval-0123456789abcdef",
+      ...(timingProfile === undefined ? {} : { timing_profile: timingProfile }),
+    };
+    try {
+      completion = main([
+        "--directory", directory, "--model", model, "--reasoning-effort", "high",
+        "--max-calls", "1", "--run-id", config.run_id,
+        ...(timingProfile === undefined ? [] : ["--timing-profile", timingProfile]),
+      ], {
+        versionProbe(command, args, options) {
+          probes.push({ command, args, options });
+          return { status: 0, stdout: "GitHub Copilot CLI 1.0.88" };
+        },
+        async invoke(actualConfig, callId, prompt) {
+          attempts.push({ config: actualConfig, callId, prompt });
+          return { content: '{"answer":"synthetic"}', usage: usageSummary(measuredUsage(), model) };
+        },
+      }).then(() => null, error => error);
+      for (let i = 0; i < 100; i++) {
+        if ((await fs.readdir(directory)).includes("transport.json")) break;
+        await sleep(10);
+      }
+      const metadata = JSON.parse(await fs.readFile(path.join(directory, "transport.json")));
+      assert.deepEqual(metadata, {
+        format: "pgag-copilot-transport-v1", run_id: config.run_id,
+        model, reasoning_effort: "high", cli_version: "1.0.88", max_calls: 1,
+        fresh_session_per_call: true, custom_instructions: false, tools_allowed: false,
+        model_weights_revision_verified: false,
+        ...(timingProfile === undefined ? {} : {
+          timing_profile: MAINTENANCE_TIMING_PROFILE, model_timeout_ms: 270000, response_timeout_ms: 300000,
+        }),
+      });
+      await fs.mkdir(path.join(directory, "queue"), { mode: 0o700 });
+      await fs.writeFile(path.join(directory, "queue", "000001.request.json"), JSON.stringify({
+        format: "pgag-copilot-request-v1", call_id: "000001", prompt: "Synthetic only.",
+      }), { mode: 0o600 });
+      assert.equal(await completion, null);
+      assert.deepEqual(probes, [{
+        command: "copilot", args: ["--version"], options: { encoding: "utf8", timeout: 10000 },
+      }]);
+      assert.deepEqual(attempts, [{ config, callId: "000001", prompt: "Synthetic only." }]);
+      const response = JSON.parse(await fs.readFile(path.join(directory, "queue", "000001.response.json")));
+      assert.equal(typeof response.duration_seconds, "number");
+      assert.deepEqual({ ...response, duration_seconds: 0 }, {
+        format: "pgag-copilot-response-v1", call_id: "000001", status: "ok",
+        content: '{"answer":"synthetic"}', error: null, duration_seconds: 0,
+        model, reasoning_effort: "high", usage: usageSummary(measuredUsage(), model),
+      });
+    } finally {
+      if (completion) {
+        await fs.writeFile(path.join(directory, "stop.json"), "{}", { mode: 0o600 });
+        await completion;
+      }
+      process.umask(previousUmask);
+    }
+  });
+}
+
+test("main rejects unknown timing before inspecting directories or probing a CLI", async t => {
+  const previousUmask = process.umask();
+  const forbidden = () => assert.fail("invalid timing must not touch the filesystem or CLI");
+  t.mock.method(fs, "lstat", forbidden);
+  await assert.rejects(main([
+    "--directory", path.resolve(".unused-invalid-timing-profile"), "--model", model,
+    "--reasoning-effort", "high", "--max-calls", "1", "--run-id", "agent-eval-0123456789abcdef",
+    "--timing-profile", "maintenance-300s-v2",
+  ], { versionProbe: forbidden, invoke: forbidden }), {
+    name: "EvaluationError", code: "invalid_timing_profile",
+  });
+  assert.equal(process.umask(), previousUmask);
 });
 
 test("bridge loop publishes a failed response but never starts the next call after lost close acknowledgement", async t => {
@@ -682,6 +1011,28 @@ test("arguments require an explicit model, bounded calls and owned run identity"
   assert.throws(() => parseArguments(args.map((value) => value === "high" ? "auto" : value)));
 });
 
+test("bridge timing is one explicit named opt-in with unchanged omitted arguments", () => {
+  const args = ["--directory", "/private/example", "--model", model, "--reasoning-effort", "high",
+    "--max-calls", "100", "--run-id", "agent-eval-0123456789abcdef"];
+  const legacy = { directory: "/private/example", model, reasoning_effort: "high",
+    max_calls: 100, run_id: "agent-eval-0123456789abcdef",
+  };
+  assert.deepEqual(parseArguments(args), legacy);
+  assert.deepEqual(parseArguments([...args, "--timing-profile", MAINTENANCE_TIMING_PROFILE]), {
+    ...legacy, timing_profile: MAINTENANCE_TIMING_PROFILE,
+  });
+  for (const profile of ["default", "270000", "maintenance-300s-v2", "maintenance-300s-v1 "]) {
+    assert.throws(() => parseArguments([...args, "--timing-profile", profile]), {
+      name: "EvaluationError", code: "invalid_timing_profile",
+    });
+  }
+  for (const extra of [
+    ["--timing-profile"], ["--timing-profile", ""],
+    ["--timing-profile", MAINTENANCE_TIMING_PROFILE, "--timing-profile", MAINTENANCE_TIMING_PROFILE],
+    ["--model-timeout-ms", "270000"], ["--response-timeout-ms", "300000"],
+  ]) assert.throws(() => parseArguments([...args, ...extra]), { message: "invalid_bridge_arguments" });
+});
+
 test("requests reject mismatched identities, hidden fields and unbounded input", () => {
   const value = { format: "pgag-copilot-request-v1", call_id: "000001", prompt: "Synthetic only." };
   assert.deepEqual(validateRequest(value, "000001"), value);
@@ -787,9 +1138,8 @@ printf '%s %s\\n' "$english_search_profile" "$max_calls"`,
 
 for (const ceiling of [1, 160]) {
   test(`bridge honors ${ceiling} guest queue calls without model calls`,
-  { timeout: 60000 }, async () => {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "pgag-bridge-test-"));
-    const canonical = await fs.realpath(directory);
+  { timeout: 60000 }, async t => {
+    const canonical = await directoryFixture(t);
     const bridge = path.join(canonical, "bridge");
     const bin = path.join(canonical, "bin");
     await fs.mkdir(bridge, { mode: 0o700 });
@@ -858,7 +1208,6 @@ if (process.argv.includes("--version")) {
         child.kill("SIGTERM");
         await exited;
       }
-      await fs.rm(canonical, { recursive: true });
     }
   });
 }

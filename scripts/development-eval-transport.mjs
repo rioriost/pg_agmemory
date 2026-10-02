@@ -5,6 +5,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { safeCopilotErrorCode } from "./copilot-eval-bridge.mjs";
+import { evaluationTiming } from "./development-eval-timing.mjs";
 import {
   ARMS, cleanupFailure, EvaluationError, exactKeys, parseJson, remainingMilliseconds, requireCondition, sha256,
   validateUsage,
@@ -94,19 +95,101 @@ export class Journal {
   }
 }
 
-export async function waitPrivate(file, { deadline, signal, alive = () => true } = {}) {
-  while (Date.now() < deadline) {
-    requireCondition(!signal?.aborted, "operation_cancelled");
-    try { return await readPrivate(file); }
-    catch (error) { if (error.code !== "ENOENT") throw error; }
-    requireCondition(alive(), "transport_process_exited");
-    await sleep(Math.min(50, Math.max(1, deadline - Date.now())));
+class ResponseWindow {
+  constructor(milliseconds, { deadline = Infinity, monotonicDeadline = Infinity, signal }, {
+    wallNow = () => Date.now(), monotonicNow = () => performance.now(), timers = globalThis,
+  }) {
+    requireCondition([deadline, monotonicDeadline].every(value =>
+      typeof value === "number" && (Number.isFinite(value) || value === Infinity)),
+    "invalid_deadline");
+    this.wallNow = wallNow;
+    this.monotonicNow = monotonicNow;
+    this.timers = timers;
+    this.deadline = Math.min(deadline, wallNow() + milliseconds);
+    this.monotonicDeadline = Math.min(monotonicDeadline, monotonicNow() + milliseconds);
+    this.controller = new AbortController();
+    this.signal = this.controller.signal;
+    this.outerSignal = signal;
+    this.cancel = () => this.abort(signal.reason instanceof EvaluationError
+      ? signal.reason : new EvaluationError("operation_cancelled"));
+    this.arm = () => {
+      if (this.signal.aborted) return;
+      const remaining = this.remaining();
+      if (remaining <= 0) this.abort(new EvaluationError("response_deadline"));
+      else this.timer = timers.setTimeout(this.arm, Math.ceil(remaining));
+    };
+    if (signal?.aborted) this.cancel();
+    else {
+      signal?.addEventListener("abort", this.cancel, { once: true });
+      this.arm();
+    }
   }
+
+  remaining() {
+    return Math.min(this.deadline - this.wallNow(),
+      this.monotonicDeadline - this.monotonicNow());
+  }
+
+  abort(error) {
+    if (this.signal.aborted) return;
+    error.cleanupDeadline = Math.min(this.wallNow() + 15000,
+      error.cleanupDeadline ?? Infinity, this.outerSignal?.reason?.cleanupDeadline ?? Infinity);
+    this.timers.clearTimeout(this.timer);
+    this.controller.abort(error);
+  }
+
+  assertActive(code = "response_deadline") {
+    if (!this.signal.aborted && this.remaining() <= 0) this.abort(new EvaluationError(code));
+    if (this.signal.aborted) throw this.signal.reason;
+  }
+
+  async wait(operation) {
+    let cancel;
+    const aborted = new Promise((_, reject) => {
+      cancel = () => reject(this.signal.reason);
+      if (this.signal.aborted) cancel();
+      else this.signal.addEventListener("abort", cancel, { once: true });
+    });
+    try { return await Promise.race([operation, aborted]); }
+    finally { this.signal.removeEventListener("abort", cancel); }
+  }
+
+  close() {
+    this.timers.clearTimeout(this.timer);
+    this.outerSignal?.removeEventListener("abort", this.cancel);
+  }
+}
+
+export async function waitPrivate(file, {
+  deadline, signal, alive = () => true, responseWindow,
+} = {}) {
+  const wallNow = responseWindow?.wallNow ?? (() => Date.now());
+  while (wallNow() < deadline) {
+    responseWindow?.assertActive();
+    requireCondition(!signal?.aborted, "operation_cancelled");
+    try {
+      const reading = readPrivate(file);
+      const result = await (responseWindow ? responseWindow.wait(reading) : reading);
+      responseWindow?.assertActive();
+      if (responseWindow) requireCondition(wallNow() < deadline, "response_deadline");
+      return result;
+    }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    responseWindow?.assertActive();
+    requireCondition(alive(), "transport_process_exited");
+    const waiting = sleep(Math.min(50, Math.max(1, deadline - wallNow())));
+    await (responseWindow ? responseWindow.wait(waiting) : waiting);
+  }
+  responseWindow?.assertActive();
   throw new EvaluationError("response_deadline");
 }
 
 export class CopilotTransport {
-  constructor({ directory, runId, model, effort, ledger, record }) {
+  // Clock/timer injection is for offline tests, not runtime deadline configuration.
+  constructor({ directory, runId, model, effort, ledger, record, timingProfile }, timingRuntime = {}) {
+    this.timing = evaluationTiming(timingProfile);
+    this.timingProfile = timingProfile;
+    this.timingRuntime = timingRuntime;
     this.directory = directory;
     this.runId = runId;
     this.model = model;
@@ -117,8 +200,10 @@ export class CopilotTransport {
     this.active = false;
   }
 
-  async bridge(arm, { deadline = Infinity, signal } = {}) {
-    requireCondition(!signal?.aborted && Date.now() < deadline, "model_admission_deadline");
+  async bridge(arm, { deadline = Infinity, signal, responseWindow } = {}) {
+    const wallNow = responseWindow?.wallNow ?? (() => Date.now());
+    responseWindow?.assertActive("model_admission_deadline");
+    requireCondition(!signal?.aborted && wallNow() < deadline, "model_admission_deadline");
     requireCondition(ARMS.includes(arm), "invalid_arm");
     if (this.bridges.has(arm)) {
       const existing = this.bridges.get(arm);
@@ -130,7 +215,11 @@ export class CopilotTransport {
     requireCondition((await fs.readdir(directory)).length === 0, "new_bridge_directory_required");
     const log = await fs.open(path.join(this.directory, `${arm}.log`), "wx", 0o600);
     const bridgeRunId = `agent-eval-${sha256(`${this.runId}:${arm}`).slice(0, 24)}`;
-    if (signal?.aborted || Date.now() >= deadline) {
+    if (responseWindow?.signal.aborted || responseWindow?.remaining() <= 0) {
+      await log.close();
+      responseWindow.assertActive("model_admission_deadline");
+    }
+    if (signal?.aborted || wallNow() >= deadline) {
       await log.close();
       throw new EvaluationError("model_admission_deadline");
     }
@@ -138,6 +227,7 @@ export class CopilotTransport {
       fileURLToPath(new URL("./copilot-eval-bridge.mjs", import.meta.url)),
       "--directory", directory, "--model", this.model, "--reasoning-effort", this.effort,
       "--max-calls", "160", "--run-id", bridgeRunId,
+      ...(this.timingProfile === undefined ? [] : ["--timing-profile", this.timingProfile]),
     ], { cwd: directory, stdio: ["ignore", log.fd, log.fd], shell: false });
     const bridge = { child, directory, exited: false, stopped: false, exitCode: null, failure: null };
     this.bridges.set(arm, bridge);
@@ -153,7 +243,8 @@ export class CopilotTransport {
     this.record({ kind: "bridge_started", arm, bridge_id: `${this.runId}-${arm}`,
       bridge_run_id: bridgeRunId, pid: child.pid ?? null });
     const raw = await waitPrivate(path.join(directory, "transport.json"), {
-      deadline: Math.min(deadline, Date.now() + 15000), signal, alive: () => !bridge.exited,
+      deadline: Math.min(deadline, wallNow() + 15000), signal, alive: () => !bridge.exited,
+      responseWindow,
     });
     const metadata = parseJson(raw);
     requireCondition(metadata.format === "pgag-copilot-transport-v1"
@@ -161,28 +252,68 @@ export class CopilotTransport {
       && metadata.reasoning_effort === this.effort && metadata.max_calls === 160
       && metadata.fresh_session_per_call === true && metadata.custom_instructions === false
       && metadata.tools_allowed === false, "bridge_identity_mismatch");
+    requireCondition(metadata.timing_profile === this.timingProfile
+      && (this.timingProfile === undefined
+        ? metadata.model_timeout_ms === undefined && metadata.response_timeout_ms === undefined
+        : metadata.model_timeout_ms === this.timing.model_ms
+          && metadata.response_timeout_ms === this.timing.response_ms), "bridge_timing_mismatch");
     await privateDirectory(path.join(directory, "queue"), { create: true });
     this.record({ kind: "bridge_ready", arm, transport: metadata });
     return bridge;
   }
 
-  async invoke(context, { deadline = Date.now() + 180000, signal, beforePublish } = {}) {
+  async invoke(context, {
+    deadline, monotonicDeadline, signal, beforePublish,
+  } = {}) {
     requireCondition(!this.active, "concurrent_model_dispatch_forbidden");
+    requireCondition(beforePublish === undefined || typeof beforePublish === "function",
+      "invalid_publication_guard");
+    const responseWindow = this.timingProfile === undefined ? null : new ResponseWindow(
+      this.timing.response_ms, { deadline, monotonicDeadline, signal }, this.timingRuntime);
+    const wallNow = responseWindow?.wallNow ?? (() => Date.now());
+    if (responseWindow) deadline = responseWindow.deadline;
+    else if (deadline === undefined) deadline = Date.now() + this.timing.response_ms;
+    signal = responseWindow?.signal ?? signal;
     this.active = true;
     let bridge;
     let admitted;
     let reportedUsage = null;
     let bridgeError = null;
+    let cleanupPromise;
+    const beginCleanup = error => {
+      const cleanupDeadline = Math.min(wallNow() + 15000, error.cleanupDeadline ?? Infinity,
+        signal?.reason?.cleanupDeadline ?? Infinity);
+      error.cleanupDeadline = cleanupDeadline;
+      cleanupPromise ??= this.stop(context.arm, { cancel: true, deadline: cleanupDeadline })
+        .then(() => null, cleanupError => cleanupError);
+      return cleanupPromise;
+    };
+    const cancel = () => {
+      if (admitted) this.ledger.stop();
+      if (bridge || this.bridges.has(context.arm)) beginCleanup(signal.reason);
+    };
+    responseWindow?.signal.addEventListener("abort", cancel, { once: true });
     try {
-      bridge = await this.bridge(context.arm, { deadline, signal });
-      requireCondition(!signal?.aborted && Date.now() < deadline, "model_admission_deadline");
+      responseWindow?.assertActive("model_admission_deadline");
+      bridge = await this.bridge(context.arm, { deadline, signal, responseWindow });
+      responseWindow?.assertActive("model_admission_deadline");
+      requireCondition(!signal?.aborted && wallNow() < deadline, "model_admission_deadline");
       admitted = this.ledger.reserve(context);
       const callId = admitted.receipt.bridge_call_id;
+      const guard = responseWindow ? () => {
+        responseWindow.assertActive();
+        const result = beforePublish?.();
+        if (result !== null && result !== undefined && typeof result.then === "function") return result;
+        responseWindow.assertActive();
+        return result;
+      } : beforePublish;
       await writeNew(path.join(bridge.directory, "queue", `${callId}.request.json`),
-        admitted.request, { beforePublish });
+        admitted.request, { beforePublish: guard });
+      responseWindow?.assertActive();
       const raw = await waitPrivate(
         path.join(bridge.directory, "queue", `${callId}.response.json`),
-        { deadline: Math.min(deadline, Date.now() + 180000), signal, alive: () => !bridge.exited },
+        { deadline: responseWindow?.deadline ?? Math.min(deadline, Date.now() + this.timing.response_ms),
+          signal, alive: () => !bridge.exited, responseWindow },
       );
       const response = parseJson(raw);
       exactKeys(response, [
@@ -193,7 +324,8 @@ export class CopilotTransport {
         && response.model === this.model && response.reasoning_effort === this.effort,
       "model_response_identity_mismatch");
       bridgeError = response.status === "error" ? safeCopilotErrorCode(response.error) : null;
-      requireCondition(!signal?.aborted && Date.now() < deadline, "late_model_response");
+      responseWindow?.assertActive("late_model_response");
+      requireCondition(!signal?.aborted && wallNow() < deadline, "late_model_response");
       reportedUsage = response.usage;
       this.record({ kind: "model_response_received", receipt: admitted.receipt,
         response_sha256: sha256(raw), status: response.status,
@@ -209,6 +341,7 @@ export class CopilotTransport {
         && typeof response.duration_seconds === "number"
         && Number.isFinite(response.duration_seconds) && response.duration_seconds >= 0,
       "model_response_failed");
+      responseWindow?.assertActive("late_model_response");
       return { text: response.content, receipt_ref: admitted.receipt,
         usage: response.usage, duration_seconds: response.duration_seconds };
     } catch (error) {
@@ -221,17 +354,18 @@ export class CopilotTransport {
         usage_unknown: admitted !== undefined && reportedUsage === null });
       if (admitted) this.ledger.stop();
       if (bridge || this.bridges.has(context.arm)) {
-        const cleanupDeadline = Math.min(Date.now() + 15000, error.cleanupDeadline ?? Infinity,
-          signal?.reason?.cleanupDeadline ?? Infinity);
-        error.cleanupDeadline = cleanupDeadline;
-        try { await this.stop(context.arm, { cancel: true, deadline: cleanupDeadline }); }
-        catch (cleanupError) {
-          cleanupFailure(error, cleanupDeadline);
+        const cleanupError = await beginCleanup(error);
+        if (cleanupError) {
+          cleanupFailure(error, error.cleanupDeadline);
           error.cleanup_failures = [{ code: cleanupError.code ?? "bridge_cleanup_failed" }];
         }
       }
       throw error;
-    } finally { this.active = false; }
+    } finally {
+      responseWindow?.signal.removeEventListener("abort", cancel);
+      responseWindow?.close();
+      this.active = false;
+    }
   }
 
   async stop(arm, { cancel = false, deadline = Date.now() + 15000 } = {}) {

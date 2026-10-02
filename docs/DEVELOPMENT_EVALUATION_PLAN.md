@@ -13,16 +13,29 @@ the historical-memory study or authorize adopting the selector. See the
 [interface result](../examples/development-maintenance-interface-result.json)
 and [evaluation summary](EVALUATION.md#maintenance-interface-probe-both-correct-no-integration-benefit).
 
-The subsequent full-decision presentation comparison is now **stopped and
+The historical full-decision presentation comparison remains **stopped and
 incomplete**. Its third separately approved attempt reached model execution:
 two calls completed transport and mechanical validation, one timed out with
 unknown usage, and five stayed unrun. The
 [sanitized result](../examples/development-maintenance-presentation-result.json)
-retains all three consumed attempts separately. No masked semantic comparison,
-candidate adoption or further live attempt is authorized. The user subsequently
+retains all three consumed attempts separately. It produced no masked semantic
+comparison and authorized no continuation. The user subsequently
 selected a 300-second maximum response wait for a separate
 [offline design](#300-second-response-policy-offline-design-only), not
-automatic repetition or live execution.
+automatic repetition or live execution. The reusable
+[opt-in bridge and transport path](#opt-in-300-second-core-implementation)
+has since been implemented and integrated into an
+[offline-only successor runner](#300-second-offline-runner-integration).
+
+A fresh, separately approved and runtime-qualified eight-call comparison has
+now completed under that policy with CLI 1.0.90. Its two sealed masked passes
+found **4/4 supported-complete candidate decisions versus 3/4 baseline
+decisions**, with one baseline mechanical rejection. The frozen engineering
+screen is `INCONCLUSIVE`: only three of the required four pairs are
+supported-complete on both sides. The candidate remains unadopted and no
+further inference is authorized. See the
+[separate 300-second result](../examples/development-maintenance-presentation-300s-result.json)
+and [completed assessment](#completed-300-second-masked-assessment).
 
 The separately preregistered v3 run and post-terminal audits remain complete.
 The [v3 result](../examples/development-memory-pilot-v3-result.json) records
@@ -827,15 +840,17 @@ deferring cleanup after a stop. The nominal phase allocation is not an
 end-to-end wall-clock guarantee; evidence sealing and blocked synchronous work
 are not bounded by adding these timers.
 
-Static tracing found three coupled implementation gaps. The bridge actually
-hardcodes `MODEL_TIMEOUT_MS = 150000`; the transport separately clamps its wait
-with `Math.min(deadline, Date.now() + 180000)`; the oracle guest sleeps for
-2,700 seconds. Changing only the runner's policy constants would therefore
+At design freeze, static tracing found three coupled implementation gaps. The
+bridge hardcoded `MODEL_TIMEOUT_MS = 150000`; the transport separately clamped
+its wait with `Math.min(deadline, Date.now() + 180000)`; the oracle guest slept
+for 2,700 seconds. Changing only the runner's policy constants would therefore
 leave the real model/response limits unchanged and the proposed guest lifetime
-too short. A future implementation needs one explicitly bound opt-in profile
+too short. The complete implementation needs one explicitly bound opt-in profile
 across the actual bridge, transport, coordinator, publication guards, manifests
 and resource recipe, while preserving the old defaults and frozen artifacts.
-No executable source or runner has been changed yet.
+No executable source or runner changed during that design phase. The later
+core implementation below addresses the shared bridge and transport, not the
+remaining runner and guest integration.
 
 The separate method design keeps the same four known inputs, eight prompt
 files, presentation candidate, fixed order, model/effort, v3 validator and
@@ -865,10 +880,11 @@ when wall time moves backwards and model startup is delayed. Rejecting a late
 answer only after a wall-clock-based wait eventually returns is insufficient.
 Qualification must observe cancellation and late-response rejection separately,
 without granting the late-started model a fresh host window or comparing
-unrelated process-local monotonic origins. This is required future evidence,
-not a claim that the new waiting path already exists.
+unrelated process-local monotonic origins. That design review did not qualify an implementation; the later actual-code
+evidence is described below.
 
-Before any future inference, resolve the named assessor's availability and
+At the end of the design phase, the requirements before any future inference
+were to resolve the named assessor's availability and
 exposure, bind a run-specific private masking commitment, implement and qualify
 the complete timing path with actual-code synthetic-process cases, and obtain
 fresh explicit postpaid-budget and single-attempt approval. The previous
@@ -877,6 +893,536 @@ approved allowance. Current tool/payload identities, exact private inputs and
 argv still require qualification and independent exact dispatch review.
 No new map, dispatch authorization, claim, guest or model call was created by
 this design work.
+
+### Opt-in 300-second core implementation
+
+Following the user's 2026-10-01 request to resume, the repository bridge and
+transport now share the explicit `maintenance-300s-v1` timing profile from
+`scripts/development-eval-timing.mjs`. It selects model 270,000 ms and response
+300,000 ms. Omitting it retains the 150,000/180,000-ms defaults and the old
+bridge metadata/response shapes. Unknown profiles fail before startup; no
+arbitrary numeric or environment-based timeout override was added.
+
+`CopilotTransport` accepts `{ timingProfile: "maintenance-300s-v1" }`, forwards
+the corresponding `--timing-profile` to the actual bridge process, and requires
+matching profile and timer values in its startup metadata. Direct bridge
+wrappers must pass `config.timing_profile` to `invokeCopilot`; selecting a
+profile only in an outer runner is insufficient. The standalone bridge owns
+only the model timer: its response-time metadata does not itself enforce the
+host response window.
+
+The opt-in transport captures wall and monotonic deadlines once on entry to
+`invoke`, before bridge startup or request staging. A caller may shorten them
+with `deadline` and `monotonicDeadline`; the latter must use the same host
+process's monotonic clock, never a value copied from another process. Staging,
+publication and receipt do not renew either deadline. The publication guard
+and final response checks reject equality and lateness on either clock.
+
+An active deadline aborts response waiting and stops further ledger admissions
+even if wall time moves backwards. It begins bridge cancellation without
+waiting for a pending read or staging operation to finish. A later staging
+completion must still pass the original publication guard; an already-submitted
+or ambiguously completed link remains uncertain, not fabricated nonpublication.
+One cleanup attempt retains the earliest inherited cutoff. Failure, unknown
+usage and missing close acknowledgement remain explicit; cleanup and physical
+return are still separate from the response-eligibility limit.
+
+The bridge's selected model timer starts after its spawn callback returns.
+Its opt-in close check also rejects an expired model window if event-loop
+scheduling delayed the timeout callback. Cancellation during the spawn callback
+now sends TERM when ownership of the returned child becomes available, without
+resetting the TERM/KILL grace periods or sending duplicate TERM requests.
+A later zero exit does not convert a timeout or cancellation into success.
+
+Offline actual-code cases cover the old 180-second and new 300-second response
+boundaries, the 270-second model boundary, delayed startup, wall-clock rollback,
+active cancellation during reads/staging, publication and return checks, and
+cleanup failures. A combined controlled-clock case observes actual transport
+stop and bridge process-observation logic: after 60 seconds of host startup,
+the host cancels at 300 seconds while the model's own elapsed time is only
+240 seconds. Local generated fake-CLI processes also exercise profile forwarding
+and metadata/receipt binding across a real process boundary. These are synthetic
+checks, not elapsed 300-second trials or observations of the installed CLI,
+provider, oracle guest or model performance.
+The focused suite passed 131 cases. A separate read-only core code review
+reported no significant issues; it did not repeat the tests or qualify the
+experiment runner, installed tools, resource recipe or live dispatch.
+
+At the end of the core implementation, the complete experiment was **not
+runtime-qualified**. The separately prepared
+[offline successor](#300-second-offline-runner-integration) binds this source
+and profile through its coordinator and wrappers, the 320-second pre-invoke
+reserve, 3,000-second loop and 3,600-second guest recipe. The actual-v3 oracle,
+current tool identities and exact resource cleanup still need separately
+scoped qualification. Assessor/exposure, masking, fresh postpaid budget and single-run
+approval, and exact dispatch review remain open. No frozen runner, historical
+result or consumed authorization was rewritten; no additional inference,
+installed-CLI probe or Container operation was performed.
+
+### 300-second offline runner integration
+
+The next private runner is a new offline-only revision, not an edit to runner008
+or a fourth paid attempt. Its coordinator and wrapper select
+`maintenance-300s-v1` explicitly; transport startup and process evidence must
+identify the corresponding 270,000/300,000-ms policy. The coordinator passes
+both original host deadlines into the shared transport, preserving active
+monotonic cancellation rather than relying only on a later response check.
+The 320-second remaining-time condition applies before invoke, not again after
+staging. The guest creation recipe uses `exec sleep 3600`.
+
+This revision deliberately has no live authorization path. Forged or historical
+tokens cannot enable it. Normal process creation is restricted to its exact
+local synthetic bridge entrypoint; CLI and Container behavior must use injected
+synthetic process boundaries. The copied CLI binding is historical reference
+data, not a current installed-tool qualification. No actual prompt bundle,
+private condition map or paid-attempt identity is loaded.
+
+Its source manifest binds the new runtime modules, shared timing/bridge/
+transport/protocol imports and unchanged oracle source dependencies. The
+eight-slot fixtures use synthetic text and prescribed mechanical replies.
+Running the actual JavaScript coordinator, transport, bridge wrapper and
+resource-command path against those fixtures does not execute the Python v3
+oracle, create a guest, establish semantic retention or measure model usage.
+Even a technically complete synthetic run remains ineligible for semantic
+review.
+
+The combined offline suite passed 47 cases. Its retained scenarios include one
+complete eight-slot run and three separate third-slot stops: model timeout,
+empty final content and unknown usage. Each stopped scenario leaves five slots
+unrun; none permits a semantic comparison. The port-level cases also exercise
+299,999/300,000/300,001-ms publication boundaries, active cancellation after a
+wall-clock rollback, and 60 seconds of staging after admission with exactly
+320 seconds remaining. The reserve is not demanded again after staging.
+
+The source manifest binds 97 files, including the new shared timing module;
+its SHA-256 is
+`a9fc51ffe233e2657d244d68f5ccacda5777be98016e575be034c013492aacbd`.
+The parent reconciled the four retained terminal seals, four real local Node
+wrapper closures, 17 synthetic model-process records and four synthetic
+version records. Container command replies and guest-absence records are
+synthetic too: no installed CLI, Container process, guest or model was run.
+The private qualification report SHA-256 is
+`e38377a437e46bc782b356c3bf6e6fe84340d5fc4962856adbe532b45e7fde33`;
+its status is `QUALIFIED_SYNTHETIC_INTEGRATION_ONLY`.
+A separate read-only integration review reported no significant issues. It
+did not rerun the cases or qualify the installed tools, actual Python oracle,
+assessor/masking procedure or live dispatch. Its result is recorded separately
+from the qualification report's earlier pending-review field. This closes the
+offline integration step, not the outstanding live-runtime and authorization
+gates.
+The 996-file private source/evidence tree is frozen and sealed; the seal
+SHA-256 is `d6b58173d7e662c89175504d06ae0811219a3a2bfcff0bc9eb7fa264f4ff6de9`.
+The independent-review record SHA-256 is
+`fb450ab163b178de748df44eb67f376446f3bf6eefeb0913eecd918c970f68ac`.
+
+### Additional paid approval and current-runtime preparation
+
+On 2026-10-01, the user explicitly approved additional paid inference and
+resuming the follow-up. This is a new approval, separate from the offline
+design and the three consumed historical attempts. The private receipt
+SHA-256 is
+`01d29f5a4d864fcb73f4355570b1e786f01457de1a367984d75b3685ae6a5482`.
+It records the original request and narrows the proposed execution to one
+fresh eight-slot comparison under the 270/300-second policy, one call in
+flight, no probes or retries, and immediate admission stop on unknown usage.
+Historical answers cannot fill any of the new slots.
+
+The receipt retains the previously proposed 400,000,000,000-nano-AIU
+admission threshold. The new message did not restate a numeric amount;
+an independent prospective reviewer accepted its contextual incorporation
+of the pending, explicitly postpaid proposal. This does not use an old
+authorization, an unused balance or silence after the parent's threshold
+announcement as consent. The threshold is not an invoice cap, and
+interruption can leave usage unknown. Preparation and review assistant
+usage remain separate. This scope decision is not exact dispatch approval.
+
+The new qualification-only runner observed Node 26.10.0, effective Copilot
+CLI 1.0.90, Container 1.5.0 and guest Python 3.12.14. It binds the currently
+installed executable/package/native chain rather than assuming the old
+launcher's hash identifies the effective CLI. There were two real CLI version
+calls, one help call and no provider inference. Actual metadata startup used
+the 270/300-second profile with model admission disabled. Full model-argument
+forwarding was exercised only at a local fake process boundary, not against
+the provider; live metering remains unobserved under this CLI version.
+
+One exact-owned guest used the existing image, the prospective attempt's
+54-byte name, a 3,600-second lifetime and the isolated read-only recipe.
+Actual-v3 valid-empty, Unicode nonempty and atomic-failure cases passed.
+The guest was deleted and fresh absence recorded; all 35 registered actual
+children have exit/close evidence. The 87 synthetic process records are
+separate. The combined profile and capability suite passed 52 cases.
+No installation, update, image pull, service change or host Python execution
+occurred. The prospective name was used only for qualification, not a paid
+claim. Frozen historical and offline-only runners remain unchanged.
+
+The parent reconciled all 1,238 indexed files, the two root seal/index files,
+private ownership/modes and individual closure records. This filesystem
+reconciliation does not repeat the runtime commands, establish provider-side
+closure or qualify the forthcoming live successor. The private qualification
+report SHA-256 is
+`0acf360978a8bad9c9245a85465334f491ee95efa92fd35c9ad9066807fc2005`;
+the frozen 1,240-file tree's seal is
+`c9229b70aa343397de4f810a3eed4fc4b2d35da97eb50bbe07896a87f25c9234`.
+The parent reconciliation SHA-256 is
+`94c6fadc22a002b2ad3aa2377aa3b4ebbc99e00d1d3c8634435c9947e3ab4fc4`.
+This revision still unconditionally denies live authorization and dispatch.
+
+The historical semantic assessor is unavailable. A new named assessor has
+declared no rubric or answer authorship and no answer, order, performance or
+map exposure, but stopped after reading the first 80 lines of the frozen
+rubric because its historical role/binding metadata might identify
+conditions. An independent reviewer accepted this as permissible task/source
+awareness, not demonstrated recognition of an opaque output's condition.
+The disclosure remains recorded; neither the declaration nor its review
+proves absence of all prior knowledge.
+
+A deterministic semantic-only projection preserves the original rubric's
+four decisions, nine meaning clauses and support contracts without that
+metadata. Because the projection alone omits verdict and review-procedure
+sections, the assessor separately received and accepted the complete unchanged
+procedural contract. The same named assessor will perform one initial pass
+and one masked consistency pass, only after a complete eligible eight-slot
+run; both complete tables must be sealed before unmasking. Recognition,
+exposure and rubric-defect blocking rules remain unchanged.
+
+The prospective review SHA-256 is
+`f3a7f6a4481d117fa1eb021ee8bc566cbfffcedec708389248ea632c357d31ae`.
+After explicit full acceptance, a fresh private ID/order map was generated
+once and committed before any outputs. No historical map was read or reused,
+and no map values, seed, call order or performance data were sent to the
+assessor. The commitment SHA-256 is
+`bde5f411c3853c9efaeb705940d71c6d3fe0c6ad6e7b57517a6adc7fbdc4011a`.
+The prospectively bound execution-method amendment, SHA-256
+`44f2528487695c6dde7c53fc2611f066c2683fd147434bd6b9a83949953dd978`,
+records this assessor/map, the current qualified CLI and the new approval
+without rewriting the frozen design's historical pending-state fields.
+
+Neither the approval receipt nor this preparation issues exact dispatch
+authority. The next live-capable revision now binds the current policy,
+approval, assessor/map and actual input bundle to guarded coordinator,
+wrapper, process and custody paths. Its final review and parent authorization
+must occupy distinct, exact private paths; neither file nor the paid claim
+was created during implementation. Inspection is filesystem-only, and an
+exclusive durable claim precedes live tool execution. Runtime-qualification
+and synthetic capabilities cannot substitute for a live authorization.
+
+The new revision passed 58 synthetic cases and one additional installed-CLI
+version-only metadata startup. Its 17 registered actual children closed;
+261 synthetic process records remain explicitly separate. It created no
+additional guest or model call. The resource argv, read-only oracle mount
+and Python/core bindings retain the preceding revision's actual qualification;
+this is a declared transfer of unchanged inputs, not a repeated guest test.
+A pre-child metadata-precondition failure and prior source/test revisions
+are retained alongside the final successful evidence.
+
+The live revision's runtime manifest SHA-256 is
+`17156434d65be7beec2f9aec3c5c2b9bf95751777034225dfc2fbbccc8bdb267`;
+its qualification report SHA-256 is
+`d9a663777b40a15f56daaad219abb4bddeff864eb0325a71ed39df65a44fe542`.
+The 3,121-file private tree is frozen under seal
+`bf77f54554b4e63ec7ce65d0e88d456c089970c4aea86846606bc162f381c42d`.
+The parent reconciled its complete membership, individual closure records
+and all 387 current runtime-file bindings. That reconciliation, SHA-256
+`0b7978a8021fdb551bd593515babd9540aad9bd2c6bdfc475179113e5dc988c9`,
+does not replace the independent exact source/dispatch review or provide an
+atomic execution lock. At this freeze, no exact authorization or claim had
+been issued.
+
+The eight original prompt files and four transcripts were
+reconciled without regeneration. Two local reconciliation-script assertions
+were corrected, with both failed versions retained: an aggregate metadata
+report exceeded an incorrectly reused per-prompt read bound, and the strict
+JSON parser's null-prototype inventory was compared with an ordinary object.
+Neither failure changed inputs or prompt limits, created a guest, consumed
+an attempt or invoked a model. No paid comparison call was made during
+preparation.
+
+The subsequent independent exact review returned
+`GO_EXACT_BOUND_ONE_ATTEMPT`, with no blocking corrections. Its machine
+decision SHA-256 is
+`af5665b6be445d29f2041c9d2299f34de6f231975e8809482b32cb47e1c1eba3`;
+the separate detailed review SHA-256 is
+`5643d22600e25ae563cda70da0ce6ffb0e5cf52aa9b23b7b384260b863e323e9`.
+The reviewer inspected source composition and retained evidence, not a
+successful provider call, fresh guest census or parent authorization that
+did not yet exist. Runtime identity checks remain check-time observations,
+and the first real provider invocation can still reveal a mismatch.
+
+The parent then issued the fresh one-attempt authorization, SHA-256
+`8f7cb751df1750143d90c4138d28ad27deab5e431d89914e4bd4bdc9411d8ab1`,
+and passed pure inspection against the actual selected private files.
+That inspection created neither a claim nor child processes. The exact
+launch was subsequently invoked once, and its exclusive paid claim and
+responsive first-slot admission were observed. The authorization is consumed
+and cannot be reused.
+
+The attempt subsequently completed all eight transports with usable
+accounting and no harness stop: eight reservations, publications and observed
+model spawns; no unknown publication or unrun slot. Actual-v3 validation
+accepted seven nonempty responses and rejected one complete response as
+`FAIL_MECHANICAL` / `invalid_memory_decision`. That rejection is a model
+outcome, not an incomplete transport or permission to repair/retry.
+Original-invoke transport durations ranged from approximately 61.631 to
+175.436 seconds, all below the 300-second boundary. This is not an unchanged
+replication or evidence that extending the deadline caused completion.
+
+The exact requested-model total is
+**236,704,000,000.000008 nano-AIU**, below the postpaid threshold, with eight
+reported API requests. The fractional raw lexeme is retained, not rounded
+away. Input/output totals are 60,780/32,147 tokens; reasoning, cache and
+root-reported API-duration counters remain separate. These are reported
+usage figures, not an independently verified invoice. Preparation and
+semantic-review assistant usage are outside this comparison subtotal.
+
+The parent checked and froze all 363 terminal files, reconciled 72 original
+numeric lexemes and all nine exact total/condition aggregates, and confirmed
+31 unique registered local child exit/close records plus fresh exact-owned
+guest absence. This does not establish closure of unregistered/provider-side
+work. The terminal report SHA-256 is
+`6a64791e3575c899725857e4635d5438b95065a696c9f83dfd9e9661ce0ab880`;
+the terminal seal is
+`7b5426a7a39dd35559039c0882b3c17a4205f6372c58b481c8099e0f3ece082e`.
+The detailed parent reconciliation SHA-256 is
+`5ae45578e275a7547e0e36f0d77ddb89f36cfc310890169fc259bc832073c1f4`.
+
+The complete technical run became eligible for the precommitted masked
+procedure. Eight uniform packets were sealed under SHA-256
+`60642a16abc979299f28af29e08794574dda01a63ff8dc338335b38cd7ce0168`
+and delivered only to the named assessor for the initial pass. No map values,
+call order, timings, usage, parent quality expectation or historical answers
+were supplied. The completed assessment below preserves the required
+two-seals-before-unmask order.
+
+### Completed 300-second masked assessment
+
+The [separate sanitized result](../examples/development-maintenance-presentation-300s-result.json)
+records **4/4 supported-complete candidate decisions and 3/4 baseline
+decisions**. The other baseline output failed the unchanged actual-v3
+mechanical validator with `invalid_memory_decision`; its transport and
+accounting completed, but its semantic arrays remain empty. No answer
+repair, retry or invented semantic failure was substituted.
+
+| Known input | Baseline | Raw-suffix candidate |
+|---|---|---|
+| `v4-pg-1` | `PASS_SUPPORTED_COMPLETE` | `PASS_SUPPORTED_COMPLETE` |
+| `v4-pg-2` | `FAIL_MECHANICAL` | `PASS_SUPPORTED_COMPLETE` |
+| `v5-pg-1` | `PASS_SUPPORTED_COMPLETE` | `PASS_SUPPORTED_COMPLETE` |
+| `v5-pg-2` | `PASS_SUPPORTED_COMPLETE` | `PASS_SUPPORTED_COMPLETE` |
+
+The same named assessor completed exactly one initial pass and one masked
+consistency pass. Each table contains all eight rows, with 15 applicable
+meaning atoms and 156 material claims across 41 proposals in the seven
+valid outputs. All those atoms/claims were rated preserved/supported.
+They are coverage counts over four known inputs and nine diagnostic clauses,
+not independent trials. The parent verified the strict schema, bindings,
+coverage structure and aggregation; it did not provide a second semantic grade.
+
+The consistency pass changed no atom, support or overall verdict. It corrected
+one assessor-written description and rationale: the input is an object
+containing a requests array, not a bare array. The original answer and rubric
+were unchanged. Both complete tables remain immutable; no post-unmask grading
+or correction was requested. Both passes reported no new recognition/exposure
+and no rubric defect. The prospectively accepted historical-metadata exposure
+remains disclosed; task-blindness, independent human adjudication and
+all-component independence are not claimed.
+
+The initial table SHA-256 is
+`5746c2c0b4c7ea45d61568c47ae3b228696f1d9d135ed52dd90146bb86544107`,
+under seal
+`00e3b052140de5803b3752c0219c732fa20febf6469896203293f584fcc72f7d`.
+The consistency table SHA-256 is
+`6f2a07354c26df1539283582cdcf952b46f39f60dc3179c555200b18fea88649`,
+under seal
+`85da441b93ccf6432b24fa10e03928428a55bd4ce73b310dd091cb221f06339e`.
+Only after validating and freezing both trees did the bound custodian unmask.
+The post-unmask result SHA-256 is
+`60cca0d1a8631b4a18565dc96af048286b1714b86ae157ee9634d44625e6dd5e`,
+under seal
+`c1f6a2d6ca1563ee53fbc735a25dd3d1cec289fbeb46fe7698c0130d145a676f`.
+These hashes identify private retained evidence, not external timestamps.
+
+The canonical engineering result is **`INCONCLUSIVE`**. Technical/accounting
+and masking prerequisites passed, and the candidate met the 4/4 retention
+floor without a baseline-only supported pair. However, the fixed efficiency
+rule requires all four pairs to pass on both sides; only three do. No
+favorable-subset transport ratio, efficiency pass or adoption decision was
+substituted. Descriptive all-call usage was
+`116520750000.000004` nano-AIU for baseline and
+`120183250000.000004` for candidate, including the rejected baseline response.
+
+The observed retention difference is confined to these known inputs and this
+assessor. The run does not establish population superiority, a causal benefit
+from extending the deadline, usefulness in later development work or
+production M5 acceptance. The historical interrupted result remains unchanged
+and is not pooled with this run. This attempt's permission is consumed;
+further model calls require a separate prospective plan and explicit approval.
+
+### Offline diagnosis of the rejected response
+
+The original `v4-pg-2` baseline answer's first `create.text` contains
+**257 UTF-8 bytes against the explicit 256-byte limit**. Its six fact lengths,
+in original order, are 257, 250, 233, 256, 241 and 252 bytes. The offending
+text is ASCII, so this is not confusion between multibyte characters and bytes.
+The answer is strict JSON with six creates and empty revise/forget arrays.
+The original prompt explicitly requires `fact <=256 UTF-8 bytes`.
+
+The byte-identical deployed
+[`FactProposal.short_fact`](../src/pg_agmemory/development_memory.py) rejects
+text over 256 bytes; `parse_memory_decision` maps that validation error to
+`invalid_memory_decision`. This occurs before provenance canonicalization
+or assertion-request construction. The sealed oracle's in-memory Native
+test double recorded one observation, zero assertion writes, and one
+opened/closed context; this was not a live PostgreSQL replay.
+The complete response arrived in about 111.464 seconds, so this rejection
+was not a response timeout or evidence of a PostgreSQL write failure.
+
+The separate diagnostic reads the unchanged original bytes, prompt and
+deployed-source receipt. It does not rerun the oracle or model, shorten the
+answer, grade its meaning, or infer that a one-byte edit would make the
+answer supported-complete. No validator or prompt change is justified by
+this contract violation; the original failure and engineering result remain
+unchanged. New synthetic regression cases cover inclusive 256-byte acceptance
+and 257-byte rejection for ASCII/multibyte create/revise text, plus whole-batch
+rejection when an oversized fact appears first or later. Rejection retains
+the observation, preserves existing assertions, closes the Native context
+and leaves the workflow non-retryable.
+
+The original answer SHA-256 is
+`8890fee71b0d4eb5c8d602f8f59cd9c44641f878b6269a0ef4e09e26495535f1`;
+the original baseline-prompt SHA-256 is
+`e34b10f0e5114228cb0476567be8b5ab91ae79e3a458c911df7bdadc4132fdf4`.
+The deployed validator SHA-256 is
+`fcb15521e09767ffae639ed7752e4caf985c25c155e9452f5e9603987021cf19`.
+The separate diagnostic SHA-256 is
+`2aa8724d2f02afd8facfc9b753b5c9feb9594d45f751b4f487498c8d6a5f5c0f`.
+The public comparison JSON and both sealed rating tables are unchanged.
+
+### Next study proposal: observe one complete development-memory lifecycle
+
+**Offline proposal only; not a frozen protocol or execution approval.**
+The next question is whether an earlier decision survives maintenance,
+reaches a fresh later coding session and is observably applied there.
+The v4/v5 runs never reached that work. Repeating their eighteen-slot
+design is not the proposed next step, and the raw-suffix candidate remains
+unadopted. The baseline prompt, 256-byte fact cap and first-error behavior
+stay unchanged.
+
+Propose one fresh Python/standard-library project, two canonical milestones
+and three arms: no memory, simple handoff and `pg_agmemory`. M1 provides two
+motivated operational decisions and genuine coding work; M2 requires new work
+where the current brief/source do not reveal those historical choices.
+All six assigned work slots receive the same per-stage source, current brief,
+tools and six-response limit, including final submission. This is a new,
+explicitly versioned limit, not permission to keep a sixteen-step prompt
+while enforcing six steps.
+
+Start each milestone from the author's frozen canonical source, not the
+previous arm's submission. No arm-authored files, notes, tests, caches or
+environment cross sessions. Only the declared memory channel continues;
+no-memory has null continuity state and empty delivery. Both memory arms use
+the same bounded transcript policy and at most 2,048 UTF-8 delivery bytes.
+Their actual work histories can differ, so this compares complete configured
+pipelines, not reasoning with identical realized memory content.
+
+The proposed fixed order is handoff M1/M2, PG M1/M2, then no-memory M1/M2.
+Each memory boundary lies between that arm's milestones; M2 has no maintenance
+after it. Contiguous lifecycles prioritize reaching later work before other
+arms accumulate first-stage failures. This unbalanced order confounds time
+and provider drift with arm identity; it is not a causal or population
+comparison. Freeze the order before task authoring, never after outcomes.
+Capture, quiesce and remove the work guest, then grade the immutable M1
+submission before maintenance. Keep grades out of maintenance and later
+prompts. This ordering also requires a separately versioned controller change.
+
+| Proposed limit | Amount |
+|---|---:|
+| Work slots / memory-eligible M2 slots | 6 / 3 |
+| Work responses, including final submissions | At most 36 |
+| Handoff writes / PG maintenance decisions | 1 / 1 |
+| PG retrieval-planner calls | At most 4 |
+| Core experimental model admissions | At most 42 |
+| Known-usage admission-stop proposal | `600000000000` nano-AIU |
+| Original-host response / inner model limit | 300 / 270 seconds |
+| Work-session / whole live-loop limit | 900 / 7,200 seconds |
+
+The admission arithmetic is `6 * 6 + 1 + 1 + 4 = 42`, with per-arm ceilings
+of 12, 13 and 17 for no-memory, handoff and PG. There are no repair, retry,
+extra-grader or replacement-task model calls. The usage stop is a proposal,
+not the user's existing approval, an invoice cap or a completion estimate.
+It includes invalid/failed responses; an admitted call can overshoot it,
+and unknown usage stops all later admissions. Preparation/author/reviewer
+assistant usage is separate. Forty-two calls do not necessarily fit the
+usage or time limits, and unused admissions cannot be reassigned.
+
+Require at least 320 seconds remaining in the applicable run/work budget
+before an admission, with the original cutoff checked again before publication.
+The 300-second window starts before startup/staging, rejects equality on
+either wall or monotonic time, and never resets. Earlier session/run deadlines
+win. Preserve bounded shell/grader operations and the separate 15-second
+cleanup allowance; physical termination and caller return are not guaranteed
+within 300 seconds.
+
+The **current development runner cannot execute this proposal unchanged**.
+Its pack/schedule assumes two projects and three milestones; its work prompt
+and admission limits assume sixteen responses. The JS controller still
+clamps model IPC at 180,000 ms, and Python waits 180 seconds. The new timing
+profile must be wired through both, not just the bridge. Final-milestone
+maintenance suppression and grade-before-maintenance ordering need explicit
+configuration and fake-path coverage. Exact-decimal usage must also be carried
+through the study coordinator rather than relying on JS numeric aggregation.
+
+The existing live entry point additionally runs six provider canaries.
+None are proposed or authorized here, so that entry point is blocked for this
+42-call design. A canary-free policy needs a separately reviewed isolation
+amendment disclosing weaker provider-state evidence; it must not silently
+bypass the existing gate. Retaining the six instead would require a revised
+48-admission proposal and explicit approval. No canary, readiness probe or
+other provider call may be hidden in preparation.
+
+Proposed authoring targets are four M1 memory-independent cases and six M2
+cases: four history-only cases, two per distinct historical decision, plus
+two independent controls. That is ten unique cases, thirty scheduled
+arm/case observations and six decision/arm rows, not thirty independent
+trials. These are requirements for a future author, not qualified fixtures.
+If one coherent design cannot satisfy them or ordinary inspect/edit/smoke/
+submit work within six responses, stop for method review instead of selecting
+another successful task after exposure.
+
+Freeze source/common prompts and the authoring policy before a disjoint
+fixture author creates the task. A separate qualifier must bind each
+historical requirement to earlier visible evidence and qualify positive,
+negative and two-history counterfactual witnesses on the final images.
+Current M2 inputs must stay identical while coherent alternative histories
+require different outputs. Preserve all materialized revisions and failed
+qualification. Exposure-informed source or prompt tuning retires the pack
+from held-out use; a hand-written reference is not evidence that the model
+will finish in six responses.
+
+Report the full assigned-slot table and the chain separately: earlier
+exposure; presence in the bounded maintenance input; faithful retention;
+selection and exact work-prompt delivery; visible application in actions/code;
+and frozen artifact correctness. Delivery plus correct code does not prove
+causal memory use, and no visible trace does not prove non-use. Self-report
+is insufficient. Two decisions sharing one project and boundary are limited,
+correlated coverage; this pilot cannot establish superiority, long-term
+revision/forgetting quality or general memory usefulness.
+
+A valid empty memory remains an assigned-arm outcome and continues empty.
+An invalid boundary or isolated memory failure leaves that arm's M2
+dependent-unrun, with no repair or new identity; unrelated fixed slots may
+continue only when isolation and transport/accounting remain known healthy.
+Unknown usage, transport/cancellation uncertainty, integrity, grader or
+cleanup failure stops globally. Ordinary M1 coding failure is not itself
+a reason to select out the arm: its canonical M2 can continue only under the
+frozen transcript/continuity rules. Preserve unknown and unrun outcomes
+without converting them into incorrect answers or filling them retrospectively.
+
+The next gate is method approval or revision, including the canary policy,
+six-response feasibility limit, order and proposed postpaid exposure.
+Implementation, fake-only qualification, fresh fixture authoring/qualification,
+content-free preregistration and a new one-attempt paid authorization remain
+separate gates. No new fixture, runtime implementation, experiment invocation
+or M5 production acceptance is supplied by this proposal.
 
 ## Prospective request-publication guard
 
