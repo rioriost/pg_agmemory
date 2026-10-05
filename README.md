@@ -1523,6 +1523,13 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
+JWT verification requires `PyJWT[crypto]>=2.15.1,<3`; `uv.lock` pins 2.15.1
+to include the upstream algorithm-confusion, malformed-token, JWKS and
+options-reuse fixes. Rebuild application images from the updated lock to apply
+the update; existing images and deployments are not changed automatically.
+RS256-only verification, fixed trusted keys and issuer/audience checks remain
+required. Do not enable HMAC or token-selected JWKS URLs as a workaround.
+
 **v0.0.26 requires schema 11 and migration `011_capture_policy.sql`.** Existing schema-10 databases
 use the [schema-11 maintenance upgrade](docs/operations/README.md#schema-11-scope-capture-policy-upgrade).
 Older schemas still require `010_job_cancellation.sql`, introduced in v0.0.15;

@@ -1400,6 +1400,13 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
+JWT検証には`PyJWT[crypto]>=2.15.1,<3`を必須とし、`uv.lock`では2.15.1に固定しています。
+アルゴリズムの混同、不正なtoken、JWKS、検証設定の再利用に関する上流の修正を含みます。
+更新を適用するには、新しいlockからアプリケーションimageを再構築してください。
+既存のimageや稼働中の配置は自動では変わりません。
+RS256のみの署名検証、信頼する固定鍵、issuer・audienceの検査は引き続き必須です。
+回避策としてHMACやtokenが指定するJWKS URLを許可しないでください。
+
 **v0.0.26はschema 11とmigration `011_capture_policy.sql`を要求します。** 既存schema 10 DBには
 [schema 11保守更新](docs/operations/README-jp.md#schema-11-scope-capture-policy-upgrade)を使います。
 古いschemaにはv0.0.15で導入した`010_job_cancellation.sql`が引き続き必要です。
