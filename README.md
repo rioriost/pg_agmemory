@@ -1124,6 +1124,15 @@ Migration/provisioning/rebuild access is administrative and must never be expose
 public endpoint. The runtime process refuses superuser, RLS-bypass, and
 table-owner roles at startup.
 
+JWT verification requires `PyJWT[crypto]>=2.15.1,<3`; `uv.lock` pins 2.15.1
+to include the upstream algorithm-confusion, malformed-token, JWKS and
+options-reuse fixes. Rebuild application images from the updated lock to apply
+the update; existing images and deployments are not changed automatically.
+RS256-only verification, fixed trusted keys and issuer/audience checks remain
+required. Do not enable HMAC or token-selected JWKS URLs as a workaround.
+The uv configuration selects official PyPI for PyJWT because the existing
+package mirror does not yet provide 2.15.1. Other dependencies keep that mirror.
+
 **v0.0.25 retains schema 10 and adds no migration.** Existing schema-10 databases
 use the [application-only upgrade](docs/operations/README.md#schema-10-application-only-upgrade).
 Older schemas still require `010_job_cancellation.sql`, introduced in v0.0.15;

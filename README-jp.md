@@ -1063,6 +1063,15 @@ runtime環境にadmin URLや署名用秘密鍵を渡さないでください。
 migration/provision/rebuildは管理操作であり、public endpointとして公開してはいけません。
 起動時にsuperuser、RLS bypass、table ownerのruntime接続を拒否します。
 
+JWT検証には`PyJWT[crypto]>=2.15.1,<3`を必須とし、`uv.lock`では2.15.1に固定しています。
+アルゴリズムの混同、不正なtoken、JWKS、検証設定の再利用に関する上流の修正を含みます。
+更新を適用するには、新しいlockからアプリケーションimageを再構築してください。
+既存のimageや稼働中の配置は自動では変わりません。
+RS256のみの署名検証、信頼する固定鍵、issuer・audienceの検査は引き続き必須です。
+回避策としてHMACやtokenが指定するJWKS URLを許可しないでください。
+既存のパッケージミラーにはまだ2.15.1がないため、uvの設定でPyJWTだけを公式PyPIから取得します。
+ほかの依存パッケージは引き続き既存のミラーを使います。
+
 **v0.0.25はschema 10を維持し、migrationを追加しません。** 既存schema 10 DBには
 [application-only更新](docs/operations/README-jp.md#schema-10-application-only-upgrade)を使います。
 古いschemaにはv0.0.15で導入した`010_job_cancellation.sql`が引き続き必要です。
